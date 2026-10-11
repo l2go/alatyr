@@ -4,6 +4,8 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-12
+
 ### Added
 
 - Decision records for Platform 3.0: delivery, process model, data, network core, data access, release policy, and retirement of 2.x.
@@ -69,6 +71,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - The Olympiad registers and the game map were changed by the packet threads and the manager thread at once, and two clicks could register a noble twice. A player's `deleteMe` could run twice when the disconnect, a relogin, and the shutdown met, and the shutdown now writes the SQL queue once more after the pools stop.
 - A login wrote the whole account row it had read back, so a ban set in between was undone; it writes the time and the address only, as does the last-server update. Two clients that created the same new account at once could replace each other's password, a disconnecting login connection removed the session entry of a newer connection of the same account, and the state of a login connection is visible to all its threads.
 - A character whose row could not be written got no answer and kept its id, and the save of a player with a subclass changed the class index of the live player for the time of the save, so a concurrent save of skills or shortcuts could land in the wrong class.
+- A save writes the player, the pet, the effects, and the items in one transaction. A save that rolls back leaves the item rows and the flags that remember them as they were, and the next save writes the items (#161).
 
 ### Removed
 

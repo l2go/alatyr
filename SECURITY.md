@@ -4,7 +4,7 @@
 
 | Version | Supported |
 |---|---|
-| Platform 3.0 (in development) | Yes, once released as `v3.0.0` |
+| `v3.0.0` | Yes |
 | 2.x line | No. `v2.5.0` is the final release and receives no fixes ([decision](docs/adr/0008-retire-the-2x-line.md)) |
 
 ## Report a vulnerability

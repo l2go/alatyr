@@ -61,6 +61,7 @@ import com.l2jfree.gameserver.network.packets.server.InventoryUpdate;
 import com.l2jfree.gameserver.network.packets.server.SpawnItem;
 import com.l2jfree.gameserver.network.packets.server.StatusUpdate;
 import com.l2jfree.gameserver.network.packets.server.SystemMessage;
+import com.l2jfree.gameserver.persistence.WorldTransaction;
 import com.l2jfree.gameserver.persistence.item.ItemRepository;
 import com.l2jfree.gameserver.taskmanager.SQLQueue;
 import com.l2jfree.sql.SQLQuery;
@@ -1219,8 +1220,64 @@ public final class L2ItemInstance extends L2Object implements FuncOwner, Element
 	*/
 	public void updateDatabase(boolean force)
 	{
+		// A save writes the item on the transaction's connection. The queue would commit it on its own connection,
+		// so a rollback of the player would leave the item behind, or the other way round.
+		if (WorldTransaction.current() != null)
+		{
+			synchronized (this)
+			{
+				switch (getUpdateMode(force))
+				{
+					case INSERT:
+						insertIntoDb(WorldTransaction.current());
+						break;
+					case UPDATE:
+						updateInDb(WorldTransaction.current());
+						break;
+					case REMOVE:
+						removeFromDb(WorldTransaction.current());
+						break;
+					case NONE:
+						break;
+				}
+			}
+			return;
+		}
+		
 		if (getUpdateMode(force) != UpdateMode.NONE)
 			SQLQueue.getInstance().add(UPDATE_DATABASE_QUERY);
+	}
+	
+	/** True when a row for this item is in the database. */
+	boolean existsInDatabase()
+	{
+		return _existsInDb;
+	}
+	
+	/** True when that row matches this item. A change clears it until the next write. */
+	boolean storedInDatabase()
+	{
+		return _storedInDb;
+	}
+	
+	/**
+	 * The flags say what the database holds. A write inside a transaction sets them before the commit, so a rollback
+	 * puts back the values from before the write.
+	 */
+	private void restoreFlagsOnRollback()
+	{
+		if (WorldTransaction.current() == null)
+			return;
+		
+		boolean existed = _existsInDb;
+		boolean stored = _storedInDb;
+		WorldTransaction.onRollback(() -> {
+			synchronized (L2ItemInstance.this)
+			{
+				_existsInDb = existed;
+				_storedInDb = stored;
+			}
+		});
 	}
 	
 	private final SQLQuery UPDATE_DATABASE_QUERY = new SQLQuery() {
@@ -1431,6 +1488,7 @@ public final class L2ItemInstance extends L2Object implements FuncOwner, Element
 		if (_storedInDb)
 			return;
 		
+		restoreFlagsOnRollback();
 		try
 		{
 			ItemRepository.getInstance().updateItem(con, toRow(), getStoredOwnerKey());
@@ -1471,6 +1529,7 @@ public final class L2ItemInstance extends L2Object implements FuncOwner, Element
 	 */
 	private void insertIntoDb(Connection con)
 	{
+		restoreFlagsOnRollback();
 		try
 		{
 			ItemRepository.getInstance().insertItem(con, toRow(), getStoredOwnerKey());
@@ -1492,7 +1551,16 @@ public final class L2ItemInstance extends L2Object implements FuncOwner, Element
 	 */
 	private void removeFromDb(Connection con)
 	{
+		L2Augmentation augmentation = _augmentation;
+		restoreFlagsOnRollback();
 		_augmentation = null;
+		if (WorldTransaction.current() != null)
+			WorldTransaction.onRollback(() -> {
+				synchronized (L2ItemInstance.this)
+				{
+					_augmentation = augmentation;
+				}
+			});
 		
 		try
 		{
