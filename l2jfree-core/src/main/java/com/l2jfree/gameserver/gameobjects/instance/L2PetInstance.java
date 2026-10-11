@@ -962,8 +962,8 @@ public class L2PetInstance extends L2Summon
 			return;
 		}
 		
-		// pet.item_id references item, and the control item may still wait in the queue of the SQL writer. Inside
-		// a transaction the caller (the save of the player) flushes the queue before it starts.
+		// pet.item_id references item. The save of the player writes the control item in this transaction before
+		// calling here. Outside a transaction the control item may still be waiting in the queue.
 		if (!isRespawned() && WorldTransaction.current() == null)
 			SQLQueue.getInstance().run();
 		

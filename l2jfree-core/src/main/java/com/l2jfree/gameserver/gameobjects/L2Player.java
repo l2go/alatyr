@@ -6984,16 +6984,14 @@ public final class L2Player extends L2Playable
 		// if (isInsideRadius(getClientX(), getClientY(), 1000, true))
 		//	getPosition().setXYZ(getClientX(), getClientY(), getClientZ());
 		
-		// The items are written by the queue of the SQL writer, on its own connection, not by the transaction below.
-		if (Config.UPDATE_ITEMS_ON_CHAR_STORE || items)
-			getInventory().updateDatabase();
-		
-		// pet.item_id references item: the control item has to be written before the pet row
-		if (getPet() != null)
-			SQLQueue.getInstance().run();
-		
-		// The player row, the pet, and the effects are saved together or not at all.
+		// The player row, the pet, the effects, and the items reach the database together or not at all.
+		// The control item is written before the pet row, which references it.
 		return WorldTransaction.run("Saving player " + getName(), () -> {
+			if (Config.UPDATE_ITEMS_ON_CHAR_STORE || items)
+				getInventory().updateDatabase();
+			L2Summon pet = getPet();
+			if (pet != null && pet.getInventory() != null)
+				pet.getInventory().updateDatabase();
 			storePet();
 			storePlayerData();
 			getEffects().storeEffects(storeActiveEffects);

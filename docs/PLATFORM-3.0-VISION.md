@@ -2,7 +2,7 @@
 
 ## Status
 
-Platform 3.0 is in development. v2.5.0 is the final release of the 2.x line,
+`v3.0.0` is the release of Platform 3.0. v2.5.0 is the final release of the 2.x line,
 which is retired ([ADR-0008](adr/0008-retire-the-2x-line.md)). Decisions made
 after this vision was first written are recorded in [docs/adr](adr/README.md)
 and take precedence where they differ: delivery

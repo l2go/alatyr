@@ -17,13 +17,13 @@ An archived Lineage II server, being rebuilt as Platform 3.0: a Linux image that
 [![Board](https://img.shields.io/badge/board-Platform%203.0-8250df)](https://github.com/users/l2go/projects/2)
 [![Docs](https://img.shields.io/badge/docs-index-0969da)](docs/index.md)
 
-[Platform 3.0](#platform-30-in-development) · [How this project is run](#how-this-project-is-run) · [Architecture](#architecture) · [Legacy 2.x](#legacy-2x-retired) · [Correctness](#correctness-program)
+[Platform 3.0](#platform-30) · [How this project is run](#how-this-project-is-run) · [Architecture](#architecture) · [Legacy 2.x](#legacy-2x-retired) · [Correctness](#correctness-program)
 
 </div>
 
-> **Status:** Platform 3.0 is in development and has no release yet. v2.5.0 is the final release of the 2.x line, which is retired and unsupported.
+> **Status:** `v3.0.0` is the release of Platform 3.0. v2.5.0 is the final release of the 2.x line, which is retired and unsupported.
 
-## Platform 3.0 (in development)
+## Platform 3.0
 
 The target is one Linux image that starts with `docker compose up -d --wait` and publishes two ports: **2106** for login and **7777** for the world. The image runs one process with a login module and a world module on Java 25 (Eclipse Temurin), with PostgreSQL 18 as the database. The base is Arch Linux for `linux/amd64`.
 
@@ -48,7 +48,7 @@ The image starts one process with both modules on PostgreSQL 18; see [deploy](de
 | Which document is current? | [Documentation index](docs/index.md) |
 | How are defects handled? | [Correctness program](#correctness-program) |
 
-The project ships one release of the 3.0 line, `v3.0.0`. Until then every merge to `main` builds an image for acceptance ([release policy](docs/adr/0007-release-policy.md)).
+`v3.0.0` is the release of the 3.0 line. Every merge to `main` publishes an `edge` image ([release policy](docs/adr/0007-release-policy.md)).
 
 ## Architecture
 
