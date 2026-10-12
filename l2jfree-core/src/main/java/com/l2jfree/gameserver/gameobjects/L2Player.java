@@ -9471,6 +9471,15 @@ public final class L2Player extends L2Playable
 	 */
 	public boolean addSubClass(int classId, int classIndex)
 	{
+		return addSubClass(classId, classIndex, true);
+	}
+	
+	/**
+	 * @param insertRow false when {@link #modifySubClass(int, int)} already inserted the row in the same
+	 *            transaction that deleted the previous subclass
+	 */
+	private boolean addSubClass(int classId, int classIndex, boolean insertRow)
+	{
 		if (!_subclassLock.tryLock())
 			return false;
 		
@@ -9488,20 +9497,23 @@ public final class L2Player extends L2Playable
 			newClass.setClassId(classId);
 			newClass.setClassIndex(classIndex);
 			
-			try
+			if (insertRow)
 			{
-				// Store the basic info about this new sub-class.
-				PlayerRepository.getInstance().insertSubclass(getObjectId(),
-						new SubclassRow(newClass.getClassIndex(), newClass.getClassId(), newClass.getLevel(),
-								newClass.getExp(), newClass.getSp()));
-			}
-			catch (Exception e)
-			{
-				_log.warn("Could not add character sub class for " + getName() + ": ", e);
-				return false;
+				try
+				{
+					// Store the basic info about this new sub-class.
+					PlayerRepository.getInstance().insertSubclass(getObjectId(),
+							new SubclassRow(newClass.getClassIndex(), newClass.getClassId(), newClass.getLevel(),
+									newClass.getExp(), newClass.getSp()));
+				}
+				catch (Exception e)
+				{
+					_log.warn("Could not add character sub class for " + getName() + ": ", e);
+					return false;
+				}
 			}
 			
-			// Commit after database INSERT incase exception is thrown.
+			// The row is already committed. A failed insert never reaches this map.
 			getSubClasses().put(newClass.getClassIndex(), newClass);
 			
 			if (_log.isDebugEnabled())
@@ -9565,8 +9577,12 @@ public final class L2Player extends L2Playable
 				_log.info(getName() + " has requested to modify sub class index " + classIndex + " from class ID "
 						+ oldClassId + " to " + newClassId + ".");
 			
-			// Everything stored for this sub-class goes together or stays.
-			boolean removed = WorldTransaction.run("Removing sub class " + classIndex + " of " + getName(), () -> {
+			SubClass newClass = new SubClass();
+			newClass.setClassId(newClassId);
+			newClass.setClassIndex(classIndex);
+			
+			// The old row and the new row change together. A failed insert rolls the delete back.
+			boolean replaced = WorldTransaction.run("Replacing sub class " + classIndex + " of " + getName(), () -> {
 				try
 				{
 					// Remove all henna info stored for this sub-class.
@@ -9583,6 +9599,10 @@ public final class L2Player extends L2Playable
 					
 					// Remove all basic info stored about this sub-class.
 					PlayerRepository.getInstance().deleteSubclass(getObjectId(), classIndex);
+					
+					PlayerRepository.getInstance().insertSubclass(getObjectId(),
+							new SubclassRow(newClass.getClassIndex(), newClass.getClassId(), newClass.getLevel(),
+									newClass.getExp(), newClass.getSp()));
 				}
 				catch (SQLException e)
 				{
@@ -9590,10 +9610,10 @@ public final class L2Player extends L2Playable
 				}
 			});
 			
-			if (!removed)
+			if (!replaced)
 			{
 				_log.warn("Could not modify sub class for " + getName() + " to class index " + classIndex + ".");
-				// The deletes rolled back, so the in-memory subclass stays with the row.
+				// The transaction rolled back, so the in-memory subclass stays with the old row.
 				return false;
 			}
 			
@@ -9604,7 +9624,7 @@ public final class L2Player extends L2Playable
 			_subclassLock.unlock();
 		}
 		
-		return addSubClass(newClassId, classIndex);
+		return addSubClass(newClassId, classIndex, false);
 	}
 	
 	public boolean isSubClassActive()
