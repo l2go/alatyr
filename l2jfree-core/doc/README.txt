@@ -1,6 +1,6 @@
 NOTE: This file is inherited from upstream L2J and L2JFree and is kept for history.
 Its requirements, ports, contacts, and installation steps are out of date.
-For the current platform, see README.md and docs/OPERATIONS-RUNBOOK.md.
+For the current platform, see README.md and deploy/README.md.
 
 l2jfree - http://l2jfree.com
 

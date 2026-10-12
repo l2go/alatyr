@@ -1,11 +1,10 @@
-# Platform 3.0 delivery: `docker compose up -d --wait` is the whole installation
-# (ADR-0002). The stack runs on Docker Desktop (Windows), Colima (macOS), and
-# Docker Engine (Linux).
+# `docker compose up -d --wait` is the whole installation. The stack runs on
+# Docker Desktop (Windows), Colima (macOS), and Docker Engine (Linux).
 #
 # The server service is one process: the login module (port 2106) and the world
-# module (port 7777) of ADR-0003, both on PostgreSQL 18, each with its own
-# database role (ADR-0009). The world loads for minutes, so the stack is healthy
-# only when both ports accept a connection.
+# module (port 7777), both on PostgreSQL 18, each with its own database role.
+# The world loads for minutes, so the stack is healthy only when both ports
+# accept a connection.
 #
 # Settings an operator may change:
 #   L2JFREE_IMAGE          image to run
@@ -14,9 +13,9 @@
 #                          subnet rule matches (default 127.0.0.1, which suits a
 #                          client on the same machine; set the address of the host
 #                          for players on other machines)
-#   L2JFREE_JAVA_OPTS      JVM options (default -Xms1g -Xmx3g -XX:+UseG1GC, ADR-0012); keep the heap below
+#   L2JFREE_JAVA_OPTS      JVM options (default -Xms1g -Xmx3g -XX:+UseG1GC); keep the heap below
 #                          mem_limit, because the JVM needs memory beside the heap
-# Key overrides go in the config volume, see deploy/README.md and ADR-0011.
+# Key overrides go in the config volume, see deploy/README.md.
 
 name: l2jfree
 

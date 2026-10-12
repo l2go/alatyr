@@ -13,7 +13,7 @@
  * this program. If not, see <http://www.gnu.org/licenses/>.
  */
 /**
- * The contract between the login module and the world module (ADR-0003).
+ * The contract between the login module and the world module.
  * <p>
  * Both modules depend on this package and on nothing of each other. The login module implements
  * {@link com.l2jfree.contract.LoginPort}, the world module implements {@link com.l2jfree.contract.WorldPort},

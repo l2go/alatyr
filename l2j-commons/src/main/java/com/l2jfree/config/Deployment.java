@@ -21,7 +21,7 @@ import java.nio.file.Paths;
 import java.util.function.Function;
 
 /**
- * Deployment settings: values an operator sets in the environment of the process (ADR-0011).
+ * Deployment settings: values an operator sets in the environment of the process.
  * <p>
  * A setting named {@code DB_URL} is the environment variable {@code L2JFREE_DB_URL}. A secret is never an
  * environment value: the variable {@code L2JFREE_<name>_FILE} names a file that holds it. A deployment setting

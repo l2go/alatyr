@@ -38,7 +38,7 @@ import com.l2jfree.testing.PostgresWorld;
 import com.l2jfree.testing.TestDatabase;
 import com.l2jfree.testing.TestDatabases;
 
-/** The {@code report} schema: read-only views for operators (docs/DATABASE-CONVENTIONS.md, section 8). */
+/** The {@code report} schema: read-only views for operators. */
 @Tag("integration")
 class ReportViewsTest
 {

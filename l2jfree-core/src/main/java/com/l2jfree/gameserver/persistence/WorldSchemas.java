@@ -23,8 +23,8 @@ import com.l2jfree.sql.SchemaMigration;
  * <li>The <code>catalog</code> schema is made equal to the catalog files of the image.</li>
  * <li>The report views are created again.</li>
  * </ol>
- * The schemas themselves and the role that owns them are created once by the database initialization
- * (see ADR-0009); this class never needs the right to create a schema.
+ * The schemas themselves and the role that owns them are created once by the database initialization;
+ * this class never needs the right to create a schema.
  */
 public final class WorldSchemas
 {
