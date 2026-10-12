@@ -707,7 +707,7 @@ public final class L2Player extends L2Playable
 	private int _effectsClassIndex = -1;
 	
 	/** The class slot whose effects are actually in memory. A class change hides the new index until then. */
-	int classIndexForStoredEffects()
+	public int classIndexForStoredEffects()
 	{
 		return _effectsClassIndex >= 0 ? _effectsClassIndex : _classIndex;
 	}
