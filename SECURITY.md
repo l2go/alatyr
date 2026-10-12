@@ -1,10 +1,10 @@
 # Security policy
 
-No version is supported. A report is not a promise of a reply or a fix.
+No version is supported. A report may get no reply and no fix.
 
 ## Report a vulnerability
 
-Open a [private security advisory](https://github.com/l2go/l2jfree/security/advisories/new), not a public issue. Name the affected component, the impact on a running server, and the steps to reproduce. Leave out credentials and session keys, and redact account names, addresses, and file paths.
+Open a [private security advisory](https://github.com/l2go/l2jfree/security/advisories/new), not a public issue. Say which component is affected, what a running server does wrong, and how to reproduce it. Leave out credentials and session keys; redact account names, addresses, and file paths.
 
 ## Verify a release
 
@@ -17,7 +17,7 @@ cosign verify ghcr.io/l2go/l2jfree:3.1.1 \
 gh attestation verify oci://ghcr.io/l2go/l2jfree:3.1.1 --repo l2go/l2jfree
 ```
 
-The compose archive of a release comes with the Sigstore bundle of its provenance:
+The compose archive comes with the Sigstore bundle of its provenance:
 
 ```sh
 gh release download v3.1.1 --repo l2go/l2jfree
@@ -26,4 +26,6 @@ gh attestation verify l2jfree-3.1.1-compose.tar.gz --repo l2go/l2jfree \
   --signer-workflow l2go/l2jfree/.github/workflows/release.yml
 ```
 
-Trivy scans the image on every merge and every day. A release and the daily scan fail on a critical or high finding that has a fixed version. An exception is a dated entry in [.trivyignore](.trivyignore).
+## Scanning
+
+Trivy scans the image on every merge and every day. A critical or high finding that has a fix fails the daily scan and blocks a release, unless [.trivyignore](.trivyignore) lists it with a date.

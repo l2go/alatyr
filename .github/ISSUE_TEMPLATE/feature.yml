@@ -1,30 +1,19 @@
-name: ✨ Feature or improvement
-description: A new capability or an improvement that is not a defect
+name: ✨ Feature
+description: A new capability or an improvement
 title: "Feature: "
 labels: ["type:feature"]
 body:
   - type: textarea
     id: problem
     attributes:
-      label: 🎯 Problem
+      label: Problem
       description: Who needs this and what they cannot do today.
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: 💡 Proposal
-      description: What should change for a running server.
-    validations:
-      required: true
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: ⚖️ Alternatives considered
-  - type: textarea
-    id: acceptance
-    attributes:
-      label: ✅ Acceptance
-      description: The single condition that is true when this is done.
+      label: Proposal
+      description: What should change for a running server, and how to tell that it is done.
     validations:
       required: true
