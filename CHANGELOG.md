@@ -4,6 +4,10 @@ All notable changes are recorded here, in the format of [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Changed
+
+- The security policy names the command that verifies the compose archive of a release against its Sigstore bundle.
+
 ## [3.1.1] - 2026-10-12
 
 The game runs as in 3.1.0: only comments changed in the server code. This release is about checking what ships. The release carries a signature for its compose archive, the deploy guides and the security policy are short and verified by the pipeline, and the backup command of the release guide dumps the two schemas the restore expects.
