@@ -4,6 +4,11 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Changed
+
+- The container package stays public. One GitHub Container Registry package cannot hide `edge` and publish a release tag at the same time.
+- GitHub Actions are pinned by commit. Dependabot keeps those pins current.
+
 ## [3.1.0] - 2026-10-12
 
 ### Fixed

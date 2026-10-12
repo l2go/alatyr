@@ -8,7 +8,7 @@ Platform 3.0 is built in three milestones. `v3.0.0` and `v3.1.0` are published. 
 |---|---|---|
 | M1. Foundation | Decisions recorded, vision revised, 2.x retired, docs structured, and a pipeline that builds a Linux image and starts it with Docker Compose in CI | Done ([report](reports/m1-foundation.md)) |
 | M2. Platform 3.0 | The image runs on PostgreSQL 18 in one process with Netty. An end-to-end smoke test (log in, list the world, enter it, leave) is green in CI | Done ([report](reports/m2-platform.md)) |
-| M3. Release | Runbook, restore rehearsal, threat model, vulnerability scan, signature and SBOM verified, and the tag `v3.0.0` | The pipeline work is done. The maintainer names any later version |
+| M3. Release | Runbook, restore rehearsal, threat model, vulnerability scan, signature and SBOM verified, and the tags `v3.0.0` and `v3.1.0` | Done |
 
 ## Exit criteria
 
@@ -34,7 +34,7 @@ M3 is done when:
 2. The threat model is written and checked against the delivered image. *Met: [threat model](threat-model.md), each defence names its test or check.*
 3. The vulnerability scan runs and passes under its rule. *Met: [scan](../SECURITY.md#vulnerability-scan), a scan on every merge and a daily scan.*
 4. The cosign signature and the SBOM verify with the commands in the documentation. *Met: the pipeline runs the commands of the [image verification guide](image-verification.md) after every publication.*
-5. A release tag is cut when the maintainer names it and approves it in the `stable-release` environment. *`v3.0.0` is published. The maintainer names any later version.*
+5. A release tag is cut when the maintainer names it and approves it in the `stable-release` environment. *Met: `v3.0.0` and `v3.1.0` are published. The package stays public, and GitHub Actions are pinned by commit.*
 
 ## Work packages
 
@@ -50,7 +50,7 @@ Work is cut into a few large packages along module boundaries, not into small sl
 | WP6. Runtime | M2 | JDK collections, thread model, known concurrency defects | Done |
 | WP7. Measurements | M2 | Repeatable start-up measurement and the collector decision | Done |
 | WP8. Operations | M3 | Runbook, flight recording, restore rehearsal, capture of an incident, threat model | Done. The pipeline rehearses the restore |
-| WP9. Release | M3 | Vulnerability scan, verification of signature and SBOM, the release workflow and the tag | `v3.0.0` is published. The maintainer names any later version |
+| WP9. Release | M3 | Vulnerability scan, verification of signature and SBOM, the release workflow and the tag | Done. `v3.0.0` and `v3.1.0` are published |
 
 ## Reports
 

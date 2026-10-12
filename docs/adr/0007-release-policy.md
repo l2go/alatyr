@@ -11,7 +11,7 @@ The 1.x and 2.x lines produced many tags: release candidates, a stable release, 
 
 1. `v3.0.0` is the first release of the 3.0 line. `v3.1.0`, cut on 2026-10-12, contains the correctness fixes found in it.
 2. Every merge to `main` builds the image and publishes it to the GitHub Container Registry as `edge` and `sha-<commit>`, without a GitHub Release. Acceptance runs on those images.
-3. The images stay private until the release. `sha-*` tags are kept for 30 days.
+3. The image package is public. The repository is public, and one GitHub Container Registry package cannot hide `edge` while a release tag of the same package is public. `sha-*` tags are kept for 30 days.
 4. The maintainer names the next version, when it is cut, and what it contains. A documentation change does not by itself require a version. The maintainer approves the tag in the `stable-release` environment. Tags `v*` are protected from deletion and update.
 
 ## Alternatives considered

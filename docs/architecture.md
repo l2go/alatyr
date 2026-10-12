@@ -101,7 +101,7 @@ flowchart LR
     probe --> gate{"merge to main?"}
     gate -- "no" --> done["checks green"]
     gate -- "yes" --> publish["publish edge and sha-*<br/>sign · SBOM · provenance"]
-    publish --> ghcr[("GHCR, private<br/>until the release")]
+    publish --> ghcr[("GHCR, public")]
 
     classDef step fill:#ddf4ff,stroke:#0969da,color:#0a3069
     classDef store fill:#fff8c5,stroke:#bf8700,color:#4d2d00

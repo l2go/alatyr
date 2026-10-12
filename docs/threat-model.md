@@ -80,7 +80,7 @@ The login and the world share a process (ADR-0003) and meet only through the con
 
 | | Threat | Control | Residual |
 |---|---|---|---|
-| T | A changed base, JRE, or dependency | The base image and the PostgreSQL image are pinned by digest, the JRE by SHA-256; Dependabot updates them; the dependency review runs on every pull request; code scanning runs (`build.yml`, `dependency-review.yml`, `codeql.yml`) | GitHub Actions are pinned by tag, not by commit (open; maintainer) |
+| T | A changed base, JRE, or dependency | The base image and the PostgreSQL image are pinned by digest, the JRE by SHA-256; Dependabot updates them; the dependency review runs on every pull request; code scanning runs (`build.yml`, `dependency-review.yml`, `codeql.yml`). GitHub Actions are pinned by commit, and Dependabot updates those pins | A compromised action commit that is already pinned |
 | T | A swapped image | Every image from `main` is signed (cosign, keyless), has provenance and an SBOM, and the pipeline verifies all three right after the push ([commands](image-verification.md)) | An operator who does not verify gets no benefit |
 | I | A known vulnerability | A scan on every merge and a daily scan of the published image. The daily scan and the release job fail on a fixed critical or high finding in a package the image runs ([scan](../SECURITY.md#vulnerability-scan)). The first scan found twenty findings in a program of the base that the server never runs; it was removed | A vulnerability that is not yet known |
 | S | A fake release | Tags `v*` are immutable (a repository ruleset), and the release job runs in the `stable-release` environment | Who may approve there is the maintainer's setting |
@@ -94,5 +94,3 @@ Writing it found that the play keys and the passwords for the optional services 
 | Decision | Owner | Note |
 |---|---|---|
 | `AutoCreateAccounts` default | Maintainer | Keep `True` for a private server; the runbook tells a public server to turn it off |
-| Pin GitHub Actions by commit | Maintainer | A one-time change, then Dependabot keeps them current |
-| Package visibility until the release (R-13) | Maintainer | The package is public today |
