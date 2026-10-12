@@ -999,6 +999,8 @@ public class TradeList
 		final InventoryUpdate playerIU = new InventoryUpdate();
 		
 		long totalPrice = 0;
+		int addedWeight = 0;
+		int addedSlots = 0;
 		
 		for (ItemRequest item : items)
 		{
@@ -1061,6 +1063,23 @@ public class TradeList
 			
 			if (!oldItem.isTradeable())
 				continue;
+			
+			// The buyer's inventory is the store owner's. A line that does not fit is not moved and not paid.
+			int nextWeight = addItemWeight(addedWeight, oldItem, item.getCount());
+			if (nextWeight < 0 || nextWeight > (long)_owner.getMaxLoad() - ownerInventory.getTotalWeight()
+					|| !ownerInventory.validateWeight(nextWeight))
+			{
+				_owner.sendPacket(SystemMessageId.WEIGHT_LIMIT_EXCEEDED);
+				continue;
+			}
+			int nextSlots = addItemSlots(addedSlots, oldItem, item.getCount(), ownerInventory);
+			if (nextSlots < 0 || !ownerInventory.validateCapacity(nextSlots))
+			{
+				_owner.sendPacket(SystemMessageId.SLOTS_FULL);
+				continue;
+			}
+			addedWeight = nextWeight;
+			addedSlots = nextSlots;
 			
 			// Proceed with item transfer
 			L2ItemInstance newItem =
