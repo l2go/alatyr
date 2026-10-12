@@ -81,6 +81,12 @@ public class RemoteAdministrationImpl extends UnicastRemoteObject implements IRe
 		_port = Config.RMI_SERVER_PORT;
 	}
 	
+	/** An empty password never matches, including the published object before a password is set. */
+	private boolean passwordAccepted(String password)
+	{
+		return password != null && _pass != null && !_pass.isEmpty() && _pass.equals(password);
+	}
+	
 	public void startServer()
 	{
 		if (Config.ALLOW_RMI_SERVER && _port != 0)
@@ -88,16 +94,26 @@ public class RemoteAdministrationImpl extends UnicastRemoteObject implements IRe
 			try
 			{
 				_lReg = LocateRegistry.createRegistry(_port);
-				_obj = new RemoteAdministrationImpl();
-				
-				if (_pass.isEmpty())
+				// The registry publishes this second instance. A password generated on the singleton
+				// would never be the one remote calls are checked against.
+				RemoteAdministrationImpl published = new RemoteAdministrationImpl();
+				String password = published._pass;
+				if (password == null || password.isEmpty())
 				{
 					_log.info("No password defined for RMI Server");
-					_pass = generateRandomPassword(10);
-					_log.info("A password has been automatically generated: " + _pass);
+					password = generateRandomPassword(10);
+					_log.info("A password has been automatically generated: " + password);
 				}
+				if (password == null || password.isEmpty())
+				{
+					_log.error("RMI Server was not started: the password is empty.");
+					return;
+				}
+				published._pass = password;
+				_pass = password;
+				_obj = published;
 				
-				Naming.rebind("//localhost:" + _port + "/Elayne", _obj);
+				Naming.rebind("//localhost:" + _port + "/Elayne", published);
 				_log.info("RMI Server started on port: " + _port + ", Password: " + _pass + ".");
 			}
 			catch (Exception e)
@@ -116,7 +132,7 @@ public class RemoteAdministrationImpl extends UnicastRemoteObject implements IRe
 	@Override
 	public int getOnlineUsersCount(String password) throws RemoteException
 	{
-		if (!password.equals(_pass))
+		if (!passwordAccepted(password))
 			return 0;
 		return L2World.getInstance().getAllPlayersCount();
 	}
@@ -127,7 +143,7 @@ public class RemoteAdministrationImpl extends UnicastRemoteObject implements IRe
 	@Override
 	public IRemotePlayer getPlayerInformation(String password, String playerName) throws RemoteException
 	{
-		if (!password.equals(_pass))
+		if (!passwordAccepted(password))
 			return null;
 		L2Player player = L2World.getInstance().getPlayer(playerName);
 		if (player != null)
@@ -141,7 +157,7 @@ public class RemoteAdministrationImpl extends UnicastRemoteObject implements IRe
 	@Override
 	public void announceToAll(String password, String announcement) throws RemoteException
 	{
-		if (!password.equals(_pass))
+		if (!passwordAccepted(password))
 			return;
 		Announcements.getInstance().announceToAll(announcement);
 	}
@@ -152,7 +168,7 @@ public class RemoteAdministrationImpl extends UnicastRemoteObject implements IRe
 	@Override
 	public void abortServerRestart(String password) throws RemoteException
 	{
-		if (password.equals(_pass))
+		if (passwordAccepted(password))
 			Shutdown.abort("127.0.0.1");
 	}
 	
@@ -162,7 +178,7 @@ public class RemoteAdministrationImpl extends UnicastRemoteObject implements IRe
 	@Override
 	public int kickPlayerFromServer(String password, String playerName) throws RemoteException
 	{
-		if (password.equals(_pass))
+		if (passwordAccepted(password))
 		{
 			L2Player player = L2World.getInstance().getPlayer(playerName);
 			if (player != null)
@@ -183,7 +199,7 @@ public class RemoteAdministrationImpl extends UnicastRemoteObject implements IRe
 	@Override
 	public void reload(String password, int reloadProcedure) throws RemoteException
 	{
-		if (password.equals(_pass))
+		if (passwordAccepted(password))
 		{
 			switch (reloadProcedure)
 			{
@@ -228,7 +244,7 @@ public class RemoteAdministrationImpl extends UnicastRemoteObject implements IRe
 	@Override
 	public void scheduleServerRestart(String password, int secondsUntilRestart) throws RemoteException
 	{
-		if (password.equals(_pass))
+		if (passwordAccepted(password))
 			Shutdown.start("127.0.0.1", secondsUntilRestart, ShutdownMode.SHUTDOWN);
 	}
 	
@@ -238,7 +254,7 @@ public class RemoteAdministrationImpl extends UnicastRemoteObject implements IRe
 	@Override
 	public void scheduleServerShutDown(String password, int secondsUntilShutDown) throws RemoteException
 	{
-		if (password.equals(_pass))
+		if (passwordAccepted(password))
 			Shutdown.start("127.0.0.1", secondsUntilShutDown, ShutdownMode.RESTART);
 		
 	}
@@ -249,7 +265,7 @@ public class RemoteAdministrationImpl extends UnicastRemoteObject implements IRe
 	@Override
 	public int sendMessageToGms(String password, String message) throws RemoteException
 	{
-		if (!password.equals(_pass))
+		if (!passwordAccepted(password))
 			return 0;
 		CreatureSay cs = new CreatureSay(0, SystemChatChannelId.Chat_Alliance, "Message From Elayne GM Tool", message);
 		GmListTable.broadcastToGMs(cs);
@@ -262,7 +278,7 @@ public class RemoteAdministrationImpl extends UnicastRemoteObject implements IRe
 	@Override
 	public int sendPrivateMessage(String password, String player, String message) throws RemoteException
 	{
-		if (!password.equals(_pass))
+		if (!passwordAccepted(password))
 			return 2;
 		L2Player reciever = L2World.getInstance().getPlayer(player);
 		CreatureSay cs = new CreatureSay(0, SystemChatChannelId.Chat_Tell, "Elayne GM Tool MSG", message);
@@ -281,7 +297,7 @@ public class RemoteAdministrationImpl extends UnicastRemoteObject implements IRe
 	@Override
 	public Map<String, IRemotePlayer> getOnlinePlayersDetails(String rmiPassword) throws RemoteException
 	{
-		if (!rmiPassword.equals(_pass))
+		if (!passwordAccepted(rmiPassword))
 			return null;
 		return null;
 	}
