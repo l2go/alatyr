@@ -1,10 +1,9 @@
 name: build
 
-# The pipeline of Platform 3.0. Microsoft OpenJDK 25 builds and tests the code.
-# The image job builds the Linux image from the verified platform distribution,
-# starts it with Docker Compose, probes the login and world ports, and publishes
-# the image from main
-# (ADR-0002, ADR-0007). The release job arrives with the release package.
+# The pipeline. Microsoft OpenJDK 25 builds and tests the code. The image job
+# builds the Linux image from the verified platform distribution, starts it with
+# Docker Compose, probes the login and world ports, and publishes the image from
+# main. The release workflow promotes a published image to a version.
 
 on:
   push:
@@ -217,8 +216,8 @@ jobs:
   # Builds the Platform 3.0 image from the verified platform distribution,
   # starts the stack with Docker Compose, and probes the login and world ports.
   # The world loads for minutes, so the waits are long. A push to
-  # main also publishes the image, signed and attested. Images stay private
-  # until the release and sha-* tags are kept for 30 days (ADR-0007).
+  # main also publishes the image, signed and attested. The package is public,
+  # and sha-* tags are kept for 30 days.
   image:
     # The image is published from main, so it waits for every check of the code, not for the build alone.
     needs: [build, integration, jython-syntax]
@@ -332,7 +331,7 @@ jobs:
       - name: Take many clients through a session at once
         run: java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --sessions 24 --parallel 6
 
-      # Each module reaches its own schema and nothing else (ADR-0003, ADR-0009).
+      # Each module reaches the schemas it owns and nothing else.
       - name: Check what each database role may reach
         env:
           L2JFREE_IMAGE: l2jfree:ci
@@ -579,7 +578,7 @@ jobs:
           test "$packages" -gt 0 || { echo "::error::the SBOM of the image lists no packages"; exit 1; }
           echo "SBOM lists $packages packages"
 
-  # Measures the start of the server under the JVM configurations of ADR-0012. It runs on request (workflow_dispatch),
+  # Measures the start of the server under G1 and ZGC, with and without the AOT cache. It runs on request (workflow_dispatch),
   # reports, and never fails the pipeline: a shared runner is too noisy to gate on, a run takes about twenty minutes,
   # and the numbers are read by a person.
   startup:

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Checks the boundary between the two modules at the database (ADR-0003, ADR-0009): each module role reaches its own
-# schema and nothing else, neither role is a superuser, and neither may create a schema or an extension. It runs in the
+# Checks the boundary between the two modules at the database: each module role reaches the schemas it owns
+# and nothing else, neither role is a superuser, and neither may create a schema or an extension. It runs in the
 # database container of a started stack, after the server has migrated both schemas.
 #
 #   deploy/probe/check-roles.sh [compose file]

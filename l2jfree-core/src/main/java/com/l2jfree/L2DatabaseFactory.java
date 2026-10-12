@@ -36,7 +36,7 @@ import com.zaxxer.hikari.HikariPoolMXBean;
  * <p>
  * Connections see the schemas <code>world</code>, <code>catalog</code>, and <code>public</code> in this order, so a
  * statement names its tables without a schema. Text parameters are sent untyped, so the server types them from the
- * column: a character name is compared as <code>citext</code>, without regard to case (ADR-0009).
+ * column: a character name is compared as <code>citext</code>, without regard to case.
  * <p>
  * Inside a {@link WorldTransaction}, {@link #getConnection()} hands out the connection of the transaction. Everything
  * that runs there joins it.

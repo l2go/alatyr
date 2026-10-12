@@ -1,4 +1,4 @@
--- Read-only views for people (docs/DATABASE-CONVENTIONS.md, section 8). The
+-- Read-only views for people. The
 -- server drops and creates the report schema from this file on every start and
 -- after every catalog load: the views read the catalog, which is replaced
 -- wholesale. Views never expose password hashes or other secrets.

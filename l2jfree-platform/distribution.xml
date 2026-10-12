@@ -3,7 +3,7 @@
 	xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.1
                       http://maven.apache.org/xsd/assembly-1.1.1.xsd">
 	<!--
-		One directory, l2jfree/, that holds the whole process (ADR-0003, ADR-0011):
+		One directory, l2jfree/, that holds the whole process:
 		l2jfree-platform.jar, libs/, agents/, config/ (the defaults of both modules), data/, catalog/.
 	-->
 	<id>dist</id>

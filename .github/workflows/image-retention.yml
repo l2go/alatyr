@@ -1,6 +1,6 @@
 name: image retention
 
-# Deletes sha-* image versions older than 30 days (ADR-0007). Versions that also
+# Deletes sha-* image versions older than 30 days. Versions that also
 # carry another tag, such as edge, are kept.
 
 on:

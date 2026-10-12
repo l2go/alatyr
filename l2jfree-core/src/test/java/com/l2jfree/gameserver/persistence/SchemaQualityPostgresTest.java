@@ -39,7 +39,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 /**
- * Checks the rules of docs/DATABASE-CONVENTIONS.md that a machine can check, on a freshly migrated database. A table
+ * Checks the database conventions that a machine can check, on a freshly migrated database. A table
  * that breaks a rule fails the build and the failure names the table and the rule.
  */
 @Tag("integration")

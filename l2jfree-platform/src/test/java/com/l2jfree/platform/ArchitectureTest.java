@@ -36,7 +36,7 @@ import com.tngtech.archunit.library.dependencies.SliceIdentifier;
 import com.tngtech.archunit.library.dependencies.SlicesRuleDefinition;
 
 /**
- * The architecture of ADR-0003 as executable rules: the login module and the world module know the contract and
+ * The module architecture as executable rules: the login module and the world module know the contract and
  * nothing of each other, and only the platform package knows both.
  * <p>
  * The rules read the class path of this module, which holds the contract, the login module, the world module, and the
@@ -70,43 +70,43 @@ class ArchitectureTest
 	static final ArchRule LOGIN_DOES_NOT_KNOW_THE_WORLD = noClasses().that().resideInAPackage(LOGIN + "..")
 			.should().dependOnClassesThat().resideInAPackage(WORLD + "..")
 			.as("The login module does not depend on the world module")
-			.because("ADR-0003: the two modules know only the contract, so either can be replaced or tested alone");
+			.because("the two modules know only the contract, so either can be replaced or tested alone");
 	
 	static final ArchRule WORLD_DOES_NOT_KNOW_THE_LOGIN = noClasses().that().resideInAPackage(WORLD + "..")
 			.should().dependOnClassesThat().resideInAPackage(LOGIN + "..")
 			.as("The world module does not depend on the login module")
-			.because("ADR-0003: the two modules know only the contract, so either can be replaced or tested alone");
+			.because("the two modules know only the contract, so either can be replaced or tested alone");
 	
 	static final ArchRule CONTRACT_DEPENDS_ON_THE_JDK_ONLY = classes().that().resideInAPackage(CONTRACT + "..")
 			.should().onlyDependOnClassesThat().resideInAnyPackage("java..", CONTRACT + "..")
 			.as("The contract depends only on the JDK and itself")
-			.because("ADR-0003: the contract is the one thing both modules share, so it must pull in nothing of either");
+			.because("the contract is the one thing both modules share, so it must pull in nothing of either");
 	
 	static final ArchRule LOGIN_DOES_NOT_USE_THE_WORLD_CONFIGURATION = noClasses().that()
 			.resideInAPackage(LOGIN + "..").should().dependOnClassesThat()
 			.haveNameMatching("com\\.l2jfree\\.(Config|L2DatabaseFactory)(\\$.*)?")
 			.as("The login module does not use the world's Config or L2DatabaseFactory")
-			.because("ADR-0003: each module owns its configuration and its database role (ADR-0009), "
+			.because("each module owns its configuration and its database role, "
 					+ "and the world's classes carry the world's settings");
 	
 	static final ArchRule ONLY_THE_PLATFORM_KNOWS_BOTH_MODULES = classes().that().resideOutsideOfPackage(PLATFORM + "..")
 			.should(notDependOnBothModules())
 			.as("Only the platform package depends on both modules")
-			.because("ADR-0003: the platform wires the two modules to each other, and nothing else may");
+			.because("the platform wires the two modules to each other, and nothing else may");
 	
 	static final ArchRule NO_CYCLES_BETWEEN_THE_SLICES = SlicesRuleDefinition.slices().assignedFrom(topLevelSlices())
 			.should().beFreeOfCycles().as("The login module, the world module, and the contract have no cycles")
-			.because("ADR-0003: a cycle between the slices would make the modules depend on each other");
+			.because("a cycle between the slices would make the modules depend on each other");
 	
 	static final ArchRule THE_MODULES_DO_NOT_KNOW_THE_PLATFORM = noClasses().that()
 			.resideInAnyPackage(LOGIN + "..", WORLD + "..", CONTRACT + "..").should().dependOnClassesThat()
 			.resideInAPackage(PLATFORM + "..").as("The login module, the world module, and the contract do not depend on the platform")
-			.because("ADR-0003: the platform wires the modules, so a dependency back on it would be a cycle through the launcher");
+			.because("the platform wires the modules, so a dependency back on it would be a cycle through the launcher");
 	
 	static final ArchRule THE_NETWORK_CORE_KNOWS_NO_MODULE = noClasses().that().resideInAPackage(NETWORK + "..")
 			.should().dependOnClassesThat().resideInAnyPackage(LOGIN + "..", WORLD + "..", CONTRACT + "..", PLATFORM + "..")
 			.as("The network core does not depend on the login module, the world module, the contract, or the platform")
-			.because("ADR-0005: the network core is a reusable transport; the modules use it, never the other way round");
+			.because("the network core is a reusable transport; the modules use it, never the other way round");
 	
 	// ===================================================================================
 	

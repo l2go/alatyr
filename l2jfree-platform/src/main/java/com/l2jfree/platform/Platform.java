@@ -28,7 +28,7 @@ import com.l2jfree.status.HealthServer;
 import com.l2jfree.status.Readiness;
 
 /**
- * Starts the login module and the world module in one process (ADR-0003).
+ * Starts the login module and the world module in one process.
  * <p>
  * The order is fixed. The login module prepares itself and opens no port. The world loads everything it needs and
  * opens its port, and it is handed the login module through the contract. Only then the login module opens its
