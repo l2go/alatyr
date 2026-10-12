@@ -19,6 +19,7 @@ import java.nio.BufferOverflowException;
 import com.l2jfree.loginserver.LoginConfig;
 import com.l2jfree.loginserver.network.L2Client;
 import com.l2jfree.loginserver.network.packets.L2ClientPacket;
+import com.l2jfree.loginserver.network.packets.server.LoginFail;
 import com.l2jfree.loginserver.network.packets.server.LoginOk;
 import com.l2jfree.loginserver.network.packets.server.ServerList;
 
@@ -29,8 +30,8 @@ import com.l2jfree.loginserver.network.packets.server.ServerList;
  */
 public class RequestSubmitCardNo extends L2ClientPacket
 {
-	//private final byte[] _raw = new byte[128];
-	private static final byte[] _raw = new byte[151];
+	// One packet, one body. A static buffer would let another login overwrite the card being checked.
+	private final byte[] _raw = new byte[151];
 	
 	@Override
 	protected int getMinimumLength()
@@ -67,10 +68,40 @@ public class RequestSubmitCardNo extends L2ClientPacket
 		System.err.println(HexUtil.printData(decrypted));
 		*/
 		L2Client client = getClient();
+		// The body is not decrypted. Only an exact match of SecurityCardID is accepted, and a
+		// blank id matches nothing, so an enabled check no longer lets every 151-byte packet through.
+		if (!submittedCardMatches(LoginConfig.SECURITY_CARD_ID))
+		{
+			client.closeLogin(LoginFail.REASON_INVALID_SECURITY_CARD_NO);
+			return;
+		}
 		client.setCardAuthed(true);
 		if (LoginConfig.SHOW_LICENCE)
 			client.sendPacket(new LoginOk(client.getSessionKey()));
 		else
 			client.sendPacket(new ServerList(client));
+	}
+	
+	/** The configured id, with ASCII NUL and spaces stripped from both ends of the body. */
+	private boolean submittedCardMatches(String expected)
+	{
+		if (expected == null || expected.isEmpty())
+			return false;
+		
+		int start = 0;
+		int end = _raw.length;
+		while (start < end && (_raw[start] == 0 || _raw[start] == ' '))
+			start++;
+		while (end > start && (_raw[end - 1] == 0 || _raw[end - 1] == ' '))
+			end--;
+		if (end - start != expected.length())
+			return false;
+		
+		for (int i = 0; i < expected.length(); i++)
+		{
+			if (_raw[start + i] != expected.charAt(i))
+				return false;
+		}
+		return true;
 	}
 }

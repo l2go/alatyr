@@ -227,6 +227,23 @@ public final class AccountsDAOJdbc implements AccountsDAO
 		});
 	}
 
+	@Override
+	public boolean replacePasswordHash(String login, String expectedHash, String newHash)
+	{
+		if (login == null || expectedHash == null || newHash == null)
+			throw new IllegalArgumentException("Password replacement needs a login and both hashes");
+		return transactions.withConnection(connection -> {
+			try (PreparedStatement statement = connection.prepareStatement(
+					"UPDATE account SET password_hash = ? WHERE name = ? AND password_hash = ?"))
+			{
+				statement.setString(1, newHash);
+				statement.setString(2, login);
+				statement.setString(3, expectedHash);
+				return statement.executeUpdate() > 0;
+			}
+		});
+	}
+
 	/** Inserts the account, or updates the columns the bean gives; columns it leaves null keep their value. */
 	private static void upsert(Connection connection, Accounts account) throws SQLException
 	{

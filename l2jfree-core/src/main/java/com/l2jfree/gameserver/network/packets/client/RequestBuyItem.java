@@ -26,6 +26,7 @@ import com.l2jfree.gameserver.datatables.TradeListTable;
 import com.l2jfree.gameserver.gameobjects.L2Creature;
 import com.l2jfree.gameserver.gameobjects.L2Merchant;
 import com.l2jfree.gameserver.gameobjects.L2Player;
+import com.l2jfree.gameserver.gameobjects.itemcontainer.Inventory;
 import com.l2jfree.gameserver.gameobjects.instance.L2FishermanInstance;
 import com.l2jfree.gameserver.gameobjects.instance.L2MerchantInstance;
 import com.l2jfree.gameserver.gameobjects.instance.L2PetManagerInstance;
@@ -276,7 +277,12 @@ public class RequestBuyItem extends L2ClientPacket
 			taxedPriceTotal += taxedPrice;
 			taxTotal += tax;
 			
-			weight += i.getCount() * template.getWeight();
+			weight = Inventory.addLoad(weight, template.getWeight(), i.getCount());
+			if (weight < 0)
+			{
+				requestFailed(SystemMessageId.WEIGHT_LIMIT_EXCEEDED);
+				return;
+			}
 			if (!template.isStackable())
 				slots += i.getCount();
 			else if (player.getInventory().getItemByItemId(i.getItemId()) == null)

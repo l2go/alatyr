@@ -76,7 +76,7 @@ public final class GMViewCharacterInfo extends L2ServerPacket
 		writeD(stat.getMaxMp());
 		writeD((int)status.getCurrentMp());
 		writeD(_activeChar.getSp());
-		writeD(_activeChar.getCurrentLoad());
+		writeD(Inventory.toStatusLoad(_activeChar.getCurrentLoad()));
 		writeD(_activeChar.getMaxLoad());
 		writeD(_activeChar.getPkKills());
 		

@@ -20,6 +20,7 @@ import com.l2jfree.Config;
 import com.l2jfree.gameserver.datatables.ItemTable;
 import com.l2jfree.gameserver.gameobjects.L2Object;
 import com.l2jfree.gameserver.gameobjects.L2Player;
+import com.l2jfree.gameserver.gameobjects.itemcontainer.Inventory;
 import com.l2jfree.gameserver.gameobjects.instance.L2ManorManagerInstance;
 import com.l2jfree.gameserver.instancemanager.CastleManorManager;
 import com.l2jfree.gameserver.model.L2Manor;
@@ -109,14 +110,19 @@ public class RequestBuyProcure extends L2ClientPacket
 		//long subTotal = 0;
 		//int tax = 0;
 		int slots = 0;
-		int weight = 0;
+		long weight = 0;
 		
 		for (Procure i : _items)
 		{
 			i.setReward(castle);
 			
 			L2Item template = ItemTable.getInstance().getTemplate(i.getReward());
-			weight += i.getCount() * template.getWeight();
+			weight = Inventory.addLoad(weight, template.getWeight(), i.getCount());
+			if (weight < 0)
+			{
+				requestFailed(SystemMessageId.WEIGHT_LIMIT_EXCEEDED);
+				return;
+			}
 			
 			if (!template.isStackable())
 				slots += i.getCount();
