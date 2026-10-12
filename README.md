@@ -1,9 +1,10 @@
 <div align="center">
 
-<img src="assets/l2jfree-hero.svg" width="100%" alt="L2JFree: Lineage II server for Gracia Final, protocol 83">
+<a href="https://l2go.github.io/l2jfree/" title="Open the L2JFree project site"><img src="assets/l2jfree-hero.svg" width="100%" alt="L2JFree: Lineage II server for Gracia Final, protocol 83. Opens the project site."></a>
 
 <br>
 
+[![Project site](https://img.shields.io/badge/project%20site-l2go.github.io%2Fl2jfree-d9a441?style=for-the-badge&logo=githubpages&logoColor=white&labelColor=1a1610)](https://l2go.github.io/l2jfree/)
 [![Build](https://img.shields.io/github/actions/workflow/status/l2go/l2jfree/build.yml?branch=main&style=for-the-badge&label=build&logo=githubactions&logoColor=white&labelColor=1a1610)](https://github.com/l2go/l2jfree/actions/workflows/build.yml)
 [![Release](https://img.shields.io/github/v/release/l2go/l2jfree?sort=semver&display_name=tag&style=for-the-badge&logo=github&logoColor=white&labelColor=1a1610&color=d9a441)](https://github.com/l2go/l2jfree/releases)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/l2go/l2jfree?label=openssf%20scorecard&style=for-the-badge&labelColor=1a1610)](https://scorecard.dev/viewer/?uri=github.com/l2go/l2jfree)
@@ -11,7 +12,7 @@
 
 ### One process · Two ports · One command
 
-[Start](#start) · [Engineering](#engineering) · [Architecture](#architecture) · [Releases](#releases) · [Deploy guide](deploy/README.md) · [Security](SECURITY.md)
+**[Project site](https://l2go.github.io/l2jfree/)** · [Start](#start) · [Engineering](#engineering) · [Architecture](#architecture) · [Releases](#releases) · [Deploy guide](deploy/README.md) · [Security](SECURITY.md)
 
 </div>
 
@@ -79,7 +80,7 @@ Java Flight Recorder keeps the last 12 hours. PostgreSQL counts every statement 
 </tr>
 </table>
 
-The decisions in code: the [architecture rules](l2jfree-platform/src/test/java/com/l2jfree/platform/ArchitectureTest.java) between the modules, a player save in [one transaction](https://github.com/l2go/l2jfree/pull/162), and a weight-check bypass closed by [a wider type](https://github.com/l2go/l2jfree/pull/193).
+The decisions in code: the [architecture rules](l2jfree-platform/src/test/java/com/l2jfree/platform/ArchitectureTest.java) between the modules, a player save in [one transaction](https://github.com/l2go/l2jfree/pull/162), and a weight-check bypass closed by [a wider type](https://github.com/l2go/l2jfree/pull/193). The [engineering notes](https://l2go.github.io/l2jfree/#notes) on the project site take one decision at a time.
 
 ## Architecture
 
