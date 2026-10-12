@@ -643,21 +643,35 @@ public class TradeList
 		return true;
 	}
 	
-	/**
-	 * Transfers all TradeItems from inventory to partner
-	 */
+	/** Object ids and counts that landed in the partner inventory, so a failed exchange can move them back. */
+	private int[] _landedIds = new int[0];
+	private long[] _landedCounts = new long[0];
+	private int _landed;
+	
 	private boolean transferItems(L2Player partner, InventoryUpdate ownerIU, InventoryUpdate partnerIU)
 	{
+		_landedIds = new int[_items.size()];
+		_landedCounts = new long[_items.size()];
+		_landed = 0;
 		for (TradeItem titem : _items)
 		{
 			L2ItemInstance oldItem = _owner.getInventory().getItemByObjectId(titem.getObjectId());
 			if (oldItem == null)
+			{
+				revertDelivered(partner);
 				return false;
+			}
 			L2ItemInstance newItem =
 					_owner.getInventory().transferItem("Trade", titem.getObjectId(), titem.getCount(),
 							partner.getInventory(), _owner, _partner);
 			if (newItem == null)
+			{
+				revertDelivered(partner);
 				return false;
+			}
+			_landedIds[_landed] = newItem.getObjectId();
+			_landedCounts[_landed] = titem.getCount();
+			_landed++;
 			
 			// Add changes to inventory update packets
 			if (ownerIU != null)
@@ -677,6 +691,15 @@ public class TradeList
 			}
 		}
 		return true;
+	}
+	
+	/** Moves this list's delivered items from the holder back to the owner. */
+	private void revertDelivered(L2Player holder)
+	{
+		for (int i = _landed - 1; i >= 0; i--)
+			holder.getInventory().transferItem("TradeRevert", _landedIds[i], _landedCounts[i], _owner.getInventory(),
+					holder, _owner);
+		_landed = 0;
 	}
 	
 	/**
@@ -752,19 +775,27 @@ public class TradeList
 			InventoryUpdate ownerIU = Config.FORCE_INVENTORY_UPDATE ? null : new InventoryUpdate();
 			InventoryUpdate partnerIU = Config.FORCE_INVENTORY_UPDATE ? null : new InventoryUpdate();
 			
-			// Transfer items
-			partnerList.transferItems(getOwner(), partnerIU, ownerIU);
-			transferItems(partnerList.getOwner(), ownerIU, partnerIU);
+			// Transfer items. A side that stops gives back what it already moved, and the other side is returned too.
+			boolean partnerMoved = partnerList.transferItems(getOwner(), partnerIU, ownerIU);
+			boolean ownMoved = partnerMoved && transferItems(partnerList.getOwner(), ownerIU, partnerIU);
+			if (partnerMoved && !ownMoved)
+				partnerList.revertDelivered(getOwner());
+			success = partnerMoved && ownMoved;
 			
 			// Send inventory update packet
-			if (ownerIU != null)
+			if (!success)
+			{
+				_owner.sendPacket(new ItemList(_owner, false));
+				_partner.sendPacket(new ItemList(_partner, false));
+			}
+			else if (ownerIU != null)
 				_owner.sendPacket(ownerIU);
 			else
 				_owner.sendPacket(new ItemList(_owner, false));
 			
-			if (partnerIU != null)
+			if (success && partnerIU != null)
 				_partner.sendPacket(partnerIU);
-			else
+			else if (success)
 				_partner.sendPacket(new ItemList(_partner, false));
 			
 			// Update current load as well
@@ -774,8 +805,6 @@ public class TradeList
 			playerSU = new StatusUpdate(_partner.getObjectId());
 			playerSU.addAttribute(StatusUpdate.CUR_LOAD, _partner.getCurrentLoad());
 			_partner.sendPacket(playerSU);
-			
-			success = true;
 		}
 		// Finish the trade
 		partnerList.getOwner().onTradeFinish(success);
@@ -1072,15 +1101,25 @@ public class TradeList
 				_owner.sendPacket(SystemMessageId.SLOTS_FULL);
 				continue;
 			}
-			addedWeight = nextWeight;
-			addedSlots = nextSlots;
+			
+			// Take this line's adena before the item moves. A short stack destroys nothing and returns null,
+			// so the item stays with the seller and no adena is created.
+			long linePrice = item.getCount() * item.getPrice();
+			if (ownerInventory.destroyItemByItemId("PrivateStore", PlayerInventory.ADENA_ID, linePrice, _owner, player) == null)
+				continue;
 			
 			// Proceed with item transfer
 			L2ItemInstance newItem =
 					playerInventory.transferItem("PrivateStore", objectId, item.getCount(), ownerInventory, player,
 							_owner);
 			if (newItem == null)
+			{
+				ownerInventory.addAdena("PrivateStore", linePrice, _owner, player);
 				continue;
+			}
+			playerInventory.addAdena("PrivateStore", linePrice, player, _owner);
+			addedWeight = nextWeight;
+			addedSlots = nextSlots;
 			
 			removeItem(-1, item.getItemId(), item.getCount());
 			ok = true;
@@ -1129,14 +1168,8 @@ public class TradeList
 		
 		if (totalPrice > 0)
 		{
-			// Transfer adena
-			if (totalPrice > ownerInventory.getAdena())
-				// should not happens, just a precaution
-				return false;
-			final L2ItemInstance adenaItem = ownerInventory.getAdenaInstance();
-			ownerInventory.reduceAdena("PrivateStore", totalPrice, _owner, player);
-			ownerIU.addItem(adenaItem);
-			playerInventory.addAdena("PrivateStore", totalPrice, player, _owner);
+			// Each line already moved its own adena. Refresh both stacks in the inventory packets.
+			ownerIU.addItem(ownerInventory.getAdenaInstance());
 			playerIU.addItem(playerInventory.getAdenaInstance());
 		}
 		

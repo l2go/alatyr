@@ -17,6 +17,7 @@ package com.l2jfree.gameserver.network.packets.client;
 import static com.l2jfree.gameserver.gameobjects.L2Npc.INTERACTION_DISTANCE;
 import static com.l2jfree.gameserver.gameobjects.itemcontainer.PlayerInventory.MAX_ADENA;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import com.l2jfree.Config;
@@ -301,13 +302,51 @@ public class RequestBuyItem extends L2ClientPacket
 			return;
 		}
 		
+		// Reserve limited stock before any adena moves. A line that does not fit is not charged.
+		List<Item> accepted = new ArrayList<Item>(_items.length);
+		synchronized (list)
+		{
+			for (Item i : _items)
+			{
+				if (list.countDecrease(i.getItemId()) && !list.decreaseCount(i.getItemId(), i.getCount()))
+					continue;
+				accepted.add(i);
+			}
+		}
+		if (accepted.isEmpty())
+		{
+			requestFailed(SystemMessageId.ITEM_OUT_OF_STOCK);
+			return;
+		}
+		taxedPriceTotal = 0;
+		taxTotal = 0;
+		for (Item i : accepted)
+		{
+			long price = list.getPriceForItemId(i.getItemId());
+			for (int ticket : MercTicketManager.getInstance().getItemIds())
+			{
+				if (i.getItemId() == ticket)
+				{
+					price = (long)(price * Config.RATE_SIEGE_GUARDS_PRICE);
+					break;
+				}
+			}
+			long stackPrice = price * i.getCount();
+			long taxedPrice = (long)(stackPrice * taxRate);
+			taxedPriceTotal += taxedPrice;
+			taxTotal += taxedPrice - stackPrice;
+		}
+		
+		boolean paid = false;
 		if (!player.isGM() || (player.isGM() && (player.getAccessLevel() < Config.GM_FREE_SHOP)))
 		{
 			if ((taxedPriceTotal < 0) || !player.reduceAdena("Buy", taxedPriceTotal, (L2Creature)merchant, false))
 			{
+				releaseReserved(list, accepted);
 				requestFailed(SystemMessageId.YOU_NOT_ENOUGH_ADENA);
 				return;
 			}
+			paid = true;
 		}
 		
 		if (!player.isGM())
@@ -320,31 +359,16 @@ public class RequestBuyItem extends L2ClientPacket
 		//  Check if player is GM and buying from GM shop or have proper access level
 		else if (list.isGm() && (player.getAccessLevel() < Config.GM_CREATE_ITEM))
 		{
+			releaseReserved(list, accepted);
+			if (paid)
+				player.getInventory().addAdena("Buy", taxedPriceTotal, player, (L2Creature)merchant);
 			requestFailed(SystemMessageId.YOU_ARE_NOT_AUTHORIZED_TO_DO_THAT);
 			return;
 		}
 		
-		// Proceed the purchase
-		for (Item i : _items)
+		// Proceed the purchase. Stock for these lines is already reserved.
+		for (Item i : accepted)
 		{
-			if (!list.containsItemId(i.getItemId()))
-			{
-				sendPacket(ActionFailed.STATIC_PACKET);
-				Util.handleIllegalPlayerAction(player, "Warning!! Character " + player.getName() + " of account "
-						+ player.getAccountName() + " sent a false BuyList list_id.", Config.DEFAULT_PUNISH);
-				return;
-			}
-			
-			if (list.countDecrease(i.getItemId()))
-			{
-				if (!list.decreaseCount(i.getItemId(), i.getCount()))
-				{
-					requestFailed(SystemMessageId.ITEM_OUT_OF_STOCK);
-					return;
-				}
-			}
-			
-			// Add item to Inventory and adjust update packet
 			player.getInventory().addItem(list.isGm() ? "GMShop" : "Buy", i.getItemId(), i.getCount(), player,
 					(L2Creature)merchant);
 		}
@@ -369,6 +393,19 @@ public class RequestBuyItem extends L2ClientPacket
 		sendPacket(su);
 		su = null;
 		sendPacket(new ItemList(player, true));
+	}
+	
+	/** Returns limited units reserved for lines the buyer will not be charged for. */
+	private static void releaseReserved(L2TradeList list, List<Item> accepted)
+	{
+		synchronized (list)
+		{
+			for (Item i : accepted)
+			{
+				if (list.countDecrease(i.getItemId()))
+					list.increaseCount(i.getItemId(), i.getCount());
+			}
+		}
 	}
 	
 	private boolean canShop(L2Player player, L2Merchant target)

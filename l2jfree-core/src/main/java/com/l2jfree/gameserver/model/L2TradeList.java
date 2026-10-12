@@ -85,7 +85,7 @@ public class L2TradeList
 		}
 	}
 	
-	public boolean decreaseCount(int itemID, long count)
+	public synchronized boolean decreaseCount(int itemID, long count)
 	{
 		for (int i = 0; i < _items.size(); i++)
 		{
@@ -103,8 +103,22 @@ public class L2TradeList
 		
 		return false;
 	}
+
+	/** Puts reserved units back. The same lock as {@link #decreaseCount(int, long)}. */
+	public synchronized void increaseCount(int itemID, long count)
+	{
+		for (int i = 0; i < _items.size(); i++)
+		{
+			L2ItemInstance item = _items.get(i);
+			if (item.getItemId() == itemID)
+			{
+				item.setCount(item.getCount() + count);
+				return;
+			}
+		}
+	}
 	
-	public void restoreCount(int time)
+	public synchronized void restoreCount(int time)
 	{
 		for (int i = 0; i < _items.size(); i++)
 		{

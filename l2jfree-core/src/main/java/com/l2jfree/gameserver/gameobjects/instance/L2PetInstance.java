@@ -999,9 +999,38 @@ public class L2PetInstance extends L2Summon
 			setTemplateId(statement, 9, getArmor());
 			setTemplateId(statement, 10, getJewel());
 			statement.setInt(11, getControlItemId());
-			statement.executeUpdate();
+			int updated = statement.executeUpdate();
 			statement.close();
+			boolean inserted = !isRespawned();
 			
+			// An update of zero rows means the insert never committed. Insert the row instead of reporting success.
+			if (isRespawned() && updated == 0)
+			{
+				statement = con.prepareStatement(
+						"INSERT INTO pet (name, level, current_hp, current_mp, exp, sp, current_feed, weapon_template_id, armor_template_id, jewel_template_id, item_id) "
+								+ "VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+				if (name == null || name.isEmpty())
+					statement.setNull(1, Types.VARCHAR);
+				else
+					statement.setString(1, name);
+				statement.setInt(2, getStat().getLevel());
+				statement.setDouble(3, Math.max(0.0, getStatus().getCurrentHp()));
+				statement.setDouble(4, Math.max(0.0, getStatus().getCurrentMp()));
+				statement.setLong(5, getStat().getExp());
+				statement.setInt(6, getStat().getSp());
+				statement.setInt(7, Math.max(0, getCurrentFed()));
+				setTemplateId(statement, 8, getWeapon());
+				setTemplateId(statement, 9, getArmor());
+				setTemplateId(statement, 10, getJewel());
+				statement.setInt(11, getControlItemId());
+				statement.executeUpdate();
+				statement.close();
+				inserted = true;
+			}
+			
+			// The flag follows the commit. A rollback of this insert clears it so the next save inserts again.
+			if (inserted)
+				WorldTransaction.onRollback(() -> _respawned = false);
 			_respawned = true;
 			
 		}
