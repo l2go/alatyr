@@ -20,6 +20,7 @@ import com.l2jfree.gameserver.Shutdown.DisableType;
 import com.l2jfree.gameserver.gameobjects.L2Npc;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.gameobjects.itemcontainer.ClanWarehouse;
+import com.l2jfree.gameserver.gameobjects.itemcontainer.Inventory;
 import com.l2jfree.gameserver.gameobjects.itemcontainer.ItemContainer;
 import com.l2jfree.gameserver.model.clan.L2Clan;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
@@ -136,7 +137,7 @@ public class SendWareHouseWithDrawList extends L2ClientPacket
 			return;
 		}
 		
-		int weight = 0;
+		long weight = 0;
 		int slots = 0;
 		
 		for (WarehouseItem i : _items)
@@ -154,7 +155,12 @@ public class SendWareHouseWithDrawList extends L2ClientPacket
 				return;
 			}
 			
-			weight += i.getCount() * item.getItem().getWeight();
+			weight = Inventory.addLoad(weight, item.getItem().getWeight(), i.getCount());
+			if (weight < 0)
+			{
+				requestFailed(SystemMessageId.WEIGHT_LIMIT_EXCEEDED);
+				return;
+			}
 			if (!item.isStackable())
 				slots += i.getCount();
 			else if (player.getInventory().getItemByItemId(item.getItemId()) == null)

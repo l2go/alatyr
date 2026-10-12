@@ -86,6 +86,12 @@ public final class StatusUpdate extends L2ServerPacket
 		_attributes.add(new Attribute(id, level));
 	}
 	
+	/** A load above the packet's 32-bit field is sent as the maximum, so the client does not show a wrapped negative. */
+	public void addAttribute(byte id, long level)
+	{
+		addAttribute(id, level > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int)level);
+	}
+	
 	@Override
 	protected void writeImpl()
 	{
