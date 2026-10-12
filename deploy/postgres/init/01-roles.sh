@@ -35,7 +35,7 @@ CREATE SCHEMA report AUTHORIZATION l2jfree_world;
 ALTER ROLE l2jfree_world SET search_path = world, catalog, public;
 
 -- What the roles must not have, and why nothing is granted here: a module
--- reaches only the schemas it owns (ADR-0009). The world role has no right on
+-- reaches only the schemas it owns. The world role has no right on
 -- "login", and the login role has none on "world", "catalog", or "report". Roles
 -- that do not own a schema get no right on it by default, so there is no REVOKE.
 -- Neither role is a superuser and neither may create schemas or extensions.

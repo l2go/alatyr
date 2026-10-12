@@ -35,7 +35,7 @@ import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 
 /**
- * The count of classes that reach the database directly does not grow (risk R-8, ADR-0006).
+ * The count of classes that reach the database directly does not grow.
  * <p>
  * The world module keeps its SQL behind repositories in {@code ..persistence..} where a domain has one, and the rest of
  * the code still calls {@code java.sql} or {@code L2DatabaseFactory} itself. The classes that do are listed in

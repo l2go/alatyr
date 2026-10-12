@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
 
-# The Platform 3.0 image. linux/amd64 on Arch Linux, pinned by dated tag and
-# digest, with a Temurin 25 JRE archive pinned by SHA-256 (ADR-0002).
+# The server image. linux/amd64 on Arch Linux, pinned by dated tag and digest,
+# with a Temurin 25 JRE archive pinned by SHA-256.
 #
-# The image carries the login module and the world module in one process
-# (ADR-0003). The platform distribution is unpacked next to this file as
+# The image carries the login module and the world module in one process.
+# The platform distribution is unpacked next to this file as
 # l2jfree/. It lands read-only in /opt/l2jfree: the defaults of every
 # configuration key, the libraries, the datapack data, and the catalog. State
-# lives in volumes: the work directory, the operator configuration (ADR-0011),
+# lives in volumes: the work directory, the operator configuration,
 # the log, and the secrets.
 
 FROM archlinux:base-20261004.0.606936@sha256:4e77cf2ea5f410e6f8be5abf93ccf17ce2436e87a138c167208356711a405dbd AS jre
@@ -32,7 +32,7 @@ COPY --chmod=0755 bin/ /opt/l2jfree/bin/
 
 # The world reads the datapack and the catalog from the read-only tree, so the
 # two path keys of the shipped defaults name it. An operator can still override
-# them (ADR-0011). The build fails when a key is missing from the defaults.
+# them. The build fails when a key is missing from the defaults.
 RUN set -eu; \
     cd /opt/l2jfree; \
     if [ ! -f l2jfree-platform.jar ]; then \

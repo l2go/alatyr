@@ -1,6 +1,6 @@
 name: release
 
-# The release of Platform 3.0 (ADR-0007). It promotes the image that the pipeline built for one commit of main:
+# The release. It promotes the image that the pipeline built for one commit of main:
 # nothing is rebuilt. The first job checks everything that can be checked without a person and builds the compose
 # bundle; with dry_run (the default) the workflow stops there. The second job needs the approval of the
 # stable-release environment, tags the verified image digest, creates the tag v<version> at the commit, and
@@ -165,9 +165,20 @@ jobs:
             --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
 
       - name: Attest the bundle
+        id: attest
         uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
         with:
           subject-path: release/l2jfree-${{ inputs.version }}-compose.tar.gz
+
+      # The Sigstore bundle of the attestation goes on the release next to the archive, so the signature can be checked
+      # from the release page alone.
+      - name: Keep the signature of the bundle
+        env:
+          VERSION: ${{ inputs.version }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          test -s "$BUNDLE" || { echo "::error::the attestation wrote no bundle"; exit 1; }
+          cp "$BUNDLE" release/l2jfree-"$VERSION"-compose.tar.gz.sigstore.json
 
       - name: Create the tag and the release
         env:
@@ -176,4 +187,5 @@ jobs:
           COMMIT: ${{ needs.verify.outputs.commit }}
         run: |
           gh release create "v$VERSION" release/l2jfree-"$VERSION"-compose.tar.gz release/l2jfree-"$VERSION"-compose.tar.gz.sha256 \
+            release/l2jfree-"$VERSION"-compose.tar.gz.sigstore.json \
             --target "$COMMIT" --title "Platform $VERSION" --notes-file notes.md

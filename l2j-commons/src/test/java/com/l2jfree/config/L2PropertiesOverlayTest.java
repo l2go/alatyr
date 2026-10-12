@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The overlay of ADR-0011: defaults directory, operator directory, and a checkout that starts unchanged.
+ * The configuration overlay: defaults directory, operator directory, and a checkout that starts unchanged.
  */
 class L2PropertiesOverlayTest
 {

@@ -3,7 +3,7 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
                       http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<!--
-		The network core (ADR-0005): the Lineage II framing protocol on Netty. The versions of the Netty artifacts come
+		The network core: the Lineage II framing protocol on Netty. The versions of the Netty artifacts come
 		from the netty-bom of l2jfree-module. The native transports are two artifacts each: the Java classes ("classes"
 		artifacts), which every platform needs to compile and to load them, and the native library of the platform image
 		(linux/amd64), which only a Linux runtime uses. Other platforms fall back to NIO.

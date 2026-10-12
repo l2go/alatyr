@@ -86,7 +86,7 @@ class RemovedLibrariesTest
 	@Test
 	void javolutionAndTroveAreNotUsed()
 	{
-		notUsed("the JDK collections replaced Javolution and Trove (ADR-0012 and the collections of M2)",
+		notUsed("the JDK collections replaced Javolution and Trove",
 				"javolution..", "gnu.trove..");
 	}
 	
