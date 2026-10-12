@@ -1764,7 +1764,7 @@ public final class L2Player extends L2Playable
 	 * Return the current weight of the L2Player.<BR><BR>
 	 */
 	@Override
-	public int getCurrentLoad()
+	public long getCurrentLoad()
 	{
 		return getInventory().getTotalWeight();
 	}
