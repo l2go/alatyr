@@ -188,4 +188,4 @@ jobs:
         run: |
           gh release create "v$VERSION" release/l2jfree-"$VERSION"-compose.tar.gz release/l2jfree-"$VERSION"-compose.tar.gz.sha256 \
             release/l2jfree-"$VERSION"-compose.tar.gz.sigstore.json \
-            --target "$COMMIT" --title "Platform $VERSION" --notes-file notes.md
+            --target "$COMMIT" --title "v$VERSION" --notes-file notes.md
