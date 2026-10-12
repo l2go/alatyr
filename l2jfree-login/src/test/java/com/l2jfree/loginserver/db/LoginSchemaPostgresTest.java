@@ -229,6 +229,20 @@ class LoginSchemaPostgresTest
 		missing.setLastServerId(1);
 		assertThat(accounts.updateGiven(missing)).isFalse();
 	}
+
+	@Test
+	@DisplayName("a password upgrade replaces the hash only when it is still the hash that was read")
+	void passwordUpgradeDoesNotOverwriteANewerHash()
+	{
+		accounts.createAccount(new Accounts("Rehash_User", "old-hash", null, 0, 0, 2000, 1, 1, null));
+
+		assertThat(accounts.replacePasswordHash("rehash_user", "old-hash", "upgraded")).isTrue();
+		assertThat(accounts.getAccountById("rehash_user").getPassword()).isEqualTo("upgraded");
+
+		assertThat(accounts.replacePasswordHash("rehash_user", "old-hash", "from-the-stale-login")).isFalse();
+		assertThat(accounts.getAccountById("rehash_user").getPassword()).isEqualTo("upgraded");
+		assertThat(accounts.replacePasswordHash("no_such_rehash", "old-hash", "upgraded")).isFalse();
+	}
 	
 	@Test
 	@DisplayName("updateAccessLevel is true for an existing account even when the level does not change")

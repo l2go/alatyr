@@ -133,6 +133,24 @@ public class AccountsServices
 			throw new AccountModificationException("Unable to update account.", e);
 		}
 	}
+
+	/**
+	 * Replaces the password hash only when the stored hash is still the one that was verified.
+	 * A hash written in between is left as it is.
+	 * @return false when the account is gone or the stored hash changed
+	 */
+	public boolean replacePasswordIfUnchanged(String login, String expectedHash, String newHash)
+			throws AccountModificationException
+	{
+		try
+		{
+			return __accDAO.replacePasswordHash(login, expectedHash, newHash);
+		}
+		catch (LoginDataAccessException e)
+		{
+			throw new AccountModificationException("Unable to update account.", e);
+		}
+	}
 	
 	/**
 	 * Change account level
