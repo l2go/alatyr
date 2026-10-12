@@ -9581,8 +9581,7 @@ public final class L2Player extends L2Playable
 			if (!removed)
 			{
 				_log.warn("Could not modify sub class for " + getName() + " to class index " + classIndex + ".");
-				// This must be done in order to maintain data consistency.
-				getSubClasses().remove(classIndex);
+				// The deletes rolled back, so the in-memory subclass stays with the row.
 				return false;
 			}
 			
