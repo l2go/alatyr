@@ -1005,6 +1005,8 @@ public class TradeList
 		final InventoryUpdate playerIU = new InventoryUpdate();
 		
 		long totalPrice = 0;
+		int addedWeight = 0;
+		int addedSlots = 0;
 		
 		for (ItemRequest item : items)
 		{
@@ -1049,24 +1051,29 @@ public class TradeList
 			if (ownerInventory.getAdena() < _totalPrice)
 				continue;
 			
-			// Check if requested item is available for manipulation
+			// Only the object id the seller named may move. Another instance of the same item id,
+			// and an equipped item, stay where they are.
 			int objectId = item.getObjectId();
 			L2ItemInstance oldItem = player.checkItemManipulation(objectId, item.getCount(), "sell");
-			// private store - buy use same objectId for buying several non-stackable items
-			if (oldItem == null)
-			{
-				// searching other items using same itemId
-				oldItem = playerInventory.getItemByItemId(item.getItemId());
-				if (oldItem == null)
-					continue;
-				objectId = oldItem.getObjectId();
-				oldItem = player.checkItemManipulation(objectId, item.getCount(), "sell");
-				if (oldItem == null)
-					continue;
-			}
-			
-			if (!oldItem.isTradeable())
+			if (oldItem == null || !oldItem.isTradeable() || oldItem.isEquipped())
 				continue;
+			
+			// The buyer's inventory is the store owner's. A line that does not fit is not moved and not paid.
+			int nextWeight = addItemWeight(addedWeight, oldItem, item.getCount());
+			if (nextWeight < 0 || nextWeight > (long)_owner.getMaxLoad() - ownerInventory.getTotalWeight()
+					|| !ownerInventory.validateWeight(nextWeight))
+			{
+				_owner.sendPacket(SystemMessageId.WEIGHT_LIMIT_EXCEEDED);
+				continue;
+			}
+			int nextSlots = addItemSlots(addedSlots, oldItem, item.getCount(), ownerInventory);
+			if (nextSlots < 0 || !ownerInventory.validateCapacity(nextSlots))
+			{
+				_owner.sendPacket(SystemMessageId.SLOTS_FULL);
+				continue;
+			}
+			addedWeight = nextWeight;
+			addedSlots = nextSlots;
 			
 			// Proceed with item transfer
 			L2ItemInstance newItem =

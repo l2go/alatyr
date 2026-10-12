@@ -17,6 +17,9 @@ package com.l2jfree.gameserver.network.packets.client;
 import static com.l2jfree.gameserver.gameobjects.L2Npc.INTERACTION_DISTANCE;
 import static com.l2jfree.gameserver.gameobjects.itemcontainer.PlayerInventory.MAX_ADENA;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.l2jfree.Config;
 import com.l2jfree.gameserver.Shutdown;
 import com.l2jfree.gameserver.Shutdown.DisableType;
@@ -144,7 +147,9 @@ public class RequestSellItem extends L2ClientPacket
 		}
 		
 		long totalPrice = 0;
-		// Proceed the sell
+		List<Item> selling = new ArrayList<Item>(_items.length);
+		// The whole cart is priced before anything is destroyed. A later line over the cap
+		// used to return after the earlier lines were already gone, and addAdena never ran.
 		for (Item i : _items)
 		{
 			L2ItemInstance item = player.checkItemManipulation(i.getObjectId(), i.getCount(), "sell");
@@ -152,16 +157,34 @@ public class RequestSellItem extends L2ClientPacket
 				continue;
 			
 			long price = item.getReferencePrice() / 2;
-			totalPrice += price * i.getCount();
-			if ((MAX_ADENA / i.getCount()) < price || totalPrice > MAX_ADENA)
+			if (price < 0 || (price > 0 && i.getCount() > MAX_ADENA / price))
 			{
 				requestFailed(SystemMessageId.YOU_HAVE_EXCEEDED_QUANTITY_THAT_CAN_BE_INPUTTED);
 				return;
 			}
-			
-			item = player.getInventory().destroyItem("Sell", i.getObjectId(), i.getCount(), player, null);
+			long linePrice = price * i.getCount();
+			if (linePrice < 0 || totalPrice > MAX_ADENA - linePrice)
+			{
+				requestFailed(SystemMessageId.YOU_HAVE_EXCEEDED_QUANTITY_THAT_CAN_BE_INPUTTED);
+				return;
+			}
+			totalPrice += linePrice;
+			selling.add(i);
 		}
-		player.addAdena("Sell", totalPrice, (L2Creature)merchant, false);
+		
+		long paid = 0;
+		for (Item i : selling)
+		{
+			L2ItemInstance item = player.checkItemManipulation(i.getObjectId(), i.getCount(), "sell");
+			if (item == null || !item.isSellable())
+				continue;
+			
+			long price = item.getReferencePrice() / 2;
+			if (player.getInventory().destroyItem("Sell", i.getObjectId(), i.getCount(), player, null) == null)
+				continue;
+			paid += price * i.getCount();
+		}
+		player.addAdena("Sell", paid, (L2Creature)merchant, false);
 		
 		if (merchant != null)
 		{
