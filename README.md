@@ -124,8 +124,10 @@ Login owns the `login` schema; world owns `world`, `catalog`, and `report`. At s
 | Release | `ghcr.io/l2go/l2jfree:<version>` | With a compose bundle on the [releases page](https://github.com/l2go/l2jfree/releases) |
 | Edge | `ghcr.io/l2go/l2jfree:edge` | On every merge to `main` |
 
-## Origin and license
+## Origin, trademarks, and license
 
-Forked from [l2jfree/l2jfree-ct2.3](https://github.com/l2jfree/l2jfree-ct2.3), a descendant of [savormix/l2jfree-genesis](https://github.com/savormix/l2jfree-genesis). Its [README](UPSTREAM_README.md) is kept unchanged. This fork moved the 2009 code to Java 25 and PostgreSQL 18, joined login and world in one process, made a player save one transaction, and closed economy exploits and concurrency races, with regression checks in CI.
+L2JFree is an open-source Lineage II server from the L2J community; its history in this repository starts in 2006. This repository revives [l2jfree/l2jfree-ct2.3](https://github.com/l2jfree/l2jfree-ct2.3), archived since 2016, a descendant of [savormix/l2jfree-genesis](https://github.com/savormix/l2jfree-genesis); the upstream [README](UPSTREAM_README.md) is kept unchanged. The work here is modernization: the code moved to Java 25 and PostgreSQL 18, login and world joined in one process, a player save became one transaction, and economy exploits and concurrency races were closed, with regression checks in CI. It adds no game content, and it does not modify, patch, or distribute the game client.
 
-This repository holds the server only: no client, no hosted server. The datapack came with the fork and was not reviewed. Lineage II is a trademark of its owner. The code is under [GPLv3](LICENSE).
+Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial project, not affiliated with, endorsed, or sponsored by NCSOFT. The names say only which game client the server works with. The repository holds no game client, no client files, and no NCSOFT software, and no server is hosted. The datapack came with the fork and was not reviewed.
+
+The code is under [GPLv3](LICENSE).

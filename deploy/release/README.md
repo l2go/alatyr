@@ -37,3 +37,7 @@ docker compose restart server
 `tee` replaces the file, so write all changed keys of one file at once. The defaults: [world](https://github.com/l2go/l2jfree/tree/main/l2jfree-core/config), [login](https://github.com/l2go/l2jfree/tree/main/l2jfree-login/config). On a public server, turn off the automatic creation of accounts with `AutoCreateAccounts = False` in `loginserver.properties`.
 
 The restore and every setting are in the [deploy guide](https://github.com/l2go/l2jfree/blob/main/deploy/README.md).
+
+## Trademarks
+
+Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. This bundle contains no game client.
