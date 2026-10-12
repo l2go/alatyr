@@ -4,12 +4,19 @@ All notable changes are recorded here, in the format of [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-10-12
+
+The game runs as in 3.1.0: only comments changed in the server code. This release is about checking what ships. The release carries a signature for its compose archive, the deploy guides and the security policy are short and verified by the pipeline, and the backup command of the release guide dumps the two schemas the restore expects.
+
 ### Changed
 
 - GitHub Actions are pinned by commit, and Dependabot keeps the pins current.
 - The container package is public: one GitHub Container Registry package cannot keep `edge` private and publish a release tag.
 - The front page, the deploy guides, the security policy, and the contributing rules are rewritten. The front page banner keeps the original art at 230 KB instead of 2 MB, and the security policy names the commands that verify an image.
 - The deploy guides change a setting with one command, and the pipeline runs that command and checks that the server reads the file.
+- A release carries `l2jfree-<version>-compose.tar.gz.sigstore.json`, the Sigstore bundle of the attestation of its compose archive, next to the archive and its checksum.
+- The job that deletes old image versions holds the package write permission only in its own job.
+- The Maven wrapper is a script that downloads Maven, so the tree carries no `maven-wrapper.jar`.
 
 ### Fixed
 
@@ -118,7 +125,8 @@ All notable changes are recorded here, in the format of [Keep a Changelog](https
 
 Final release of the 2.x line. Java 25 bytecode, HikariCP, Jython 2.7.5b1, Logback loaded from `config/logback.xml`, the datapack inside the GameServer archive, unit tests in CI, and the dependency upgrades named in the v2.0.0 vulnerability report. See the [release](https://github.com/l2go/l2jfree/releases/tag/v2.5.0).
 
-[Unreleased]: https://github.com/l2go/l2jfree/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/l2go/l2jfree/compare/v3.1.1...HEAD
+[3.1.1]: https://github.com/l2go/l2jfree/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/l2go/l2jfree/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/l2go/l2jfree/compare/v2.5.0...v3.0.0
 [2.5.0]: https://github.com/l2go/l2jfree/releases/tag/v2.5.0

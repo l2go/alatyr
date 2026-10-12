@@ -11,10 +11,10 @@ Open a [private security advisory](https://github.com/l2go/l2jfree/security/advi
 The image is signed with cosign and carries an SBOM and build provenance. To check a release:
 
 ```sh
-cosign verify ghcr.io/l2go/l2jfree:3.1.0 \
+cosign verify ghcr.io/l2go/l2jfree:3.1.1 \
   --certificate-identity https://github.com/l2go/l2jfree/.github/workflows/build.yml@refs/heads/main \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
-gh attestation verify oci://ghcr.io/l2go/l2jfree:3.1.0 --repo l2go/l2jfree
+gh attestation verify oci://ghcr.io/l2go/l2jfree:3.1.1 --repo l2go/l2jfree
 ```
 
 Trivy scans the image on every merge and every day. A release and the daily scan fail on a critical or high finding that has a fixed version. An exception is a dated entry in [.trivyignore](.trivyignore).
