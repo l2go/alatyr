@@ -125,9 +125,6 @@ User `10001`, a read-only root, no added capabilities, and a 4 GB memory limit.
 | Release | `ghcr.io/l2go/l2jfree:<version>` | With a compose bundle on the [releases page](https://github.com/l2go/l2jfree/releases) |
 | Edge | `ghcr.io/l2go/l2jfree:edge` | On every merge to `main` |
 
-> [!IMPORTANT]
-> No version is supported. The 2.x line ended with `v2.5.0`, and a 2.x database cannot be migrated. Report a vulnerability through the [security policy](SECURITY.md).
-
 ## Origin and license
 
 Forked from [l2jfree/l2jfree-ct2.3](https://github.com/l2jfree/l2jfree-ct2.3), which descends from [savormix/l2jfree-genesis](https://github.com/savormix/l2jfree-genesis). The [original README](UPSTREAM_README.md) is kept unchanged. This project provides the server source only, with no client and no hosted server. The inherited datapack text was not audited. Lineage II is a trademark of its owner. The code is under [GPLv3](LICENSE).
