@@ -2561,7 +2561,7 @@ public final class Config
 	public static String SUBNETWORKS;
 	
 	/**
-	 * Resolves a configuration file that is not a properties file against the directories of ADR-0011. A file of the
+	 * Resolves a configuration file that is not a properties file against the defaults and operator directories. A file of the
 	 * operator directory replaces the default file as a whole, because these files are lists without keys to merge.
 	 * Without the two system properties the path is used as given, so a checkout starts unchanged.
 	 */

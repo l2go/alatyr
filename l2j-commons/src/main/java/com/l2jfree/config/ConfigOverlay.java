@@ -28,7 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Resolves a configuration file against the defaults directory and the operator directory (ADR-0011).
+ * Resolves a configuration file against the defaults directory and the operator directory.
  * <p>
  * The file name is the last element of the path a caller passes. The defaults file is read from the directory
  * named by the system property {@value #DEFAULTS_PROPERTY}, or from the directory of the path as given when the

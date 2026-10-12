@@ -20,7 +20,7 @@ import java.io.File;
  * The files the world writes while it runs: leaderboards, admin bookmarks, and similar state.
  * <p>
  * They live in the {@code state} directory of the working directory, never next to the datapack, because the
- * datapack is read-only in the image ([ADR-0002]). The working directory is a volume there, so the files survive
+ * datapack is read-only in the image. The working directory is a volume there, so the files survive
  * a restart and an image update.
  */
 public final class RuntimeData

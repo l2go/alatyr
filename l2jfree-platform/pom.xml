@@ -2,7 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
                       http://maven.apache.org/xsd/maven-4.0.0.xsd">
-	<!-- The launcher of the one process: it starts the login module and the world module and assembles the distribution (ADR-0003). -->
+	<!-- The launcher of the one process: it starts the login module and the world module and assembles the distribution. -->
 	<parent>
 		<groupId>com.l2jfree</groupId>
 		<artifactId>l2jfree-module</artifactId>

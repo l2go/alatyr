@@ -22,7 +22,7 @@ import java.util.stream.IntStream;
 
 final class PersistedObjectIds
 {
-	/** The key columns of the entities and the crest ids, which share the id range (docs/DATABASE-CONVENTIONS.md, section 3). */
+	/** The key columns of the entities and the crest ids, which share the id range. */
 	private static final String[] QUERIES = {
 		"SELECT id FROM player",
 		"SELECT id FROM item",

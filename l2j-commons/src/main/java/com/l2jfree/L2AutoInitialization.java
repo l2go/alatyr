@@ -249,7 +249,7 @@ public abstract class L2AutoInitialization
 			return "./config/" + getName().trim() + ".properties";
 		}
 		
-		/** Reads the file through the defaults and operator directories (ADR-0011) and hands the merged keys on. */
+		/** Reads the file through the defaults and operator directories and hands the merged keys on. */
 		@Override
 		protected final BufferedReader openReader() throws IOException
 		{

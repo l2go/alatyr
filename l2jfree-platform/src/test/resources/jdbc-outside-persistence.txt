@@ -1,5 +1,5 @@
-# Classes of the world module that call java.sql or L2DatabaseFactory themselves, outside ..persistence..
-# (R-8, ADR-0006). DirectDatabaseAccessRatchetTest fails for a class that is missing here and for a class
+# Classes of the world module that call java.sql or L2DatabaseFactory themselves, outside the
+# ..persistence.. packages. DirectDatabaseAccessRatchetTest fails for a class that is missing here and for a class
 # here that no longer does. The list only shrinks: move the SQL of a class behind a repository, then remove it.
 com.l2jfree.gameserver.AutoAnnouncements
 com.l2jfree.gameserver.GameServer

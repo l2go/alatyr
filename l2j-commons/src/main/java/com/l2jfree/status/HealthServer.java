@@ -31,7 +31,7 @@ import com.sun.net.httpserver.HttpServer;
  * {@code /health/ready} answers 200 once the server accepts players and 503 before that.
  * <p>
  * It is off unless the deployment variable {@code L2JFREE_HEALTH_PORT} is set; {@code L2JFREE_HEALTH_HOST} defaults to
- * the loopback address, so the endpoint is reachable only from inside the container (ADR-0011).
+ * the loopback address, so the endpoint is reachable only from inside the container.
  */
 public final class HealthServer
 {
