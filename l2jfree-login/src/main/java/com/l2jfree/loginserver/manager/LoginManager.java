@@ -597,17 +597,24 @@ public class LoginManager
 			{
 				checkPassword(password, acc);
 				// Write only what a login changes. The row read above may be stale by now: a ban set meanwhile
-				// must not be written back.
+				// must not be written back. The password is a separate compare-and-swap, so a newer password
+				// stored after this hash was read is not replaced by the upgrade.
 				Accounts seen = new Accounts(acc.getLogin());
 				seen.setLastactive(new BigDecimal(System.currentTimeMillis()));
-				// the plain password is in hand only now: an account of the 2.x line gets the salted form
-				if (PasswordHasher.needsRehash(acc.getPassword()))
-					seen.setPassword(PasswordHasher.hash(password));
 				if (address != null)
 				{
 					seen.setLastIp(address.getHostAddress());
 				}
 				_service.updateGivenColumns(seen);
+				if (PasswordHasher.needsRehash(acc.getPassword()))
+				{
+					String upgraded = PasswordHasher.hash(password);
+					if (!_service.replacePasswordIfUnchanged(acc.getLogin(), acc.getPassword(), upgraded))
+					{
+						_log.info("Password of account " + user
+								+ " changed before the hash upgrade; the newer password was kept.");
+					}
+				}
 				handleGoodLogin(user, address);
 			}
 			// If password are different

@@ -111,7 +111,7 @@ public abstract class Inventory extends ItemContainer
 	private final List<PaperdollListener> _paperdollListeners;
 	
 	// protected to be accessed from child classes only
-	protected int _totalWeight;
+	protected long _totalWeight;
 	
 	// used to quickly check for using of items of special type
 	private int _wearedMask;
@@ -1404,22 +1404,49 @@ public abstract class Inventory extends ItemContainer
 	@Override
 	protected void refreshWeight()
 	{
-		int weight = 0;
+		long weight = 0;
 		for (L2ItemInstance item : _items)
 		{
 			if (item != null && item.getItem() != null)
-				weight = (int) (weight + item.getItem().getWeight() * item.getCount());
+			{
+				weight = addLoad(weight, item.getItem().getWeight(), item.getCount());
+				if (weight < 0)
+				{
+					_totalWeight = Long.MAX_VALUE;
+					return;
+				}
+			}
 		}
 		
 		_totalWeight = weight;
 	}
 	
 	/**
+	 * Adds {@code count * itemWeight} to {@code total}. Returns -1 when the product does not fit in a signed long.
+	 */
+	public static long addLoad(long total, int itemWeight, long count)
+	{
+		if (total < 0 || itemWeight < 0 || count < 0)
+			return -1;
+		if (itemWeight != 0 && count > (Long.MAX_VALUE - total) / itemWeight)
+			return -1;
+		return total + count * itemWeight;
+	}
+	
+	/** The load a 32-bit status packet can carry. A larger load is sent as the maximum, not as a wrapped negative. */
+	public static int toStatusLoad(long load)
+	{
+		if (load <= 0)
+			return 0;
+		return load > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int)load;
+	}
+	
+	/**
 	 * Returns the totalWeight.
 	 * 
-	 * @return int
+	 * @return long
 	 */
-	public int getTotalWeight()
+	public long getTotalWeight()
 	{
 		return _totalWeight;
 	}

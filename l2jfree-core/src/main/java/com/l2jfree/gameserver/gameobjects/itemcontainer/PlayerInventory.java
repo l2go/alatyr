@@ -744,7 +744,15 @@ public class PlayerInventory extends Inventory
 	@Override
 	public boolean validateWeight(int weight)
 	{
-		return (_totalWeight + weight <= _owner.getMaxLoad());
+		return validateWeight((long)weight);
+	}
+	
+	@Override
+	public boolean validateWeight(long weight)
+	{
+		if (weight < 0 || _totalWeight > Long.MAX_VALUE - weight)
+			return false;
+		return _totalWeight + weight <= _owner.getMaxLoad();
 	}
 	
 	/**

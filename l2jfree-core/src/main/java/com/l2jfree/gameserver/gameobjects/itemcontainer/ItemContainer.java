@@ -680,6 +680,11 @@ public abstract class ItemContainer
 		return true;
 	}
 	
+	public boolean validateWeight(long weight)
+	{
+		return weight >= 0 && weight <= Integer.MAX_VALUE && validateWeight((int)weight);
+	}
+	
 	public int getUnequippedSize()
 	{
 		int count = 0;

@@ -15,6 +15,7 @@
 package com.l2jfree.gameserver.network.packets.server;
 
 import com.l2jfree.gameserver.gameobjects.L2Summon;
+import com.l2jfree.gameserver.gameobjects.itemcontainer.Inventory;
 import com.l2jfree.gameserver.gameobjects.instance.L2PetInstance;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
@@ -124,7 +125,7 @@ public class PetInfo extends L2ServerPacket
 		else
 			writeQ(_summon.getExpForThisLevel());// 0%  absolute value
 		writeQ(_summon.getExpForNextLevel());// 100% absoulte value
-		writeD(_summon instanceof L2PetInstance ? _summon.getInventory().getTotalWeight() : 0);//weight
+		writeD(_summon instanceof L2PetInstance ? Inventory.toStatusLoad(_summon.getInventory().getTotalWeight()) : 0);//weight
 		writeD(_summon.getMaxLoad());//max weight it can carry
 		writeD(_summon.getPAtk(null));//patk
 		writeD(_summon.getPDef(null));//pdef

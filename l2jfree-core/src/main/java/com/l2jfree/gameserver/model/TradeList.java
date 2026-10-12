@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import com.l2jfree.Config;
 import com.l2jfree.gameserver.datatables.ItemTable;
 import com.l2jfree.gameserver.gameobjects.L2Player;
+import com.l2jfree.gameserver.gameobjects.itemcontainer.Inventory;
 import com.l2jfree.gameserver.gameobjects.itemcontainer.PlayerInventory;
 import com.l2jfree.gameserver.model.items.ItemRequest;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
@@ -704,9 +705,9 @@ public class TradeList
 	/**
 	 * Calc weight of items in tradeList
 	 */
-	public int calcItemsWeight()
+	public long calcItemsWeight()
 	{
-		int weight = 0;
+		long weight = 0;
 		
 		for (TradeItem item : _items)
 		{
@@ -715,7 +716,9 @@ public class TradeList
 			L2Item template = ItemTable.getInstance().getTemplate(item.getItem().getItemId());
 			if (template == null)
 				continue;
-			weight += item.getCount() * template.getWeight();
+			weight = Inventory.addLoad(weight, template.getWeight(), item.getCount());
+			if (weight < 0)
+				return -1;
 		}
 		
 		return weight;
@@ -728,8 +731,11 @@ public class TradeList
 	{
 		boolean success = false;
 		// check weight and slots
-		if ((!getOwner().getInventory().validateWeight(partnerList.calcItemsWeight()))
-				|| !(partnerList.getOwner().getInventory().validateWeight(calcItemsWeight())))
+		long partnerWeight = partnerList.calcItemsWeight();
+		long ownWeight = calcItemsWeight();
+		if (partnerWeight < 0 || ownWeight < 0
+				|| !getOwner().getInventory().validateWeight(partnerWeight)
+				|| !partnerList.getOwner().getInventory().validateWeight(ownWeight))
 		{
 			partnerList.getOwner().sendPacket(SystemMessageId.WEIGHT_LIMIT_EXCEEDED);
 			getOwner().sendPacket(SystemMessageId.WEIGHT_LIMIT_EXCEEDED);
@@ -999,6 +1005,8 @@ public class TradeList
 		final InventoryUpdate playerIU = new InventoryUpdate();
 		
 		long totalPrice = 0;
+		int addedWeight = 0;
+		int addedSlots = 0;
 		
 		for (ItemRequest item : items)
 		{
@@ -1043,24 +1051,29 @@ public class TradeList
 			if (ownerInventory.getAdena() < _totalPrice)
 				continue;
 			
-			// Check if requested item is available for manipulation
+			// Only the object id the seller named may move. Another instance of the same item id,
+			// and an equipped item, stay where they are.
 			int objectId = item.getObjectId();
 			L2ItemInstance oldItem = player.checkItemManipulation(objectId, item.getCount(), "sell");
-			// private store - buy use same objectId for buying several non-stackable items
-			if (oldItem == null)
-			{
-				// searching other items using same itemId
-				oldItem = playerInventory.getItemByItemId(item.getItemId());
-				if (oldItem == null)
-					continue;
-				objectId = oldItem.getObjectId();
-				oldItem = player.checkItemManipulation(objectId, item.getCount(), "sell");
-				if (oldItem == null)
-					continue;
-			}
-			
-			if (!oldItem.isTradeable())
+			if (oldItem == null || !oldItem.isTradeable() || oldItem.isEquipped())
 				continue;
+			
+			// The buyer's inventory is the store owner's. A line that does not fit is not moved and not paid.
+			int nextWeight = addItemWeight(addedWeight, oldItem, item.getCount());
+			if (nextWeight < 0 || nextWeight > (long)_owner.getMaxLoad() - ownerInventory.getTotalWeight()
+					|| !ownerInventory.validateWeight(nextWeight))
+			{
+				_owner.sendPacket(SystemMessageId.WEIGHT_LIMIT_EXCEEDED);
+				continue;
+			}
+			int nextSlots = addItemSlots(addedSlots, oldItem, item.getCount(), ownerInventory);
+			if (nextSlots < 0 || !ownerInventory.validateCapacity(nextSlots))
+			{
+				_owner.sendPacket(SystemMessageId.SLOTS_FULL);
+				continue;
+			}
+			addedWeight = nextWeight;
+			addedSlots = nextSlots;
 			
 			// Proceed with item transfer
 			L2ItemInstance newItem =

@@ -57,6 +57,12 @@ public interface AccountsDAO
 	 * @return false if there is no such account
 	 */
 	public boolean updateGiven(Object partial);
+
+	/**
+	 * Replaces the password hash only when the stored hash is still {@code expectedHash}.
+	 * @return false when there is no such account or the stored hash is no longer the one that was read
+	 */
+	public boolean replacePasswordHash(String login, String expectedHash, String newHash);
 	
 	/**
 	 * Delete an object.

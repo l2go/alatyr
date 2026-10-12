@@ -141,13 +141,26 @@ public final class Disconnection
 		close(toLoginScreen);
 	}
 	
+	/** Runs the disconnect on the client's packet queue. With no client, there is no queue to wait for. */
+	static void offerToPacketQueue(L2Client client, Runnable work)
+	{
+		if (client == null)
+		{
+			work.run();
+			return;
+		}
+		
+		client.getPacketQueue().execute(work);
+	}
+	
 	public void onDisconnection()
 	{
 		if (_activeChar != null)
 		{
 			// The save and the delete run behind the packets that the client sent before it went away, so that they
 			// do not meet a packet that is still changing the inventory. A packet that hangs must not keep the
-			// player unsaved: after a grace period the work runs anyway, and only once.
+			// player unsaved: after a grace period the same work is offered to the queue again. That wakes a
+			// queue that stopped, and it still runs only after the packet that is in progress, and only once.
 			final AtomicBoolean done = new AtomicBoolean();
 			final Runnable work = new Runnable() {
 				@Override
@@ -165,14 +178,17 @@ public final class Disconnection
 				@Override
 				public void run()
 				{
+					offerToPacketQueue(_client, work);
 					if (_client == null)
-					{
-						work.run();
 						return;
-					}
 					
-					_client.getPacketQueue().execute(work);
-					ThreadPoolManager.getInstance().schedule(work, QUEUE_GRACE);
+					ThreadPoolManager.getInstance().schedule(new Runnable() {
+						@Override
+						public void run()
+						{
+							offerToPacketQueue(_client, work);
+						}
+					}, QUEUE_GRACE);
 				}
 			}, _activeChar.canLogout() ? 0 : AttackStanceTaskManager.COMBAT_TIME);
 		}
