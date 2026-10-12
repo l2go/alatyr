@@ -24,6 +24,7 @@ import com.l2jfree.Config;
 import com.l2jfree.gameserver.datatables.ItemTable;
 import com.l2jfree.gameserver.gameobjects.L2Object;
 import com.l2jfree.gameserver.gameobjects.L2Player;
+import com.l2jfree.gameserver.gameobjects.itemcontainer.Inventory;
 import com.l2jfree.gameserver.gameobjects.instance.L2ManorManagerInstance;
 import com.l2jfree.gameserver.instancemanager.CastleManager;
 import com.l2jfree.gameserver.instancemanager.CastleManorManager;
@@ -109,7 +110,7 @@ public class RequestBuySeed extends L2ClientPacket
 		
 		long totalPrice = 0;
 		int slots = 0;
-		int totalWeight = 0;
+		long totalWeight = 0;
 		Map<Integer, Long> reservedSeeds = new HashMap<Integer, Long>();
 		
 		for (Seed i : _seeds)
@@ -130,7 +131,12 @@ public class RequestBuySeed extends L2ClientPacket
 			}
 			
 			L2Item template = ItemTable.getInstance().getTemplate(i.getSeedId());
-			totalWeight += i.getCount() * template.getWeight();
+			totalWeight = Inventory.addLoad(totalWeight, template.getWeight(), i.getCount());
+			if (totalWeight < 0)
+			{
+				requestFailed(SystemMessageId.WEIGHT_LIMIT_EXCEEDED);
+				return;
+			}
 			if (!template.isStackable())
 				slots += i.getCount();
 			else if (player.getInventory().getItemByItemId(i.getSeedId()) == null)

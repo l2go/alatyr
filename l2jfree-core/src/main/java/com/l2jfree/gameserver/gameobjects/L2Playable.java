@@ -495,7 +495,7 @@ public abstract class L2Playable extends L2Creature
 		_isOverloaded = value;
 	}
 	
-	public int getCurrentLoad()
+	public long getCurrentLoad()
 	{
 		return 0;
 	}

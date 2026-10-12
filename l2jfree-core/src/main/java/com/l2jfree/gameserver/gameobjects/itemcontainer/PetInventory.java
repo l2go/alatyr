@@ -70,18 +70,25 @@ public class PetInventory extends Inventory
 	
 	public boolean validateWeight(L2ItemInstance item, long count)
 	{
-		int weight = 0;
 		L2Item template = ItemTable.getInstance().getTemplate(item.getItemId());
 		if (template == null)
 			return false;
-		weight += count * template.getWeight();
-		return validateWeight(weight);
+		long weight = Inventory.addLoad(0, template.getWeight(), count);
+		return weight >= 0 && validateWeight(weight);
 	}
 	
 	@Override
 	public boolean validateWeight(int weight)
 	{
-		return (_totalWeight + weight <= _owner.getMaxLoad());
+		return validateWeight((long)weight);
+	}
+	
+	@Override
+	public boolean validateWeight(long weight)
+	{
+		if (weight < 0 || _totalWeight > Long.MAX_VALUE - weight)
+			return false;
+		return _totalWeight + weight <= _owner.getMaxLoad();
 	}
 	
 	@Override

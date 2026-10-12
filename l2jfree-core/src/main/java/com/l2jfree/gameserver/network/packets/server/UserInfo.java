@@ -18,6 +18,7 @@ import com.l2jfree.Config;
 import com.l2jfree.gameserver.datatables.NpcTable;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.gameobjects.appearance.PlayerAppearance;
+import com.l2jfree.gameserver.gameobjects.itemcontainer.Inventory;
 import com.l2jfree.gameserver.gameobjects.itemcontainer.PlayerInventory;
 import com.l2jfree.gameserver.gameobjects.stat.PlayerStat;
 import com.l2jfree.gameserver.gameobjects.status.PlayerStatus;
@@ -145,7 +146,7 @@ public final class UserInfo extends L2ServerPacket
 		writeD(stat.getMaxMp());
 		writeD((int)status.getCurrentMp());
 		writeD(_activeChar.getSp());
-		writeD(_activeChar.getCurrentLoad());
+		writeD(Inventory.toStatusLoad(_activeChar.getCurrentLoad()));
 		writeD(_activeChar.getMaxLoad());
 		
 		writeD(_activeChar.getActiveWeaponItem() != null ? 40 : 20); // 20 no weapon, 40 weapon equipped
