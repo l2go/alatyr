@@ -131,14 +131,14 @@ public class RequestAuthLogin extends L2ClientPacket
 						client.sendPacket(new ServerList(client));
 					break;
 				case ALREADY_ON_LS:
-					L2Client oldClient;
-					if ((oldClient = lc.getAuthedClient(_user)) != null)
+					// Only the client that held the account when the refusal was decided. A client that
+					// took the slot after that one left keeps the session.
+					L2Client oldClient = lc.takeOccupiedLogin(client);
+					if (oldClient != null)
 					{
-						// kick the other client
 						oldClient.closeLogin(LoginFail.REASON_ALREADY_IN_USE);
-						lc.removeAuthedLoginClient(_user);
+						lc.removeAuthedLoginClient(_user, oldClient);
 					}
-					// kick also current client
 					client.closeLogin(LoginFail.REASON_ALREADY_IN_USE);
 					break;
 				case ALREADY_ON_GS:

@@ -84,6 +84,12 @@ public class LoginManager
 	
 	/** Authed Clients on LoginServer*/
 	protected Map<String, L2Client> _loginServerClients = new ConcurrentHashMap<String, L2Client>();
+
+	/**
+	 * The client that held an account when a second login was refused. The refusal closes this client,
+	 * not whoever is in the map when the account row comes back.
+	 */
+	private final Map<L2Client, L2Client> _occupiedLogin = new ConcurrentHashMap<L2Client, L2Client>();
 	
 	/** Serializes the automatic creation of accounts. */
 	private final Object _accountCreation = new Object();
@@ -315,21 +321,7 @@ public class LoginManager
 			// check auth
 			if (loginValid(account, password, client))
 			{
-				// The world check and the login-server map share one lock with beginPlaySession.
-				synchronized (_loginServerClients)
-				{
-					boolean onGameServer = isAccountInWorld(account);
-					boolean onLoginServer = _loginServerClients.containsKey(account);
-					if (!PlaySessionAdmission.mayAuthenticate(onGameServer, onLoginServer))
-					{
-						ret = onGameServer ? AuthLoginResult.ALREADY_ON_GS : AuthLoginResult.ALREADY_ON_LS;
-					}
-					else
-					{
-						_loginServerClients.put(account, client);
-						ret = AuthLoginResult.AUTH_SUCCESS;
-					}
-				}
+				ret = reserveLoginSlot(account, client);
 				if (ret == AuthLoginResult.AUTH_SUCCESS || ret == AuthLoginResult.ALREADY_ON_LS)
 				{
 					Accounts acc = _service.getAccountById(account);
@@ -356,7 +348,49 @@ public class LoginManager
 			_log.warn("could not check password:", e);
 			ret = AuthLoginResult.SYSTEM_ERROR;
 		}
+		catch (RuntimeException e)
+		{
+			_occupiedLogin.remove(client);
+			throw e;
+		}
 		return ret;
+	}
+
+	/**
+	 * Reserves the login slot, or remembers the client that already holds it. The account row is read
+	 * after this returns, so the refusal must not look the occupant up again.
+	 */
+	AuthLoginResult reserveLoginSlot(String account, L2Client client)
+	{
+		// The world check and the login-server map share one lock with beginPlaySession.
+		synchronized (_loginServerClients)
+		{
+			boolean onGameServer = isAccountInWorld(account);
+			boolean onLoginServer = _loginServerClients.containsKey(account);
+			if (!PlaySessionAdmission.mayAuthenticate(onGameServer, onLoginServer))
+			{
+				if (onGameServer)
+				{
+					_occupiedLogin.remove(client);
+					return AuthLoginResult.ALREADY_ON_GS;
+				}
+				L2Client occupied = _loginServerClients.get(account);
+				if (occupied != null)
+					_occupiedLogin.put(client, occupied);
+				else
+					_occupiedLogin.remove(client);
+				return AuthLoginResult.ALREADY_ON_LS;
+			}
+			_loginServerClients.put(account, client);
+			_occupiedLogin.remove(client);
+			return AuthLoginResult.AUTH_SUCCESS;
+		}
+	}
+
+	/** The client captured with {@link #reserveLoginSlot}, once. Null when this login was not refused. */
+	public L2Client takeOccupiedLogin(L2Client client)
+	{
+		return _occupiedLogin.remove(client);
 	}
 	
 	public L2Client getAuthedClient(String account)
