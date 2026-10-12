@@ -31,9 +31,6 @@ docker compose -f deploy/compose.yaml up -d --wait
 
 When the command returns, login answers on **2106** and the world on **7777**. The first login creates the account.
 
-> [!TIP]
-> Players on other machines need `L2JFREE_EXTERNAL_HOST` set to the address of the host. Settings, backup, and restore are in the [deploy guide](deploy/README.md). A release bundle has its own [guide](deploy/release/README.md).
-
 ## Architecture
 
 ```mermaid
