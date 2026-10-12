@@ -146,7 +146,9 @@ public class NewCharacter extends L2ClientPacket
 							_hairColor, _face, _sex != 0);
 			if (newChar == null)
 			{
-				// the row could not be written: answer the client and give the id back
+				// create() reserves the name before the insert. The row was not written, so the
+				// name and the account slot have to be released before the id is reused.
+				CharNameTable.getInstance().remove(objectId);
 				IdFactory.getInstance().releaseId(objectId);
 				sendPacket(new CharacterCreateFail(CharacterCreateFail.REASON_CREATION_FAILED));
 				return;
