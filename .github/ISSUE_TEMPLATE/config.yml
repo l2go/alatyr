@@ -6,6 +6,4 @@ contact_links:
   - name: 🛣️ Roadmap and project board
     url: https://github.com/users/l2go/projects/2
     about: See what is planned and what is in progress before filing a request.
-  - name: 🧭 Decision records
-    url: https://github.com/l2go/l2jfree/blob/main/docs/adr/README.md
-    about: Read why a decision was made before proposing to change it.
+

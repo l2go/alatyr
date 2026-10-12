@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        A work package is a large, meaningful piece of work along a module boundary. Link the milestone and the decision records it follows. See [docs/roadmap.md](https://github.com/l2go/l2jfree/blob/main/docs/roadmap.md).
+        A work package is one slice of work with an outcome. State the outcome and how to tell that it is done.
   - type: textarea
     id: outcome
     attributes:

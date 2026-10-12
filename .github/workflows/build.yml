@@ -548,8 +548,7 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-      # The commands of docs/image-verification.md, run on the image that was just pushed: a signature, a provenance, or
-      # an SBOM that cannot be verified fails the pipeline of main.
+      # A signature, a provenance, or an SBOM that cannot be verified fails the pipeline of main.
       - name: Verify the signature, the provenance, and the SBOM of the published image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:

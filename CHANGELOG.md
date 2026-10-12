@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The maintainer names each version and what it contains ([ADR-0007](docs/adr/0007-release-policy.md)).
+All notable changes are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The maintainer names each version and what it contains.
 
 ## [Unreleased]
 
@@ -45,12 +45,12 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - One process for login and world: a `contract` module with `LoginPort` and `WorldPort`, admission and status as Java calls, and a `platform` module that starts both and assembles the one distribution. Architecture rules fail the build when the login module and the world module depend on each other.
 - A check that compares every JDBC setter and getter of the game server with the PostgreSQL type of its parameter or column, a test that keeps the number of classes with direct database access from growing, source and bytecode rules that refuse the removed libraries and the update of a map by remove and put, and tests for code that came over without them.
 - The limits on the connections from one address are keys of the configuration (`AcceptWarn`, `AcceptReject`, `AcceptSeconds`, and the long-period keys), with the old values as defaults.
-- Checks on the running image: many clients at once, what each database role may reach, the scripts that loaded, the errors in the log, and how the server stops. A coverage report on request, and a record of what the platform takes from PostgreSQL ([ADR-0013](docs/adr/0013-what-the-platform-takes-from-postgresql.md)).
+- Checks on the running image: many clients at once, what each database role may reach, the scripts that loaded, the errors in the log, and how the server stops. A coverage report on request, and a record of what the platform takes from PostgreSQL.
 - A check in the pipeline that no datapack script fails to load and tests of the script that creates the passwords.
 - The database counts and explains its statements (`pg_stat_statements`, `auto_explain`), and the deployment guide names the backup and the restore.
 - A check in the pipeline that an account and its character survive a restart of the server, and the report of milestone M2.
-- A repeatable start-up measurement under G1 and ZGC, with and without the AOT cache, a record of the decision for G1 without a cache ([ADR-0012](docs/adr/0012-garbage-collector-and-aot-cache.md)), and a ready line that reports the start by step.
-- A configuration model with the defaults in the image and the operator's changes in one directory, and `L2JFREE_*` environment variables for the database, the bind address, and the announced address ([ADR-0011](docs/adr/0011-configuration-model.md)).
+- A repeatable start-up measurement under G1 and ZGC, with and without the AOT cache, a record of the decision for G1 without a cache, and a ready line that reports the start by step.
+- A configuration model with the defaults in the image and the operator's changes in one directory, and `L2JFREE_*` environment variables for the database, the bind address, and the announced address.
 - The backup and restore of the deployment guide run in the pipeline: a dump of a stack with an account and a character, a stack destroyed with its volumes, the restore, and the same account finds its character. A script collects the logs, the slowest statements, the database sessions, and a thread dump of the running stack, and the pipeline runs it.
 - A vulnerability policy with severity classes, times to fix, and what blocks the `v3.0.0` tag; a Trivy scan of the image on every merge and a daily scan of the published image that fails on a fixed critical or high finding; and a check, right after each publication, that the signature, the provenance, and the SBOM of the image verify with the commands of the new image verification guide.
 - The first scan of the published image found twenty fixed high vulnerabilities, all in `captree`, a Go program of the Arch base that the server never runs. The image no longer carries it, and the check of the image content fails if it comes back. The Java libraries had none.

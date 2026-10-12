@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        A decision becomes a record in `docs/adr/` after it is accepted. State the problem and the options here. See [docs/adr/README.md](https://github.com/l2go/l2jfree/blob/main/docs/adr/README.md).
+        State the problem, the options, and what the change costs.
   - type: textarea
     id: context
     attributes:
