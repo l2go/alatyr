@@ -303,7 +303,7 @@ public class RequestBuyItem extends L2ClientPacket
 		}
 		
 		// Reserve limited stock before any adena moves. A line that does not fit is not charged.
-		List<Item> accepted = new ArrayList<Item>(_items.size());
+		List<Item> accepted = new ArrayList<Item>(_items.length);
 		synchronized (list)
 		{
 			for (Item i : _items)
