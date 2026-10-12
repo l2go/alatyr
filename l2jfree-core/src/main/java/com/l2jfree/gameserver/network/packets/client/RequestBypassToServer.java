@@ -26,6 +26,7 @@ import com.l2jfree.gameserver.gameobjects.ai.CtrlIntention;
 import com.l2jfree.gameserver.gameobjects.instance.L2MerchantSummonInstance;
 import com.l2jfree.gameserver.handler.AdminCommandHandler;
 import com.l2jfree.gameserver.model.L2CharPosition;
+import com.l2jfree.gameserver.model.clan.L2Clan;
 import com.l2jfree.gameserver.model.olympiad.Olympiad;
 import com.l2jfree.gameserver.model.restriction.global.GlobalRestrictions;
 import com.l2jfree.gameserver.network.packets.L2ClientPacket;
@@ -66,8 +67,17 @@ public class RequestBypassToServer extends L2ClientPacket
 		else if (_command.equals("come_here") && activeChar.getAccessLevel() >= Config.GM_ACCESSLEVEL)
 			comeHere(activeChar);
 		else if (_command.startsWith("show_clan_info "))
-			activeChar.sendPacket(new GMViewPledgeInfo(ClanTable.getInstance().getClanByName(_command.substring(15)),
-					activeChar));
+		{
+			// The alliance window builds this bypass. Anyone else, and an unknown name, must not
+			// receive the roster. A null clan used to throw inside the packet and drop the session.
+			L2Clan clan = ClanTable.getInstance().getClanByName(_command.substring(15));
+			if (!mayViewClanRoster(activeChar, clan))
+			{
+				activeChar.sendPacket(ActionFailed.STATIC_PACKET);
+				return;
+			}
+			activeChar.sendPacket(new GMViewPledgeInfo(clan, activeChar));
+		}
 		else if (_command.startsWith("player_help "))
 			playerHelp(activeChar, _command.substring(12));
 		else if (_command.startsWith("npc_"))
@@ -182,6 +192,17 @@ public class RequestBypassToServer extends L2ClientPacket
 		}
 		
 		sendPacket(ActionFailed.STATIC_PACKET);
+	}
+	
+	/** A GM, or a member of the same alliance. Two clans with no alliance do not match. */
+	private static boolean mayViewClanRoster(L2Player player, L2Clan clan)
+	{
+		if (clan == null)
+			return false;
+		if (player.getAccessLevel() >= Config.GM_ACCESSLEVEL)
+			return true;
+		int allyId = player.getAllyId();
+		return allyId > 0 && allyId == clan.getAllyId();
 	}
 	
 	private void comeHere(L2Player activeChar)
