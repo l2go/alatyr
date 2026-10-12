@@ -59,18 +59,29 @@ public class L2PartyRoom
 	
 	public final List<L2Player> getMembers()
 	{
-		return _members;
+		synchronized (_members)
+		{
+			return new ArrayList<L2Player>(_members);
+		}
 	}
 	
 	public int getMemberCount()
 	{
-		return getMembers().size();
+		synchronized (_members)
+		{
+			return _members.size();
+		}
 	}
 	
 	public L2Player getLeader()
 	{
 		if (_party == null || _party.getLeader() == null)
-			return getMembers().getFirst();
+		{
+			synchronized (_members)
+			{
+				return _members.getFirst();
+			}
+		}
 		else
 			return _party.getLeader();
 	}
@@ -87,38 +98,55 @@ public class L2PartyRoom
 		return (activeChar.getPartyRoom() == null && activeChar.getParty() == null && checkLevel(activeChar.getLevel()) && getMemberCount() < getMaxMembers());
 	}
 	
-	public void addMember(L2Player player)
+	/**
+	 * Adds the player when the room has a free seat and the player is not already in it.
+	 * The waiting-list removal commits with that addition: a refusal leaves the player looking for a party.
+	 * @return false when the player was not added
+	 */
+	public boolean addMember(L2Player player)
 	{
-		if (getMembers().contains(player))
-			return;
+		synchronized (_members)
+		{
+			if (_members.contains(player) || _members.size() >= _maxMembers)
+				return false;
+			
+			_members.add(player);
+			player.setPartyRoom(this);
+			PartyRoomManager.getInstance().removeFromWaitingList(player);
+		}
 		
-		PartyRoomManager.getInstance().removeFromWaitingList(player);
 		broadcastPacket(new ExManagePartyRoomMember(ExManagePartyRoomMember.ADDED, player));
 		broadcastPacket(new SystemMessage(SystemMessageId.C1_ENTERED_PARTY_ROOM).addPcName(player));
 		updateRoomStatus(false);
-		getMembers().add(player);
-		player.setPartyRoom(this);
 		player.sendPacket(new PartyRoomInfo(this));
 		player.sendPacket(new ExPartyRoomMember(this, getMemberCount() == 1));
+		return true;
 	}
 	
 	public void addMembers(L2Party party)
 	{
-		for (L2Player player : party.getPartyMembersWithoutLeader())
+		synchronized (_members)
 		{
-			getMembers().add(player);
-			player.setPartyRoom(this);
+			for (L2Player player : party.getPartyMembersWithoutLeader())
+			{
+				_members.add(player);
+				player.setPartyRoom(this);
+			}
 		}
 		updateRoomStatus(true);
 	}
 	
 	public void removeMember(L2Player member, boolean oust)
 	{
-		// the last member (leader) cannot be removed
-		if (getMemberCount() == 1 || !getMembers().remove(member))
-			return;
+		synchronized (_members)
+		{
+			// the last member (leader) cannot be removed
+			if (_members.size() == 1 || !_members.remove(member))
+				return;
+			
+			member.setPartyRoom(null);
+		}
 		
-		member.setPartyRoom(null);
 		member.sendPacket(ExClosePartyRoom.STATIC_PACKET);
 		if (oust)
 			member.sendPacket(SystemMessageId.OUSTED_FROM_PARTY_ROOM);
@@ -138,14 +166,28 @@ public class L2PartyRoom
 	
 	public void broadcastPacket(L2ServerPacket packet)
 	{
-		for (L2Player player : getMembers())
+		final L2Player[] members;
+		synchronized (_members)
+		{
+			members = _members.toArray(new L2Player[_members.size()]);
+		}
+		for (L2Player player : members)
 			player.sendPacket(packet);
 	}
 	
 	public void broadcastPacket(L2ServerPacket toLeader, L2ServerPacket toMember)
 	{
-		L2Player leader = getLeader();
-		for (L2Player player : getMembers())
+		final L2Player[] members;
+		final L2Player leader;
+		synchronized (_members)
+		{
+			members = _members.toArray(new L2Player[_members.size()]);
+			if (_party == null || _party.getLeader() == null)
+				leader = members.length == 0 ? null : members[0];
+			else
+				leader = _party.getLeader();
+		}
+		for (L2Player player : members)
 			if (player == leader)
 				player.sendPacket(toLeader);
 			else
@@ -301,7 +343,11 @@ public class L2PartyRoom
 			activeChar.sendPacket(SystemMessageId.PARTY_ROOM_FULL);
 			return false;
 		}
-		room.addMember(activeChar);
+		else if (!room.addMember(activeChar))
+		{
+			activeChar.sendPacket(SystemMessageId.PARTY_ROOM_FULL);
+			return false;
+		}
 		return true;
 	}
 	

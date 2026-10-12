@@ -27,6 +27,8 @@ import com.l2jfree.gameserver.gameobjects.instance.L2CastleChamberlainInstance;
 import com.l2jfree.gameserver.instancemanager.CastleManager;
 import com.l2jfree.gameserver.instancemanager.CastleManorManager;
 import com.l2jfree.gameserver.instancemanager.CastleManorManager.SeedProduction;
+import com.l2jfree.gameserver.model.L2Manor;
+import com.l2jfree.gameserver.model.ManorOrderLimits;
 import com.l2jfree.gameserver.model.clan.L2Clan;
 import com.l2jfree.gameserver.model.entity.Castle;
 import com.l2jfree.gameserver.network.SystemMessageId;
@@ -168,7 +170,11 @@ public class RequestSetSeed extends L2ClientPacket
 		
 		public SeedProduction getSeed()
 		{
-			if (_sales != 0 && (MAX_ADENA / _sales) < _price)
+			L2Manor manor = L2Manor.getInstance();
+			if (!manor.getSeedsForCastle(_manorId).contains(_itemId))
+				return null;
+			if (!ManorOrderLimits.allows(_sales, _price, manor.getSeedSaleLimit(_itemId), manor.getSeedBasicPrice(_itemId),
+					MAX_ADENA))
 				return null;
 			
 			return CastleManorManager.getInstance().getNewSeedProduction(_itemId, _sales, _price, _sales);

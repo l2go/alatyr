@@ -14,6 +14,8 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import java.util.List;
+
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.instancemanager.MapRegionManager;
 import com.l2jfree.gameserver.model.party.L2Party;
@@ -50,10 +52,11 @@ public class ExPartyRoomMember extends L2ServerPacket
 		writeH(0x08);
 		
 		writeD(_leader);
-		writeD(_room.getMemberCount());
+		List<L2Player> members = _room.getMembers();
+		writeD(members.size());
 		L2Player leader = _room.getLeader();
 		L2Party party = _room.getParty();
-		for (L2Player member : _room.getMembers())
+		for (L2Player member : members)
 		{
 			writeD(member.getObjectId());
 			writeS(member.getName());
