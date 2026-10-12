@@ -40,7 +40,7 @@
     <div class="crumbs"><a href="/l2jfree/#notes">Reviving L2JFree</a> · Part 1</div>
     <h1>Reviving an abandoned MMO server: 2009 → 2026</h1>
     <p class="dek">An open-source Lineage II server went silent in 2015. Twenty-four days of work turned it into one Java 25 process on PostgreSQL 18, shipped as a signed image that CI plays on every merge.</p>
-    <div class="byline"><time datetime="2026-10-12">12 October 2026</time> · 6 min read</div>
+    <div class="byline"><time datetime="2026-10-12">12 October 2026</time> · 7 min read</div>
   </div>
 </header>
 <div class="prose">
@@ -50,7 +50,7 @@
 <p>The code still compiled, mostly. It also carried every habit of a 2009 game server:</p>
 <ul>
 <li><strong>Two processes.</strong> A login server and a game server talked over their own socket protocol. A game server registered with a hex id file, a <code>game_server</code> table, and a <code>register_gameserver</code> tool.</li>
-<li><strong>MySQL everywhere.</strong> The datapack alone held 214 SQL files, with installers, update scripts, and a table optimizer.</li>
+<li><strong>MySQL everywhere.</strong> The datapack alone held 225 SQL files, with installers, update scripts, and a table optimizer. The login kept its accounts through Hibernate.</li>
 <li><strong>Collections that hid bugs.</strong> Javolution's <code>FastList</code> and <code>FastMap</code> let a loop remove from the collection it walked. On the JDK collections those loops throw, and some of them had been wrong for years.</li>
 <li><strong>Security of its time.</strong> The keys that the login handed to the world came from the fast game random generator, whose 48 bits of state can be recovered from a few outputs. The password check stopped at the length of the stored value, so an empty stored hash accepted any password.</li>
 <li><strong>An economy with holes.</strong> Item weight was summed in an <code>int</code>, so a big enough stack wrapped to a negative load. Trades and stores could move one side and fail the other.</li>
@@ -64,17 +64,22 @@
 <li><strong>Prove it on the real thing.</strong> A test that runs against an in-memory fake proves less than one that runs against PostgreSQL 18 in a container. A server that starts proves less than one that a client logs into.</li>
 </ol>
 <h2>Before and after</h2>
-<div class="table"><table><thead><tr><th></th><th>Inherited (2015)</th><th>3.x line</th></tr></thead>
+<p>The comparison is with the code as it stood at the fork, the last upstream commit of July 2015, not with the 2.x line: that line was the first phase of this work, a major release with breaking changes of its own.</p>
+<div class="table"><table><thead><tr><th></th><th>At the fork (2015)</th><th>3.1.1 (2026)</th></tr></thead>
 <tbody>
 <tr><td>Java</td><td>8</td><td>25</td></tr>
-<tr><td>Processes</td><td>Login and world, joined by a socket protocol</td><td>One JVM; login and world meet through a typed Java contract</td></tr>
-<tr><td>Database</td><td>MySQL, 214 SQL files, installers</td><td>PostgreSQL 18, Flyway migrations at start, a schema and a role per module</td></tr>
-<tr><td>SQL correctness</td><td>Found at run time</td><td>Every statement in the compiled server prepared against the real schema in CI</td></tr>
-<tr><td>Collections</td><td>Javolution, Trove</td><td>JDK collections; a test refuses the old libraries and the old loop patterns</td></tr>
-<tr><td>Session keys</td><td>Game random generator</td><td><code>SecureRandom</code>; a test fails the build if the game generator comes back</td></tr>
-<tr><td>Passwords</td><td>Unsalted SHA-1, length-limited comparison</td><td>PBKDF2-HMAC-SHA256, 600,000 iterations, constant-time comparison, upgrade at next login</td></tr>
+<tr><td>Build</td><td>A POM per module, no root reactor, no CI</td><td>One Maven reactor; GitHub Actions is the only build</td></tr>
+<tr><td>Processes</td><td>Login and world, joined by a socket protocol and a game server registration</td><td>One JVM; login and world meet through a typed Java contract</td></tr>
+<tr><td>Network</td><td>MMOCore on Java NIO</td><td>Netty on epoll; a transport that is not available stops the start</td></tr>
+<tr><td>Database</td><td>MySQL (Connector/J 5.1.36), 225 SQL files and installers, Hibernate in the login, c3p0</td><td>PostgreSQL 18, Flyway migrations at start, a schema and a role per module, JDBC with HikariCP</td></tr>
+<tr><td>SQL correctness</td><td>Found at run time</td><td>Every statement of the compiled server prepared against the real schema in CI</td></tr>
+<tr><td>Collections</td><td>Javolution 5.4, Trove 2.1</td><td>JDK collections; a test refuses the old libraries and the old loop patterns</td></tr>
+<tr><td>Logging</td><td>commons-logging with log4j</td><td>SLF4J with Logback</td></tr>
+<tr><td>Scripting</td><td>Jython 2.2.1</td><td>Jython 2.7.4; the pipeline fails if a script does not load</td></tr>
+<tr><td>Session keys</td><td>Game random generator</td><td><code>SecureRandom</code>; a build rule refuses the game generator</td></tr>
+<tr><td>Passwords</td><td>Unsalted SHA-1</td><td>PBKDF2-HMAC-SHA256, 600,000 iterations, constant-time comparison, upgrade at next login</td></tr>
+<tr><td>Tests</td><td>29 test classes on JUnit 3.8</td><td>JUnit 6, integration tests on PostgreSQL 18, and every merge plays the image: 24 client sessions, a restart, a restore, an upgrade</td></tr>
 <tr><td>Delivery</td><td>Separate login and world distributions, <code>.bat</code> and <code>.sh</code> launchers, a database installer</td><td>One <code>linux/amd64</code> image, Docker Compose, signed, with an SBOM and provenance</td></tr>
-<tr><td>Evidence</td><td>29 test classes, no CI</td><td>Every merge starts the image and plays it: 24 client sessions, a restart, a restore, an upgrade</td></tr>
 </tbody></table></div>
 <h2>The order of the work</h2>
 <p>Big rewrites fail because they change everything at once and prove nothing until the end. I went the other way: each step left a server that started and could be checked. The work came in two phases.</p>
