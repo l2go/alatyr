@@ -21,7 +21,7 @@ An archived Lineage II server, being rebuilt as Platform 3.0: a Linux image that
 
 </div>
 
-> **Status:** `v3.0.0` is the release of Platform 3.0. v2.5.0 is the final release of the 2.x line, which is retired and unsupported.
+> **Status:** `v3.1.0` is the release of Platform 3.0. v2.5.0 is the final release of the 2.x line, which is retired and unsupported.
 
 ## Platform 3.0
 
@@ -48,7 +48,7 @@ The image starts one process with both modules on PostgreSQL 18; see [deploy](de
 | Which document is current? | [Documentation index](docs/index.md) |
 | How are defects handled? | [Correctness program](#correctness-program) |
 
-`v3.0.0` is the release of the 3.0 line. Every merge to `main` publishes an `edge` image ([release policy](docs/adr/0007-release-policy.md)).
+`v3.1.0` is the current release of the 3.0 line. `v3.0.0` was the first. Every merge to `main` publishes an `edge` image ([release policy](docs/adr/0007-release-policy.md)).
 
 ## Architecture
 

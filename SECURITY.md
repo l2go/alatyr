@@ -4,7 +4,8 @@
 
 | Version | Supported |
 |---|---|
-| `v3.0.0` | Yes |
+| `v3.1.0` | Yes |
+| `v3.0.0` | No. Superseded by `v3.1.0` |
 | 2.x line | No. `v2.5.0` is the final release and receives no fixes ([decision](docs/adr/0008-retire-the-2x-line.md)) |
 
 ## Report a vulnerability
@@ -29,7 +30,7 @@ The Platform 3.0 image is signed with cosign, carries an SBOM and build provenan
 
 The image and its dependencies are scanned with Trivy on every merge and every day. A finding counts when a fixed version exists.
 
-| Severity | Fix within | Blocks the `v3.0.0` tag |
+| Severity | Fix within | Blocks a release tag |
 |---|---|---|
 | Critical | 7 days | Yes |
 | High | 30 days | Yes |
