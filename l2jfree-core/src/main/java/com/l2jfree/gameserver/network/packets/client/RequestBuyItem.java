@@ -327,7 +327,7 @@ public class RequestBuyItem extends L2ClientPacket
 			{
 				if (i.getItemId() == ticket)
 				{
-					price *= Config.RATE_SIEGE_GUARDS_PRICE;
+					price = (long)(price * Config.RATE_SIEGE_GUARDS_PRICE);
 					break;
 				}
 			}
