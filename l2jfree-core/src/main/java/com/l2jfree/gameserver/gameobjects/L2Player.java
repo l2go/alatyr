@@ -700,6 +700,18 @@ public final class L2Player extends L2Playable
 	protected int _activeClass;
 	protected int _classIndex = 0;
 	
+	/**
+	 * Class index {@code store()} must keep writing until the in-memory effects belong to {@link #_classIndex}.
+	 * Negative when the two already match.
+	 */
+	private int _effectsClassIndex = -1;
+	
+	/** The class slot whose effects are actually in memory. A class change hides the new index until then. */
+	public int classIndexForStoredEffects()
+	{
+		return _effectsClassIndex >= 0 ? _effectsClassIndex : _classIndex;
+	}
+	
 	/** data for mounted pets */
 	private int _controlItemId;
 	private L2PetData _data;
@@ -9729,6 +9741,8 @@ public final class L2Player extends L2Playable
 					return false;
 				}
 			}
+			// store() keeps the previous index until restoreEffects has swapped the in-memory list.
+			_effectsClassIndex = _classIndex;
 			_classIndex = classIndex;
 			
 			if (isInParty())
@@ -9795,6 +9809,7 @@ public final class L2Player extends L2Playable
 			rewardSkills();
 			
 			getEffects().restoreEffects();
+			_effectsClassIndex = -1;
 			updateEffectIcons();
 			
 			// If player has quest "422: Repent Your Sins", remove it

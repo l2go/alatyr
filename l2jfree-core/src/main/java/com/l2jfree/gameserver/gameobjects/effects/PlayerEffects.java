@@ -90,9 +90,10 @@ public final class PlayerEffects extends CreatureEffects
 			for (StoredEffect se : list)
 				rows.add(new EffectRow(se.skillId, se.skillLvl, Math.max(0, se.count), se.remaining));
 			
-			PlayerRepository.getInstance().replaceEffects(getOwner().getObjectId(), getOwner().getClassIndex(), rows);
+			int classIndex = getOwner().classIndexForStoredEffects();
+			PlayerRepository.getInstance().replaceEffects(getOwner().getObjectId(), classIndex, rows);
 			
-			_storedEffects.remove(getOwner().getClassIndex());
+			_storedEffects.remove(classIndex);
 		}
 		catch (Exception e)
 		{
