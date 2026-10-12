@@ -1,5 +1,5 @@
 name: 🧭 Decision proposal
-description: Propose or record an architecture decision
+description: Propose or record a decision
 title: "Decision: "
 labels: ["type:decision", "needs-decision"]
 body:

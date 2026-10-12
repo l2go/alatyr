@@ -3,7 +3,7 @@ contact_links:
   - name: 🛡️ Report a vulnerability privately
     url: https://github.com/l2go/l2jfree/security/advisories/new
     about: Do not open a public issue for a security problem. Use a private advisory.
-  - name: 🛣️ Roadmap and project board
+  - name: 🛣️ Project board
     url: https://github.com/users/l2go/projects/2
     about: See what is planned and what is in progress before filing a request.
 

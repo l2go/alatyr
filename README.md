@@ -1,27 +1,140 @@
 <div align="center">
 
-<img src="assets/l2jfree-hero.png" alt="A dawn-lit mountain citadel traced with subtle connections between server nodes" width="100%">
+<img src="assets/l2jfree-hero.svg" width="100%" alt="L2JFree: Lineage II server for Gracia Final, protocol 83">
 
-# L2JFree
+<br>
 
-**Gracia Final, protocol 83**
+[![Build](https://img.shields.io/github/actions/workflow/status/l2go/l2jfree/build.yml?branch=main&style=for-the-badge&label=build&logo=githubactions&logoColor=white&labelColor=1a1610)](https://github.com/l2go/l2jfree/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/l2go/l2jfree?sort=semver&display_name=tag&style=for-the-badge&logo=github&logoColor=white&labelColor=1a1610&color=d9a441)](https://github.com/l2go/l2jfree/releases)
+[![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/l2go/l2jfree?label=openssf%20scorecard&style=for-the-badge&labelColor=1a1610)](https://scorecard.dev/viewer/?uri=github.com/l2go/l2jfree)
+[![License: GPLv3](https://img.shields.io/badge/license-GPLv3-c9a86a?style=for-the-badge&labelColor=1a1610)](LICENSE)
+<br>
+![Java 25](https://img.shields.io/badge/Java-25-d9a441?style=for-the-badge&logo=openjdk&logoColor=white&labelColor=1a1610)
+![PostgreSQL 18](https://img.shields.io/badge/PostgreSQL-18-d9a441?style=for-the-badge&logo=postgresql&logoColor=white&labelColor=1a1610)
+![Docker Compose](https://img.shields.io/badge/Docker-Compose-d9a441?style=for-the-badge&logo=docker&logoColor=white&labelColor=1a1610)
+![linux/amd64](https://img.shields.io/badge/linux-amd64-d9a441?style=for-the-badge&logo=linux&logoColor=white&labelColor=1a1610)
+![Signed](https://img.shields.io/badge/cosign-signed-9fbf7a?style=for-the-badge&logo=sigstore&logoColor=white&labelColor=1a1610)
 
-[![Build](https://github.com/l2go/l2jfree/actions/workflows/build.yml/badge.svg)](https://github.com/l2go/l2jfree/actions/workflows/build.yml)
-[![License: GPLv3](https://img.shields.io/badge/license-GPLv3-2563eb)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/l2go/l2jfree?display_name=tag&sort=semver)](https://github.com/l2go/l2jfree/releases)
+### One process · Two ports · One command
+
+[Launch](#launch) · [Architecture](#architecture) · [What ships](#what-ships) · [Releases](#releases) · [Deploy guide](deploy/README.md)
 
 </div>
 
-An unofficial Lineage II server. The published form is one Linux image for `linux/amd64`. GitHub Actions builds the image and starts it. No version is supported.
+## Launch
 
-The image runs the login and the world in one process, on Java 25 and PostgreSQL 18. It listens on **2106** and **7777**.
+From a checkout, with Docker:
 
 ```sh
 docker compose -f deploy/compose.yaml up -d --wait
 ```
 
-Further commands for a checkout are in [deploy/README.md](deploy/README.md). A release bundle has its own [guide](deploy/release/README.md).
+When the command returns, login answers on **2106** and the world on **7777**. The first login creates the account.
 
-`v3.1.0` is the current release. `v3.0.0` was the first release of this line. `v2.5.0` is the final release of the 2.x line and receives no fixes. There is no migration from a 2.x database. Every merge to `main` publishes an `edge` image.
+> [!TIP]
+> Players on other machines need `L2JFREE_EXTERNAL_HOST` set to the address of the host. Settings, backup, and restore are in the [deploy guide](deploy/README.md). A release bundle has its own [guide](deploy/release/README.md).
 
-This fork descends from [savormix/l2jfree-genesis](https://github.com/savormix/l2jfree-genesis) through [l2jfree/l2jfree-ct2.3](https://github.com/l2jfree/l2jfree-ct2.3). The [original README](UPSTREAM_README.md) is preserved unchanged. The project supplies server source. It does not supply a client or a hosted server. Inherited datapack text and HTML were not audited here. "Lineage 2" is a trademark of its owner. The code is distributed under [GPLv3](LICENSE).
+## Architecture
+
+```mermaid
+flowchart LR
+    client(["Lineage II client<br/>protocol 83"])
+
+    subgraph proc["Server image: one JVM process on Java 25"]
+        login["Login module<br/>:2106"]
+        world["World module<br/>:7777"]
+        login <-->|"contract<br/>LoginPort · WorldPort"| world
+    end
+
+    subgraph pg["PostgreSQL 18"]
+        sl[("login")]
+        sw[("world")]
+        sc[("catalog")]
+        sr[("report")]
+    end
+
+    client --> login
+    client --> world
+    login -->|"role l2jfree_login"| sl
+    world -->|"role l2jfree_world"| sw
+    world --> sc
+    world --> sr
+
+    classDef srv fill:#1b1712,stroke:#d9a441,stroke-width:2px,color:#f6ead0
+    classDef db fill:#141a26,stroke:#8fa3c7,stroke-width:2px,color:#e6ecf7
+    classDef ext fill:#0f0d0a,stroke:#f2c46b,stroke-width:2px,color:#fff6e0
+    class login,world srv
+    class sl,sw,sc,sr db
+    class client ext
+```
+
+The two modules meet only through the contract, and the build fails if either reaches into the other. Each module connects with its own database role and reaches only the schemas it owns. At start, the world brings `catalog` up to the game content of the image.
+
+## What ships
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**⚡ One process**
+
+Login and world in one JVM, joined by a typed contract instead of a socket protocol.
+
+</td>
+<td width="33%" valign="top">
+
+**🐘 PostgreSQL 18**
+
+Migrations run at start. CI prepares every SQL statement of the server against the real schema.
+
+</td>
+<td width="33%" valign="top">
+
+**🔏 Signed image**
+
+A cosign signature, an SBOM, and build provenance on every published image.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+**🧪 Proved on every merge**
+
+The image starts, 24 clients play whole sessions, the server restarts, and a backup is restored into a clean stack.
+
+</td>
+<td width="33%" valign="top">
+
+**🛰️ Native network core**
+
+Netty on epoll by default, with io_uring on request.
+
+</td>
+<td width="33%" valign="top">
+
+**🛡️ Locked down**
+
+User `10001`, a read-only root, no added capabilities, and a 4 GB memory limit.
+
+</td>
+</tr>
+</table>
+
+## Releases
+
+| Channel | Image | Published |
+|---|---|---|
+| Release | `ghcr.io/l2go/l2jfree:<version>` | With a compose bundle on the [releases page](https://github.com/l2go/l2jfree/releases) |
+| Edge | `ghcr.io/l2go/l2jfree:edge` | On every merge to `main` |
+
+> [!IMPORTANT]
+> No version is supported. The 2.x line ended with `v2.5.0`, and a 2.x database cannot be migrated. Report a vulnerability through the [security policy](SECURITY.md).
+
+## Origin and license
+
+Forked from [l2jfree/l2jfree-ct2.3](https://github.com/l2jfree/l2jfree-ct2.3), which descends from [savormix/l2jfree-genesis](https://github.com/savormix/l2jfree-genesis). The [original README](UPSTREAM_README.md) is kept unchanged. This project provides the server source only, with no client and no hosted server. The inherited datapack text was not audited. Lineage II is a trademark of its owner. The code is under [GPLv3](LICENSE).
+
+<div align="center">
+<sub>Built, started, and checked by GitHub Actions on every merge.</sub>
+</div>

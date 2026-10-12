@@ -1,5 +1,5 @@
 name: 🛠️ Work package
-description: A planned piece of Platform 3.0 work with an outcome and an exit condition
+description: A planned piece of work with an outcome and an exit condition
 title: "WP: "
 labels: ["type:task"]
 body:
