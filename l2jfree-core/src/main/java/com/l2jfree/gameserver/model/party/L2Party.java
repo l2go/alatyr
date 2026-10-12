@@ -388,9 +388,9 @@ public class L2Party
 		{
 			if (getMemberCount() == 2) // party created while being in room
 				room.setParty(this);
-			room.addMember(player); // add if not present
-			// change from candidate to party member
-			room.broadcastPacket(new ExManagePartyRoomMember(ExManagePartyRoomMember.MODIFIED, player));
+			// add if not present; a full room does not take the player off the waiting list
+			if (room.getMembers().contains(player) || room.addMember(player))
+				room.broadcastPacket(new ExManagePartyRoomMember(ExManagePartyRoomMember.MODIFIED, player));
 		}
 		
 		return true;
