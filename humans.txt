@@ -1,0 +1,33 @@
+/* TEAM */
+
+  Builders, 2006–2015: 24 people of the L2J and L2JFree community,
+  8,044 commits. Their names are in the history of the repository:
+  https://github.com/l2go/l2jfree/commits/main
+
+  Revival, 2026: l2go
+  https://github.com/l2go
+
+/* THANKS */
+
+  The L2J community, for a Lineage II server written in the open.
+  Everyone who kept the code public after the work stopped.
+
+/* SITE */
+
+  Last update: 2026-10-13
+  Standards: HTML5, CSS3, a strict Content Security Policy
+  Typeface: Cinzel, SIL Open Font License
+  Banner art: generated with AI
+  Built: by hand, served by GitHub Pages, no build step
+
+/* PROJECT */
+
+  Java 25, PostgreSQL 18, Netty, Docker Compose
+  Built by GitHub Actions, never on a workstation.
+  24 people built it. 24 days rebuilt it. 24 clients play it on every merge.
+
+/* TRADEMARKS */
+
+  Lineage II and NCSOFT are trademarks or registered trademarks of
+  NCSOFT Corporation. L2JFree is an independent, non-commercial
+  open-source project, not affiliated with, endorsed, or sponsored by NCSOFT.

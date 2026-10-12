@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>The numerology of a revival, with a p-value — L2JFree</title>
+<meta name="description" content="A site full of numbers invites numerology. We did it properly: a method, a table, and a p-value. The best finding was an error.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#05060c">
+<meta property="og:type" content="article">
+<meta property="og:title" content="The numerology of a revival, with a p-value">
+<meta property="og:description" content="A method, a table, a p-value, and the error they found.">
+<meta property="og:url" content="https://l2go.github.io/l2jfree/numbers/">
+<meta property="og:image" content="https://l2go.github.io/l2jfree/assets/img/covers/startup.jpg">
+<link rel="icon" href="/l2jfree/assets/img/favicon.svg" type="image/svg+xml">
+<link rel="author" href="/l2jfree/humans.txt">
+<link rel="preload" href="/l2jfree/assets/fonts/cinzel.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/l2jfree/assets/css/site.css">
+<script src="/l2jfree/assets/js/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="progress" aria-hidden="true"></div>
+<header class="bar">
+  <a class="bar__mark" href="/l2jfree/">L2JFREE</a>
+  <nav aria-label="Sections">
+    <a href="/l2jfree/#start">Start</a>
+    <a class="opt" href="/l2jfree/#engineering">Engineering</a>
+    <a href="/l2jfree/#notes">Notes</a>
+    <a href="https://github.com/l2go/l2jfree">GitHub</a>
+  </nav>
+</header>
+<main id="main">
+<article>
+<header class="article-head">
+  <picture><source srcset="/l2jfree/assets/img/covers/startup.webp" type="image/webp"><img src="/l2jfree/assets/img/covers/startup.jpg" alt="" width="1600" height="667"></picture>
+  <div class="wrap">
+    <div class="crumbs"><a href="/l2jfree/">L2JFree</a> · Σ · For fun</div>
+    <h1>The numerology of a revival, with a p-value</h1>
+    <p class="dek">A site full of numbers invites numerology. We did it properly: a method, a table, and a p&#8209;value. The best finding was an error.</p>
+  </div>
+</header>
+<div class="prose">
+
+<p>This site is full of numbers: dates, counts, ports, versions. Numbers attract patterns the way a lit tower attracts moths, and some traditions read meaning into them. So we read the site the way a numerologist would, carefully and honestly, and then asked a statistician what it was worth.</p>
+
+<div class="aside"><strong>The short version.</strong> Numerology predicts nothing. Every pattern below is real arithmetic on real facts, and every one of them is the kind of coincidence that a set of 28 numbers produces more often than not. The last section explains why, and what the exercise found that actually mattered.</div>
+
+<h2>The method</h2>
+
+<p><strong>Reduction.</strong> Add the digits of a number, and repeat until one digit is left. The date 2006-11-15 becomes 2+0+0+6+1+1+1+5 = 16, then 1+6 = 7. Tradition keeps 11 and 22 whole as "master numbers".</p>
+
+<p><strong>Gematria.</strong> Classical gematria gives Hebrew letters numeric values. For English text there is a plain version, the English ordinal: A = 1, B = 2, and so on to Z = 26. Digits inside a word count as themselves.</p>
+
+<p>We took 28 numbers from the pages of this site, each checked against the repository, and a handful of words that the site keeps returning to.</p>
+
+<h2>The findings</h2>
+
+<h3>Twenty-four, three times</h3>
+
+<div class="table"><table>
+<thead><tr><th>Fact</th><th class="num">Number</th><th class="num">Reduced</th></tr></thead>
+<tbody>
+<tr><td>People who built the server before the revival</td><td class="num">24</td><td class="num">6</td></tr>
+<tr><td>Days from the revival to 3.0.0</td><td class="num">24</td><td class="num">6</td></tr>
+<tr><td>Clients that play a whole session on every merge</td><td class="num">24</td><td class="num">6</td></tr>
+</tbody></table></div>
+
+<p>Twenty-four people built it over nearly nine years. Twenty-four days rebuilt it. Twenty-four clients play it on every merge. With 600,000 PBKDF2 iterations and a 60-second stop, six is the most common result on the site. Numerology calls six the number of harmony and responsibility. We call it a nice line.</p>
+
+<h3>A Pythagorean triple of releases</h3>
+
+<p>Add the digits of the three releases of the 3.x line: 3.0.0 gives 3, 3.1.0 gives 4, 3.1.1 gives 5. And 3² + 4² = 5², the most famous right triangle of antiquity.</p>
+
+<svg class="triangle" viewBox="0 0 360 260" role="img" aria-labelledby="tri-title">
+  <title id="tri-title">A right triangle with legs 3 and 4 and a hypotenuse of 5, labelled with the releases 3.0.0, 3.1.0, and 3.1.1.</title>
+  <path class="leg" d="M60 40 L60 220 L300 220 Z"/>
+  <path class="sq" d="M60 205 h15 v15"/>
+  <text class="lab" x="30" y="136" text-anchor="middle">3</text>
+  <text class="sub" x="30" y="156" text-anchor="middle">3.0.0</text>
+  <text class="lab" x="180" y="248" text-anchor="middle">4</text>
+  <text class="sub" x="236" y="248" text-anchor="middle">3.1.0</text>
+  <text class="lab" x="196" y="118" text-anchor="middle">5</text>
+  <text class="sub" x="236" y="118" text-anchor="middle">3.1.1</text>
+</svg>
+
+<p>The platform itself is number 3, where the triple starts.</p>
+
+<h3>FINAL = 42</h3>
+
+<p>F = 6, I = 9, N = 14, A = 1, L = 12. Forty-two, the answer to the ultimate question of life, the universe, and everything, sits in the name of the client the server speaks to: Gracia <strong>Final</strong>. Together, GRACIA FINAL = 81 = 9².</p>
+
+<h3>INVARIANT = 108</h3>
+
+<p>I 9, N 14, V 22, A 1, R 18, I 9, A 1, N 14, T 20. In Hindu and Buddhist tradition 108 is sacred: a mala has 108 beads. Every fix in this project starts from an invariant, and the word adds up to 108.</p>
+
+<h3>REVIVAL = 89, JAVA = 34</h3>
+
+<p>Both are Fibonacci numbers, and 89 is also prime. The revival, by this count, follows the golden ratio, and runs on the Fibonacci number before 55.</p>
+
+<h3>L2JFREE = SIGNED = 58</h3>
+
+<p>L 12, 2, J 10, F 6, R 18, E 5, E 5. And S 19, I 9, G 7, N 14, E 5, D 4. In gematria, words with equal sums are said to share a nature. The project and the state of its image are, numerically, one word.</p>
+
+<h3>The gates: eleven</h3>
+
+<p>The Gracia Final client came out in 2009, which reduces to 11. Its protocol revision is 83: 8 + 3 = 11. The code was silent for 11 years. And TWO PORTS = 146, which reduces to 11. Numerology calls 11 a gate between worlds. The server has two: 2106 and 7777.</p>
+
+<h2>The skeptic's corner</h2>
+
+<p>Reduction maps every number to one of nine digits, or eleven results if the master numbers count on their own. With 28 numbers, each digit expects about three hits. The number of hits per digit follows, closely enough, a Poisson distribution with λ ≈ 3.1.</p>
+
+<div class="table"><table>
+<thead><tr><th>Event</th><th class="num">Probability</th></tr></thead>
+<tbody>
+<tr><td>A given digit gets five or more of the 28 numbers</td><td class="num">≈ 20%</td></tr>
+<tr><td>Some digit, any of the nine, gets five or more</td><td class="num">≈ 87%</td></tr>
+<tr><td>The same, counting 11 and 22 as their own results</td><td class="num">≈ 74%</td></tr>
+</tbody></table></div>
+
+<p>Five sixes, then, are what 28 numbers usually do. Then there is the freedom of choice, which is the engine of every gematria: which words to count, with or without spaces and digits, whole dates or years, master numbers kept or reduced. Each choice doubles the chances. After twenty words, 42, 108, and 89 will turn up; they are famous, so we notice them, and we do not notice 53 or 148. That is the multiple-comparisons problem and confirmation bias, working together.</p>
+
+<h2>The best finding was an error</h2>
+
+<p>The first draft of this analysis ran on the numbers the site showed at the time: 8,215 commits by 25 people, a revival that began on 26 September, and sixteen days to 3.0.0. On those numbers numerology found six sevens, "the number of a completed cycle", and read the start date as a nine, the number of the citadel. It was a convincing story.</p>
+
+<p>Recounting every number for this page showed that three of them were wrong. The earlier count of commits included the commits of the revival itself; before it there were 8,044, by 24 people. The revival began on 18 September, so 3.0.0 came 24 days later, not 16. The site was corrected. On the true numbers the sevens drop to four, six takes the lead, and the start date reduces to one, "the number of beginnings". The new story is exactly as convincing as the old one.</p>
+
+<p>Numerology found meaning in wrong data, and in right data, equally well. Checking the data is what found the error. That is the whole argument for invariants.</p>
+
+<h2>Reproduce it</h2>
+
+<pre class="code"><code>def digits(n):
+    return sum(int(d) for d in str(n))
+
+def reduce(n):
+    while n &gt; 9 and n not in (11, 22, 33):
+        n = digits(n)
+    return n
+
+def ordinal(word):
+    letters = sum(ord(c) - 64 for c in word.upper() if c.isalpha())
+    return letters + sum(int(c) for c in word if c.isdigit())
+
+print(reduce(20260918))                         # 1
+print(ordinal("INVARIANT"))                     # 108
+print(ordinal("L2JFREE"), ordinal("SIGNED"))    # 58 58</code></pre>
+
+<p>Now go back to the <a href="/l2jfree/">citadel</a>, or read how the server is <a href="/l2jfree/notes/reviving-an-abandoned-mmo-server/">actually built</a>. That part does not depend on luck.</p>
+
+</div>
+</article>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__top">
+      <span class="foot__mark" title="L2JFREE = SIGNED = 58">L2JFREE</span>
+      <nav aria-label="Project">
+        <a href="https://github.com/l2go/l2jfree">Repository</a>
+        <a href="https://github.com/l2go/l2jfree/releases">Releases</a>
+        <a href="https://github.com/l2go/l2jfree/blob/main/deploy/README.md">Deploy guide</a>
+        <a href="https://github.com/l2go/l2jfree/blob/main/SECURITY.md">Security</a>
+      </nav>
+    </div>
+    <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server; it adds no game content, and it does not modify, patch, or distribute the game client.</p>
+    <p>The code is under the GNU GPLv3. Banner art generated with AI. Cinzel typeface under the SIL Open Font License.</p>
+  </div>
+</footer>
+</body>
+</html>

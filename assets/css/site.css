@@ -370,10 +370,45 @@ code { font-family: var(--mono); font-size: .9em; }
 .js .reveal { opacity: 0; transform: translateY(18px); transition: opacity .9s ease, transform .9s ease; }
 .js .reveal.is-in { opacity: 1; transform: none; }
 
+/* ---------- easter eggs ---------- */
+
+.sigma { margin-left: .4rem; color: var(--parchment-3); font-family: var(--display); background-image: none; }
+.sigma:hover { color: var(--gold); background-image: none; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 2rem; z-index: 70;
+  max-width: min(36rem, calc(100% - 2rem));
+  padding: 1rem 1.3rem;
+  translate: -50% 1.5rem; opacity: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(27, 23, 18, .97), rgba(12, 10, 8, .98));
+  border: 1px solid rgba(242, 196, 107, .5);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .6), 0 0 40px rgba(217, 164, 65, .18);
+  color: var(--parchment); font: 400 1rem/1.5 var(--serif);
+  transition: opacity .4s ease, translate .4s ease;
+}
+.toast.is-on { opacity: 1; translate: -50% 0; pointer-events: auto; }
+.toast strong { color: var(--gold-hi); font-family: var(--display); letter-spacing: .06em; }
+
+.is-flare .halo { animation: flare .7s ease-in-out infinite; }
+.is-flare .ring { animation-duration: 1.2s; }
+.is-flare .sun { animation: none; opacity: 1; }
+@keyframes flare { 0%, 100% { transform: scale(1); opacity: .9; } 50% { transform: scale(2.4); opacity: 1; } }
+
+/* the numbers page */
+.triangle { max-width: 420px; margin: 1.8rem auto 2rem; }
+.triangle .leg { fill: rgba(242, 196, 107, .06); stroke: var(--gold-lo); stroke-width: 2; }
+.triangle .sq { fill: rgba(242, 196, 107, .04); stroke: rgba(242, 196, 107, .35); stroke-width: 1; }
+.triangle .lab { fill: var(--gold-hi); font: 600 20px var(--display); }
+.triangle .sub { fill: var(--parchment-3); font: 500 12px var(--sans); letter-spacing: .12em; }
+.aside { margin: 2rem 0; padding: 1.2rem 1.4rem; border: 1px solid rgba(143, 163, 199, .35); background: rgba(20, 26, 38, .45); color: var(--parchment-2); font-size: 1rem; }
+.aside strong { color: #e6ecf7; }
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .sun, .halo, .ring, .ember, .cue::after, .arch .flow { animation: none; }
   .spark, .ember, .arch .flow { display: none; }
   .js .reveal { opacity: 1; transform: none; transition: none; }
   .card, .note, .note__img img, .btn { transition: none; }
+  .is-flare .halo, .is-flare .ring { animation: none; }
+  .toast { transition: none; }
 }
