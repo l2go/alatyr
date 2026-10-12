@@ -1,13 +1,23 @@
 # Changelog
 
-All notable changes are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The maintainer names each version and what it contains.
+All notable changes are recorded here, in the format of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
 ### Changed
 
-- The container package stays public. One GitHub Container Registry package cannot hide `edge` and publish a release tag at the same time.
-- GitHub Actions are pinned by commit. Dependabot keeps those pins current.
+- GitHub Actions are pinned by commit, and Dependabot keeps the pins current.
+- The container package is public: one GitHub Container Registry package cannot keep `edge` private and publish a release tag.
+- The front page, the deploy guides, the security policy, and the contributing rules are rewritten. The front page has a vector banner instead of a 2 MB picture, and the security policy names the commands that verify an image.
+- The deploy guides change a setting with one command, and the pipeline runs that command and checks that the server reads the file.
+
+### Fixed
+
+- The backup command of the release guide ran without `-T` and dumped the whole database. It now dumps the `login` and `world` schemas, as the restore expects.
+
+### Removed
+
+- The design records, plans, reports, and guides that repeated one another or described the 2.x line. The repository keeps the front page, the deploy guides, the security policy, the contributing rules, the changelog, and the generated data dictionary.
 
 ## [3.1.0] - 2026-10-12
 
@@ -108,5 +118,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 
 Final release of the 2.x line. Java 25 bytecode, HikariCP, Jython 2.7.5b1, Logback loaded from `config/logback.xml`, the datapack inside the GameServer archive, unit tests in CI, and the dependency upgrades named in the v2.0.0 vulnerability report. See the [release](https://github.com/l2go/l2jfree/releases/tag/v2.5.0).
 
-[Unreleased]: https://github.com/l2go/l2jfree/compare/v2.5.0...HEAD
+[Unreleased]: https://github.com/l2go/l2jfree/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/l2go/l2jfree/compare/v3.0.0...v3.1.0
+[3.0.0]: https://github.com/l2go/l2jfree/compare/v2.5.0...v3.0.0
 [2.5.0]: https://github.com/l2go/l2jfree/releases/tag/v2.5.0
