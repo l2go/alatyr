@@ -11,7 +11,7 @@
 
 ### One process · Two ports · One command
 
-[Start](#start) · [Architecture](#architecture) · [What ships](#what-ships) · [Releases](#releases) · [Deploy guide](deploy/README.md) · [Security](SECURITY.md)
+[Start](#start) · [Engineering](#engineering) · [Architecture](#architecture) · [Releases](#releases) · [Deploy guide](deploy/README.md) · [Security](SECURITY.md)
 
 </div>
 
@@ -27,6 +27,57 @@ docker compose up -d --wait
 ```
 
 The first start runs the `edge` image and takes a few minutes. When the command returns, login answers on port **2106** and the world on **7777**. The first login creates the account.
+
+## Engineering
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**🧱 One process, hard boundaries**
+
+Login and world share a JVM, not code. They meet only through a typed contract, and architecture rules fail the build on any other dependency. Each module has its own database role, and the pipeline checks what each role can reach.
+
+</td>
+<td width="33%" valign="top">
+
+**🗄️ SQL checked against the schema**
+
+Every SQL statement of the server is prepared against the migrated PostgreSQL schema, and every JDBC type is compared with its column. A ratchet keeps direct database access from spreading.
+
+</td>
+<td width="33%" valign="top">
+
+**🧪 Every merge is a release rehearsal**
+
+The image starts, and 24 clients log in, create a character, enter the world, and log out. The server restarts, a backup is restored into a clean stack, and the published image is upgraded in place. The characters survive each step.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+**🚀 Releases promote, never rebuild**
+
+A release retags the image digest that `main` built and tested, after the maintainer approves. The image carries a cosign signature, an SBOM, and build provenance; the compose archive carries its own signature.
+
+</td>
+<td width="33%" valign="top">
+
+**🛡️ Hardened supply chain and runtime**
+
+Actions are pinned by commit, and Trivy blocks a release on a critical or high finding that has a fix. The container runs as user `10001` with a read-only root, no capabilities, and a 4 GB memory limit.
+
+</td>
+<td width="33%" valign="top">
+
+**🔭 Diagnosable in production**
+
+Java Flight Recorder keeps the last 12 hours. PostgreSQL counts every statement and logs the plan of any that runs over 500 ms. A health endpoint gates readiness, and a stop refuses new connections first.
+
+</td>
+</tr>
+</table>
 
 ## Architecture
 
@@ -62,35 +113,7 @@ flowchart LR
     class client ext
 ```
 
-The two modules talk only through a typed contract; the build fails if one depends on the other. Each module has its own database role and reaches only its own schemas. At start, the world updates `catalog` from the image.
-
-## What ships
-
-<table>
-<tr>
-<td width="33%" valign="top">
-
-**🧪 Checked on every merge**
-
-The image starts, and 24 clients log in, create a character, enter the world, and log out. After a restart and after a restored backup, the account finds its characters again. Every SQL statement of the server is prepared against the real schema.
-
-</td>
-<td width="33%" valign="top">
-
-**🔏 Signed**
-
-Every published image carries a cosign signature, an SBOM, and build provenance. A release archive carries its own signature.
-
-</td>
-<td width="33%" valign="top">
-
-**🛡️ Locked down**
-
-User `10001`, a read-only root, no added capabilities, and a 4 GB memory limit. Netty runs on epoll.
-
-</td>
-</tr>
-</table>
+Login owns the `login` schema; world owns `world`, `catalog`, and `report`. At start, the world updates `catalog` from the game content of the image.
 
 ## Releases
 
@@ -101,4 +124,6 @@ User `10001`, a read-only root, no added capabilities, and a 4 GB memory limit. 
 
 ## Origin and license
 
-Forked from [l2jfree/l2jfree-ct2.3](https://github.com/l2jfree/l2jfree-ct2.3), a descendant of [savormix/l2jfree-genesis](https://github.com/savormix/l2jfree-genesis); its [README](UPSTREAM_README.md) is kept unchanged. This repository holds the server only: no client, no hosted server. The datapack came with the fork and was not reviewed. Lineage II is a trademark of its owner. The code is under [GPLv3](LICENSE).
+Forked from [l2jfree/l2jfree-ct2.3](https://github.com/l2jfree/l2jfree-ct2.3), a descendant of [savormix/l2jfree-genesis](https://github.com/savormix/l2jfree-genesis). Its [README](UPSTREAM_README.md) is kept unchanged.
+
+This repository holds the server only: no client, no hosted server. The datapack came with the fork and was not reviewed. Lineage II is a trademark of its owner. The code is under [GPLv3](LICENSE).
