@@ -73,11 +73,8 @@ public class RequestPartyMatchDetail extends L2ClientPacket
 			List<L2PartyRoom> list = PartyRoomManager.getInstance().getRooms(activeChar);
 			for (L2PartyRoom room : list)
 			{
-				if (room.canJoin(activeChar))
-				{
-					room.addMember(activeChar);
+				if (room.canJoin(activeChar) && room.addMember(activeChar))
 					break;
-				}
 			}
 		}
 		
