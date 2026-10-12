@@ -1,8 +1,8 @@
 # L2JFree server
 
-This bundle starts the server image, with login and world in one process, and PostgreSQL 18. It needs only Docker.
+This bundle runs the L2JFree server and PostgreSQL 18. It needs Docker Compose. Run every command in this directory.
 
-For players on other machines, first put the address of the host in `.env`:
+If players connect from other machines, first write the address of this host to `.env`:
 
 ```sh
 echo 'L2JFREE_EXTERNAL_HOST=203.0.113.10' > .env
@@ -14,7 +14,7 @@ Start:
 docker compose up -d --wait
 ```
 
-The first start creates the database passwords and schemas and loads the game content. That takes a few minutes. When the command returns, the server listens on 2106 for login and 7777 for the world. The first login creates the account.
+The first start creates the database passwords and schemas and loads the game content. It takes a few minutes. When the command returns, login answers on port 2106 and the world on 7777. The first login creates the account.
 
 | Task | Command |
 |---|---|
@@ -22,17 +22,18 @@ The first start creates the database passwords and schemas and loads the game co
 | Log | `docker compose logs -f server` |
 | Stop | `docker compose down` (the data stays in the volumes) |
 | Backup | `docker compose exec -T db pg_dump -U postgres -d l2jfree -n login -n world -Fc > l2jfree.dump` |
-| Update | Unpack the new bundle, copy `.env` into its directory, and run `docker compose up -d --wait` there |
 
-The volumes belong to the project `l2jfree`, so a new bundle directory finds the same data. The restore and the other settings are in the [deploy guide](https://github.com/l2go/l2jfree/blob/main/deploy/README.md).
+To update, unpack the new bundle, copy `.env` into its directory if you have one, and run `docker compose up -d --wait` there. The volumes belong to the project `l2jfree`, so the new directory finds the same data.
 
-## Change a setting
+## Change an option
 
-A file in the `config` volume overrides single keys of the file of the same name in the image. With the stack running:
+A file in the `config` volume overrides the keys it names in the file of the same name in the image. With the stack running, to triple the experience rate:
 
 ```sh
 printf 'RateXp = 3.\n' | docker compose exec -T server tee /var/lib/l2jfree/config/rates.properties >/dev/null
 docker compose restart server
 ```
 
-The files and their keys: [world](https://github.com/l2go/l2jfree/tree/main/l2jfree-core/config), [login](https://github.com/l2go/l2jfree/tree/main/l2jfree-login/config). On a public server, stop the automatic creation of accounts with `AutoCreateAccounts = False` in `loginserver.properties`.
+`tee` replaces the file, so write all changed keys of one file at once. The defaults: [world](https://github.com/l2go/l2jfree/tree/main/l2jfree-core/config), [login](https://github.com/l2go/l2jfree/tree/main/l2jfree-login/config). On a public server, turn off the automatic creation of accounts with `AutoCreateAccounts = False` in `loginserver.properties`.
+
+The restore and every setting are in the [deploy guide](https://github.com/l2go/l2jfree/blob/main/deploy/README.md).

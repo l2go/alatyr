@@ -1,67 +1,39 @@
 name: 🐛 Defect
-description: A confirmed server defect with a broken invariant
-title: "[Defect] "
+description: The server does something wrong
+title: "Defect: "
 labels: ["bug"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        File a defect only when an invariant is broken and the impact on a running server is clear.
   - type: textarea
-    id: invariant
+    id: actual
     attributes:
-      label: ⚖️ Broken invariant
-      description: The rule this path violates.
+      label: What happens
+      description: What the server does, and what it costs a running server, for example lost items or a failed login.
     validations:
       required: true
   - type: textarea
-    id: impact
+    id: expected
     attributes:
-      label: 💥 Impact
-      description: What a running server does wrong. Item create or loss, session desync, crash, or login failure.
-    validations:
-      required: true
-  - type: dropdown
-    id: severity
-    attributes:
-      label: 🚦 Severity
-      options:
-        - blocker
-        - major
-        - minor
-    validations:
-      required: true
-  - type: dropdown
-    id: area
-    attributes:
-      label: 🧭 Area
-      options:
-        - economy
-        - session
-        - packets
-        - persistence
-        - concurrency
-        - commons
+      label: What should happen
     validations:
       required: true
   - type: textarea
-    id: evidence
+    id: steps
     attributes:
-      label: 🔎 Evidence
-      description: Symbol, path, and why that path breaks the invariant.
+      label: How to reproduce
+      description: Steps from a fresh start, or the code path and why it breaks.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release, or the image tag or commit.
+      placeholder: "v3.1.1"
     validations:
       required: true
   - type: textarea
-    id: confirmation
+    id: log
     attributes:
-      label: 🧪 Confirmation
-      description: A deterministic check, or the thread interleaving when a live server is required.
-    validations:
-      required: true
-  - type: textarea
-    id: acceptance
-    attributes:
-      label: ✅ Acceptance
-      description: The single condition that is true after the fix. Do not expand this into a subsystem rewrite.
-    validations:
-      required: true
+      label: Log
+      description: The lines around the failure. Leave out passwords and session keys.
+      render: text
