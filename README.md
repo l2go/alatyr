@@ -79,6 +79,8 @@ Java Flight Recorder keeps the last 12 hours. PostgreSQL counts every statement 
 </tr>
 </table>
 
+The decisions in code: the [architecture rules](l2jfree-platform/src/test/java/com/l2jfree/platform/ArchitectureTest.java) between the modules, a player save in [one transaction](https://github.com/l2go/l2jfree/pull/162), and a weight-check bypass closed by [a wider type](https://github.com/l2go/l2jfree/pull/193).
+
 ## Architecture
 
 ```mermaid
@@ -124,6 +126,6 @@ Login owns the `login` schema; world owns `world`, `catalog`, and `report`. At s
 
 ## Origin and license
 
-Forked from [l2jfree/l2jfree-ct2.3](https://github.com/l2jfree/l2jfree-ct2.3), a descendant of [savormix/l2jfree-genesis](https://github.com/savormix/l2jfree-genesis). Its [README](UPSTREAM_README.md) is kept unchanged.
+Forked from [l2jfree/l2jfree-ct2.3](https://github.com/l2jfree/l2jfree-ct2.3), a descendant of [savormix/l2jfree-genesis](https://github.com/savormix/l2jfree-genesis). Its [README](UPSTREAM_README.md) is kept unchanged. This fork moved the 2009 code to Java 25 and PostgreSQL 18, joined login and world in one process, made a player save one transaction, and closed economy exploits and concurrency races, with regression checks in CI.
 
 This repository holds the server only: no client, no hosted server. The datapack came with the fork and was not reviewed. Lineage II is a trademark of its owner. The code is under [GPLv3](LICENSE).
