@@ -1,1 +1,4 @@
 target/
+# Agent instructions are kept outside the public repository
+/AGENTS.md
+/CLAUDE.md
