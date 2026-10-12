@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `v3.0.0` is the first release of Platform 3.0, and `v3.1.0` carries the correctness fixes found in it ([ADR-0007](docs/adr/0007-release-policy.md)).
+All notable changes are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The maintainer names each version and what it contains ([ADR-0007](docs/adr/0007-release-policy.md)).
 
 ## [Unreleased]
 

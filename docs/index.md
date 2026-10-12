@@ -15,7 +15,7 @@
 | [Threat model](threat-model.md) | What can go wrong at each trust boundary, what stops it, and what remains |
 | [Image verification](image-verification.md) | Signature, provenance, and SBOM of the Platform 3.0 image |
 | [Milestone reports](reports/m1-foundation.md) | Plan, result, deviations, and delivery numbers of each closed milestone |
-| [Milestone report M2](reports/m2-platform.md) | Result of the Platform 3.0 platform work against its exit criteria, deviations, and the acceptance run |
+| [Milestone report M2](reports/m2-platform.md) | Result of the Platform 3.0 platform work against its exit criteria, and the deviations |
 | [Start-up measurement](reports/startup-measurement.md) | The start of the server under G1 and ZGC, with and without the AOT cache |
 | [Architecture decision records](adr/README.md) | One record per decision, with rationale and consequences |
 | [Platform 3.0 vision](PLATFORM-3.0-VISION.md) | Target platform and design, revised by the decision records |

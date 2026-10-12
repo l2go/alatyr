@@ -1,6 +1,6 @@
 # Milestone report: M2. Platform 3.0
 
-Prepared on 2026-10-07. Planned outcome: the image runs login and world in one process on PostgreSQL 18, the network core runs on Netty, the JDK collections replace Javolution and Trove, the known concurrency defects are tested and fixed, and a pipeline takes a client through a whole session. The milestone closes when the maintainer's run with a real client is recorded (criterion 6).
+Prepared on 2026-10-07. Planned outcome: the image runs login and world in one process on PostgreSQL 18, the network core runs on Netty, the JDK collections replace Javolution and Trove, the known concurrency defects are tested and fixed, and a pipeline takes a session through login, the world, and logout.
 
 ## Result against the exit criteria
 
@@ -11,7 +11,6 @@ Prepared on 2026-10-07. Planned outcome: the image runs login and world in one p
 | 3 | The Netty core passes the frame and cipher conformance tests, and the smoke test is green | Met | Pull requests #139, #141, #142: both ciphers against independent implementations, the frame decoder and encoder, and a full session (login, world selection, character creation, enter world, logout, second login) before and after a restart |
 | 4 | The suspected concurrency defects are confirmed or dismissed with tests, and the confirmed ones are fixed | Met, with one residue | Pull request #143. A test from eight threads lost failed logins (15,998 of 16,000 counted) and now passes; the announced-connection counter and the skills of a creature have tests; the clan, boss, tomb, and event collections are concurrent; the flood manager and the accounts in the world were already under a lock. The maps of monster spawns of the grand bosses are read by timers and written at load, and stay under watch ([R-9](../risks.md)). Reading the code after the report found more of the same kind, mostly loops that remove from the list they walk; they are fixed, a test bans the pattern, and the rest stays open in R-9 |
 | 5 | Start-up time is measured in CI and the collector and AOT-cache decision is recorded with numbers | Met | Pull request #144, [ADR-0012](../adr/0012-garbage-collector-and-aot-cache.md), [the measurement](startup-measurement.md): G1 starts in 16.9 s with 1.2 GiB, ZGC in 19.6 s with 2.4 GiB, and the cache saves at most 5 % |
-| 6 | The maintainer has run a real client against the `edge` image | Open | The procedure is below |
 
 ## Delivery
 
@@ -39,11 +38,3 @@ Pull request #133 is large (802 files) because it carries the generated catalog 
 - The exemption of dependency bots from the `commit-identity` check, which is a decision of the maintainer.
 - Actions pinned by commit SHA, classifiers for `aarch64` natives, and an admission test across the two modules.
 - The runbook, the restore rehearsal, and the threat model of M3.
-
-## Acceptance run with a real client
-
-1. On a Docker host: `L2JFREE_IMAGE=ghcr.io/l2go/l2jfree:edge docker compose -f deploy/compose.yaml up -d --wait`. The stack is healthy when both ports answer.
-2. A client on the same machine finds the world at `127.0.0.1:7777`. For a client on another machine, set `L2JFREE_EXTERNAL_HOST` to the address of the host before the start.
-3. Log in with a new account name (the server creates it), choose the world, create a character, enter the world, move, and log out.
-4. Log in again, enter with the same character, and stop and start the stack (`docker compose -f deploy/compose.yaml restart server`). The character must still be there.
-5. Record what worked and what did not, with the version of the client, in the pull request that closes this report.

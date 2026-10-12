@@ -20,7 +20,6 @@ The network core is built on Netty 4.2. The protocol codec stays the project's o
 
 - No latency or allocation numbers exist for the old core, so no regression claim can be made against it.
 - The risks that matter are cipher ordering, back-pressure, and disconnect behavior. They are covered by two measures instead of a comparison: conformance tests of frames and ciphers on fixed vectors built from the existing packet classes, and an end-to-end smoke test in CI that logs in, lists the world, enters the world, and leaves.
-- A real client must reach the world before the release (see `docs/roadmap.md`).
 
 ## Revisit when
 

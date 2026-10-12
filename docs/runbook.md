@@ -10,7 +10,7 @@ alias compose='docker compose -f deploy/compose.yaml'
 
 ## First start
 
-Before: Docker Desktop, Colima, or Docker Engine with the Compose plugin, 4 GB of memory for the server, and the ports 2106 and 7777 free on the host. Set `L2JFREE_EXTERNAL_HOST` to the address that players use ([variables](../deploy/README.md#run-it)).
+Before: 4 GB of memory for the server, and the ports 2106 and 7777 free. GitHub Actions runs this start on every pull request.
 
 ```sh
 compose up -d --wait

@@ -18,7 +18,7 @@ The 2.x line targets Windows 10, MySQL 8.4, and two processes. Version 2.5.0 is 
 
 ## Consequences
 
-Operators who need Windows 10 and MySQL stay on v2.5.0 at their own risk. Everyone else moves to 3.0, which runs on Windows through Docker Desktop. The ruleset and CI that served 2.x are replaced by the 3.0 pipeline (see `docs/roadmap.md`).
+Operators who need Windows 10 and MySQL stay on v2.5.0 at their own risk. The 3.0 line is a Linux image that GitHub Actions builds and starts. The ruleset and CI that served 2.x are replaced by the 3.0 pipeline (see `docs/roadmap.md`).
 
 ## Revisit when
 

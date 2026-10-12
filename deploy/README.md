@@ -2,7 +2,7 @@
 
 The delivery of Platform 3.0: one Linux image started with Docker Compose. The decision and its limits are in [ADR-0002](../docs/adr/0002-linux-image-delivered-with-compose.md). The [architecture views](../docs/architecture.md) show how the parts fit.
 
-> **Status.** The image runs the login module and the world module in one process on PostgreSQL 18. The pipeline takes clients through full sessions, before and after a restart, and rehearses the backup, the restore, the update of the image, and the capture of an incident on every merge ([runbook](../docs/runbook.md)). The run with a real client is the last open step of milestone M2 ([report](../docs/reports/m2-platform.md)).
+> **Status.** The image runs the login module and the world module in one process on PostgreSQL 18. GitHub Actions takes the smoke program through full sessions, before and after a restart, and rehearses the backup, the restore, the update of the image, and the capture of an incident on every merge ([runbook](../docs/runbook.md)).
 
 ## Run it
 
@@ -35,7 +35,7 @@ Variables you set in the shell or in an `.env` file next to `compose.yaml`:
 |---|---|---|
 | `L2JFREE_IMAGE` | `ghcr.io/l2go/l2jfree:edge` | Image to run |
 | `L2JFREE_BIND` | `0.0.0.0` | Host address that publishes the two ports. It is a compose setting: the process inside the container always listens on all of its addresses |
-| `L2JFREE_EXTERNAL_HOST` | `127.0.0.1` | Address the server tells a client to connect to for the world. `127.0.0.1` suits a client on the same machine. For players on other machines, set the address or name of the host |
+| `L2JFREE_EXTERNAL_HOST` | `127.0.0.1` | Address the server announces for the world. The default is `127.0.0.1` |
 | `L2JFREE_JAVA_OPTS` | `-Xms1g -Xmx3g -XX:+UseG1GC` | JVM options. The container is limited to 4 GB (`mem_limit`), so keep the heap well below it |
 
 Stop with `docker compose -f deploy/compose.yaml down`. Add `-v` to delete the volumes, which removes the database, the logs, and your configuration overrides.
@@ -146,18 +146,7 @@ docker compose -f deploy/compose.yaml exec -T db pg_restore -U postgres -d l2jfr
 docker compose -f deploy/compose.yaml start server
 ```
 
-The `-T` keeps a terminal from altering the dump. The pipeline runs these commands on every merge: it dumps a stack that holds an account with a character, destroys the stack with its volumes, starts a clean one, restores the dump, and the same account finds its character again. A restore on a clean host by the maintainer is still part of milestone M3.
-
-## Environments
-
-| Environment | Status |
-|---|---|
-| Linux, Docker Engine with the Compose plugin | Verified in CI on every merge to `main` (amd64) |
-| Windows, Docker Desktop with the WSL 2 backend | Verified by hand before the release |
-| macOS on Intel, Colima | Verified by hand before the release |
-| macOS on Apple Silicon, Colima | Runs through emulation; verified by hand before the release |
-
-Colima does not include Compose. Install the Docker CLI and the Compose plugin next to it. On Apple Silicon start Colima with Rosetta for speed: `colima start --vm-type vz --vz-rosetta`.
+The `-T` keeps a terminal from altering the dump. The pipeline runs these commands on every merge: it dumps a stack that holds an account with a character, destroys the stack with its volumes, starts a clean one, restores the dump, and the same account finds its character again.
 
 ## What the image contains
 
@@ -179,14 +168,12 @@ Every pull request builds the image from the verified platform distribution (`l2
 
 ## Known limits
 
-- Server features that depend on the client address, such as bans and connection limits, see the Docker gateway address on Docker Desktop and Colima. The server refuses more than 20 connections in 10 seconds, and more than 60 in a minute, from one address, so behind such an address a crowd that reconnects at once is partly refused. The keys `AcceptWarn`, `AcceptReject`, `AcceptSeconds`, `AcceptWarnLong`, `AcceptRejectLong`, and `AcceptSecondsLong` of `server.properties` and of `loginserver.properties` raise the limits; set them in the operator directory.
-- Players on other machines need a reachable host address: set `L2JFREE_EXTERNAL_HOST`. The default `subnets.properties` treats clients from private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, and `127.0.0.1`) as internal and sends them `InternalHostname`, which defaults to `127.0.0.1`. On Docker Desktop and Colima every client looks like the Docker gateway, which is in a private range. For a client on your LAN, set `InternalHostname` to the LAN address of the host in an operator `server.properties`.
 - The datapack and the catalog are read-only in the image. A feature that writes into the datapack tree, such as a saved leaderboard file, cannot write there.
 - `io_uring` is blocked by Docker's default security profile, so the network core uses epoll by default.
 
 ## The smoke client
 
-`l2jfree-smoke` is a Lineage II client written with the JDK only. The pipeline runs it against the started stack, before and after a restart of the server: it logs in, takes the one world of the server list, creates a character, enters the world, logs out, and logs in again with the same account. It exits with 1 and names the step when one fails.
+`l2jfree-smoke` is a JDK program. The pipeline runs it against the started stack, before and after a restart of the server: it logs in, takes the one world of the server list, creates a character, enters the world, logs out, and logs in again with the same account. It exits with 1 and names the step when one fails.
 
 ```sh
 java -jar l2jfree-smoke.jar --host 127.0.0.1

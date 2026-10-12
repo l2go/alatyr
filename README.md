@@ -6,7 +6,7 @@
 
 **Gracia Final · Protocol 83**
 
-An archived Lineage II server, being rebuilt as Platform 3.0: a Linux image that runs with Docker Compose on Docker Desktop, Colima, or Docker Engine.
+An archived Lineage II server, rebuilt as Platform 3.0: one Linux image started with Docker Compose. GitHub Actions builds the image and starts it.
 
 [![Build](https://github.com/l2go/l2jfree/actions/workflows/build.yml/badge.svg)](https://github.com/l2go/l2jfree/actions/workflows/build.yml)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-2563eb)](LICENSE)
@@ -25,13 +25,7 @@ An archived Lineage II server, being rebuilt as Platform 3.0: a Linux image that
 
 ## Platform 3.0
 
-The target is one Linux image that starts with `docker compose up -d --wait` and publishes two ports: **2106** for login and **7777** for the world. The image runs one process with a login module and a world module on Java 25 (Eclipse Temurin), with PostgreSQL 18 as the database. The base is Arch Linux for `linux/amd64`.
-
-| Environment | How it runs |
-|---|---|
-| Linux | Docker Engine with the Compose plugin |
-| Windows | Docker Desktop |
-| macOS | Colima with the Docker CLI and Compose. On Apple Silicon the image runs through emulation |
+The target is one Linux image that starts with `docker compose up -d --wait` and publishes two ports: **2106** for login and **7777** for the world. The image runs one process with a login module and a world module on Java 25 (Eclipse Temurin), with PostgreSQL 18 as the database. The base is Arch Linux for `linux/amd64`. GitHub Actions builds that image and starts it.
 
 The image starts one process with both modules on PostgreSQL 18; see [deploy](deploy/README.md). There is no systemd unit, no Kubernetes manifest, and no install script on the host. Read the [vision](docs/PLATFORM-3.0-VISION.md) and the [delivery decision](docs/adr/0002-linux-image-delivered-with-compose.md) for the details and the limits.
 
@@ -76,4 +70,4 @@ The [2.x project board](https://github.com/users/l2go/projects/1) (“L2JFree: c
 
 This fork descends from [savormix](https://github.com/savormix/l2jfree-genesis) through [lord_rex](https://github.com/l2jfree/l2jfree-ct2.3). The [original README](UPSTREAM_README.md) is preserved unchanged.
 
-This noncommercial fan project is unaffiliated with NCSoft. It provides server source, not a client or hosted server. This fork added no client binaries or extracted client assets; inherited datapack text and HTML were not audited here. "Lineage 2" is a trademark of its owner. Code is distributed under [GPLv3](LICENSE).
+This noncommercial fan project is unofficial. It provides server source and does not supply a client or a hosted server. This fork added no client binaries or extracted client assets; inherited datapack text and HTML were not audited here. "Lineage 2" is a trademark of its owner. Code is distributed under [GPLv3](LICENSE).

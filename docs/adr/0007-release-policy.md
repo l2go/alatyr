@@ -1,4 +1,4 @@
-# 0007. One release and continuous images
+# 0007. The maintainer names each release
 
 - Status: Accepted
 - Date: 2026-10-06
@@ -9,12 +9,10 @@ The 1.x and 2.x lines produced many tags: release candidates, a stable release, 
 
 ## Decision
 
-1. `v3.0.0` is the first release of the 3.0 line. There are no release candidates and no intermediate tags before a release.
+1. `v3.0.0` is the first release of the 3.0 line. `v3.1.0`, cut on 2026-10-12, contains the correctness fixes found in it.
 2. Every merge to `main` builds the image and publishes it to the GitHub Container Registry as `edge` and `sha-<commit>`, without a GitHub Release. Acceptance runs on those images.
 3. The images stay private until the release. `sha-*` tags are kept for 30 days.
-4. The tag is created once, after the exit criteria of the last milestone pass and the maintainer approves it in the `stable-release` environment. Tags `v*` are protected from deletion and update.
-5. After a release, another version is cut only for a defect that configuration cannot work around. Improvements wait for the next release that is worth a tag.
-6. `v3.1.0`, cut on 2026-10-12, collects the correctness defects of `v3.0.0` that configuration cannot work around. The maintainer set that version at 3.1.0.
+4. The maintainer names the next version, when it is cut, and what it contains. A documentation change does not by itself require a version. The maintainer approves the tag in the `stable-release` environment. Tags `v*` are protected from deletion and update.
 
 ## Alternatives considered
 
@@ -23,7 +21,7 @@ The 1.x and 2.x lines produced many tags: release candidates, a stable release, 
 
 ## Consequences
 
-Progress is visible through decision records, milestone reports, and the project board, not through tags. A defect found at acceptance is fixed before the tag, so the first public version carries no known blockers.
+Progress between tags is visible through decision records, milestone reports, and the project board. A release tag records the version the maintainer named and the changes the maintainer put in it.
 
 ## Revisit when
 

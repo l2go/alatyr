@@ -35,7 +35,7 @@ The login and the world share a process (ADR-0003) and meet only through the con
 | T | Changing a packet on the way | The protocol has no integrity check | Protocol-fixed. Accepted |
 | I | Reading the password on the way | The password travels in an RSA block with a 1024-bit key and no padding (R-15) | Protocol-fixed. Accepted: the login port should be offered only to players, with a firewall filter in front of it if the host allows |
 | I | A stolen database exposes passwords | The hash is stored, never the password: salted PBKDF2-HMAC-SHA256 with 600,000 iterations for every new password (`PasswordHasherTest`). An account of the 2.x line, which holds an unsalted SHA-1, gets the new form at its next login | An account that never logs in again keeps its SHA-1 hash |
-| R | Denying a login | The `login` and `login.try` log channels name the account and the address | The address behind Docker Desktop is the gateway (R-4) |
+| R | Denying a login | The `login` and `login.try` log channels name the account and the address | The address behind the Docker gateway is one address (R-4) |
 | D | Flooding the port | Per-address limits on connections (`AcceptWarn`, `AcceptReject`, and the long-period keys), per-connection limits on packets and errors, a frame size of at most 64 KiB; the accept limits are tested (`NetworkServerTest`) and the 24-client load of the pipeline passes with raised limits | Many clients behind one address share its limit; an attacker with many addresses is a job for the host firewall |
 | E | Entering as another account | The play key comes from `SecureRandom` since this model was written; a test fails the build if a session key uses the game generator again (`SourcePatternsTest`) | None known |
 
@@ -82,7 +82,7 @@ The login and the world share a process (ADR-0003) and meet only through the con
 |---|---|---|---|
 | T | A changed base, JRE, or dependency | The base image and the PostgreSQL image are pinned by digest, the JRE by SHA-256; Dependabot updates them; the dependency review runs on every pull request; code scanning runs (`build.yml`, `dependency-review.yml`, `codeql.yml`) | GitHub Actions are pinned by tag, not by commit (open; maintainer) |
 | T | A swapped image | Every image from `main` is signed (cosign, keyless), has provenance and an SBOM, and the pipeline verifies all three right after the push ([commands](image-verification.md)) | An operator who does not verify gets no benefit |
-| I | A known vulnerability | A scan on every merge and a daily scan of the published image; a fixed critical or high finding blocks the tag ([policy](../SECURITY.md#vulnerability-policy)). The first scan found twenty findings in a program of the base that the server never runs; it was removed | A vulnerability that is not yet known |
+| I | A known vulnerability | A scan on every merge and a daily scan of the published image. The daily scan and the release job fail on a fixed critical or high finding in a package the image runs ([scan](../SECURITY.md#vulnerability-scan)). The first scan found twenty findings in a program of the base that the server never runs; it was removed | A vulnerability that is not yet known |
 | S | A fake release | Tags `v*` are immutable (a repository ruleset), and the release job runs in the `stable-release` environment | Who may approve there is the maintainer's setting |
 
 ## What this model changed
