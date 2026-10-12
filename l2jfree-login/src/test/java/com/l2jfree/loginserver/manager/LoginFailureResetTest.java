@@ -18,6 +18,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -85,17 +89,19 @@ class LoginFailureResetTest
 		}
 	}
 
-	/** The row read for the password check may be stale: a login writes the last login and nothing else. */
+	/** The row read for the password check may be stale: last-active and address move, the password is a compare-and-swap. */
 	@Test
-	@DisplayName("a login writes the time, the address, and the new form of an old password, not the access level")
+	@DisplayName("a login writes the time and the address, and upgrades an old password only from the hash it read")
 	void loginWritesOnlyWhatItChanges() throws Exception
 	{
 		LoginManager manager = mock(LoginManager.class, CALLS_REAL_METHODS);
 		AccountsServices service = mock(AccountsServices.class);
 		byte[] hash = MessageDigest.getInstance("SHA").digest("correct".getBytes(StandardCharsets.UTF_8));
-		Accounts account = new Accounts("alice", Base64.encodeBytes(hash), BigDecimal.ZERO, 0, 0,
+		String legacy = Base64.encodeBytes(hash);
+		Accounts account = new Accounts("alice", legacy, BigDecimal.ZERO, 0, 0,
 				1900, 1, 1, "192.0.2.1");
 		when(service.getAccountById("alice")).thenReturn(account);
+		when(service.replacePasswordIfUnchanged(any(), any(), any())).thenReturn(true);
 		setField(manager, "_service", service);
 		setField(manager, "_hackProtection", new HashMap<InetAddress, FailedLoginAttempt>());
 		
@@ -107,9 +113,44 @@ class LoginFailureResetTest
 		assertThat(written.getValue().getLastIp()).isEqualTo("192.0.2.7");
 		assertThat(written.getValue().getLastactive()).isNotNull();
 		assertThat(written.getValue().getAccessLevel()).isNull();
-		// the account holds the form of the 2.x line, so the login stores the salted form it can make now
-		assertThat(written.getValue().getPassword()).startsWith("pbkdf2-sha256$");
-		assertThat(PasswordHasher.verify("correct", written.getValue().getPassword())).isTrue();
+		assertThat(written.getValue().getPassword()).isNull();
+		verify(service).replacePasswordIfUnchanged(eq("alice"), eq(legacy), argThat(upgraded ->
+				upgraded.startsWith("pbkdf2-sha256$") && PasswordHasher.verify("correct", upgraded)));
+	}
+
+	@Test
+	@DisplayName("a password that is already in the current form is not written again")
+	void currentPasswordIsNotReplaced() throws Exception
+	{
+		LoginManager manager = mock(LoginManager.class, CALLS_REAL_METHODS);
+		AccountsServices service = mock(AccountsServices.class);
+		Accounts account = new Accounts("alice", PasswordHasher.hash("correct"), BigDecimal.ZERO, 0, 0,
+				1900, 1, 1, "192.0.2.1");
+		when(service.getAccountById("alice")).thenReturn(account);
+		setField(manager, "_service", service);
+		setField(manager, "_hackProtection", new HashMap<InetAddress, FailedLoginAttempt>());
+
+		assertThat(manager.loginValid("alice", "correct", InetAddress.getByName("192.0.2.7"))).isTrue();
+
+		verify(service, never()).replacePasswordIfUnchanged(any(), any(), any());
+	}
+
+	@Test
+	@DisplayName("a password stored after the hash was read is left as it is, and the login still succeeds")
+	void aNewerPasswordIsKept() throws Exception
+	{
+		LoginManager manager = mock(LoginManager.class, CALLS_REAL_METHODS);
+		AccountsServices service = mock(AccountsServices.class);
+		byte[] hash = MessageDigest.getInstance("SHA").digest("correct".getBytes(StandardCharsets.UTF_8));
+		Accounts account = new Accounts("alice", Base64.encodeBytes(hash), BigDecimal.ZERO, 0, 0,
+				1900, 1, 1, "192.0.2.1");
+		when(service.getAccountById("alice")).thenReturn(account);
+		when(service.replacePasswordIfUnchanged(any(), any(), any())).thenReturn(false);
+		setField(manager, "_service", service);
+		setField(manager, "_hackProtection", new HashMap<InetAddress, FailedLoginAttempt>());
+
+		assertThat(manager.loginValid("alice", "correct", InetAddress.getByName("192.0.2.7"))).isTrue();
+		verify(service).updateGivenColumns(any());
 	}
 	
 	private static void setField(LoginManager manager, String name, Object value) throws Exception
