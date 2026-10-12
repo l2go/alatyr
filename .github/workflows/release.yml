@@ -39,7 +39,7 @@ jobs:
       commit: ${{ steps.resolve.outputs.commit }}
       digest: ${{ steps.resolve.outputs.digest }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
@@ -66,7 +66,7 @@ jobs:
           echo "release $VERSION: commit $commit, image $REGISTRY_IMAGE@$digest"
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
 
       # The commands of docs/image-verification.md
       - name: Verify the signature, the provenance, and the SBOM
@@ -85,7 +85,7 @@ jobs:
           echo "signature, provenance, and an SBOM of $packages packages verified"
 
       - name: Scan the image under the vulnerability policy
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.REGISTRY_IMAGE }}@${{ steps.resolve.outputs.digest }}
           format: table
@@ -120,7 +120,7 @@ jobs:
           ls -l release
 
       - name: Keep the bundle and the notes
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release
           path: |
@@ -140,16 +140,16 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ needs.verify.outputs.commit }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
 
       - name: Name the verified image with the version
         env:
@@ -166,7 +166,7 @@ jobs:
             --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
 
       - name: Attest the bundle
-        uses: actions/attest@v4.2.1
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
         with:
           subject-path: release/l2jfree-${{ inputs.version }}-compose.tar.gz
 

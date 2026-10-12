@@ -23,11 +23,7 @@ The stack starts three services:
 | 2106 | Login | Sends its first packet to every client that connects |
 | 7777 | World | Opens before the login port, so a client that reaches the login finds a world |
 
-The image is private until the release. Log in to the registry first, or point `L2JFREE_IMAGE` at an image you built:
-
-```sh
-docker login ghcr.io
-```
+The image is public. `docker login ghcr.io` is needed only to push, or to pull a package that was made private. To run a build of your own, set `L2JFREE_IMAGE` to that image.
 
 Variables you set in the shell or in an `.env` file next to `compose.yaml`:
 
