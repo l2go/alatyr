@@ -21,15 +21,17 @@
 
 </div>
 
+L2JFree is a Lineage II server for Gracia Final, protocol 83. Login and world run in one Java 25 process on PostgreSQL 18, deployed with Docker Compose.
+
 ## Launch
 
-From a checkout, with Docker:
+From a checkout, with Docker Compose:
 
 ```sh
 docker compose -f deploy/compose.yaml up -d --wait
 ```
 
-When the command returns, login answers on **2106** and the world on **7777**. The first login creates the account.
+The default image is `edge`. The first start takes a few minutes. When the command returns, login answers on **2106** and the world on **7777**. The first login creates the account.
 
 ## Architecture
 
@@ -96,9 +98,9 @@ A cosign signature, an SBOM, and build provenance on every published image.
 <tr>
 <td width="33%" valign="top">
 
-**🧪 Proved on every merge**
+**🧪 Checked on every merge**
 
-The image starts, 24 clients play whole sessions, the server restarts, and a backup is restored into a clean stack.
+The image starts and 24 clients log in, create a character, enter the world, and log out. After a restart and after a backup restored into a clean stack, the account finds its characters again.
 
 </td>
 <td width="33%" valign="top">
