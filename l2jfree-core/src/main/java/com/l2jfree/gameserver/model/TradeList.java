@@ -1045,23 +1045,11 @@ public class TradeList
 			if (ownerInventory.getAdena() < _totalPrice)
 				continue;
 			
-			// Check if requested item is available for manipulation
+			// Only the object id the seller named may move. Another instance of the same item id,
+			// and an equipped item, stay where they are.
 			int objectId = item.getObjectId();
 			L2ItemInstance oldItem = player.checkItemManipulation(objectId, item.getCount(), "sell");
-			// private store - buy use same objectId for buying several non-stackable items
-			if (oldItem == null)
-			{
-				// searching other items using same itemId
-				oldItem = playerInventory.getItemByItemId(item.getItemId());
-				if (oldItem == null)
-					continue;
-				objectId = oldItem.getObjectId();
-				oldItem = player.checkItemManipulation(objectId, item.getCount(), "sell");
-				if (oldItem == null)
-					continue;
-			}
-			
-			if (!oldItem.isTradeable())
+			if (oldItem == null || !oldItem.isTradeable() || oldItem.isEquipped())
 				continue;
 			
 			// The buyer's inventory is the store owner's. A line that does not fit is not moved and not paid.
