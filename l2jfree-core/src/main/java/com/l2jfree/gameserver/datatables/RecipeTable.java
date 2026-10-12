@@ -476,21 +476,34 @@ public class RecipeTable
 				return;
 			}
 			
-			// check that customer can afford to pay for creation services
+			// A customer may craft only a recipe the manufacturer has put up for sale.
 			if (_player != _target)
 			{
-				for (L2ManufactureItem temp : _player.getCreateList().getList())
-					if (temp.getRecipeId() == _recipeList.getId()) // find recipe for item we want manufactured
+				boolean listed = false;
+				if (_player.getCreateList() != null)
+				{
+					for (L2ManufactureItem temp : _player.getCreateList().getList())
 					{
-						_price = temp.getCost();
-						if (_target.getAdena() < _price) // check price
+						if (temp.getRecipeId() == _recipeList.getId())
 						{
-							_target.sendPacket(SystemMessageId.YOU_NOT_ENOUGH_ADENA);
-							abort();
-							return;
+							listed = true;
+							_price = temp.getCost();
+							if (_target.getAdena() < _price)
+							{
+								_target.sendPacket(SystemMessageId.YOU_NOT_ENOUGH_ADENA);
+								abort();
+								return;
+							}
+							break;
 						}
-						break;
 					}
+				}
+				if (!listed)
+				{
+					_target.sendMessage("That recipe is not for sale.");
+					abort();
+					return;
+				}
 			}
 			
 			// make temporary items
