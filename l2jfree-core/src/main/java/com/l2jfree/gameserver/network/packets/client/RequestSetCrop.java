@@ -27,6 +27,8 @@ import com.l2jfree.gameserver.gameobjects.instance.L2CastleChamberlainInstance;
 import com.l2jfree.gameserver.instancemanager.CastleManager;
 import com.l2jfree.gameserver.instancemanager.CastleManorManager;
 import com.l2jfree.gameserver.instancemanager.CastleManorManager.CropProcure;
+import com.l2jfree.gameserver.model.L2Manor;
+import com.l2jfree.gameserver.model.ManorOrderLimits;
 import com.l2jfree.gameserver.model.clan.L2Clan;
 import com.l2jfree.gameserver.model.entity.Castle;
 import com.l2jfree.gameserver.network.SystemMessageId;
@@ -173,7 +175,15 @@ public class RequestSetCrop extends L2ClientPacket
 		
 		public CropProcure getCrop()
 		{
-			if (_sales != 0 && (MAX_ADENA / _sales) < _price)
+			if (_type != 1 && _type != 2)
+				return null;
+			L2Manor manor = L2Manor.getInstance();
+			if (!manor.getCropsForCastle(_manorId).contains(_itemId))
+				return null;
+			if (manor.getRewardItem(_itemId, _type) <= 0)
+				return null;
+			if (!ManorOrderLimits.allows(_sales, _price, manor.getCropPuchaseLimit(_itemId),
+					manor.getCropBasicPrice(_itemId), MAX_ADENA))
 				return null;
 			
 			return CastleManorManager.getInstance().getNewCropProcure(_itemId, _sales, _type, _price, _sales);

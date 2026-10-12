@@ -1101,15 +1101,25 @@ public class TradeList
 				_owner.sendPacket(SystemMessageId.SLOTS_FULL);
 				continue;
 			}
-			addedWeight = nextWeight;
-			addedSlots = nextSlots;
+			
+			// Take this line's adena before the item moves. A short stack destroys nothing and returns null,
+			// so the item stays with the seller and no adena is created.
+			long linePrice = item.getCount() * item.getPrice();
+			if (ownerInventory.destroyItemByItemId("PrivateStore", PlayerInventory.ADENA_ID, linePrice, _owner, player) == null)
+				continue;
 			
 			// Proceed with item transfer
 			L2ItemInstance newItem =
 					playerInventory.transferItem("PrivateStore", objectId, item.getCount(), ownerInventory, player,
 							_owner);
 			if (newItem == null)
+			{
+				ownerInventory.addAdena("PrivateStore", linePrice, _owner, player);
 				continue;
+			}
+			playerInventory.addAdena("PrivateStore", linePrice, player, _owner);
+			addedWeight = nextWeight;
+			addedSlots = nextSlots;
 			
 			removeItem(-1, item.getItemId(), item.getCount());
 			ok = true;
@@ -1158,14 +1168,8 @@ public class TradeList
 		
 		if (totalPrice > 0)
 		{
-			// Transfer adena
-			if (totalPrice > ownerInventory.getAdena())
-				// should not happens, just a precaution
-				return false;
-			final L2ItemInstance adenaItem = ownerInventory.getAdenaInstance();
-			ownerInventory.reduceAdena("PrivateStore", totalPrice, _owner, player);
-			ownerIU.addItem(adenaItem);
-			playerInventory.addAdena("PrivateStore", totalPrice, player, _owner);
+			// Each line already moved its own adena. Refresh both stacks in the inventory packets.
+			ownerIU.addItem(ownerInventory.getAdenaInstance());
 			playerIU.addItem(playerInventory.getAdenaInstance());
 		}
 		
