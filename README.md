@@ -4,15 +4,15 @@
 
 <br>
 
-[![Build](https://img.shields.io/github/actions/workflow/status/l2go/l2jfree/build.yml?branch=main&style=for-the-badge&label=build&logo=githubactions&logoColor=white&labelColor=0b1030)](https://github.com/l2go/l2jfree/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/l2go/l2jfree?sort=semver&display_name=tag&style=for-the-badge&logo=github&logoColor=white&labelColor=0b1030&color=e879f9)](https://github.com/l2go/l2jfree/releases)
-[![License: GPLv3](https://img.shields.io/badge/license-GPLv3-a78bfa?style=for-the-badge&labelColor=0b1030)](LICENSE)
+[![Build](https://img.shields.io/github/actions/workflow/status/l2go/l2jfree/build.yml?branch=main&style=for-the-badge&label=build&logo=githubactions&logoColor=white&labelColor=1a1610)](https://github.com/l2go/l2jfree/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/l2go/l2jfree?sort=semver&display_name=tag&style=for-the-badge&logo=github&logoColor=white&labelColor=1a1610&color=d9a441)](https://github.com/l2go/l2jfree/releases)
+[![License: GPLv3](https://img.shields.io/badge/license-GPLv3-c9a86a?style=for-the-badge&labelColor=1a1610)](LICENSE)
 <br>
-![Java 25](https://img.shields.io/badge/Java-25-22d3ee?style=for-the-badge&logo=openjdk&logoColor=white&labelColor=0b1030)
-![PostgreSQL 18](https://img.shields.io/badge/PostgreSQL-18-22d3ee?style=for-the-badge&logo=postgresql&logoColor=white&labelColor=0b1030)
-![Docker Compose](https://img.shields.io/badge/Docker-Compose-22d3ee?style=for-the-badge&logo=docker&logoColor=white&labelColor=0b1030)
-![linux/amd64](https://img.shields.io/badge/linux-amd64-22d3ee?style=for-the-badge&logo=linux&logoColor=white&labelColor=0b1030)
-![Signed](https://img.shields.io/badge/cosign-signed-34d399?style=for-the-badge&logo=sigstore&logoColor=white&labelColor=0b1030)
+![Java 25](https://img.shields.io/badge/Java-25-d9a441?style=for-the-badge&logo=openjdk&logoColor=white&labelColor=1a1610)
+![PostgreSQL 18](https://img.shields.io/badge/PostgreSQL-18-d9a441?style=for-the-badge&logo=postgresql&logoColor=white&labelColor=1a1610)
+![Docker Compose](https://img.shields.io/badge/Docker-Compose-d9a441?style=for-the-badge&logo=docker&logoColor=white&labelColor=1a1610)
+![linux/amd64](https://img.shields.io/badge/linux-amd64-d9a441?style=for-the-badge&logo=linux&logoColor=white&labelColor=1a1610)
+![Signed](https://img.shields.io/badge/cosign-signed-9fbf7a?style=for-the-badge&logo=sigstore&logoColor=white&labelColor=1a1610)
 
 ### One process · Two ports · One command
 
@@ -59,9 +59,9 @@ flowchart LR
     world --> sc
     world --> sr
 
-    classDef srv fill:#0b1030,stroke:#22d3ee,stroke-width:2px,color:#e0f2fe
-    classDef db fill:#1a0b33,stroke:#e879f9,stroke-width:2px,color:#fae8ff
-    classDef ext fill:#020617,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    classDef srv fill:#1b1712,stroke:#d9a441,stroke-width:2px,color:#f6ead0
+    classDef db fill:#141a26,stroke:#8fa3c7,stroke-width:2px,color:#e6ecf7
+    classDef ext fill:#0f0d0a,stroke:#f2c46b,stroke-width:2px,color:#fff6e0
     class login,world srv
     class sl,sw,sc,sr db
     class client ext

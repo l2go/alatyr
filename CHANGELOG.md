@@ -8,7 +8,7 @@ All notable changes are recorded here, in the format of [Keep a Changelog](https
 
 - GitHub Actions are pinned by commit, and Dependabot keeps the pins current.
 - The container package is public: one GitHub Container Registry package cannot keep `edge` private and publish a release tag.
-- The front page, the deploy guides, the security policy, and the contributing rules are rewritten. The front page has a vector banner instead of a 2 MB picture, and the security policy names the commands that verify an image.
+- The front page, the deploy guides, the security policy, and the contributing rules are rewritten. The front page banner keeps the original art at 230 KB instead of 2 MB, and the security policy names the commands that verify an image.
 - The deploy guides change a setting with one command, and the pipeline runs that command and checks that the server reads the file.
 
 ### Fixed
