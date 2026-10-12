@@ -10,7 +10,7 @@ Each record states one decision, why it was made, what it costs, and when to rev
 | [0004](0004-postgresql-and-the-accepted-data-design.md) | PostgreSQL 18 and the accepted data design | Accepted |
 | [0005](0005-netty-network-core.md) | Netty network core adopted without evaluation | Accepted |
 | [0006](0006-data-access-layer.md) | Data access: targeted repository seam | Accepted |
-| [0007](0007-release-policy.md) | One release and continuous images | Accepted |
+| [0007](0007-release-policy.md) | The maintainer names each release | Accepted |
 | [0008](0008-retire-the-2x-line.md) | Retire the 2.x line | Accepted |
 | [0009](0009-database-roles-schemas-and-migration.md) | Database roles, schemas, and migration at start | Accepted |
 | [0010](0010-game-content-as-catalog-data.md) | Game content ships as catalog data | Accepted |

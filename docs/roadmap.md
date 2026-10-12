@@ -1,6 +1,6 @@
 # Roadmap
 
-Platform 3.0 is built in three milestones and shipped first as `v3.0.0`. `v3.1.0` followed with the correctness fixes of that release ([ADR-0007](adr/0007-release-policy.md)). A milestone is a checkable outcome, not a version. Only one milestone is open at a time. The [Platform 3.0 project board](https://github.com/users/l2go/projects/2) shows the live state of the work. The board of the 2.x program is a closed record and receives no 3.0 cards.
+Platform 3.0 is built in three milestones. `v3.0.0` and `v3.1.0` are published. The maintainer names any later version and what it contains ([ADR-0007](adr/0007-release-policy.md)). A milestone is a checkable outcome, not a version. Only one milestone is open at a time. The [Platform 3.0 project board](https://github.com/users/l2go/projects/2) shows the live state of the work. The board of the 2.x program is a closed record and receives no 3.0 cards.
 
 ## Milestones
 
