@@ -49,7 +49,7 @@ public final class L2Properties extends Properties
 	// ===================================================================================
 	
 	/**
-	 * Loads the file of this name, resolved against the defaults and operator directories (ADR-0011).
+	 * Loads the file of this name, resolved against the defaults and operator directories.
 	 */
 	public L2Properties(String name) throws IOException
 	{
@@ -57,7 +57,7 @@ public final class L2Properties extends Properties
 	}
 	
 	/**
-	 * Loads the file, resolved against the defaults and operator directories (ADR-0011).
+	 * Loads the file, resolved against the defaults and operator directories.
 	 */
 	public L2Properties(File file) throws IOException
 	{

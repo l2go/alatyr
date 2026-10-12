@@ -10,7 +10,7 @@ reported. Then the server runs in a new container on the loaded database, and re
 interval is not in it. After each start the script also reads the resident memory of the server process.
 
 The result is a Markdown table (stdout, and DIR/startup.md) and DIR/startup.json. The measurement does not judge:
-the decision is taken from the numbers (ADR-0012).
+a person takes the decision from the numbers.
 """
 import argparse
 import datetime

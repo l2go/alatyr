@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The deployment settings of ADR-0011, tested against a map instead of the real environment.
+ * The deployment settings, tested against a map instead of the real environment.
  */
 class DeploymentTest
 {

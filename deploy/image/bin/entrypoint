@@ -3,7 +3,7 @@
 # The entry point validates the deployment settings and starts Java; it does
 # nothing else with configuration. The defaults are read-only in
 # /opt/l2jfree/config and the operator's changes live in
-# /var/lib/l2jfree/config (ADR-0011).
+# /var/lib/l2jfree/config.
 set -euo pipefail
 
 home=/opt/l2jfree
@@ -49,7 +49,7 @@ if [ "${L2JFREE_FLIGHT_RECORDER:-on}" != off ] && mkdir -p "$logs/jfr" 2>/dev/nu
 	)
 fi
 
-# The network transport is epoll unless the operator chooses another (ADR-0002): io_uring is opt-in because the
+# The network transport is epoll unless the operator chooses another: io_uring is opt-in because the
 # default container profile blocks it. A transport that is not available stops the start with its reason.
 native=/run/l2jfree-native
 native_opts=()
