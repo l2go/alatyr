@@ -9,6 +9,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 - Added the command that verifies a release archive against its Sigstore bundle to the security policy.
 - Added a one-sentence description to the front page; removed its support notice, which the security policy already states.
 - Replaced the front page cards with six engineering decisions and how each is enforced, placed before the architecture; removed the stack line from the banner.
+- Linked the project site at https://l2go.github.io/l2jfree/ from the front page (the banner, a badge, the navigation, and the line under the engineering cards), from the release bundle guide, and from the notes of every release.
 - Named NCSOFT Corporation as the owner of the Lineage II and NCSOFT trademarks on the front page and in the release bundle, and stated that the project is independent, adds no game content, and does not modify or distribute the game client.
 
 ### Fixed

@@ -37,6 +37,7 @@ docker compose restart server
 `tee` replaces the file, so write all changed keys of one file at once. The defaults: [world](https://github.com/l2go/l2jfree/tree/main/l2jfree-core/config), [login](https://github.com/l2go/l2jfree/tree/main/l2jfree-login/config). On a public server, turn off the automatic creation of accounts with `AutoCreateAccounts = False` in `loginserver.properties`.
 
 The restore and every setting are in the [deploy guide](https://github.com/l2go/l2jfree/blob/main/deploy/README.md).
+The [project site](https://l2go.github.io/l2jfree/) tells how the server is built and checked.
 
 ## Trademarks
 

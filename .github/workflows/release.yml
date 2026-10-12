@@ -108,6 +108,8 @@ jobs:
             found { print }
           ' CHANGELOG.md > notes.md
           test -s notes.md || { echo "::error::CHANGELOG.md has no section ## [$VERSION] with entries"; exit 1; }
+          # every release page leads to the project site
+          printf '\n---\n\nThe project site, with the engineering notes behind each decision: https://l2go.github.io/l2jfree/\n' >> notes.md
           cat notes.md
 
       - name: Build the compose bundle
