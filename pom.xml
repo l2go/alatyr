@@ -10,7 +10,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.l2jfree</groupId>
 	<artifactId>l2jfree-ct2.3-root</artifactId>
-	<version>3.0.0</version>
+	<version>3.1.0</version>
 	<packaging>pom</packaging>
 	<name>l2jfree-ct2.3 (repository root aggregator)</name>
 	<modules>

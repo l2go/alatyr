@@ -1,8 +1,20 @@
 # Changelog
 
-All notable changes are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Platform 3.0 ships as one release ([ADR-0007](docs/adr/0007-release-policy.md)), so this file collects the changes toward `v3.0.0` under Unreleased.
+All notable changes are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). `v3.0.0` is the first release of Platform 3.0, and `v3.1.0` carries the correctness fixes found in it ([ADR-0007](docs/adr/0007-release-policy.md)).
 
 ## [Unreleased]
+
+## [3.1.0] - 2026-10-12
+
+### Fixed
+
+- A login refusal closes only the client that held the account when the refusal was decided. A password is replaced only while the verified hash is still stored. The published remote-administration object receives the generated password, and a security card is accepted only when it matches the configured id.
+- A disconnect save is offered to the packet queue again instead of running beside a packet. A pet is marked saved only after its insert commits.
+- Item weight is kept in a long, so a wrapped product cannot pass the load check. An NPC sale that would pass the adena cap is rejected before anything is destroyed. NPC stock is reserved before the buyer's adena is taken, and a failure after that charge returns the adena and the stock. A buy store takes the buyer's adena for a line before the item moves and returns it if the move fails. A buy store sells only the object id the seller named and skips a line the buyer cannot carry.
+- A player trade moves both sides or returns what already moved, and does not tell the clients the trade finished. Manufacture crafts only a recipe the shop lists.
+- A manor order is stored only when the seed or crop belongs to the castle, the count is within the sale limit, the price is inside the setting band, and a crop reward type is 1 or 2.
+- A failed character creation releases the name. A subclass stays in the database and in memory when its delete rolls back. Replacing a subclass deletes the old row and inserts the new one in one transaction. Effect rows stay on the old class until the new effect list is restored.
+- A party-room join leaves the waiting list only when the seat is taken, and a broadcast does not walk the live member list. A clan roster is shown only to its alliance or a GM.
 
 ## [3.0.0] - 2026-10-12
 

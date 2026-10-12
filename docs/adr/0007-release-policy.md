@@ -9,11 +9,12 @@ The 1.x and 2.x lines produced many tags: release candidates, a stable release, 
 
 ## Decision
 
-1. The only release of the 3.0 line is `v3.0.0`. There are no release candidates and no intermediate tags.
+1. `v3.0.0` is the first release of the 3.0 line. There are no release candidates and no intermediate tags before a release.
 2. Every merge to `main` builds the image and publishes it to the GitHub Container Registry as `edge` and `sha-<commit>`, without a GitHub Release. Acceptance runs on those images.
 3. The images stay private until the release. `sha-*` tags are kept for 30 days.
 4. The tag is created once, after the exit criteria of the last milestone pass and the maintainer approves it in the `stable-release` environment. Tags `v*` are protected from deletion and update.
-5. After the release, a patch version is cut only for a defect that configuration cannot work around. Improvements wait for the next release that is worth a tag.
+5. After a release, another version is cut only for a defect that configuration cannot work around. Improvements wait for the next release that is worth a tag.
+6. `v3.1.0`, cut on 2026-10-12, collects the correctness defects of `v3.0.0` that configuration cannot work around. The maintainer set that version at 3.1.0.
 
 ## Alternatives considered
 
