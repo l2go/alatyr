@@ -6,11 +6,11 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Reviving an abandoned MMO server: 2009 → 2026 — L2JFree</title>
-<meta name="description" content="An open-source Lineage II server went silent in 2015. Sixteen days of work turned it into one Java 25 process on PostgreSQL 18, shipped as a signed image that CI plays on every merge.">
+<meta name="description" content="An open-source Lineage II server went silent in 2015. Twenty-four days of work turned it into one Java 25 process on PostgreSQL 18, shipped as a signed image that CI plays on every merge.">
 <meta name="theme-color" content="#05060c">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Reviving an abandoned MMO server: 2009 → 2026">
-<meta property="og:description" content="An open-source Lineage II server went silent in 2015. Sixteen days of work turned it into one Java 25 process on PostgreSQL 18, shipped as a signed image that CI plays on every merge.">
+<meta property="og:description" content="An open-source Lineage II server went silent in 2015. Twenty-four days of work turned it into one Java 25 process on PostgreSQL 18, shipped as a signed image that CI plays on every merge.">
 <meta property="og:url" content="https://l2go.github.io/l2jfree/notes/reviving-an-abandoned-mmo-server/">
 <meta property="og:image" content="https://l2go.github.io/l2jfree/assets/img/covers/reviving.jpg">
 <meta property="article:published_time" content="2026-10-12">
@@ -39,13 +39,13 @@
   <div class="wrap">
     <div class="crumbs"><a href="/l2jfree/#notes">Reviving L2JFree</a> · Part 1</div>
     <h1>Reviving an abandoned MMO server: 2009 → 2026</h1>
-    <p class="dek">An open-source Lineage II server went silent in 2015. Sixteen days of work turned it into one Java 25 process on PostgreSQL 18, shipped as a signed image that CI plays on every merge.</p>
-    <div class="byline"><time datetime="2026-10-12">12 October 2026</time> · 5 min read</div>
+    <p class="dek">An open-source Lineage II server went silent in 2015. Twenty-four days of work turned it into one Java 25 process on PostgreSQL 18, shipped as a signed image that CI plays on every merge.</p>
+    <div class="byline"><time datetime="2026-10-12">12 October 2026</time> · 6 min read</div>
   </div>
 </header>
 <div class="prose">
-<p>The last commit before mine landed on 15 July 2015. Its message was "README.md edited online with Bitbucket". Behind it lay nine years of history: 8,215 commits by 25 people, starting in November 2006. They built an open-source server for Lineage II, an MMORPG whose Gracia Final client shipped in 2009. The upstream repositories are archived on GitHub now; one of them describes itself as the project "as it was when it was abandoned".</p>
-<p>I picked it up on 26 September 2026. Version 3.0.0 shipped on 11 October. This series is about what happened between those dates and why: which decisions I made, what each one cost, and how each one is checked.</p>
+<p>The last commit before mine landed on 15 July 2015. Its message was "README.md edited online with Bitbucket". Behind it lay nearly nine years of history: 8,044 commits by 24 people, starting in November 2006. They built an open-source server for Lineage II, an MMORPG whose Gracia Final client shipped in 2009. The upstream repositories are archived on GitHub now; one of them describes itself as the project "as it was when it was abandoned".</p>
+<p>I picked it up on 18 September 2026. Version 3.0.0 shipped on 11 October, twenty-four days later. This series is about what happened between those dates and why: which decisions I made, what each one cost, and how each one is checked.</p>
 <h2>What I found</h2>
 <p>The code still compiled, mostly. It also carried every habit of a 2009 game server:</p>
 <ul>
@@ -64,24 +64,26 @@
 <li><strong>Prove it on the real thing.</strong> A test that runs against an in-memory fake proves less than one that runs against PostgreSQL 18 in a container. A server that starts proves less than one that a client logs into.</li>
 </ol>
 <h2>Before and after</h2>
-<div class="table"><table><thead><tr><th></th><th>2.x line (inherited)</th><th>3.x line</th></tr></thead>
+<div class="table"><table><thead><tr><th></th><th>Inherited (2015)</th><th>3.x line</th></tr></thead>
 <tbody>
+<tr><td>Java</td><td>8</td><td>25</td></tr>
 <tr><td>Processes</td><td>Login and world, joined by a socket protocol</td><td>One JVM; login and world meet through a typed Java contract</td></tr>
 <tr><td>Database</td><td>MySQL, 214 SQL files, installers</td><td>PostgreSQL 18, Flyway migrations at start, a schema and a role per module</td></tr>
 <tr><td>SQL correctness</td><td>Found at run time</td><td>Every statement in the compiled server prepared against the real schema in CI</td></tr>
 <tr><td>Collections</td><td>Javolution, Trove</td><td>JDK collections; a test refuses the old libraries and the old loop patterns</td></tr>
 <tr><td>Session keys</td><td>Game random generator</td><td><code>SecureRandom</code>; a test fails the build if the game generator comes back</td></tr>
 <tr><td>Passwords</td><td>Unsalted SHA-1, length-limited comparison</td><td>PBKDF2-HMAC-SHA256, 600,000 iterations, constant-time comparison, upgrade at next login</td></tr>
-<tr><td>Delivery</td><td>Separate distributions, Windows packaging</td><td>One <code>linux/amd64</code> image, Docker Compose, signed, with an SBOM and provenance</td></tr>
-<tr><td>Evidence</td><td>Unit tests</td><td>Every merge starts the image and plays it: 24 client sessions, a restart, a restore, an upgrade</td></tr>
+<tr><td>Delivery</td><td>Separate login and world distributions, <code>.bat</code> and <code>.sh</code> launchers, a database installer</td><td>One <code>linux/amd64</code> image, Docker Compose, signed, with an SBOM and provenance</td></tr>
+<tr><td>Evidence</td><td>29 test classes, no CI</td><td>Every merge starts the image and plays it: 24 client sessions, a restart, a restore, an upgrade</td></tr>
 </tbody></table></div>
 <h2>The order of the work</h2>
-<p>Big rewrites fail because they change everything at once and prove nothing until the end. I went the other way: each step left a server that started and could be checked.</p>
-<p><strong>First, the build.</strong> OpenJDK 25 only, JUnit 6, and a pipeline that ran on every pull request. Nothing else could be trusted until this was green.</p>
-<p><strong>Then a walking skeleton.</strong> A Linux image on a pinned base with a pinned JRE, a Compose stack that published ports 2106 and 7777, and a probe that sent the first packet of the login protocol. It did almost nothing, but it did it the same way every time.</p>
-<p><strong>Then the data, module by module.</strong> The login moved to PostgreSQL first: one schema, one Flyway migration, one role. The world followed with ten migrations, a <code>catalog</code> schema loaded from 57 CSV files with a SHA-256 revision, and a lock that keeps a second server off the same database.</p>
-<p><strong>Then one process.</strong> With both modules on the same database engine, the socket protocol between them had no reason to exist. A small <code>contract</code> module with two interfaces replaced it, and architecture rules made sure the modules could not reach around it.</p>
-<p><strong>Then the release.</strong> A workflow that promotes the image the pipeline already tested, after a human approves, with a signature on everything it publishes.</p>
+<p>Big rewrites fail because they change everything at once and prove nothing until the end. I went the other way: each step left a server that started and could be checked. The work came in two phases.</p>
+<p><strong>First, modernize in place.</strong> For two and a half weeks the server kept its shape: two processes on MySQL. A root build and CI on every push came first. Then a correctness program filed every defect as a broken invariant, one issue and one pull request each, and shipped as 1.4.0 on 25 September. The login moved to JDBC and both servers to Java 25 in 1.5 on 29 September. HikariCP, SLF4J, and a release with checksums, an attestation, and an SBOM followed in 2.0.0 on 30 September, and the test suite came back into CI in 2.5.0 on 5 October. The 2.x line was played on its real target, Windows with MySQL 8.4.</p>
+<p><strong>Then decide what 3.0 is.</strong> On 5 October the decisions for Platform 3.0 were recorded and the 2.x line was retired. The in-place line had done its job: the code was on a modern JDK, under tests, and released by a pipeline. What was left could not be fixed in place.</p>
+<p><strong>A walking skeleton.</strong> A Linux image on a pinned base with a pinned JRE, a Compose stack that published ports 2106 and 7777, and a probe that sent the first packet of the login protocol. It did almost nothing, but it did it the same way every time.</p>
+<p><strong>The data, module by module.</strong> The login moved to PostgreSQL first: one schema, one Flyway migration, one role. The world followed with ten migrations, a <code>catalog</code> schema loaded from 57 CSV files with a SHA-256 revision, and a lock that keeps a second server off the same database.</p>
+<p><strong>One process.</strong> With both modules on the same database engine, the socket protocol between them had no reason to exist. A small <code>contract</code> module with two interfaces replaced it, and architecture rules made sure the modules could not reach around it.</p>
+<p><strong>The release.</strong> A workflow that promotes the image the pipeline already tested, after a human approves, with a signature on everything it publishes. Version 3.0.0 shipped six days after the decisions were recorded.</p>
 <h2>What it cost</h2>
 <p>Every one of these decisions had a price, and the series names it each time. The biggest ones:</p>
 <ul>
