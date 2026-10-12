@@ -34,7 +34,7 @@ What runs in the compose stack and what it exposes. One process holds two module
 
 ```mermaid
 flowchart TB
-    subgraph host["Docker Desktop · Colima · Docker Engine"]
+    subgraph host["Linux amd64"]
         subgraph stack["compose project l2jfree"]
             subgraph serverc["server · one process · Arch Linux amd64 · Temurin 25"]
                 login["login module"]

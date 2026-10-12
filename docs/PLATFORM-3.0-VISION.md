@@ -50,11 +50,11 @@ separate from Game.
 
 | Layer | Decision |
 |---|---|
-| Operating system | A Linux image, `linux/amd64`, on an Arch Linux base. It runs on Docker Desktop (Windows), Colima (macOS), and Docker Engine (Linux). On Apple Silicon it runs through emulation. |
+| Operating system | A Linux image, `linux/amd64`, on an Arch Linux base. GitHub Actions builds it and starts it. |
 | JDK | Eclipse Temurin 25, the current long-term support release, as a pinned JRE archive. The next LTS is JDK 29, expected in September 2027. |
 | Database | PostgreSQL 18, current minor of that major line. On 30 September 2026 the minor is 18.6. Community support runs until 14 November 2030. |
 | Deployment | One image, one process, two client ports: 2106 for login and 7777 for the world. Installed only with `docker compose up -d --wait`. Modules `login` and `world`. The datapack is source that the image contains. |
-| Verification | GitHub Actions on Linux for every merge, and a manual check on Docker Desktop and Colima before the release. Developer workstations do not build, test, or run the server. |
+| Verification | GitHub Actions on Linux for every merge. Developer workstations do not build, test, or run the server. |
 
 PostgreSQL does not publish a separate long-term-support edition. The project
 supports each major version for five years. PostgreSQL 18 is the newest line
@@ -93,8 +93,8 @@ follows the newest JDK.
 The server stays a Java MMORPG server. Quarkus, Spring, and a reactive database
 stack are not added. Virtual threads plus JDBC cover the workload that used to
 justify a database event loop. Neither Kubernetes nor systemd is part of the
-platform. One compose file runs the image and PostgreSQL 18 on Docker Desktop,
-Colima, or Docker Engine.
+platform. One compose file runs the image and PostgreSQL 18. GitHub Actions
+starts that file.
 
 ## Modular monolith
 
@@ -244,7 +244,7 @@ IRC, Jython 2.7.5b1, or CI script work from that release.
 8. Replace Javolution and Trove with the JDK collections. Their sites are cold
    paths, so the platform does not need fastutil; it can come back where a
    flight recording under load shows a hot primitive path.
-9. Release Platform 3.0 as one image plus PostgreSQL 18, once
+9. Release Platform 3.0 as one image plus PostgreSQL 18
    ([ADR-0007](adr/0007-release-policy.md)). The catalog arrives inside the
    image. The image no longer contains Commons Logging, irclib, Javolution, Trove,
    GraalPy, or the previous network core.
@@ -253,9 +253,9 @@ IRC, Jython 2.7.5b1, or CI script work from that release.
 
 - PostgreSQL 19, until a later decision changes the major line.
 - The Microsoft Build of OpenJDK and Oracle JDK.
-- Windows and macOS as native hosts. They run the Linux image through Docker Desktop or Colima.
+- Windows and macOS as native hosts.
 - systemd units, Kubernetes manifests, and install scripts on the host.
-- A native arm64 image. The amd64 image runs through emulation on Apple Silicon.
+- A native arm64 image.
 - MySQL.
 - GraalPy, GraalVM, and any second Python interpreter. Jython 2.7.5b1 is replaced by the Jython 2.7 final release.
 - pg-java while it is a pre-release.

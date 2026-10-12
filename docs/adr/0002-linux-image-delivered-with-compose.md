@@ -5,7 +5,7 @@
 
 ## Context
 
-Platform 3.0 replaces the Windows 10 host with a Linux image. The maintainer requires one way to run it on any operating system, publishing the two client ports, 2106 for login and 7777 for the world. The target environments are Docker Desktop on Windows, Colima on macOS, and Docker Engine on Linux. The maintainer prefers Arch Linux as the image base where possible. This decision was made by the maintainer without a comparison of other bases.
+Platform 3.0 replaces the Windows 10 host with a Linux image. The image publishes two ports, 2106 for login and 7777 for the world. The maintainer prefers Arch Linux as the image base where possible. This decision was made by the maintainer without a comparison of other bases. GitHub Actions builds the image and starts it.
 
 Facts checked on 2026-10-06:
 
@@ -13,16 +13,14 @@ Facts checked on 2026-10-06:
 - Arch's `jdk-openjdk` package is JDK 27, so installing the default package would break the JDK 25 decision. Arch also carries `jre25-openjdk-headless`.
 - Eclipse Temurin 25.0.4.1 JRE archives with SHA-256 checksums exist for x64 and aarch64.
 - Docker's default seccomp profile is an allowlist and does not include `io_uring`.
-- Colima does not bundle Docker Compose, and on Apple Silicon it creates an aarch64 virtual machine by default.
 
 ## Decision
 
-1. The only supported installation is `docker compose up -d --wait` from a release bundle. The bundle starts the server image and the official `postgres` image of the 18 line, pinned by digest. There is no systemd unit, no Kubernetes manifest, and no install script on the host.
+1. A release bundle is started with `docker compose up -d --wait`. The bundle starts the server image and the official `postgres` image of the 18 line, pinned by digest. There is no systemd unit, no Kubernetes manifest, and no install script on the host. GitHub Actions is where that start is run.
 2. The server image is `linux/amd64` on an Arch Linux base pinned by dated tag and digest. Packages added with `pacman` come from an Arch Linux Archive snapshot of the same date.
 3. The runtime is a Temurin 25 JRE archive pinned by SHA-256. It is not the distribution's JDK package.
 4. The server publishes exactly two ports, 2106 and 7777. PostgreSQL is not published. State lives in named volumes. The process runs as a non-root user with a read-only root file system and no added capabilities.
 5. The default network transport is epoll. `io_uring` is an opt-in that needs a custom seccomp profile.
-6. Support is stated in a matrix: Linux amd64 is verified in CI on every merge to `main`. Docker Desktop on Windows and Colima on macOS are verified by hand before the release. Apple Silicon runs the image through emulation (Colima with `--vm-type vz --vz-rosetta`) and is not performance-tested.
 
 ## Alternatives considered
 
@@ -34,9 +32,6 @@ Facts checked on 2026-10-06:
 ## Consequences
 
 - A rolling base needs pinning and a refresh routine. Digest and snapshot pins make builds repeatable.
-- Server-side features keyed on client IP (bans, connection limits, flood protection) see the Docker gateway address on Docker Desktop and Colima. An optional host-network profile exists for Linux only.
-- Players outside the host computer need the external address in `L2JFREE_EXTERNAL_HOSTNAME`. The default is `127.0.0.1`.
-- Windows and macOS cannot be verified in CI, so a person must run the manual check once per release.
 - The `io_uring` benefit named in the vision is not available by default.
 
 ## Revisit when

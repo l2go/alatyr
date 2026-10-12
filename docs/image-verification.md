@@ -37,7 +37,7 @@ docker buildx imagetools inspect "$image" --format '{{ json .SBOM.SPDX }}' | jq 
 
 ## Known vulnerabilities
 
-The [vulnerability policy](../SECURITY.md#vulnerability-policy) says what blocks a release. To scan an image yourself:
+The [vulnerability scan](../SECURITY.md#vulnerability-scan) is a check in the pipeline. To scan an image yourself:
 
 ```sh
 trivy image --severity CRITICAL,HIGH --ignore-unfixed "$image"
