@@ -180,8 +180,8 @@ public class L2Npc extends L2Creature
 	/** True if a Dwarf has used Spoil on this L2Npc */
 	private boolean _isSpoil = false;
 	
-	/** The castle index in the array of L2Castle this L2Npc belongs to */
-	private int _castleIndex = -2;
+	/** Castle this NPC belongs to. Remembered after the first lookup; none when this world has no castle. */
+	private final NpcCastle _castle = new NpcCastle();
 	
 	/** The fortress index in the array of L2Fort this L2Npc belongs to */
 	private int _fortIndex = -2;
@@ -192,7 +192,6 @@ public class L2Npc extends L2Creature
 	public boolean _isEventMobTvTi = false;
 	public boolean _isEventMobSH = false;
 	
-	private boolean _isInTown = false;
 	private int _isSpoiledBy = 0;
 	
 	private long _lastRandomAnimation;
@@ -793,7 +792,9 @@ public class L2Npc extends L2Creature
 			html1.append("<table border=\"0\" width=\"100%\">");
 			html1.append("<tr><td>Object ID</td><td>" + getObjectId() + "</td><td>NPC ID</td><td>"
 					+ getTemplate().getNpcId() + "</td></tr>");
-			html1.append("<tr><td>Castle</td><td>" + getCastle().getCastleId() + "</td><td>AI </td><td>"
+			Castle residence = getCastle();
+			html1.append("<tr><td>Castle</td><td>" + (residence == null ? "none" : residence.getCastleId())
+					+ "</td><td>AI </td><td>"
 					+ (hasAI() ? getAI().getIntention() : "NULL") + "</td></tr>");
 			html1.append("<tr><td>Level</td><td>" + getLevel() + "</td><td>Aggro</td><td>"
 					+ ((this instanceof L2Attackable) ? getAggroRange() : 0) + "</td></tr>");
@@ -942,25 +943,21 @@ public class L2Npc extends L2Creature
 		player.sendPacket(ActionFailed.STATIC_PACKET);
 	}
 	
-	/** Return the L2Castle this L2Npc belongs to. */
+	/** Return the castle this NPC belongs to, or null when this world has no castle for it. */
 	public final Castle getCastle()
 	{
-		// Get castle this NPC belongs to (excluding L2Attackable)
-		if (_castleIndex < 0)
+		if (!_castle.resolved())
 		{
 			Town town = TownManager.getInstance().getTown(this);
-			// Npc was spawned in town
-			_isInTown = (town != null);
-			
-			if (!_isInTown)
-				_castleIndex = CastleManager.getInstance().getClosestCastle(this).getCastleId();
-			else if (town != null && town.getCastle() != null)
-				_castleIndex = town.getCastle().getCastleId();
-			else
-				_castleIndex = CastleManager.getInstance().getClosestCastle(this).getCastleId();
+			boolean inTown = (town != null);
+			Castle townCastle = inTown ? town.getCastle() : null;
+			Castle closest = null;
+			if (!inTown || townCastle == null)
+				closest = CastleManager.getInstance().getClosestCastle(this);
+			_castle.resolve(inTown, townCastle, closest);
 		}
 		
-		return CastleManager.getInstance().getCastleById(_castleIndex);
+		return CastleManager.getInstance().getCastleById(_castle.index());
 	}
 	
 	/** Return the L2Fort this L2Npc belongs to. */
@@ -988,9 +985,9 @@ public class L2Npc extends L2Creature
 	
 	public final boolean getIsInTown()
 	{
-		if (_castleIndex < 0)
+		if (!_castle.resolved())
 			getCastle();
-		return _isInTown;
+		return _castle.inTown();
 	}
 	
 	/**
@@ -1208,34 +1205,42 @@ public class L2Npc extends L2Creature
 			}
 			else if (command.equalsIgnoreCase("TerritoryStatus"))
 			{
-				NpcHtmlMessage html = new NpcHtmlMessage(getObjectId());
+				Castle castle = getCastle();
+				if (castle == null)
 				{
-					if (getCastle().getOwnerId() > 0)
-					{
-						html.setFile("data/html/territorystatus.htm");
-						L2Clan clan = ClanTable.getInstance().getClan(getCastle().getOwnerId());
-						html.replace("%clanname%", clan.getName());
-						html.replace("%clanleadername%", clan.getLeaderName());
-					}
-					else
-					{
-						html.setFile("data/html/territorynoclan.htm");
-					}
+					player.sendPacket(ActionFailed.STATIC_PACKET);
 				}
-				html.replace("%castlename%", getCastle().getName());
-				html.replace("%taxpercent%", "" + getCastle().getTaxPercent());
-				html.replace("%objectId%", String.valueOf(getObjectId()));
+				else
 				{
-					if (getCastle().getCastleId() > 6)
+					NpcHtmlMessage html = new NpcHtmlMessage(getObjectId());
 					{
-						html.replace("%territory%", "The Kingdom of Elmore");
+						if (castle.getOwnerId() > 0)
+						{
+							html.setFile("data/html/territorystatus.htm");
+							L2Clan clan = ClanTable.getInstance().getClan(castle.getOwnerId());
+							html.replace("%clanname%", clan.getName());
+							html.replace("%clanleadername%", clan.getLeaderName());
+						}
+						else
+						{
+							html.setFile("data/html/territorynoclan.htm");
+						}
 					}
-					else
+					html.replace("%castlename%", castle.getName());
+					html.replace("%taxpercent%", "" + castle.getTaxPercent());
+					html.replace("%objectId%", String.valueOf(getObjectId()));
 					{
-						html.replace("%territory%", "The Kingdom of Aden");
+						if (castle.getCastleId() > 6)
+						{
+							html.replace("%territory%", "The Kingdom of Elmore");
+						}
+						else
+						{
+							html.replace("%territory%", "The Kingdom of Aden");
+						}
 					}
+					player.sendPacket(html);
 				}
-				player.sendPacket(html);
 			}
 			else if (command.startsWith("Quest"))
 			{
@@ -1340,12 +1345,14 @@ public class L2Npc extends L2Creature
 			else if (command.startsWith("multisell"))
 			{
 				int listId = Integer.parseInt(command.substring(9).trim());
-				MultisellTable.getInstance().separateAndSend(listId, player, getNpcId(), false, getCastle().getTaxRate());
+				MultisellTable.getInstance().separateAndSend(listId, player, getNpcId(), false,
+						NpcCastle.multisellRate(getCastle()));
 			}
 			else if (command.startsWith("exc_multisell"))
 			{
 				int listId = Integer.parseInt(command.substring(13).trim());
-				MultisellTable.getInstance().separateAndSend(listId, player, getNpcId(), true, getCastle().getTaxRate());
+				MultisellTable.getInstance().separateAndSend(listId, player, getNpcId(), true,
+						NpcCastle.multisellRate(getCastle()));
 			}
 			else if (command.startsWith("Augment"))
 			{

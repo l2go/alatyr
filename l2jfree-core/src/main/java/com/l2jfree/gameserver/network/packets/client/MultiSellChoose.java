@@ -26,6 +26,7 @@ import com.l2jfree.gameserver.datatables.MultisellTable.MultiSellIngredient;
 import com.l2jfree.gameserver.datatables.MultisellTable.MultiSellListContainer;
 import com.l2jfree.gameserver.gameobjects.L2Npc;
 import com.l2jfree.gameserver.gameobjects.L2Player;
+import com.l2jfree.gameserver.gameobjects.NpcCastle;
 import com.l2jfree.gameserver.gameobjects.itemcontainer.PlayerInventory;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
 import com.l2jfree.gameserver.model.items.templates.L2Armor;
@@ -397,7 +398,7 @@ public final class MultiSellChoose extends L2ClientPacket
 				if (applyTaxes)
 				{
 					if (merchant != null && merchant.getIsInTown())
-						taxRate = merchant.getCastle().getTaxRate();
+						taxRate = NpcCastle.multisellRate(merchant.getCastle());
 				}
 				
 				_transactionTax = Math.round(newIngredient.getItemCount() * taxRate);
