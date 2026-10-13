@@ -114,19 +114,36 @@ class WorldFilesTest
 		verify(wrongLog).warn(contains("Cannot read zones: " + notDirectory.getPath()));
 		verify(wrongLog, never()).info(contains("World has no"));
 		
-		File blocked = new File(root, "blocked");
-		assertThat(blocked.mkdir()).isTrue();
-		assertThat(blocked.setExecutable(false, false)).isTrue();
-		try
-		{
-			WorldFiles.Listed unreadable = WorldFiles.list(blocked, (FilenameFilter)null);
-			assertThat(unreadable.kind()).isEqualTo(WorldFiles.Kind.UNREADABLE);
-			assertThat(unreadable.files()).isEmpty();
-			assertThat(unreadable.detail()).contains(blocked.getPath()).contains("could not be listed");
-		}
-		finally
-		{
-			blocked.setExecutable(true, false);
-		}
+		File blocked = new File(root, "blocked") {
+			private static final long serialVersionUID = 1L;
+			
+			@Override
+			public boolean exists()
+			{
+				return true;
+			}
+			
+			@Override
+			public boolean isDirectory()
+			{
+				return true;
+			}
+			
+			@Override
+			public File[] listFiles()
+			{
+				return null;
+			}
+			
+			@Override
+			public File[] listFiles(FilenameFilter filter)
+			{
+				return null;
+			}
+		};
+		WorldFiles.Listed unreadable = WorldFiles.list(blocked, (FilenameFilter)null);
+		assertThat(unreadable.kind()).isEqualTo(WorldFiles.Kind.UNREADABLE);
+		assertThat(unreadable.files()).isEmpty();
+		assertThat(unreadable.detail()).contains(blocked.getPath()).contains("could not be listed");
 	}
 }
