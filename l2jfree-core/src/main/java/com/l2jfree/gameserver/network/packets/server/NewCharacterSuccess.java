@@ -26,7 +26,7 @@ public class NewCharacterSuccess extends StaticPacket
 	private static final int[] DELIMITER = { 0x46, 0x0A };
 	public static final NewCharacterSuccess PACKET = new NewCharacterSuccess();
 	
-	/** Fills {@link #PACKET} from the character templates. A class with no template is left out. */
+	/** Fills {@link #PACKET} from the character templates. A missing template, and one already stored, are left out. */
 	public static void load()
 	{
 		CharTemplateTable table = CharTemplateTable.getInstance();
@@ -54,11 +54,11 @@ public class NewCharacterSuccess extends StaticPacket
 	
 	public void addChar(L2PlayerTemplate template)
 	{
-		if (template != null)
+		if (template != null && !_chars.contains(template))
 			_chars.add(template);
 	}
 	
-	/** Templates that {@link #writeImpl()} writes. Null templates are not stored. */
+	/** Distinct templates that {@link #writeImpl()} writes. Null templates are not stored. */
 	int templateCount()
 	{
 		return _chars.size();

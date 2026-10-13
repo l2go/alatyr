@@ -32,7 +32,7 @@ import com.l2jfree.network.SendablePacket;
 class NewCharacterSuccessTest
 {
 	@Test
-	@DisplayName("the character-creation count equals the one template that is written")
+	@DisplayName("the character-creation count equals the one distinct template that is written")
 	void oneTemplateIsCountedOnce() throws Exception
 	{
 		L2PlayerTemplate template = mock(L2PlayerTemplate.class);
@@ -40,6 +40,7 @@ class NewCharacterSuccessTest
 		when(template.getClassId()).thenReturn(ClassId.HumanFighter);
 		
 		NewCharacterSuccess packet = new NewCharacterSuccess();
+		packet.addChar(template);
 		packet.addChar(template);
 		packet.addChar(null);
 		assertThat(packet.templateCount()).isEqualTo(1);
