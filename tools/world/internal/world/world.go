@@ -66,7 +66,7 @@ func Render(root, locale string) []Diagnostic {
 		return diags
 	}
 	if err := writeTree(root, files); err != nil {
-		return []Diagnostic{{Path: "catalog", Line: 1, Message: "cannot write the built world"}}
+		return []Diagnostic{{Path: "catalog", Line: 1, Message: "cannot write the built world: " + err.Error()}}
 	}
 	return nil
 }

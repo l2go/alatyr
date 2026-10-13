@@ -168,6 +168,18 @@ func TestCheckDoubledApostrophe(t *testing.T) {
 	expect(t, "icu-apostrophe", "i18n/en.tsv:7: doubled apostrophe")
 }
 
+func TestCheckApostropheBeforeBrace(t *testing.T) {
+	expect(t, "icu-apostrophe-brace", "i18n/en.tsv:7: apostrophe before '{'")
+}
+
+func TestCheckApostropheBeforeClosingBrace(t *testing.T) {
+	expect(t, "icu-apostrophe-close", "i18n/en.tsv:7: apostrophe before '}'")
+}
+
+func TestCheckApostropheBeforeHash(t *testing.T) {
+	expect(t, "icu-apostrophe-hash", "i18n/en.tsv:7: apostrophe before '#'")
+}
+
 func TestCheckLiteralBrace(t *testing.T) {
 	expect(t, "icu-literal-brace", "i18n/en.tsv:7: literal '{'")
 }

@@ -2,9 +2,11 @@
 // Copyright 2026 l2go
 
 // The formatter accepts a strict subset of ICU MessageFormat.
-// An apostrophe is always a literal character. A doubled apostrophe, a literal
-// brace, and any plural branch other than "one" and "other" are rejected so the
-// subset cannot disagree with ICU4J.
+// An apostrophe is a literal character. A doubled apostrophe is rejected.
+// An apostrophe immediately before '{' or '}', and before '#' inside a plural
+// branch, is rejected: ICU4J opens a quoted span there. A literal brace and any
+// plural branch other than "one" and "other" are rejected so the subset cannot
+// disagree with ICU4J.
 
 package world
 
@@ -79,6 +81,21 @@ func (p *parser) parseSequence(inBranch bool) []part {
 			if p.i+1 < len(p.s) && p.s[p.i+1] == '\'' {
 				p.err = "doubled apostrophe"
 				return nil
+			}
+			if p.i+1 < len(p.s) {
+				switch p.s[p.i+1] {
+				case '{':
+					p.err = "apostrophe before '{'"
+					return nil
+				case '}':
+					p.err = "apostrophe before '}'"
+					return nil
+				case '#':
+					if inBranch {
+						p.err = "apostrophe before '#'"
+						return nil
+					}
+				}
 			}
 			parts = append(parts, part{kind: partLit, lit: "'"})
 			p.i++

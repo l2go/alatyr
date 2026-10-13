@@ -88,6 +88,27 @@ func TestDoubledApostropheRejected(t *testing.T) {
 	}
 }
 
+func TestApostropheBeforeBraceRejected(t *testing.T) {
+	_, errMsg := parseTemplate("Say '{name}' aloud")
+	if errMsg != "apostrophe before '{'" {
+		t.Fatalf("%s", errMsg)
+	}
+}
+
+func TestApostropheBeforeClosingBraceRejected(t *testing.T) {
+	_, errMsg := parseTemplate("Close '}")
+	if errMsg != "apostrophe before '}'" {
+		t.Fatalf("%s", errMsg)
+	}
+}
+
+func TestApostropheBeforeHashInBranchRejected(t *testing.T) {
+	_, errMsg := parseTemplate("{count, plural, one {'# coin} other {# coins}}")
+	if errMsg != "apostrophe before '#'" {
+		t.Fatalf("%s", errMsg)
+	}
+}
+
 func TestLiteralBraceRejected(t *testing.T) {
 	_, errMsg := parseTemplate("Open { brace")
 	if errMsg != "literal '{'" {
@@ -130,6 +151,28 @@ func TestSingleApostropheIsLiteral(t *testing.T) {
 	}
 	got, errMsg := msg.apply(nil)
 	if errMsg != "" || got != "It's fine" {
+		t.Fatalf("%s %s", got, errMsg)
+	}
+}
+
+func TestTrailingApostropheIsLiteral(t *testing.T) {
+	msg, errMsg := parseTemplate("neighbours'")
+	if errMsg != "" {
+		t.Fatal(errMsg)
+	}
+	got, errMsg := msg.apply(nil)
+	if errMsg != "" || got != "neighbours'" {
+		t.Fatalf("%s %s", got, errMsg)
+	}
+}
+
+func TestApostropheBeforeHashOutsideBranchIsLiteral(t *testing.T) {
+	msg, errMsg := parseTemplate("See '#")
+	if errMsg != "" {
+		t.Fatal(errMsg)
+	}
+	got, errMsg := msg.apply(nil)
+	if errMsg != "" || got != "See '#" {
 		t.Fatalf("%s %s", got, errMsg)
 	}
 }
