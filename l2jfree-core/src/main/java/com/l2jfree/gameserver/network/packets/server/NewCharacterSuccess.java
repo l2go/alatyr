@@ -25,32 +25,43 @@ public class NewCharacterSuccess extends StaticPacket
 	private static final String _S__NEWCHARACTERSUCCESS = "[S] 0D NewCharacterSuccess c[d->dddddddddddddddddddd<-]";
 	private static final int[] DELIMITER = { 0x46, 0x0A };
 	public static final NewCharacterSuccess PACKET = new NewCharacterSuccess();
-	static
+	
+	/** Fills {@link #PACKET} from the character templates. A class with no template is left out. */
+	public static void load()
 	{
-		PACKET.addChar(CharTemplateTable.getInstance().getTemplate(0));
-		PACKET.addChar(CharTemplateTable.getInstance().getTemplate(ClassId.HumanFighter));
-		PACKET.addChar(CharTemplateTable.getInstance().getTemplate(ClassId.HumanMystic));
-		PACKET.addChar(CharTemplateTable.getInstance().getTemplate(ClassId.ElvenFighter));
-		PACKET.addChar(CharTemplateTable.getInstance().getTemplate(ClassId.ElvenMystic));
-		PACKET.addChar(CharTemplateTable.getInstance().getTemplate(ClassId.DarkFighter));
-		PACKET.addChar(CharTemplateTable.getInstance().getTemplate(ClassId.DarkMystic));
-		PACKET.addChar(CharTemplateTable.getInstance().getTemplate(ClassId.OrcFighter));
-		PACKET.addChar(CharTemplateTable.getInstance().getTemplate(ClassId.OrcMystic));
-		PACKET.addChar(CharTemplateTable.getInstance().getTemplate(ClassId.DwarvenFighter));
-		PACKET.addChar(CharTemplateTable.getInstance().getTemplate(ClassId.MaleSoldier));
-		PACKET.addChar(CharTemplateTable.getInstance().getTemplate(ClassId.FemaleSoldier));
+		CharTemplateTable table = CharTemplateTable.getInstance();
+		PACKET._chars.clear();
+		PACKET.addChar(table.getTemplate(0));
+		PACKET.addChar(table.getTemplate(ClassId.HumanFighter));
+		PACKET.addChar(table.getTemplate(ClassId.HumanMystic));
+		PACKET.addChar(table.getTemplate(ClassId.ElvenFighter));
+		PACKET.addChar(table.getTemplate(ClassId.ElvenMystic));
+		PACKET.addChar(table.getTemplate(ClassId.DarkFighter));
+		PACKET.addChar(table.getTemplate(ClassId.DarkMystic));
+		PACKET.addChar(table.getTemplate(ClassId.OrcFighter));
+		PACKET.addChar(table.getTemplate(ClassId.OrcMystic));
+		PACKET.addChar(table.getTemplate(ClassId.DwarvenFighter));
+		PACKET.addChar(table.getTemplate(ClassId.MaleSoldier));
+		PACKET.addChar(table.getTemplate(ClassId.FemaleSoldier));
 		PACKET.finish();
 	}
 	
 	private final ArrayList<L2PlayerTemplate> _chars = new ArrayList<L2PlayerTemplate>();
 	
-	private NewCharacterSuccess()
+	NewCharacterSuccess()
 	{
 	}
 	
 	public void addChar(L2PlayerTemplate template)
 	{
-		_chars.add(template);
+		if (template != null)
+			_chars.add(template);
+	}
+	
+	/** Templates that {@link #writeImpl()} writes. Null templates are not stored. */
+	int templateCount()
+	{
+		return _chars.size();
 	}
 	
 	public void finish()
@@ -62,7 +73,7 @@ public class NewCharacterSuccess extends StaticPacket
 	protected final void writeImpl()
 	{
 		writeC(0x0D);
-		writeD(_chars.size());
+		writeD(templateCount());
 		
 		for (int i = 0; i < _chars.size(); i++)
 		{

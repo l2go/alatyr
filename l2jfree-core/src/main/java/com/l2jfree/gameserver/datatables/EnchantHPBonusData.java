@@ -56,6 +56,11 @@ public final class EnchantHPBonusData
 		factory.setValidating(true);
 		factory.setIgnoringComments(true);
 		File file = new File(Config.DATAPACK_ROOT, "data/enchantHPBonus.xml");
+		if (!file.isFile())
+		{
+			_log.info("World has no enchant HP bonus");
+			return;
+		}
 		Document doc = null;
 		
 		try

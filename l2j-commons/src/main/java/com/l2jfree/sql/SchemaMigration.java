@@ -53,6 +53,9 @@ public final class SchemaMigration
 				.failOnMissingLocations(true)
 				.validateMigrationNaming(true)
 				.cleanDisabled(true)
+				// CREATE EXTENSION IF NOT EXISTS still emits a notice when the extension is already there.
+				// That notice is not a failed migration.
+				.initSql("SET client_min_messages TO warning")
 				.load();
 		
 		MigrateResult result = flyway.migrate();

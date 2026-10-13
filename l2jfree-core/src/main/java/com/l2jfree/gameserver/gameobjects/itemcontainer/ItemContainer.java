@@ -29,6 +29,7 @@ import com.l2jfree.gameserver.gameobjects.instance.L2PetInstance;
 import com.l2jfree.gameserver.instancemanager.GameTimeManager;
 import com.l2jfree.gameserver.model.GMAudit;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
+import com.l2jfree.gameserver.model.items.UnknownItems;
 import com.l2jfree.gameserver.model.items.L2ItemInstance.ItemLocation;
 import com.l2jfree.gameserver.model.items.templates.L2Item;
 import com.l2jfree.gameserver.model.world.L2World;
@@ -627,9 +628,15 @@ public abstract class ItemContainer
 		try
 		{
 			L2ItemInstance item;
+			UnknownItems unknown = new UnknownItems();
 			for (ItemRepository.ItemRow row : ItemRepository.getInstance().loadItems(null, getStoredOwnerKey(),
 					getBaseLocation().name(), getBaseLocation().name()))
 			{
+				if (ItemTable.getInstance().getTemplate(row.itemTemplateId()) == null)
+				{
+					unknown.miss();
+					continue;
+				}
 				item = L2ItemInstance.restoreFromDb(getOwnerId(), row);
 				if (item == null)
 					continue;
@@ -645,6 +652,8 @@ public abstract class ItemContainer
 			}
 			
 			refreshWeight();
+			if (unknown.warning() != null)
+				_log.warn(unknown.warning());
 		}
 		catch (Exception e)
 		{

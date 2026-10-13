@@ -17,6 +17,7 @@ package com.l2jfree.gameserver;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Calendar;
 
@@ -138,6 +139,9 @@ import com.l2jfree.gameserver.model.sevensigns.SevenSigns;
 import com.l2jfree.gameserver.model.sevensigns.SevenSignsFestival;
 import com.l2jfree.gameserver.model.world.L2World;
 import com.l2jfree.gameserver.network.L2ClientSelectorThread;
+import com.l2jfree.gameserver.network.packets.server.NewCharacterSuccess;
+import com.l2jfree.gameserver.persistence.WorldConfigurationException;
+import com.l2jfree.gameserver.persistence.WorldPassport;
 import com.l2jfree.gameserver.script.faenor.FaenorScriptEngine;
 import com.l2jfree.gameserver.scripting.CompiledScriptCache;
 import com.l2jfree.gameserver.scripting.L2ScriptEngineManager;
@@ -177,11 +181,17 @@ public final class GameServer extends L2AutoInitialization
 		
 		Config.load();
 		
+		Path datapackRoot = Config.DATAPACK_ROOT.toPath();
+		Path catalogDirectory = Paths.get(Config.CATALOG_DIRECTORY);
+		requireWorldDirectory("DatapackRoot", datapackRoot);
+		requireWorldDirectory("CatalogDirectory", catalogDirectory);
+		
 		Files.createDirectories(Paths.get("cache"));
 		
 		Util.printSection("Database");
 		// takes the world lock first: it keeps a second server off the same world database for as long as this one runs
-		L2DatabaseFactory.getInstance().prepareSchemas(Paths.get(Config.CATALOG_DIRECTORY));
+		L2DatabaseFactory.getInstance().prepareSchemas(catalogDirectory);
+		WorldPassport.log(datapackRoot, catalogDirectory);
 		Util.printSection("World");
 		L2World.getInstance();
 		if (Config.IS_TELNET_ENABLED)
@@ -252,6 +262,7 @@ public final class GameServer extends L2AutoInitialization
 		Util.printSection("Characters");
 		CharNameTable.getInstance();
 		CharTemplateTable.getInstance();
+		NewCharacterSuccess.load();
 		LevelUpData.getInstance();
 		HennaTable.getInstance();
 		HennaTreeTable.getInstance();
@@ -326,14 +337,19 @@ public final class GameServer extends L2AutoInitialization
 		TransformationManager.getInstance();
 		
 		Util.printSection("Events/ScriptEngine");
-		try
+		File scripts = new File(Config.DATAPACK_ROOT, "data/scripts.cfg");
+		if (!scripts.isFile())
+			_log.info("World has no scripts");
+		else
 		{
-			File scripts = new File(Config.DATAPACK_ROOT.getAbsolutePath(), "data/scripts.cfg");
-			L2ScriptEngineManager.getInstance().executeScriptList(scripts);
-		}
-		catch (IOException ioe)
-		{
-			_log.error("Failed loading scripts.cfg, no script going to be loaded");
+			try
+			{
+				L2ScriptEngineManager.getInstance().executeScriptList(scripts);
+			}
+			catch (IOException ioe)
+			{
+				_log.error("Failed loading scripts.cfg, no script going to be loaded");
+			}
 		}
 		try
 		{
@@ -488,5 +504,11 @@ public final class GameServer extends L2AutoInitialization
 	public static Calendar getStartedTime()
 	{
 		return _serverStarted;
+	}
+	
+	private static void requireWorldDirectory(String key, Path path) throws WorldConfigurationException
+	{
+		if (!Files.isDirectory(path))
+			throw new WorldConfigurationException(key, path.toString());
 	}
 }

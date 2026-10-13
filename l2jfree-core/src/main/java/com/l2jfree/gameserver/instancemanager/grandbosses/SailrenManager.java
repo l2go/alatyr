@@ -147,7 +147,7 @@ public class SailrenManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			_log.warn(e.getMessage(), e);
+			BossInit.failed(_log, e);
 		}
 		
 		// Setting spawn data of teleporte cube.
@@ -172,7 +172,7 @@ public class SailrenManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			_log.warn(e.getMessage(), e);
+			BossInit.failed(_log, e);
 		}
 		
 		_log.info("SailrenManager : State of Sailren is " + _state.getState() + ".");

@@ -286,7 +286,7 @@ public class AugmentationData
 			File file = new File(Config.DATAPACK_ROOT + "/data/stats/augmentation/augmentation_skillmap.xml");
 			if (!file.exists())
 			{
-				_log.warn("The augmentation skillmap file is missing.");
+				_log.info("World has no augmentation data");
 				return;
 			}
 			

@@ -75,7 +75,14 @@ public final class MapRegionManager
 	
 	private void load()
 	{
-		for (File xml : Util.getDatapackFiles("mapregion", ".xml"))
+		File[] files = Util.getDatapackFiles("mapregion", ".xml");
+		if (files.length == 0)
+		{
+			_log.info("World has no map regions");
+			return;
+		}
+		
+		for (File xml : files)
 		{
 			Document doc = null;
 			

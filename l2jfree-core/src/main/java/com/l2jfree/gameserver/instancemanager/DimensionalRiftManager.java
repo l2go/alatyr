@@ -98,6 +98,13 @@ public class DimensionalRiftManager
 	
 	public void load()
 	{
+		File riftFile = new File(Config.DATAPACK_ROOT, "data/dimensionalRift.xml");
+		if (!riftFile.isFile())
+		{
+			_log.info("World has no dimensional rifts");
+			return;
+		}
+		
 		int countGood = 0, countBad = 0;
 		try
 		{

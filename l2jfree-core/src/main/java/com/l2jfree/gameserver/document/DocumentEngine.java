@@ -51,16 +51,23 @@ public final class DocumentEngine
 		}
 	};
 	
-	private static File[] listFiles(String dirname)
+	private static File[] listFiles(String dirname, String part)
 	{
-		return new File(Config.DATAPACK_ROOT, dirname).listFiles(XML_FILTER);
+		File dir = new File(Config.DATAPACK_ROOT, dirname);
+		File[] files = dir.isDirectory() ? dir.listFiles(XML_FILTER) : null;
+		if (files == null || files.length == 0)
+		{
+			_log.info("World has no " + part);
+			return new File[0];
+		}
+		return files;
 	}
 	
 	public static List<L2Skill> loadSkills()
 	{
 		final List<L2Skill> list = new ArrayList<L2Skill>();
 		
-		for (File file : listFiles("data/stats/skills"))
+		for (File file : listFiles("data/stats/skills", "skills"))
 		{
 			DocumentSkill doc = new DocumentSkill(file);
 			doc.parse();
@@ -72,7 +79,7 @@ public final class DocumentEngine
 	
 	public static List<L2Item> loadArmors(Map<Integer, Item> armorData)
 	{
-		final List<L2Item> list = loadData(armorData, listFiles("data/stats/armor"));
+		final List<L2Item> list = loadData(armorData, listFiles("data/stats/armor", "armor"));
 		
 		Set<Integer> xmlItem = new HashSet<Integer>();
 		
@@ -88,7 +95,7 @@ public final class DocumentEngine
 	
 	public static List<L2Item> loadWeapons(Map<Integer, Item> weaponData)
 	{
-		final List<L2Item> list = loadData(weaponData, listFiles("data/stats/weapon"));
+		final List<L2Item> list = loadData(weaponData, listFiles("data/stats/weapon", "weapons"));
 		
 		Set<Integer> xmlItem = new HashSet<Integer>();
 		
@@ -104,7 +111,7 @@ public final class DocumentEngine
 	
 	public static List<L2Item> loadItems(Map<Integer, Item> itemData)
 	{
-		final List<L2Item> list = loadData(itemData, listFiles("data/stats/etcitem"));
+		final List<L2Item> list = loadData(itemData, listFiles("data/stats/etcitem", "etc items"));
 		
 		Set<Integer> xmlItem = new HashSet<Integer>();
 		

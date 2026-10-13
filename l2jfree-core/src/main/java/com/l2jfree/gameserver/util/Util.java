@@ -419,12 +419,11 @@ public final class Util
 	public static File[] getDatapackFiles(String dirname, String extention)
 	{
 		File dir = new File(Config.DATAPACK_ROOT, "data/" + dirname);
-		if (!dir.exists())
-			return null;
+		if (!dir.isDirectory())
+			return new File[0];
 		
-		CustomFileNameFilter filter = new CustomFileNameFilter(extention);
-		
-		return dir.listFiles(filter);
+		File[] files = dir.listFiles(new CustomFileNameFilter(extention));
+		return files == null ? new File[0] : files;
 	}
 	
 	public static boolean isAlphaNumeric(String text)

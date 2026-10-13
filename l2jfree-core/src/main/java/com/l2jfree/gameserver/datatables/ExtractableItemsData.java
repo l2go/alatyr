@@ -55,7 +55,7 @@ public class ExtractableItemsData
 		}
 		catch (Exception e)
 		{
-			_log.warn("Extractable items data: Can not find '" + Config.DATAPACK_ROOT + "data/extractable_items.csv'");
+			_log.info("World has no extractable items");
 			return;
 		}
 		

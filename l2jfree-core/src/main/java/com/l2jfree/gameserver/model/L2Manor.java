@@ -350,7 +350,7 @@ public class L2Manor
 		}
 		catch (FileNotFoundException e)
 		{
-			_log.info("seeds.csv is missing in data folder", e);
+			_log.info("World has no seeds");
 		}
 		catch (Exception e)
 		{

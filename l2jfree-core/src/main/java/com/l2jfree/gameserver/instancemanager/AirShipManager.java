@@ -71,7 +71,7 @@ public class AirShipManager
 		}
 		catch (FileNotFoundException e)
 		{
-			_log.warn("airship.csv is missing in data folder");
+			_log.info("World has no airships");
 		}
 		catch (Exception e)
 		{

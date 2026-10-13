@@ -220,7 +220,7 @@ public class VanHalterManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			_log.warn("VanHalterManager : " + e.getMessage(), e);
+			BossInit.failed(_log, e);
 		}
 		
 		// Set time up.
@@ -909,6 +909,8 @@ public class VanHalterManager extends BossLair
 	{
 		for (L2DoorInstance door : _doorOfAltar)
 		{
+			if (door == null)
+				continue;
 			try
 			{
 				door.openMe();
@@ -999,6 +1001,8 @@ public class VanHalterManager extends BossLair
 	{
 		for (L2DoorInstance door : _doorOfSacrifice)
 		{
+			if (door == null)
+				continue;
 			try
 			{
 				door.closeMe();

@@ -136,20 +136,24 @@ public class LastImperialTombManager extends BossLair
 		
 		for (L2DoorInstance door : _room1Doors)
 		{
-			door.closeMe();
+			if (door != null)
+				door.closeMe();
 		}
 		
 		for (L2DoorInstance door : _room2InsideDoors)
 		{
-			door.closeMe();
+			if (door != null)
+				door.closeMe();
 		}
 		
 		for (L2DoorInstance door : _room2OutsideDoors)
 		{
-			door.closeMe();
+			if (door != null)
+				door.closeMe();
 		}
 		
-		_room3Door.closeMe();
+		if (_room3Door != null)
+			_room3Door.closeMe();
 	}
 	
 	// Return true,tomb was already invaded by players.

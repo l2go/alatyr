@@ -209,7 +209,7 @@ public class InstanceManager
 		}
 		catch (FileNotFoundException e)
 		{
-			_log.warn("instancenames.xml could not be loaded: file not found");
+			_log.info("World has no instance names");
 		}
 		catch (XMLStreamException xppe)
 		{

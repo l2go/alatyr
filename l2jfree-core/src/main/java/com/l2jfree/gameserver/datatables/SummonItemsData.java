@@ -51,6 +51,11 @@ public class SummonItemsData
 		_summonitems = new LinkedHashMap<Integer, L2SummonItem>();
 		Document doc = null;
 		File file = new File(Config.DATAPACK_ROOT, "data/summon_items.xml");
+		if (!file.isFile())
+		{
+			_log.info("World has no summon items");
+			return;
+		}
 		
 		try
 		{

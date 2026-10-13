@@ -83,8 +83,8 @@ public class RecipeTable
 		
 		try
 		{
-			loadFromXML();
-			_log.info("RecipeController: Loaded " + getRecipesCount() + " recipes.");
+			if (loadFromXML())
+				_log.info("RecipeController: Loaded " + getRecipesCount() + " recipes.");
 		}
 		catch (Exception e)
 		{
@@ -232,7 +232,7 @@ public class RecipeTable
 		}
 	}
 	
-	private void loadFromXML() throws SAXException, IOException, ParserConfigurationException
+	private boolean loadFromXML() throws SAXException, IOException, ParserConfigurationException
 	{
 		DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 		factory.setValidating(true);
@@ -384,11 +384,10 @@ public class RecipeTable
 					}
 				}
 			}
+			return true;
 		}
-		else
-		{
-			_log.error("Recipes file (" + file.getAbsolutePath() + ") doesnt exists.");
-		}
+		_log.info("World has no recipes");
+		return false;
 	}
 	
 	private class RecipeItemMaker implements Runnable

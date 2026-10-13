@@ -78,7 +78,7 @@ public class MerchantPriceConfigTable implements InstanceListManager
 		return _mpcs.get(id);
 	}
 	
-	public void loadXML() throws SAXException, IOException, ParserConfigurationException
+	public boolean loadXML() throws SAXException, IOException, ParserConfigurationException
 	{
 		DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 		factory.setValidating(true);
@@ -114,7 +114,11 @@ public class MerchantPriceConfigTable implements InstanceListManager
 				throw new IllegalStateException("'defaultPriceConfig' points to an non-loaded priceConfig");
 			}
 			_defaultMpc = defaultMpc;
+			return true;
 		}
+		_defaultMpc = new MerchantPriceConfig(0, "default", 0, -1, -1);
+		_log.info("World has no merchant prices");
+		return false;
 	}
 	
 	private MerchantPriceConfig parseMerchantPriceConfig(Node n)
@@ -173,8 +177,8 @@ public class MerchantPriceConfigTable implements InstanceListManager
 	{
 		try
 		{
-			loadXML();
-			_log.info("MerchantPriceConfigTable: Loaded " + _mpcs.size() + " merchant price configs.");
+			if (loadXML())
+				_log.info("MerchantPriceConfigTable: Loaded " + _mpcs.size() + " merchant price configs.");
 		}
 		catch (Exception e)
 		{

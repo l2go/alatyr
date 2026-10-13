@@ -663,7 +663,14 @@ public final class MultisellTable
 	
 	private void parse()
 	{
-		for (File f : Util.getDatapackFiles("multisell", ".xml"))
+		File[] files = Util.getDatapackFiles("multisell", ".xml");
+		if (files.length == 0)
+		{
+			_log.info("World has no multisell lists");
+			return;
+		}
+		
+		for (File f : files)
 		{
 			try
 			{

@@ -151,7 +151,7 @@ public class AntharasManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			_log.warn(e.getMessage(), e);
+			BossInit.failed(_log, e);
 		}
 		
 		// Setting spawn data of teleport cube.
@@ -175,7 +175,7 @@ public class AntharasManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			_log.warn(e.getMessage(), e);
+			BossInit.failed(_log, e);
 		}
 		
 		_log.info("AntharasManager : State of Antharas is " + _state.getState() + ".");

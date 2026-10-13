@@ -56,7 +56,7 @@ public class ExtractableSkillsData
 		}
 		catch (Exception e)
 		{
-			_log.warn("Extractable items data: Can not find '" + Config.DATAPACK_ROOT + "data/extractable_skills.csv'");
+			_log.info("World has no extractable skills");
 			return;
 		}
 		

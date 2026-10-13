@@ -70,7 +70,7 @@ public class StaticObjects
 		}
 		catch (FileNotFoundException e)
 		{
-			_log.warn("staticobjects.csv is missing in data folder");
+			_log.info("World has no static objects");
 		}
 		catch (Exception e)
 		{

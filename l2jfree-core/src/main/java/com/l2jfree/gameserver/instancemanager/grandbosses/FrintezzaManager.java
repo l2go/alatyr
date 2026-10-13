@@ -151,7 +151,7 @@ public class FrintezzaManager extends BossLair
 		}
 		catch (RuntimeException e)
 		{
-			_log.warn("", e);
+			BossInit.failed(_log, e);
 		}
 		
 		_log.info("FrintezzaManager : State of Frintezza is " + _state.getState() + ".");
@@ -225,6 +225,8 @@ public class FrintezzaManager extends BossLair
 		try
 		{
 			template1 = NpcTable.getInstance().getTemplate(templateId);
+			if (template1 == null)
+				return null;
 			tempSpawn = new L2Spawn(template1);
 			
 			tempSpawn.setLocx(x);

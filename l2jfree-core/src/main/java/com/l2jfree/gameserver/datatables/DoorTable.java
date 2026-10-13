@@ -58,10 +58,17 @@ public final class DoorTable
 		_doorArray = null;
 		_doors.clear();
 		
+		File doorFile = new File(Config.DATAPACK_ROOT, "data/door.csv");
+		if (!doorFile.isFile())
+		{
+			_log.info("World has no doors");
+			return;
+		}
+		
 		BufferedReader br = null;
 		try
 		{
-			br = new BufferedReader(new FileReader(new File(Config.DATAPACK_ROOT, "data/door.csv")));
+			br = new BufferedReader(new FileReader(doorFile));
 			
 			for (String line; (line = br.readLine()) != null;)
 			{

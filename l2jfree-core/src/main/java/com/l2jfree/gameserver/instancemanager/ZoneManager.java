@@ -79,7 +79,14 @@ public final class ZoneManager
 	{
 		Document doc = null;
 		
-		for (File f : Util.getDatapackFiles("zone", ".xml"))
+		File[] files = Util.getDatapackFiles("zone", ".xml");
+		if (files.length == 0)
+		{
+			_log.info("World has no zones");
+			return;
+		}
+		
+		for (File f : files)
 		{
 			int count = 0;
 			try

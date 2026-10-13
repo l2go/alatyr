@@ -225,7 +225,7 @@ public class BaylorManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			_log.warn(e.getMessage(), e);
+			BossInit.failed(_log, e);
 		}
 		
 		// Setting spawn data of teleporte cube.
@@ -250,7 +250,7 @@ public class BaylorManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			_log.warn(e.getMessage(), e);
+			BossInit.failed(_log, e);
 		}
 		
 		_log.info("BaylorManager : State of Baylor is " + _state.getState() + ".");

@@ -83,6 +83,13 @@ public class CursedWeaponsManager
 	
 	private final void load()
 	{
+		File cursedWeapons = new File(Config.DATAPACK_ROOT, "data/cursedWeapons.xml");
+		if (!cursedWeapons.isFile())
+		{
+			_log.info("World has no cursed weapons");
+			return;
+		}
+		
 		Connection con = null;
 		
 		try

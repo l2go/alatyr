@@ -84,7 +84,7 @@ public class BoatManager
 		}
 		catch (FileNotFoundException e)
 		{
-			_log.warn("boat.csv is missing in data folder");
+			_log.info("World has no boats");
 		}
 		catch (Exception e)
 		{

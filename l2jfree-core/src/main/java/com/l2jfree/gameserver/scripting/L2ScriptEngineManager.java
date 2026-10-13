@@ -182,6 +182,9 @@ public final class L2ScriptEngineManager
 		long attemptsBefore = _scriptLoadAttempts.sum();
 		long successesBefore = _scriptLoadSuccesses.sum();
 		long failuresBefore = _scriptLoadFailures.sum();
+		if (!list.isFile())
+			return;
+		
 		if (list.isFile())
 		{
 			try (LineNumberReader lnr = new LineNumberReader(Files.newBufferedReader(list.toPath(), StandardCharsets.UTF_8)))
@@ -235,10 +238,6 @@ public final class L2ScriptEngineManager
 				}
 			}
 			}
-		}
-		else
-		{
-			throw new IllegalArgumentException("Argument must be an file containing a list of scripts to be loaded");
 		}
 		_log.info("Script loading summary: " + (_scriptLoadSuccesses.sum() - successesBefore) + " loaded, "
 				+ (_scriptLoadFailures.sum() - failuresBefore) + " failed from "
