@@ -667,7 +667,7 @@ jobs:
           passport="$(grep -E 'World id=empty version=0 .*catalog revision [0-9a-f]{64}' "$log" || true)"
           test -n "$passport" || { echo "::error::the log has no passport with id=empty, version=0 and a catalog revision"; exit 1; }
           echo "$passport"
-          test "$(grep -c 'catalog revision' "$log" || true)" = 1 || { echo "::error::the passport line is not unique"; exit 1; }
+          test "$(grep -c 'World id=empty version=0 ' "$log" || true)" = 1 || { echo "::error::the passport line is not unique"; exit 1; }
           grep -q 'Platform ready' "$log" || { echo "::error::the server did not become ready"; exit 1; }
           timeout 5 bash -c 'echo >/dev/tcp/127.0.0.1/2106' && echo "tcp login 127.0.0.1:2106"
           timeout 5 bash -c 'echo >/dev/tcp/127.0.0.1/7777' && echo "tcp world 127.0.0.1:7777"
