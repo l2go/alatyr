@@ -27,6 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.l2jfree.Config;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.gameserver.gameobjects.instance.L2StaticObjectInstance;
 import com.l2jfree.gameserver.gameobjects.templates.L2CreatureTemplate;
 import com.l2jfree.gameserver.idfactory.IdFactory;
@@ -56,6 +57,8 @@ public class StaticObjects
 		try
 		{
 			File doorData = new File(Config.DATAPACK_ROOT, "data/staticobjects.csv");
+			if (WorldFiles.skip(_log, "static objects", doorData))
+				return;
 			lnr = new LineNumberReader(new BufferedReader(new FileReader(doorData)));
 			
 			String line = null;
@@ -70,7 +73,7 @@ public class StaticObjects
 		}
 		catch (FileNotFoundException e)
 		{
-			_log.info("World has no static objects");
+			WorldFiles.unreadable(_log, "static objects", new File(Config.DATAPACK_ROOT, "data/staticobjects.csv"), e);
 		}
 		catch (Exception e)
 		{

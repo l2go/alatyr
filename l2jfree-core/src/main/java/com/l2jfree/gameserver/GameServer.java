@@ -158,6 +158,7 @@ import com.l2jfree.gameserver.threadmanager.DeadlockDetector;
 import com.l2jfree.gameserver.util.DynamicExtension;
 import com.l2jfree.gameserver.util.OfflineTradeManager;
 import com.l2jfree.gameserver.util.Util;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.lang.management.StartupManager;
 import com.l2jfree.util.concurrent.RunnableStatsManager;
 
@@ -338,9 +339,7 @@ public final class GameServer extends L2AutoInitialization
 		
 		Util.printSection("Events/ScriptEngine");
 		File scripts = new File(Config.DATAPACK_ROOT, "data/scripts.cfg");
-		if (!scripts.isFile())
-			_log.info("World has no scripts");
-		else
+		if (!WorldFiles.skip(_log, "scripts", scripts))
 		{
 			try
 			{

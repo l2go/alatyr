@@ -651,17 +651,31 @@ jobs:
       - name: Start on the empty world
         run: docker compose -f deploy/compose.yaml -f deploy/empty-world.compose.yaml up -d --wait --wait-timeout 600
 
+      - name: Save the positive server log
+        if: always()
+        run: |
+          docker compose -f deploy/compose.yaml -f deploy/empty-world.compose.yaml logs --no-color server > empty-positive-server.log || true
+          echo "::group::empty-positive-server.log"
+          cat empty-positive-server.log || true
+          echo "::endgroup::"
+
       - name: Check the empty-world log
         run: |
           set -euo pipefail
-          docker compose -f deploy/compose.yaml -f deploy/empty-world.compose.yaml logs --no-color server > server.log
-          grep -q 'id=empty' server.log || { echo "::error::the log has no world passport with id=empty"; exit 1; }
-          grep -q 'Platform ready' server.log || { echo "::error::the server did not become ready"; exit 1; }
-          if grep -E '(^|\| )ERROR |Exception in thread' server.log; then
-            echo "::error::the server log has an ERROR line or an uncaught exception"
+          log=empty-positive-server.log
+          test -s "$log" || { echo "::error::the positive server log is empty"; exit 1; }
+          passport="$(grep -E 'World id=empty version=0 .*catalog revision [0-9a-f]{64}' "$log" || true)"
+          test -n "$passport" || { echo "::error::the log has no passport with id=empty, version=0 and a catalog revision"; exit 1; }
+          echo "$passport"
+          test "$(grep -c 'catalog revision' "$log" || true)" = 1 || { echo "::error::the passport line is not unique"; exit 1; }
+          grep -q 'Platform ready' "$log" || { echo "::error::the server did not become ready"; exit 1; }
+          timeout 5 bash -c 'echo >/dev/tcp/127.0.0.1/2106' && echo "tcp login 127.0.0.1:2106"
+          timeout 5 bash -c 'echo >/dev/tcp/127.0.0.1/7777' && echo "tcp world 127.0.0.1:7777"
+          if grep -E '(^|\| )ERROR |Exception in thread|Caused by:|[[:space:]]at com\.l2jfree\.' "$log"; then
+            echo "::error::the server log has an ERROR line, an uncaught exception, or a stack trace"
             exit 1
           fi
-          if grep -E '(^|\| )WARN ' server.log; then
+          if grep -E '(^|\| )WARN ' "$log"; then
             echo "::error::the server log has a WARN line"
             exit 1
           fi
@@ -684,17 +698,34 @@ jobs:
           test "$status" = "exited" || { echo "::error::the server did not exit"; exit 1; }
           code="$(docker inspect -f '{{.State.ExitCode}}' l2jfree-server-1)"
           echo "exit code: ${code}"
-          test "$code" != 0 || { echo "::error::a missing catalog directory exited 0"; exit 1; }
-          docker compose -f deploy/compose.yaml -f deploy/empty-world.compose.yaml logs --no-color --tail 80 server > missing.log
-          grep -q 'CatalogDirectory' missing.log || { echo "::error::the log does not name CatalogDirectory"; cat missing.log; exit 1; }
-          grep -q '/world/missing' missing.log || { echo "::error::the log does not name the missing path"; cat missing.log; exit 1; }
-
-      - name: Show the service logs after a failure
-        if: failure()
-        run: |
-          echo "::group::server, last 200 lines"
-          docker compose -f deploy/compose.yaml -f deploy/empty-world.compose.yaml logs --no-color --tail 200 server || true
+          case "$code" in
+            0|137|143) echo "::error::exit code ${code} is not a configuration failure"; exit 1 ;;
+          esac
+          docker compose -f deploy/compose.yaml -f deploy/empty-world.compose.yaml logs --no-color server > empty-missing-catalog-server.log
+          echo "::group::empty-missing-catalog-server.log"
+          cat empty-missing-catalog-server.log
           echo "::endgroup::"
+          log=empty-missing-catalog-server.log
+          grep -q 'CatalogDirectory does not exist: /world/missing' "$log" || { echo "::error::the log does not name CatalogDirectory and the path"; exit 1; }
+          test "$(grep -c 'CatalogDirectory does not exist:' "$log" || true)" = 1 || { echo "::error::the configuration failure is not a single line"; exit 1; }
+          if grep -q 'Platform ready' "$log"; then
+            echo "::error::a missing catalog reached readiness"
+            exit 1
+          fi
+          if grep -E 'Exception in thread|Caused by:|[[:space:]]at com\.l2jfree\.' "$log"; then
+            echo "::error::the configuration failure has a stack trace"
+            exit 1
+          fi
+
+      - name: Upload the empty-world logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: empty-world-logs
+          if-no-files-found: warn
+          path: |
+            empty-positive-server.log
+            empty-missing-catalog-server.log
 
       - name: Stop the stack
         if: always()

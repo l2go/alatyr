@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.l2jfree.Config;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.gameserver.model.items.Item;
 import com.l2jfree.gameserver.model.items.templates.L2EtcItem;
 import com.l2jfree.gameserver.model.items.templates.L2EtcItemType;
@@ -53,14 +54,9 @@ public final class DocumentEngine
 	
 	private static File[] listFiles(String dirname, String part)
 	{
-		File dir = new File(Config.DATAPACK_ROOT, dirname);
-		File[] files = dir.isDirectory() ? dir.listFiles(XML_FILTER) : null;
-		if (files == null || files.length == 0)
-		{
-			_log.info("World has no " + part);
-			return new File[0];
-		}
-		return files;
+		WorldFiles.Listed listed = WorldFiles.list(new File(Config.DATAPACK_ROOT, dirname), XML_FILTER);
+		WorldFiles.leaveOut(_log, part, listed);
+		return listed.files();
 	}
 	
 	public static List<L2Skill> loadSkills()

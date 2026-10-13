@@ -45,6 +45,7 @@ import com.l2jfree.gameserver.model.quest.Quest;
 import com.l2jfree.gameserver.model.world.spawn.L2Spawn;
 import com.l2jfree.gameserver.network.packets.server.NpcHtmlMessage;
 import com.l2jfree.gameserver.util.Util;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.tools.random.Rnd;
 
 /**
@@ -99,11 +100,8 @@ public class DimensionalRiftManager
 	public void load()
 	{
 		File riftFile = new File(Config.DATAPACK_ROOT, "data/dimensionalRift.xml");
-		if (!riftFile.isFile())
-		{
-			_log.info("World has no dimensional rifts");
+		if (WorldFiles.skip(_log, "dimensional rifts", riftFile))
 			return;
-		}
 		
 		int countGood = 0, countBad = 0;
 		try

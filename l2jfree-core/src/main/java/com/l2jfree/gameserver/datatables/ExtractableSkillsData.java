@@ -15,6 +15,7 @@
 package com.l2jfree.gameserver.datatables;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.l2jfree.Config;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.gameserver.model.items.extractable.L2ExtractableProductItem;
 import com.l2jfree.gameserver.model.items.extractable.L2ExtractableSkill;
 import com.l2jfree.gameserver.model.skills.L2Skill;
@@ -48,15 +50,19 @@ public class ExtractableSkillsData
 	{
 		_items.clear();
 		
+		File file = new File(Config.DATAPACK_ROOT, "data/extractable_skills.csv");
+		if (WorldFiles.skip(_log, "extractable skills", file))
+			return;
+		
 		Scanner s;
 		
 		try
 		{
-			s = new Scanner(new File(Config.DATAPACK_ROOT, "data/extractable_skills.csv"));
+			s = new Scanner(file);
 		}
-		catch (Exception e)
+		catch (IOException e)
 		{
-			_log.info("World has no extractable skills");
+			WorldFiles.unreadable(_log, "extractable skills", file, e);
 			return;
 		}
 		

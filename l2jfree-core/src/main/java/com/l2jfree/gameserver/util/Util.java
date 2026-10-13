@@ -416,14 +416,14 @@ public final class Util
 		return (Math.round(val * exponent) / exponent);
 	}
 	
+	public static WorldFiles.Listed listDatapack(String dirname, String extention)
+	{
+		return WorldFiles.list(new File(Config.DATAPACK_ROOT, "data/" + dirname), new CustomFileNameFilter(extention));
+	}
+	
 	public static File[] getDatapackFiles(String dirname, String extention)
 	{
-		File dir = new File(Config.DATAPACK_ROOT, "data/" + dirname);
-		if (!dir.isDirectory())
-			return new File[0];
-		
-		File[] files = dir.listFiles(new CustomFileNameFilter(extention));
-		return files == null ? new File[0] : files;
+		return listDatapack(dirname, extention).files();
 	}
 	
 	public static boolean isAlphaNumeric(String text)

@@ -14,6 +14,7 @@
  */
 package com.l2jfree.gameserver.instancemanager;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
@@ -35,6 +36,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.l2jfree.Config;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.L2DatabaseFactory;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.geodata.GeoData;
@@ -201,15 +203,19 @@ public class InstanceManager
 	
 	private void loadInstanceNames()
 	{
+		File file = new File(Config.DATAPACK_ROOT + "/data/instancenames.xml");
+		if (WorldFiles.skip(_log, "instance names", file))
+			return;
+		
 		InputStream in = null;
 		try
 		{
-			in = new FileInputStream(Config.DATAPACK_ROOT + "/data/instancenames.xml");
+			in = new FileInputStream(file);
 			parseInstanceNames(in, _instanceIdNames);
 		}
 		catch (FileNotFoundException e)
 		{
-			_log.info("World has no instance names");
+			WorldFiles.unreadable(_log, "instance names", file, e);
 		}
 		catch (XMLStreamException xppe)
 		{

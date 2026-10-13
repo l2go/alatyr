@@ -36,6 +36,7 @@ import com.l2jfree.gameserver.model.items.templates.L2Item;
 import com.l2jfree.gameserver.model.items.templates.L2Weapon;
 import com.l2jfree.gameserver.network.packets.server.MultiSellList;
 import com.l2jfree.gameserver.util.Util;
+import com.l2jfree.gameserver.util.WorldFiles;
 
 /**
  * Multisell list manager
@@ -663,14 +664,11 @@ public final class MultisellTable
 	
 	private void parse()
 	{
-		File[] files = Util.getDatapackFiles("multisell", ".xml");
-		if (files.length == 0)
-		{
-			_log.info("World has no multisell lists");
+		WorldFiles.Listed files = Util.listDatapack("multisell", ".xml");
+		if (WorldFiles.leaveOut(_log, "multisell lists", files))
 			return;
-		}
 		
-		for (File f : files)
+		for (File f : files.files())
 		{
 			try
 			{

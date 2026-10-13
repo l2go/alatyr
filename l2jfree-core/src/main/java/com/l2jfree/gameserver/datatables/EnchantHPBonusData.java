@@ -26,6 +26,7 @@ import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 
 import com.l2jfree.Config;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
 import com.l2jfree.gameserver.model.items.templates.L2Armor;
 import com.l2jfree.gameserver.model.items.templates.L2Equip;
@@ -56,11 +57,8 @@ public final class EnchantHPBonusData
 		factory.setValidating(true);
 		factory.setIgnoringComments(true);
 		File file = new File(Config.DATAPACK_ROOT, "data/enchantHPBonus.xml");
-		if (!file.isFile())
-		{
-			_log.info("World has no enchant HP bonus");
+		if (WorldFiles.skip(_log, "enchant HP bonus", file))
 			return;
-		}
 		Document doc = null;
 		
 		try
