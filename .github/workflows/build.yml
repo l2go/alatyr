@@ -683,9 +683,16 @@ jobs:
       - name: Stop when the catalog directory is missing
         run: |
           set -euo pipefail
+          save_missing_log() {
+            docker compose -f deploy/compose.yaml -f deploy/empty-world.compose.yaml logs --no-color server > empty-missing-catalog-server.log || true
+            echo "::group::empty-missing-catalog-server.log"
+            cat empty-missing-catalog-server.log || true
+            echo "::endgroup::"
+          }
           docker run --rm --entrypoint bash -v l2jfree_config:/var/lib/l2jfree/config l2jfree:ci -c \
             'printf "%s\n" "DatapackRoot = /world" "CatalogDirectory = /world/missing" > /var/lib/l2jfree/config/server.properties'
           docker compose -f deploy/compose.yaml -f deploy/empty-world.compose.yaml up -d --no-deps --force-recreate server
+          trap save_missing_log EXIT
           status=""
           for _ in $(seq 1 150); do
             status="$(docker inspect -f '{{.State.Status}}' l2jfree-server-1)"
@@ -695,16 +702,14 @@ jobs:
             sleep 2
           done
           echo "server status: ${status}"
+          save_missing_log
+          trap - EXIT
           test "$status" = "exited" || { echo "::error::the server did not exit"; exit 1; }
           code="$(docker inspect -f '{{.State.ExitCode}}' l2jfree-server-1)"
           echo "exit code: ${code}"
           case "$code" in
             0|137|143) echo "::error::exit code ${code} is not a configuration failure"; exit 1 ;;
           esac
-          docker compose -f deploy/compose.yaml -f deploy/empty-world.compose.yaml logs --no-color server > empty-missing-catalog-server.log
-          echo "::group::empty-missing-catalog-server.log"
-          cat empty-missing-catalog-server.log
-          echo "::endgroup::"
           log=empty-missing-catalog-server.log
           grep -q 'CatalogDirectory does not exist: /world/missing' "$log" || { echo "::error::the log does not name CatalogDirectory and the path"; exit 1; }
           test "$(grep -c 'CatalogDirectory does not exist:' "$log" || true)" = 1 || { echo "::error::the configuration failure is not a single line"; exit 1; }
