@@ -27,6 +27,7 @@ import com.l2jfree.gameserver.datatables.TradeListTable;
 import com.l2jfree.gameserver.gameobjects.L2Creature;
 import com.l2jfree.gameserver.gameobjects.L2Merchant;
 import com.l2jfree.gameserver.gameobjects.L2Player;
+import com.l2jfree.gameserver.gameobjects.NpcCastle;
 import com.l2jfree.gameserver.gameobjects.itemcontainer.Inventory;
 import com.l2jfree.gameserver.gameobjects.instance.L2FishermanInstance;
 import com.l2jfree.gameserver.gameobjects.instance.L2MerchantInstance;
@@ -204,7 +205,7 @@ public class RequestBuyItem extends L2ClientPacket
 		
 		double taxRate = 1.0;
 		if (merchant instanceof L2MerchantInstance && ((L2MerchantInstance)merchant).getIsInTown())
-			taxRate = ((L2MerchantInstance)merchant).getCastle().getTaxRate();
+			taxRate = NpcCastle.shopRate(((L2MerchantInstance)merchant).getCastle());
 		
 		long taxedPriceTotal = 0;
 		long taxTotal = 0;
@@ -352,9 +353,8 @@ public class RequestBuyItem extends L2ClientPacket
 		if (!player.isGM())
 		{
 			//  Charge buyer and add tax to castle treasury if not owned by npc clan
-			if (merchant instanceof L2MerchantInstance && ((L2MerchantInstance)merchant).getIsInTown()
-					&& ((L2MerchantInstance)merchant).getCastle().getOwnerId() > 0)
-				((L2MerchantInstance)merchant).getCastle().addToTreasury(taxTotal);
+			if (merchant instanceof L2MerchantInstance && ((L2MerchantInstance)merchant).getIsInTown())
+				NpcCastle.addPurchaseTax(((L2MerchantInstance)merchant).getCastle(), taxTotal);
 		}
 		//  Check if player is GM and buying from GM shop or have proper access level
 		else if (list.isGm() && (player.getAccessLevel() < Config.GM_CREATE_ITEM))
