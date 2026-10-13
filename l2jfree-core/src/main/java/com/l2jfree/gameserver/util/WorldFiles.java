@@ -101,8 +101,8 @@ public final class WorldFiles
 		return false;
 	}
 	
-	/** A file that exists could not be opened. The warning names the path and the reason. */
-	public static void unreadable(Logger log, String part, File file, IOException cause)
+	/** A file that exists could not be read. The warning names the path and the reason. */
+	public static void unreadable(Logger log, String part, File file, Exception cause)
 	{
 		String reason = cause.getMessage() == null ? cause.toString() : cause.getMessage();
 		log.warn("Cannot read " + part + ": " + file.getPath() + ": " + reason, cause);

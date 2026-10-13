@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 class UnknownItemsTest
 {
 	@Test
-	@DisplayName("items without a template are counted once for the load and are not deleted")
+	@DisplayName("items without a template are counted once for the load")
 	void unknownTemplatesAreCountedOnce()
 	{
 		UnknownItems unknown = new UnknownItems();
