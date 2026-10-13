@@ -115,6 +115,9 @@ public class BaylorManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Baylor", NpcTable.getInstance().getTemplate(29099)))
+			return;
+		
 		// Init state.
 		_isAlreadyEnteredOtherParty = false;
 		
@@ -225,7 +228,7 @@ public class BaylorManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			BossInit.failed(_log, e);
+			_log.warn(e.getMessage(), e);
 		}
 		
 		// Setting spawn data of teleporte cube.
@@ -250,7 +253,7 @@ public class BaylorManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			BossInit.failed(_log, e);
+			_log.warn(e.getMessage(), e);
 		}
 		
 		_log.info("BaylorManager : State of Baylor is " + _state.getState() + ".");

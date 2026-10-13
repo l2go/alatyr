@@ -16,28 +16,26 @@ package com.l2jfree.gameserver.instancemanager.grandbosses;
 
 import org.slf4j.Logger;
 
+import com.l2jfree.gameserver.gameobjects.templates.L2NpcTemplate;
+
 /**
- * A boss whose NPC template is not in this world is absent. Any other failure of the spawn setup stays a warning.
+ * A boss whose NPC template is not in this world is left out before any spawn is prepared.
+ * A failure while preparing a boss that does have a template stays a warning at the call site.
  */
 final class BossInit
 {
-	private static boolean _reported;
-	
 	private BossInit()
 	{
 	}
 	
-	static void failed(Logger log, Exception e)
+	/**
+	 * @return {@code true} when this world has no such template and the caller should leave the boss out
+	 */
+	static boolean missing(Logger log, String boss, L2NpcTemplate template)
 	{
-		if (e instanceof NullPointerException)
-		{
-			if (!_reported)
-			{
-				_reported = true;
-				log.info("World has no boss templates");
-			}
-		}
-		else
-			log.warn(e.getMessage(), e);
+		if (template != null)
+			return false;
+		log.info("World has no " + boss + " template");
+		return true;
 	}
 }

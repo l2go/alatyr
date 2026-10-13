@@ -130,6 +130,9 @@ public class FrintezzaManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Frintezza", NpcTable.getInstance().getTemplate(29045)))
+			return;
+		
 		_callForHelpInterval = 2000;
 		
 		_intervalOfRetarget = 10000;
@@ -151,7 +154,7 @@ public class FrintezzaManager extends BossLair
 		}
 		catch (RuntimeException e)
 		{
-			BossInit.failed(_log, e);
+			_log.warn("", e);
 		}
 		
 		_log.info("FrintezzaManager : State of Frintezza is " + _state.getState() + ".");

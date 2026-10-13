@@ -92,6 +92,9 @@ public class SailrenManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Sailren", NpcTable.getInstance().getTemplate(29065)))
+			return;
+		
 		// Init state.
 		_isAlreadyEnteredOtherParty = false;
 		
@@ -147,7 +150,7 @@ public class SailrenManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			BossInit.failed(_log, e);
+			_log.warn(e.getMessage(), e);
 		}
 		
 		// Setting spawn data of teleporte cube.
@@ -172,7 +175,7 @@ public class SailrenManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			BossInit.failed(_log, e);
+			_log.warn(e.getMessage(), e);
 		}
 		
 		_log.info("SailrenManager : State of Sailren is " + _state.getState() + ".");

@@ -95,6 +95,9 @@ public class AntharasManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Antharas", NpcTable.getInstance().getTemplate(29019)))
+			return;
+		
 		// Setting spawn data of monsters.
 		try
 		{
@@ -151,7 +154,7 @@ public class AntharasManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			BossInit.failed(_log, e);
+			_log.warn(e.getMessage(), e);
 		}
 		
 		// Setting spawn data of teleport cube.
@@ -175,7 +178,7 @@ public class AntharasManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			BossInit.failed(_log, e);
+			_log.warn(e.getMessage(), e);
 		}
 		
 		_log.info("AntharasManager : State of Antharas is " + _state.getState() + ".");

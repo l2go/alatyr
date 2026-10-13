@@ -97,6 +97,9 @@ public class ValakasManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Valakas", NpcTable.getInstance().getTemplate(29028)))
+			return;
+		
 		// Setting spawn data of monsters.
 		try
 		{
@@ -131,7 +134,7 @@ public class ValakasManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			BossInit.failed(_log, e);
+			_log.warn(e.getMessage(), e);
 		}
 		
 		// Setting spawn data of teleport cube.
@@ -155,7 +158,7 @@ public class ValakasManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			BossInit.failed(_log, e);
+			_log.warn(e.getMessage(), e);
 		}
 		
 		_log.info("ValakasManager : State of Valakas is " + _state.getState() + ".");

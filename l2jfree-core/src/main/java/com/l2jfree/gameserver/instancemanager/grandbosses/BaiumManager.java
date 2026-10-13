@@ -119,6 +119,9 @@ public class BaiumManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Baium", NpcTable.getInstance().getTemplate(BAIUM)))
+			return;
+		
 		// Setting spawn data of monsters.
 		try
 		{
@@ -147,7 +150,7 @@ public class BaiumManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			BossInit.failed(_log, e);
+			_log.warn(e.getMessage(), e);
 		}
 		
 		// Setting spawn data of teleport cube.
@@ -167,7 +170,7 @@ public class BaiumManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			BossInit.failed(_log, e);
+			_log.warn(e.getMessage(), e);
 		}
 		
 		// Setting spawn data of archangels.
@@ -203,7 +206,7 @@ public class BaiumManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			BossInit.failed(_log, e);
+			_log.warn(e.getMessage(), e);
 		}
 		
 		_log.info("BaiumManager : State of Baium is " + _state.getState() + ".");

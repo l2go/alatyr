@@ -130,6 +130,9 @@ public class VanHalterManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Van Halter", NpcTable.getInstance().getTemplate(29062)))
+			return;
+		
 		// Clear flag.
 		_isLocked = false;
 		_isCaptainSpawned = false;
@@ -220,7 +223,7 @@ public class VanHalterManager extends BossLair
 		}
 		catch (Exception e)
 		{
-			BossInit.failed(_log, e);
+			_log.warn("VanHalterManager : " + e.getMessage(), e);
 		}
 		
 		// Set time up.
