@@ -84,11 +84,11 @@ public class DynamicExtension
 		File file = new File(CONFIG);
 		if (!WorldFiles.skip(_log, "extensions", file))
 		{
-			try
+			try (FileInputStream in = new FileInputStream(file))
 			{
-				_prop.load(new FileInputStream(file));
+				_prop.load(in);
 			}
-			catch (IOException ex)
+			catch (IOException | IllegalArgumentException ex)
 			{
 				WorldFiles.unreadable(_log, "extensions", file, ex);
 			}
