@@ -133,6 +133,13 @@ public class FourSepulchersManager extends BossLair
 	@Override
 	public void init()
 	{
+		// The sepulchers are one part of the world. Without their manager the rest of the ids are absent too.
+		if (NpcTable.getInstance().getTemplate(31921) == null)
+		{
+			_log.info("World has no sepulchers");
+			return;
+		}
+		
 		if (_changeCoolDownTimeTask != null)
 			_changeCoolDownTimeTask.cancel(true);
 		if (_changeEntryTimeTask != null)

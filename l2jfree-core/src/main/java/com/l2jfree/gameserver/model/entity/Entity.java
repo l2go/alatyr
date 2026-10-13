@@ -110,7 +110,10 @@ public class Entity
 	protected List<L2Player> getPlayersInside()
 	{
 		List<L2Player> lst = new ArrayList<L2Player>();
-		for (L2Creature cha : getZone().getCharactersInside())
+		L2Zone zone = getZone();
+		if (zone == null)
+			return lst;
+		for (L2Creature cha : zone.getCharactersInside())
 		{
 			if (cha instanceof L2Player)
 				lst.add((L2Player)cha);
