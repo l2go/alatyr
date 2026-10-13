@@ -18,15 +18,19 @@ import java.io.File;
 import java.io.FileFilter;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.attribute.BasicFileAttributes;
 
 import org.slf4j.Logger;
 
 /**
  * Tells a missing world file from a file that is there but cannot be read.
  * <p>
- * A path that does not exist is an absent part of the world. An empty directory is the same. A path that exists and is
- * the wrong kind, or a directory whose entries cannot be listed, is a read failure: the path and the reason stay in
- * the log, and the failure is not described as a missing part.
+ * Absence is a {@link NoSuchFileException} from reading the path's attributes. An empty directory is the same. A path
+ * of the wrong kind, a directory whose entries cannot be listed, or any other failure to read the attributes (a parent
+ * that cannot be searched, for example) is a read failure: the path and the reason stay in the log, and the failure is
+ * not described as a missing part.
  */
 public final class WorldFiles
 {
@@ -69,17 +73,27 @@ public final class WorldFiles
 	}
 	
 	/**
-	 * @return {@code true} when the caller must not open the file. Absence is one INFO line. A path that exists and is
-	 * not a file is one warning with the path.
+	 * @return {@code true} when the caller must not open the file. A path that is not there is one INFO line. A path
+	 * whose attributes cannot be read, or that is not a file, is one warning with the path.
 	 */
 	public static boolean skip(Logger log, String part, File file)
 	{
-		if (!file.exists())
+		BasicFileAttributes attributes;
+		try
+		{
+			attributes = Files.readAttributes(file.toPath(), BasicFileAttributes.class);
+		}
+		catch (NoSuchFileException e)
 		{
 			log.info("World has no " + part);
 			return true;
 		}
-		if (!file.isFile())
+		catch (IOException e)
+		{
+			unreadable(log, part, file, e);
+			return true;
+		}
+		if (!attributes.isRegularFile())
 		{
 			log.warn("Cannot read " + part + ": " + file.getPath() + " is not a file");
 			return true;
@@ -96,16 +110,18 @@ public final class WorldFiles
 	
 	public static Listed list(File dir, FilenameFilter filter)
 	{
-		if (!dir.isDirectory())
-			return classify(dir, null);
+		Listed blocked = attributes(dir);
+		if (blocked != null)
+			return blocked;
 		File[] files = filter == null ? dir.listFiles() : dir.listFiles(filter);
 		return classify(dir, files);
 	}
 	
 	public static Listed list(File dir, FileFilter filter)
 	{
-		if (!dir.isDirectory())
-			return classify(dir, null);
+		Listed blocked = attributes(dir);
+		if (blocked != null)
+			return blocked;
 		File[] files = filter == null ? dir.listFiles() : dir.listFiles(filter);
 		return classify(dir, files);
 	}
@@ -129,16 +145,45 @@ public final class WorldFiles
 		return false;
 	}
 	
+	/**
+	 * @return the outcome when the directory must not be listed, or {@code null} when it is a directory and listing
+	 * may proceed. Only {@link NoSuchFileException} is absence. Every other failure to read the attributes is a read
+	 * error, including a parent directory that cannot be searched.
+	 */
+	private static Listed attributes(File dir)
+	{
+		try
+		{
+			BasicFileAttributes attributes = Files.readAttributes(dir.toPath(), BasicFileAttributes.class);
+			if (!attributes.isDirectory())
+				return new Listed(Kind.UNREADABLE, new File[0], dir.getPath() + " is not a directory");
+			return null;
+		}
+		catch (NoSuchFileException e)
+		{
+			return new Listed(Kind.MISSING, new File[0], null);
+		}
+		catch (IOException e)
+		{
+			return new Listed(Kind.UNREADABLE, new File[0], dir.getPath() + ": " + reason(e));
+		}
+	}
+	
 	private static Listed classify(File dir, File[] files)
 	{
-		if (!dir.exists())
-			return new Listed(Kind.MISSING, new File[0], null);
-		if (!dir.isDirectory())
-			return new Listed(Kind.UNREADABLE, new File[0], dir.getPath() + " is not a directory");
 		if (files == null)
 			return new Listed(Kind.UNREADABLE, new File[0], dir.getPath() + " could not be listed");
 		if (files.length == 0)
 			return new Listed(Kind.EMPTY, files, null);
 		return new Listed(Kind.LISTED, files, null);
+	}
+	
+	private static String reason(IOException cause)
+	{
+		String message = cause.getMessage();
+		String type = cause.getClass().getSimpleName();
+		if (message == null || message.isEmpty())
+			return type;
+		return type + ": " + message;
 	}
 }

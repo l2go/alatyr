@@ -15,6 +15,8 @@
 package com.l2jfree.gameserver.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -26,7 +28,13 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
+import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.PosixFilePermission;
+import java.util.EnumSet;
+import java.util.Set;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -114,20 +122,10 @@ class WorldFilesTest
 		verify(wrongLog).warn(contains("Cannot read zones: " + notDirectory.getPath()));
 		verify(wrongLog, never()).info(contains("World has no"));
 		
-		File blocked = new File(root, "blocked") {
+		File blockedDir = new File(root, "blocked");
+		assertThat(blockedDir.mkdir()).isTrue();
+		File blocked = new File(blockedDir.getPath()) {
 			private static final long serialVersionUID = 1L;
-			
-			@Override
-			public boolean exists()
-			{
-				return true;
-			}
-			
-			@Override
-			public boolean isDirectory()
-			{
-				return true;
-			}
 			
 			@Override
 			public File[] listFiles()
@@ -145,5 +143,43 @@ class WorldFilesTest
 		assertThat(unreadable.kind()).isEqualTo(WorldFiles.Kind.UNREADABLE);
 		assertThat(unreadable.files()).isEmpty();
 		assertThat(unreadable.detail()).contains(blocked.getPath()).contains("could not be listed");
+	}
+	
+	@Test
+	@DisplayName("a parent directory that cannot be searched is a read error")
+	void sealedParentIsAReadError() throws Exception
+	{
+		File parent = Files.createTempDirectory("sealed-parent").toFile();
+		File child = new File(parent, "extractable_items.csv");
+		assertThat(child.createNewFile()).isTrue();
+		File zones = new File(parent, "zone");
+		assertThat(zones.mkdir()).isTrue();
+		Set<PosixFilePermission> opened = Files.getPosixFilePermissions(parent.toPath());
+		Set<PosixFilePermission> sealed = EnumSet.copyOf(opened);
+		sealed.remove(PosixFilePermission.OWNER_EXECUTE);
+		sealed.remove(PosixFilePermission.GROUP_EXECUTE);
+		sealed.remove(PosixFilePermission.OTHERS_EXECUTE);
+		Files.setPosixFilePermissions(parent.toPath(), sealed);
+		try
+		{
+			assertThatThrownBy(() -> Files.readAttributes(child.toPath(), BasicFileAttributes.class)).isInstanceOf(AccessDeniedException.class);
+			
+			Logger fileLog = mock(Logger.class);
+			assertThat(WorldFiles.skip(fileLog, "extractable items", child)).isTrue();
+			verify(fileLog).warn(contains("Cannot read extractable items: " + child.getPath()), any(IOException.class));
+			verify(fileLog, never()).info(contains("World has no"));
+			
+			WorldFiles.Listed listed = WorldFiles.list(zones, (FilenameFilter)null);
+			assertThat(listed.kind()).isEqualTo(WorldFiles.Kind.UNREADABLE);
+			assertThat(listed.detail()).contains(zones.getPath());
+			Logger dirLog = mock(Logger.class);
+			assertThat(WorldFiles.leaveOut(dirLog, "zones", listed)).isTrue();
+			verify(dirLog).warn(contains("Cannot read zones: " + zones.getPath()));
+			verify(dirLog, never()).info(contains("World has no"));
+		}
+		finally
+		{
+			Files.setPosixFilePermissions(parent.toPath(), opened);
+		}
 	}
 }
