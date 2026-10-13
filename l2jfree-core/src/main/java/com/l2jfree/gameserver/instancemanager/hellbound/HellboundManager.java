@@ -28,6 +28,7 @@ import com.l2jfree.L2DatabaseFactory;
 import com.l2jfree.gameserver.Announcements;
 import com.l2jfree.gameserver.ThreadPoolManager;
 import com.l2jfree.gameserver.datatables.DoorTable;
+import com.l2jfree.gameserver.datatables.NpcTable;
 import com.l2jfree.gameserver.datatables.SpawnTable;
 import com.l2jfree.gameserver.gameobjects.L2Npc;
 import com.l2jfree.gameserver.instancemanager.GameTimeManager;
@@ -450,6 +451,13 @@ public final class HellboundManager
 	
 	private HellboundManager()
 	{
+		// Kief is the first Hellbound NPC. Without that template the island is not part of this world.
+		if (NpcTable.getInstance().getTemplate(32345) == null)
+		{
+			_log.info("World has no hellbound");
+			return;
+		}
+		
 		initializeStageHandlers();
 		
 		_log.info("Hellbound: initialized");
