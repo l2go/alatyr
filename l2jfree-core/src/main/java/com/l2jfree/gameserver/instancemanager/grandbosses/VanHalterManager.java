@@ -698,6 +698,8 @@ public class VanHalterManager extends BossLair
 	
 	protected void spawnVanHalter()
 	{
+		if (_vanHalterSpawn == null)
+			return;
 		_vanHalter = (L2RaidBossInstance)_vanHalterSpawn.doSpawn();
 		_vanHalter.setIsImmobilized(true);
 		_vanHalter.setIsInvul(true);
@@ -769,6 +771,8 @@ public class VanHalterManager extends BossLair
 	
 	protected void spawnRitualOffering()
 	{
+		if (_ritualOfferingSpawn == null)
+			return;
 		_ritualOffering = _ritualOfferingSpawn.doSpawn();
 		_ritualOffering.setIsImmobilized(true);
 		_ritualOffering.setIsInvul(true);
