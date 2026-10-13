@@ -115,6 +115,9 @@ public class BaylorManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Baylor", NpcTable.getInstance().getTemplate(29099)))
+			return;
+		
 		// Init state.
 		_isAlreadyEnteredOtherParty = false;
 		

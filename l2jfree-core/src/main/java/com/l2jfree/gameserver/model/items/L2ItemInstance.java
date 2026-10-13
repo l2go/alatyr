@@ -1381,7 +1381,7 @@ public final class L2ItemInstance extends L2Object implements FuncOwner, Element
 		L2Item item = ItemTable.getInstance().getTemplate(item_id);
 		if (item == null)
 		{
-			_log.error("Item item_id=" + item_id + " not known, object_id=" + objectId);
+			// The row stays. The inventory load counts these and logs once.
 			return null;
 		}
 		inst = new L2ItemInstance(objectId, item);

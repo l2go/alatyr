@@ -28,6 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.l2jfree.Config;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.gameserver.gameobjects.instance.L2BoatInstance;
 import com.l2jfree.gameserver.gameobjects.templates.L2CreatureTemplate;
 import com.l2jfree.gameserver.idfactory.IdFactory;
@@ -62,11 +63,14 @@ public class BoatManager
 		{
 			return;
 		}
+		File boatData = new File(Config.DATAPACK_ROOT, "data/boat.csv");
+		if (WorldFiles.skip(_log, "boats", boatData))
+			return;
+		
 		LineNumberReader lnr = null;
 		try
 		{
-			File doorData = new File(Config.DATAPACK_ROOT, "data/boat.csv");
-			lnr = new LineNumberReader(new BufferedReader(new FileReader(doorData)));
+			lnr = new LineNumberReader(new BufferedReader(new FileReader(boatData)));
 			
 			String line = null;
 			while ((line = lnr.readLine()) != null)
@@ -84,7 +88,7 @@ public class BoatManager
 		}
 		catch (FileNotFoundException e)
 		{
-			_log.warn("boat.csv is missing in data folder");
+			WorldFiles.unreadable(_log, "boats", boatData, e);
 		}
 		catch (Exception e)
 		{

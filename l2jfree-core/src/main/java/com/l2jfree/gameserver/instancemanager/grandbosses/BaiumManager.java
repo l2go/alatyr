@@ -119,6 +119,9 @@ public class BaiumManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Baium", NpcTable.getInstance().getTemplate(BAIUM)))
+			return;
+		
 		// Setting spawn data of monsters.
 		try
 		{
@@ -207,13 +210,14 @@ public class BaiumManager extends BossLair
 		}
 		
 		_log.info("BaiumManager : State of Baium is " + _state.getState() + ".");
-		if (_state.getState().equals(GrandBossState.StateEnum.NOTSPAWN))
+		if (_statueSpawn != null && _state.getState().equals(GrandBossState.StateEnum.NOTSPAWN))
 			_statueSpawn.doSpawn();
 		else if (_state.getState().equals(GrandBossState.StateEnum.ALIVE))
 		{
 			_state.setState(GrandBossState.StateEnum.NOTSPAWN);
 			_state.update();
-			_statueSpawn.doSpawn();
+			if (_statueSpawn != null)
+				_statueSpawn.doSpawn();
 		}
 		else if (_state.getState().equals(GrandBossState.StateEnum.INTERVAL)
 				|| _state.getState().equals(GrandBossState.StateEnum.DEAD))

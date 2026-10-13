@@ -97,6 +97,9 @@ public class ValakasManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Valakas", NpcTable.getInstance().getTemplate(29028)))
+			return;
+		
 		// Setting spawn data of monsters.
 		try
 		{

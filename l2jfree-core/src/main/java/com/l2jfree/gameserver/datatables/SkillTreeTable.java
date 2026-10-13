@@ -78,20 +78,8 @@ public class SkillTreeTable
 	 */
 	public int getExpertiseLevel(int grade)
 	{
-		if (grade <= 0)
-			return 0;
-		
 		// since expertise comes at same level for all classes we use paladin for now
-		Map<Integer, L2SkillLearn> learnMap = getSkillTrees()[ClassId.Paladin.ordinal()];
-		
-		int skillHashCode = SkillTable.getSkillUID(239, grade);
-		if (learnMap.containsKey(skillHashCode))
-		{
-			return learnMap.get(skillHashCode).getMinLevel();
-		}
-		
-		_log.error("Expertise not found for grade " + grade);
-		return 0;
+		return Expertise.minimumLevel(getSkillTrees()[ClassId.Paladin.ordinal()], grade);
 	}
 	
 	/**
@@ -205,6 +193,8 @@ public class SkillTreeTable
 		}
 		
 		_log.info("SkillTreeTable:               Loaded " + count + " skills.");
+		if (getExpertiseLevel(1) < 0)
+			_log.info("World has no expertise");
 		
 		//Skill tree for fishing skill (from Fisherman)
 		int count2 = 0;
@@ -841,7 +831,10 @@ public class SkillTreeTable
 	 */
 	public Collection<L2SkillLearn> getAllowedSkills(ClassId classId)
 	{
-		return getSkillTrees()[classId.ordinal()].values();
+		Map<Integer, L2SkillLearn> tree = getSkillTrees()[classId.ordinal()];
+		if (tree == null)
+			return List.of();
+		return tree.values();
 	}
 	
 	public Set<Integer> getAllowedSkillUIDs(ClassId classId)

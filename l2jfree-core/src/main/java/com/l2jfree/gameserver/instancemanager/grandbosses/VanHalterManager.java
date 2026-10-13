@@ -130,6 +130,9 @@ public class VanHalterManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Van Halter", NpcTable.getInstance().getTemplate(29062)))
+			return;
+		
 		// Clear flag.
 		_isLocked = false;
 		_isCaptainSpawned = false;
@@ -698,6 +701,8 @@ public class VanHalterManager extends BossLair
 	
 	protected void spawnVanHalter()
 	{
+		if (_vanHalterSpawn == null)
+			return;
 		_vanHalter = (L2RaidBossInstance)_vanHalterSpawn.doSpawn();
 		_vanHalter.setIsImmobilized(true);
 		_vanHalter.setIsInvul(true);
@@ -769,6 +774,8 @@ public class VanHalterManager extends BossLair
 	
 	protected void spawnRitualOffering()
 	{
+		if (_ritualOfferingSpawn == null)
+			return;
 		_ritualOffering = _ritualOfferingSpawn.doSpawn();
 		_ritualOffering.setIsImmobilized(true);
 		_ritualOffering.setIsInvul(true);
@@ -909,6 +916,8 @@ public class VanHalterManager extends BossLair
 	{
 		for (L2DoorInstance door : _doorOfAltar)
 		{
+			if (door == null)
+				continue;
 			try
 			{
 				door.openMe();
@@ -999,6 +1008,8 @@ public class VanHalterManager extends BossLair
 	{
 		for (L2DoorInstance door : _doorOfSacrifice)
 		{
+			if (door == null)
+				continue;
 			try
 			{
 				door.closeMe();

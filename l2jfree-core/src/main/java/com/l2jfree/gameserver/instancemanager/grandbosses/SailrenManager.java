@@ -92,6 +92,9 @@ public class SailrenManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Sailren", NpcTable.getInstance().getTemplate(29065)))
+			return;
+		
 		// Init state.
 		_isAlreadyEnteredOtherParty = false;
 		

@@ -56,6 +56,7 @@ import com.l2jfree.gameserver.communitybbs.bb.Forum;
 import com.l2jfree.gameserver.datatables.CharNameTable;
 import com.l2jfree.gameserver.datatables.CharTemplateTable;
 import com.l2jfree.gameserver.datatables.ClanTable;
+import com.l2jfree.gameserver.datatables.Expertise;
 import com.l2jfree.gameserver.datatables.FishTable;
 import com.l2jfree.gameserver.datatables.GmListTable;
 import com.l2jfree.gameserver.datatables.HennaTable;
@@ -2368,12 +2369,8 @@ public final class L2Player extends L2Playable
 				_log.debug("removed skill 'Lucky' from " + getName());
 		}
 		
-		// Calculate the current higher Expertise of the L2Player
-		for (int i = 0; i < EXPERTISE_LEVELS.length; i++)
-		{
-			if (lvl >= EXPERTISE_LEVELS[i])
-				setExpertiseIndex(i);
-		}
+		// A grade the world does not define is negative and does not raise the index, so skill 239 is not granted.
+		setExpertiseIndex(Expertise.skillLevel(lvl, EXPERTISE_LEVELS));
 		
 		// Add the Expertise skill corresponding to its Expertise level
 		if (getExpertiseIndex() > 0)

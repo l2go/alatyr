@@ -20,6 +20,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 
+import com.l2jfree.gameserver.persistence.WorldConfigurationException;
+
 class StartupGuardTest
 {
 	@Test
@@ -40,6 +42,18 @@ class StartupGuardTest
 		
 		StartupGuard.startOrExit(() -> {
 			throw new IllegalStateException("another server holds the world lock");
+		}, status::set);
+		
+		assertThat(status.get()).isEqualTo(1);
+	}
+	
+	@Test
+	void aMissingWorldDirectoryExitsWithStatusOne()
+	{
+		final AtomicInteger status = new AtomicInteger(-1);
+		
+		StartupGuard.startOrExit(() -> {
+			throw new WorldConfigurationException("CatalogDirectory", "/world/missing");
 		}, status::set);
 		
 		assertThat(status.get()).isEqualTo(1);

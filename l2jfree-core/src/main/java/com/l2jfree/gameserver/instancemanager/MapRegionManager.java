@@ -51,6 +51,7 @@ import com.l2jfree.gameserver.model.world.L2World;
 import com.l2jfree.gameserver.model.world.L2WorldRegion;
 import com.l2jfree.gameserver.model.zone.L2Zone;
 import com.l2jfree.gameserver.util.Util;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.util.L2Collections;
 import com.l2jfree.util.LookupTable;
 
@@ -75,7 +76,11 @@ public final class MapRegionManager
 	
 	private void load()
 	{
-		for (File xml : Util.getDatapackFiles("mapregion", ".xml"))
+		WorldFiles.Listed files = Util.listDatapack("mapregion", ".xml");
+		if (WorldFiles.leaveOut(_log, "map regions", files))
+			return;
+		
+		for (File xml : files.files())
 		{
 			Document doc = null;
 			

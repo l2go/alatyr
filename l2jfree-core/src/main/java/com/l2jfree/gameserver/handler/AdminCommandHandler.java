@@ -197,7 +197,7 @@ public final class AdminCommandHandler extends HandlerRegistry<String, IAdminCom
 		
 		for (String cmd : Config.GM_COMMAND_PRIVILEGES.keySet())
 			if (get(cmd) == null)
-				_log.warn("AdminCommandHandler: Command \"" + cmd + "\" isn't used anymore.");
+				_log.info("AdminCommandHandler: Command \"" + cmd + "\" isn't used anymore.");
 	}
 	
 	private void register(IAdminCommandHandler handler)

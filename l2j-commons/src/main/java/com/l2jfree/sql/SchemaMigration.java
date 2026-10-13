@@ -6,11 +6,17 @@
  */
 package com.l2jfree.sql;
 
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Objects;
 
 import javax.sql.DataSource;
 
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.FlywayException;
+import org.flywaydb.core.api.callback.BaseCallback;
+import org.flywaydb.core.api.callback.Context;
+import org.flywaydb.core.api.callback.Event;
 import org.flywaydb.core.api.output.MigrateResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +59,9 @@ public final class SchemaMigration
 				.failOnMissingLocations(true)
 				.validateMigrationNaming(true)
 				.cleanDisabled(true)
+				// CREATE EXTENSION IF NOT EXISTS still emits a notice when the extension is already there.
+				// That notice is not a failed migration. The setting is applied on each Flyway connection.
+				.callbacks(new QuietNotices())
 				.load();
 		
 		MigrateResult result = flyway.migrate();
@@ -62,5 +71,30 @@ public final class SchemaMigration
 		_log.info("Schema " + schema + " is at version " + (version == null ? "none" : version) + " ("
 				+ result.migrationsExecuted + " migration(s) applied).");
 		return result.migrationsExecuted;
+	}
+	
+	/**
+	 * PostgreSQL reports an existing extension as a notice. The notice is not a failed migration.
+	 */
+	private static final class QuietNotices extends BaseCallback
+	{
+		@Override
+		public boolean supports(Event event, Context context)
+		{
+			return event == Event.AFTER_CONNECT;
+		}
+		
+		@Override
+		public void handle(Event event, Context context)
+		{
+			try (Statement statement = context.getConnection().createStatement())
+			{
+				statement.execute("SET client_min_messages TO warning");
+			}
+			catch (SQLException e)
+			{
+				throw new FlywayException("Could not quiet PostgreSQL notices", e);
+			}
+		}
 	}
 }

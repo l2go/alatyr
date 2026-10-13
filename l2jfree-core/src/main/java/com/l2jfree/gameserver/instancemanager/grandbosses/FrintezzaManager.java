@@ -130,6 +130,9 @@ public class FrintezzaManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Frintezza", NpcTable.getInstance().getTemplate(29045)))
+			return;
+		
 		_callForHelpInterval = 2000;
 		
 		_intervalOfRetarget = 10000;
@@ -225,6 +228,8 @@ public class FrintezzaManager extends BossLair
 		try
 		{
 			template1 = NpcTable.getInstance().getTemplate(templateId);
+			if (template1 == null)
+				return null;
 			tempSpawn = new L2Spawn(template1);
 			
 			tempSpawn.setLocx(x);

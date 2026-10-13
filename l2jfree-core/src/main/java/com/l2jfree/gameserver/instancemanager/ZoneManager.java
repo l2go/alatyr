@@ -33,6 +33,7 @@ import com.l2jfree.gameserver.model.world.L2WorldRegion;
 import com.l2jfree.gameserver.model.zone.L2Zone;
 import com.l2jfree.gameserver.model.zone.L2Zone.ZoneType;
 import com.l2jfree.gameserver.util.Util;
+import com.l2jfree.gameserver.util.WorldFiles;
 
 public final class ZoneManager
 {
@@ -79,7 +80,11 @@ public final class ZoneManager
 	{
 		Document doc = null;
 		
-		for (File f : Util.getDatapackFiles("zone", ".xml"))
+		WorldFiles.Listed files = Util.listDatapack("zone", ".xml");
+		if (WorldFiles.leaveOut(_log, "zones", files))
+			return;
+		
+		for (File f : files.files())
 		{
 			int count = 0;
 			try

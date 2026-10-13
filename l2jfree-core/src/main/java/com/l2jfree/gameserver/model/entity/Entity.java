@@ -107,10 +107,15 @@ public class Entity
 		return Double.MAX_VALUE;
 	}
 	
+	// A lair asks who is inside while it is starting, including when this world has no zone for it.
+	// An empty list is that answer. getTownId and the other lookups still report a missing zone when they run.
 	protected List<L2Player> getPlayersInside()
 	{
 		List<L2Player> lst = new ArrayList<L2Player>();
-		for (L2Creature cha : getZone().getCharactersInside())
+		L2Zone zone = getZone();
+		if (zone == null)
+			return lst;
+		for (L2Creature cha : zone.getCharactersInside())
 		{
 			if (cha instanceof L2Player)
 				lst.add((L2Player)cha);

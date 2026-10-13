@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.l2jfree.Config;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.gameserver.model.items.Item;
 import com.l2jfree.gameserver.model.items.templates.L2EtcItem;
 import com.l2jfree.gameserver.model.items.templates.L2EtcItemType;
@@ -51,16 +52,18 @@ public final class DocumentEngine
 		}
 	};
 	
-	private static File[] listFiles(String dirname)
+	private static File[] listFiles(String dirname, String part)
 	{
-		return new File(Config.DATAPACK_ROOT, dirname).listFiles(XML_FILTER);
+		WorldFiles.Listed listed = WorldFiles.list(new File(Config.DATAPACK_ROOT, dirname), XML_FILTER);
+		WorldFiles.leaveOut(_log, part, listed);
+		return listed.files();
 	}
 	
 	public static List<L2Skill> loadSkills()
 	{
 		final List<L2Skill> list = new ArrayList<L2Skill>();
 		
-		for (File file : listFiles("data/stats/skills"))
+		for (File file : listFiles("data/stats/skills", "skills"))
 		{
 			DocumentSkill doc = new DocumentSkill(file);
 			doc.parse();
@@ -72,7 +75,7 @@ public final class DocumentEngine
 	
 	public static List<L2Item> loadArmors(Map<Integer, Item> armorData)
 	{
-		final List<L2Item> list = loadData(armorData, listFiles("data/stats/armor"));
+		final List<L2Item> list = loadData(armorData, listFiles("data/stats/armor", "armor"));
 		
 		Set<Integer> xmlItem = new HashSet<Integer>();
 		
@@ -88,7 +91,7 @@ public final class DocumentEngine
 	
 	public static List<L2Item> loadWeapons(Map<Integer, Item> weaponData)
 	{
-		final List<L2Item> list = loadData(weaponData, listFiles("data/stats/weapon"));
+		final List<L2Item> list = loadData(weaponData, listFiles("data/stats/weapon", "weapons"));
 		
 		Set<Integer> xmlItem = new HashSet<Integer>();
 		
@@ -104,7 +107,7 @@ public final class DocumentEngine
 	
 	public static List<L2Item> loadItems(Map<Integer, Item> itemData)
 	{
-		final List<L2Item> list = loadData(itemData, listFiles("data/stats/etcitem"));
+		final List<L2Item> list = loadData(itemData, listFiles("data/stats/etcitem", "etc items"));
 		
 		Set<Integer> xmlItem = new HashSet<Integer>();
 		

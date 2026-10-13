@@ -30,6 +30,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.l2jfree.Config;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.gameserver.datatables.ItemTable;
 import com.l2jfree.gameserver.model.items.templates.L2Item;
 
@@ -335,6 +336,8 @@ public class L2Manor
 		try
 		{
 			File seedData = new File(Config.DATAPACK_ROOT, "data/seeds.csv");
+			if (WorldFiles.skip(_log, "seeds", seedData))
+				return;
 			lnr = new LineNumberReader(new BufferedReader(new FileReader(seedData)));
 			
 			String line = null;
@@ -350,7 +353,7 @@ public class L2Manor
 		}
 		catch (FileNotFoundException e)
 		{
-			_log.info("seeds.csv is missing in data folder", e);
+			WorldFiles.unreadable(_log, "seeds", new File(Config.DATAPACK_ROOT, "data/seeds.csv"), e);
 		}
 		catch (Exception e)
 		{

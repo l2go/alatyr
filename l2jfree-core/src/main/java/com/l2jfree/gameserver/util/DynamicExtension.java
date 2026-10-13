@@ -14,8 +14,9 @@
  */
 package com.l2jfree.gameserver.util;
 
+import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
@@ -80,17 +81,17 @@ public class DynamicExtension
 	{
 		_prop = new L2Properties();
 		_loadedExtensions = new ConcurrentHashMap<String, Object>();
-		try
+		File file = new File(CONFIG);
+		if (!WorldFiles.skip(_log, "extensions", file))
 		{
-			_prop.load(new FileInputStream(CONFIG));
-		}
-		catch (FileNotFoundException ex)
-		{
-			_log.info(ex.getMessage() + ": no extensions to load", ex);
-		}
-		catch (Exception ex)
-		{
-			_log.warn("could not load properties", ex);
+			try
+			{
+				_prop.load(new FileInputStream(file));
+			}
+			catch (IOException ex)
+			{
+				WorldFiles.unreadable(_log, "extensions", file, ex);
+			}
 		}
 		classLoader = new JarClassLoader();
 		for (Object o : _prop.keySet())

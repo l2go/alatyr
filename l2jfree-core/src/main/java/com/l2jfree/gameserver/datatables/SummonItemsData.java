@@ -27,6 +27,7 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 
 import com.l2jfree.Config;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.gameserver.model.L2SummonItem;
 
 /**
@@ -51,6 +52,8 @@ public class SummonItemsData
 		_summonitems = new LinkedHashMap<Integer, L2SummonItem>();
 		Document doc = null;
 		File file = new File(Config.DATAPACK_ROOT, "data/summon_items.xml");
+		if (WorldFiles.skip(_log, "summon items", file))
+			return;
 		
 		try
 		{

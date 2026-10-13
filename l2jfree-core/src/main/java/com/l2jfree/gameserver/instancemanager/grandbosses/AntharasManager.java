@@ -95,6 +95,9 @@ public class AntharasManager extends BossLair
 	@Override
 	public void init()
 	{
+		if (BossInit.missing(_log, "Antharas", NpcTable.getInstance().getTemplate(29019)))
+			return;
+		
 		// Setting spawn data of monsters.
 		try
 		{

@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.l2jfree.Config;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.gameserver.gameobjects.instance.L2DoorInstance;
 import com.l2jfree.gameserver.gameobjects.templates.L2CreatureTemplate;
 import com.l2jfree.gameserver.geodata.GeoData;
@@ -58,10 +59,14 @@ public final class DoorTable
 		_doorArray = null;
 		_doors.clear();
 		
+		File doorFile = new File(Config.DATAPACK_ROOT, "data/door.csv");
+		if (WorldFiles.skip(_log, "doors", doorFile))
+			return;
+		
 		BufferedReader br = null;
 		try
 		{
-			br = new BufferedReader(new FileReader(new File(Config.DATAPACK_ROOT, "data/door.csv")));
+			br = new BufferedReader(new FileReader(doorFile));
 			
 			for (String line; (line = br.readLine()) != null;)
 			{

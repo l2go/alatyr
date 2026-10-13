@@ -29,6 +29,7 @@ import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.model.GMAudit;
 import com.l2jfree.gameserver.model.L2ArmorSet;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
+import com.l2jfree.gameserver.model.items.UnknownItems;
 import com.l2jfree.gameserver.model.items.L2ItemInstance.ItemLocation;
 import com.l2jfree.gameserver.model.items.templates.L2Armor;
 import com.l2jfree.gameserver.model.items.templates.L2Equip;
@@ -1593,9 +1594,15 @@ public abstract class Inventory extends ItemContainer
 		try
 		{
 			L2ItemInstance item;
+			UnknownItems unknown = new UnknownItems();
 			for (ItemRepository.ItemRow row : ItemRepository.getInstance().loadItems(null, getStoredOwnerKey(),
 					getBaseLocation().name(), getEquipLocation().name()))
 			{
+				if (ItemTable.getInstance().getTemplate(row.itemTemplateId()) == null)
+				{
+					unknown.miss();
+					continue;
+				}
 				item = L2ItemInstance.restoreFromDb(getOwnerId(), row);
 				if (item == null)
 					continue;
@@ -1612,6 +1619,8 @@ public abstract class Inventory extends ItemContainer
 			refreshWeight();
 			restoreEquipedItemsPassiveSkill();
 			restoreArmorSetPassiveSkill();
+			if (unknown.warning() != null)
+				_log.warn(unknown.warning());
 		}
 		catch (Exception e)
 		{

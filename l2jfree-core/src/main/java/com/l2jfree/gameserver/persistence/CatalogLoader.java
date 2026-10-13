@@ -160,6 +160,9 @@ public final class CatalogLoader
 	
 	private static List<Path> csvFiles(Path directory) throws IOException
 	{
+		if (!Files.isDirectory(directory))
+			throw new WorldConfigurationException("CatalogDirectory", directory.toString());
+		
 		try (Stream<Path> files = Files.list(directory))
 		{
 			return files.filter(file -> file.getFileName().toString().endsWith(".csv")).sorted().toList();

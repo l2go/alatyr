@@ -68,12 +68,12 @@ public class BanManager
 	 */
 	public void load()
 	{
+		File file = new File(BAN_LIST);
 		try
 		{
 			_bannedIps.clear();
 			_restrictedIps.clear();
 			// try to read banned list
-			File file = new File(BAN_LIST);
 			List<?> lines = FileUtils.readLines(file, ENCODING);
 			
 			for (int i = 0; i < lines.size(); i++)
@@ -91,7 +91,10 @@ public class BanManager
 		}
 		catch (IOException e)
 		{
-			_log.warn("BanManager: Cannot read IP list: ", e);
+			if (!file.isFile())
+				_log.info("BanManager: no banned addresses");
+			else
+				_log.warn("BanManager: Cannot read IP list: ", e);
 		}
 	}
 	

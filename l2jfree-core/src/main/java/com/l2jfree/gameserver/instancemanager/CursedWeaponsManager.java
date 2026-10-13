@@ -35,6 +35,7 @@ import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 
 import com.l2jfree.Config;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.L2DatabaseFactory;
 import com.l2jfree.gameserver.gameobjects.L2Attackable;
 import com.l2jfree.gameserver.gameobjects.L2Boss;
@@ -83,6 +84,10 @@ public class CursedWeaponsManager
 	
 	private final void load()
 	{
+		File cursedWeapons = new File(Config.DATAPACK_ROOT, "data/cursedWeapons.xml");
+		if (WorldFiles.skip(_log, "cursed weapons", cursedWeapons))
+			return;
+		
 		Connection con = null;
 		
 		try

@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.l2jfree.Config;
+import com.l2jfree.gameserver.util.WorldFiles;
 import com.l2jfree.gameserver.gameobjects.instance.L2AirShipControllerInstance;
 import com.l2jfree.gameserver.gameobjects.instance.L2AirShipInstance;
 import com.l2jfree.gameserver.gameobjects.templates.L2CreatureTemplate;
@@ -55,6 +56,8 @@ public class AirShipManager
 		try
 		{
 			File doorData = new File(Config.DATAPACK_ROOT, "data/airship.csv");
+			if (WorldFiles.skip(_log, "airships", doorData))
+				return;
 			lnr = new BufferedReader(new FileReader(doorData));
 			
 			String line = null;
@@ -71,7 +74,7 @@ public class AirShipManager
 		}
 		catch (FileNotFoundException e)
 		{
-			_log.warn("airship.csv is missing in data folder");
+			WorldFiles.unreadable(_log, "airships", new File(Config.DATAPACK_ROOT, "data/airship.csv"), e);
 		}
 		catch (Exception e)
 		{

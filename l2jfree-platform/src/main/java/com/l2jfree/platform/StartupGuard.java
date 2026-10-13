@@ -19,6 +19,8 @@ import java.util.function.IntConsumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.l2jfree.gameserver.persistence.WorldConfigurationException;
+
 /**
  * Ends the process with a non-zero status when the start fails, and says why in the log.
  * <p>
@@ -49,6 +51,11 @@ final class StartupGuard
 		try
 		{
 			startup.run();
+		}
+		catch (WorldConfigurationException e)
+		{
+			_log.error(e.getMessage());
+			exit.accept(1);
 		}
 		catch (Throwable t)
 		{
