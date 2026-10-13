@@ -1,0 +1,6 @@
+key	kind	text	note
+currency.main.one	common	{count, plural, one {# coin} other {# coins}}	one
+currency.main.zero	common	{count, plural, one {# coin} other {# coins}}	zero
+currency.main.dozen	common	{count, plural, one {# coin} other {# coins}}	dozen
+currency.main.grouped	common	{count, number, integer}	grouped
+currency.main.plain	common	{count}	plain
