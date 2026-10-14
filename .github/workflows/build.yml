@@ -172,7 +172,7 @@ jobs:
           require_entry '^l2jfree/world/world\.properties$'
           require_entry '^l2jfree/world/LICENSE$'
           require_entry '^l2jfree/world/catalog/npc_template\.csv$'
-          world_top="$(grep -E '^l2jfree/world/' <<< "$entries" | sed -E 's|^l2jfree/world/([^/]+).*|\1|' | sort -u)"
+          world_top="$(grep -E '^l2jfree/world/[^/]' <<< "$entries" | sed -E 's|^l2jfree/world/([^/]+).*|\1|' | sort -u)"
           expected_top="$(printf '%s\n' LICENSE catalog data world.properties)"
           if [[ "$world_top" != "$expected_top" ]]; then
             echo "The world in the archive is not only world.properties, LICENSE, catalog, and data:"
