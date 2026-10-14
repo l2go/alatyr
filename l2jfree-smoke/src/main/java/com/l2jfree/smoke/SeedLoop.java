@@ -256,9 +256,14 @@ final class SeedLoop
 		}
 	}
 
+	/**
+	 * Walks into reach, selects the beast, then starts one attack and waits. A move sent after that
+	 * cancels the server's own walk into range, so the beast hits a character that never swings.
+	 */
 	private static void attack(GameConnection game, View view, Deadline deadline, Actor target) throws SmokeException
 	{
 		long until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(KILL_LIMIT_MILLIS);
+		boolean started = false;
 		while (System.nanoTime() < until)
 		{
 			if (deadline.expired())
@@ -268,20 +273,34 @@ final class SeedLoop
 			if (seen == null || seen.dead)
 			{
 				view.kills++;
+				adoptDestination(view);
 				return;
 			}
-			if (view.x <= PEACE_EAST)
+			if (!started)
 			{
-				stepToward(game, view, deadline, PEACE_EAST + 200, view.y, view.z);
-				continue;
+				if (view.x <= PEACE_EAST)
+				{
+					stepToward(game, view, deadline, PEACE_EAST + 200, view.y, view.z);
+					continue;
+				}
+				if (distance(view.x, view.y, seen.x, seen.y) > MELEE)
+				{
+					stepToward(game, view, deadline, seen.x, seen.y, seen.z);
+					continue;
+				}
+				// The first click only selects. The next click, after the retarget block, starts the attack.
+				game.send(GamePackets.action(seen.objectId, view.x, view.y, view.z));
+				absorb(game, view, deadline, ATTACK_PAUSE_MILLIS);
+				seen = view.npcs.get(target.objectId);
+				if (seen == null || seen.dead)
+				{
+					view.kills++;
+					adoptDestination(view);
+					return;
+				}
+				game.send(GamePackets.action(seen.objectId, view.x, view.y, view.z));
+				started = true;
 			}
-			if (distance(view.x, view.y, seen.x, seen.y) > MELEE)
-			{
-				stepToward(game, view, deadline, seen.x, seen.y, seen.z);
-				continue;
-			}
-			game.send(GamePackets.action(seen.objectId, view.x, view.y, view.z));
-			game.send(GamePackets.attack(seen.objectId, view.x, view.y, view.z));
 			absorb(game, view, deadline, ATTACK_PAUSE_MILLIS);
 		}
 		Actor seen = view.npcs.get(target.objectId);
@@ -291,6 +310,7 @@ final class SeedLoop
 
 	private static void pickup(GameConnection game, View view, Deadline deadline, int dropperId) throws SmokeException
 	{
+		adoptDestination(view);
 		absorb(game, view, deadline, 1500L);
 		List<GroundItem> mine = new ArrayList<>();
 		for (GroundItem drop : view.drops.values())
@@ -473,11 +493,18 @@ final class SeedLoop
 				return;
 		}
 		if (view.acceptedMove && distance(view.x, view.y, view.acceptedX, view.acceptedY) > MELEE)
-		{
-			view.x = view.acceptedX;
-			view.y = view.acceptedY;
-			view.z = view.acceptedZ;
-		}
+			adoptDestination(view);
+	}
+
+	/** The server does not send StopMove when a walk finishes, so the last accepted destination is where we are. */
+	private static void adoptDestination(View view)
+	{
+		if (!view.acceptedMove)
+			return;
+
+		view.x = view.acceptedX;
+		view.y = view.acceptedY;
+		view.z = view.acceptedZ;
 	}
 
 	private static void waitForSelf(GameConnection game, View view, Deadline deadline) throws SmokeException
