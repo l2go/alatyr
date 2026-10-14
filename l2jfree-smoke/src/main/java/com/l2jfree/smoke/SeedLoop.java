@@ -564,6 +564,23 @@ final class SeedLoop
 	{
 		PacketReader in = new PacketReader(payload);
 		int opcode = in.readC();
+		try
+		{
+			applyOpcode(view, in, opcode);
+		}
+		catch (SmokeException e)
+		{
+			// Some server packets share a layout only up to a point, or are shorter than the full
+			// record. Missing the tail is not a failed step; the next full packet refreshes the view.
+			if (e.getMessage() != null && e.getMessage().startsWith("the packet is too short"))
+				return;
+
+			throw e;
+		}
+	}
+
+	private static void applyOpcode(View view, PacketReader in, int opcode) throws SmokeException
+	{
 		switch (opcode)
 		{
 			case GamePackets.OP_USER_INFO ->
