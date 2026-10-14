@@ -4,7 +4,7 @@
                       http://maven.apache.org/xsd/assembly-1.1.1.xsd">
 	<!--
 		One directory, l2jfree/, that holds the whole process:
-		l2jfree-platform.jar, libs/, agents/, config/ (the defaults of both modules), data/, catalog/.
+		l2jfree-platform.jar, libs/, agents/, config/ (the defaults of both modules), world/.
 	-->
 	<id>dist</id>
 	<includeBaseDirectory>false</includeBaseDirectory>
@@ -50,21 +50,16 @@
 				<exclude>telnet.properties</exclude>
 			</excludes>
 		</fileSet>
-		<!-- The datapack: its data, the scripts it compiled to class files, and the catalog. -->
+		<!-- The authored world: passport, license, catalog, and data. Sources stay out of the archive. -->
 		<fileSet>
-			<directory>../l2jfree-datapack/data/</directory>
-			<outputDirectory>l2jfree/data/</outputDirectory>
-		</fileSet>
-		<fileSet>
-			<directory>../l2jfree-datapack/target/classes</directory>
-			<outputDirectory>l2jfree/data/scripts/</outputDirectory>
+			<directory>../world/</directory>
+			<outputDirectory>l2jfree/world/</outputDirectory>
 			<includes>
-				<include>**/*.class</include>
+				<include>world.properties</include>
+				<include>LICENSE</include>
+				<include>catalog/**</include>
+				<include>data/**</include>
 			</includes>
-		</fileSet>
-		<fileSet>
-			<directory>../l2jfree-datapack/catalog/</directory>
-			<outputDirectory>l2jfree/catalog/</outputDirectory>
 		</fileSet>
 	</fileSets>
 </assembly>
