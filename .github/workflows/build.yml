@@ -937,6 +937,10 @@ jobs:
             echo "::error::the server log has a WARN line"
             exit 1
           fi
+          if grep -E 'Failed executing script|Failed loading:' "$log"; then
+            echo "::error::the server log reports a failed script"
+            exit 1
+          fi
 
       - name: Upload the server log
         if: always()
