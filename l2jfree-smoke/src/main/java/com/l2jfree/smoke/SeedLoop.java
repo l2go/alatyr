@@ -284,6 +284,13 @@ final class SeedLoop
 				return chosen;
 			}
 			int[] waitAt = plots[view.kills % plots.length];
+			// Already on the plot: the corpse fades and the beast returns. Walking in circles
+			// would leave the plot, so a quiet wait is the whole of this step.
+			if (distance(view.x, view.y, waitAt[0], waitAt[1]) <= PLOT)
+			{
+				poll(game, view, deadline, 500L);
+				continue;
+			}
 			stepToward(game, view, deadline, waitAt[0], waitAt[1], GROUND_Z);
 		}
 	}
@@ -540,16 +547,15 @@ final class SeedLoop
 			destX = view.x + (int)Math.round(dx / len * STEP);
 			destY = view.y + (int)Math.round(dy / len * STEP);
 		}
-		// A rejected step stays on the same tile. Shift the next one sideways instead of repeating it.
-		if (view.moveNudges > 0)
-			destY += (view.moveNudges % 2 == 0 ? 80 : -80) * view.moveNudges;
 		view.acceptedMove = false;
 		game.send(GamePackets.moveBackward(destX, destY, z, view.x, view.y, view.z));
 		// The server tells the client the destination and then expects the client to walk there. A move
 		// that finishes on its own does not send StopMove, so the position is taken from that destination
-		// once the travel time has passed.
+		// once the travel time has passed. The confirmation can arrive after that, and a new move would
+		// cancel the walk, so the wait holds a little longer.
 		long travel = (long)(Math.min(len, STEP) / RUN_SPEED * 1000L) + 1500L;
-		long until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(travel);
+		long travelEnd = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(travel);
+		long until = travelEnd + TimeUnit.SECONDS.toNanos(4);
 		while (System.nanoTime() < until)
 		{
 			if (deadline.expired())
@@ -558,10 +564,11 @@ final class SeedLoop
 			poll(game, view, deadline, 200L);
 			if (distance(view.x, view.y, destX, destY) <= MELEE)
 				return;
+			if (view.acceptedMove && System.nanoTime() >= travelEnd)
+				break;
 		}
 		if (view.acceptedMove && distance(view.x, view.y, view.acceptedX, view.acceptedY) > MELEE)
 			adoptDestination(view);
-		view.moveNudges = view.acceptedMove ? 0 : Math.min(view.moveNudges + 1, 6);
 	}
 
 	/** The server does not send StopMove when a walk finishes, so the last accepted destination is where we are. */
@@ -751,7 +758,12 @@ final class SeedLoop
 			}
 			case GamePackets.OP_ITEM_LIST ->
 			{
-				view.replaceItems(GamePackets.parseItemList(in));
+				List<GamePackets.ItemView> items = GamePackets.parseItemList(in);
+				for (GamePackets.ItemView item : items)
+					if (item.count() < 0 || item.count() > 100_000)
+						return;
+
+				view.replaceItems(items);
 			}
 			case GamePackets.OP_INVENTORY_UPDATE ->
 			{
@@ -840,8 +852,13 @@ final class SeedLoop
 			}
 			case GamePackets.OP_SKILL_LIST ->
 			{
+				List<GamePackets.SkillView> skills = GamePackets.parseSkillList(in);
+				for (GamePackets.SkillView skill : skills)
+					if (skill.level() < 1 || skill.level() > 100)
+						return;
+
 				view.skills.clear();
-				for (GamePackets.SkillView skill : GamePackets.parseSkillList(in))
+				for (GamePackets.SkillView skill : skills)
 					view.skills.put(skill.id(), skill.level());
 
 				view.skillEpoch++;
@@ -1109,7 +1126,6 @@ final class SeedLoop
 		private int kills;
 		private boolean firstAnnounced;
 		private boolean acceptedMove;
-		private int moveNudges;
 		private int acceptedX;
 		private int acceptedY;
 		private int acceptedZ;
