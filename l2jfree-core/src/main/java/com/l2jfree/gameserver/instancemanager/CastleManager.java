@@ -18,6 +18,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -52,25 +53,34 @@ public class CastleManager implements InstanceListManager
 	
 	public final Castle getClosestCastle(L2Object activeObject)
 	{
-		Castle castle = getCastle(activeObject);
-		if (castle == null)
+		return nearest(getCastle(activeObject), getCastles().values(), activeObject.getX(), activeObject.getY());
+	}
+	
+	/**
+	 * The castle the object is already inside, or the nearest castle that has a zone. A castle with no
+	 * zone is not a candidate: {@link Castle#getDistanceToZone(int, int)} still reports that absence when
+	 * it is called, and this search does not call it.
+	 */
+	static Castle nearest(Castle inside, Collection<Castle> castles, int x, int y)
+	{
+		if (inside != null)
+			return inside;
+		
+		Castle chosen = null;
+		double closestDistance = Double.MAX_VALUE;
+		for (Castle candidate : castles)
 		{
-			double closestDistance = Double.MAX_VALUE;
-			double distance;
+			if (candidate == null || candidate.getZone() == null)
+				continue;
 			
-			for (Castle castleToCheck : getCastles().values())
+			double distance = candidate.getDistanceToZone(x, y);
+			if (closestDistance > distance)
 			{
-				if (castleToCheck == null)
-					continue;
-				distance = castleToCheck.getDistanceToZone(activeObject.getX(), activeObject.getY());
-				if (closestDistance > distance)
-				{
-					closestDistance = distance;
-					castle = castleToCheck;
-				}
+				closestDistance = distance;
+				chosen = candidate;
 			}
 		}
-		return castle;
+		return chosen;
 	}
 	
 	public void reload()
