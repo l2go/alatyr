@@ -30,6 +30,12 @@ import org.slf4j.LoggerFactory;
 public final class WorldPassport
 {
 	private static final Logger _log = LoggerFactory.getLogger(WorldPassport.class);
+	private static volatile String _worldId = "";
+
+	public static String worldId()
+	{
+		return _worldId;
+	}
 	
 	private WorldPassport()
 	{
@@ -45,14 +51,18 @@ public final class WorldPassport
 		String revision = CatalogLoader.revisionOf(catalogDirectory);
 		Path passport = datapackRoot.resolve("world.properties");
 		if (!Files.isRegularFile(passport))
+		{
+			_worldId = "";
 			return "World unnamed world, catalog revision " + revision;
+		}
 		
 		Properties properties = new Properties();
 		try (InputStream in = Files.newInputStream(passport))
 		{
 			properties.load(in);
 		}
-		return "World id=" + properties.getProperty("world.id", "") + " version="
+		_worldId = properties.getProperty("world.id", "");
+		return "World id=" + _worldId + " version="
 				+ properties.getProperty("world.version", "") + " license=" + properties.getProperty("world.license", "")
 				+ " expected scripts=" + properties.getProperty("world.expected.scripts", "") + " catalog revision "
 				+ revision;

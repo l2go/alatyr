@@ -38,6 +38,16 @@ public class AttackableStatus extends NpcStatus
 	@Override
 	void reduceHp0(double value, L2Creature attacker, boolean awake, boolean isDOT, boolean isConsume)
 	{
+		synchronized (getActiveChar())
+		{
+			if (!getActiveChar().isDead())
+				reduceAttackableHp(value, attacker, awake, isDOT, isConsume);
+		}
+	}
+
+	private void reduceAttackableHp(double value, L2Creature attacker, boolean awake, boolean isDOT, boolean isConsume)
+	{
+		getActiveChar().recordHuntDamage(attacker, value, getCurrentHp());
 		/*
 		if ((this instanceof L2SiegeGuardInstance) && (attacker instanceof L2SiegeGuardInstance))
 		    //if((this.getEffect(L2EffectType.CONFUSION)!=null) && (attacker.getEffect(L2EffectType.CONFUSION)!=null))
@@ -50,7 +60,7 @@ public class AttackableStatus extends NpcStatus
 		
 		getActiveChar().startCommandChannelTimer(attacker);
 		
-		// Add damage and hate to the attacker AggroInfo of the L2Attackable _aggroList
+		// Keep quest notifications separate from actual HP credit
 		if (attacker != null)
 			getActiveChar().addDamage(attacker, (int)value);
 		

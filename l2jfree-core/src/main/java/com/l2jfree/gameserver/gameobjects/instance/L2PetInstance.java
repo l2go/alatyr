@@ -529,7 +529,7 @@ public class L2PetInstance extends L2Summon
 			}
 			
 			if (target.getOwnerId() != 0 && target.getOwnerId() != getOwner().getObjectId()
-					&& !getOwner().isInLooterParty(target.getOwnerId()))
+					&& (target.isHuntReward() || !getOwner().isInLooterParty(target.getOwnerId())))
 			{
 				getOwner().sendPacket(ActionFailed.STATIC_PACKET);
 				
