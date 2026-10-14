@@ -247,7 +247,7 @@ final class SeedLoop
 			List<Actor> alive = view.aliveBeasts();
 			int index = first ? view.sessionIndex : -1;
 			if (!first && !alive.isEmpty())
-				index = (view.sessionIndex + view.kills) % alive.size();
+				index = (view.sessionIndex + view.kills + view.skipped) % alive.size();
 
 			if (index >= 0 && alive.size() > index)
 			{
@@ -274,10 +274,17 @@ final class SeedLoop
 		long until = Long.MAX_VALUE;
 		boolean started = false;
 		long nextSwing = 0L;
+		long reachBy = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
 		while (true)
 		{
 			if (deadline.expired())
 				throw new SmokeException("step attack: the time limit ended");
+			if (!started && System.nanoTime() >= reachBy)
+			{
+				// This beast stayed out of reach. The next choice moves on instead of walking out the clock.
+				view.skipped++;
+				return;
+			}
 			if (started && System.nanoTime() >= until)
 				break;
 
@@ -650,9 +657,10 @@ final class SeedLoop
 			{
 				GamePackets.UserView user = GamePackets.parseUserInfo(in);
 				// A frame that is not this character's info still carries opcode 0x32 once the
-				// stream has slipped. Applying it sends the walk to a coordinate off the meadow.
-				if (user.level() < 1 || user.level() > 20 || user.x() < -78000 || user.x() > -60000
-						|| user.y() < 250000 || user.y() > 265000)
+				// stream has slipped. A level off this range is that frame. Coordinates stay
+				// accepted anywhere on the map: a tight box froze the walk once a step left it.
+				if (user.level() < 1 || user.level() > 20 || user.x() < -1_000_000 || user.x() > 1_000_000
+						|| user.y() < 0 || user.y() > 1_000_000)
 					return;
 
 				view.objectId = user.objectId();
@@ -1063,6 +1071,7 @@ final class SeedLoop
 		private boolean skillOffered;
 		private String dialog;
 		private int kills;
+		private int skipped;
 		private boolean firstAnnounced;
 		private boolean acceptedMove;
 		private int moveNudges;
