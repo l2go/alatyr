@@ -169,8 +169,28 @@ jobs:
           require_entry '^l2jfree/config/telnet\.properties$'
           require_entry '^l2jfree/config/logback\.xml$'
           require_entry '^l2jfree/agents/opentelemetry-javaagent\.jar$'
-          require_entry '^l2jfree/data/scripts\.cfg$'
-          require_entry '^l2jfree/catalog/npc_template\.csv$'
+          require_entry '^l2jfree/world/world\.properties$'
+          require_entry '^l2jfree/world/LICENSE$'
+          require_entry '^l2jfree/world/catalog/npc_template\.csv$'
+          world_top="$(grep -E '^l2jfree/world/' <<< "$entries" | sed -E 's|^l2jfree/world/([^/]+).*|\1|' | sort -u)"
+          expected_top="$(printf '%s\n' LICENSE catalog data world.properties)"
+          if [[ "$world_top" != "$expected_top" ]]; then
+            echo "The world in the archive is not only world.properties, LICENSE, catalog, and data:"
+            printf '%s\n' "$world_top"
+            exit 1
+          fi
+          if grep -Eq '(^|/)scripts\.cfg$|\.class$|\.py$' <<< "$entries"; then
+            echo "The platform distribution contains a script list, bytecode, or Python: $archive"
+            exit 1
+          fi
+          if grep -Eq '^l2jfree/(data|catalog)/' <<< "$entries"; then
+            echo "The platform distribution still has l2jfree/data or l2jfree/catalog: $archive"
+            exit 1
+          fi
+          if ! unzip -p "$archive" l2jfree/world/world.properties | grep -qx 'world.id=buyan-okolitsa'; then
+            echo "The archive passport is not world.id=buyan-okolitsa: $archive"
+            exit 1
+          fi
           for artifact in slf4j-api jul-to-slf4j logback-classic logback-core; do
             count="$(grep -Ec "^l2jfree/libs/${artifact}-[^/]+\.jar$" <<< "$entries" || true)"
             if [[ "$count" -ne 1 ]]; then
