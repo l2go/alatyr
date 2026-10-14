@@ -420,7 +420,7 @@ jobs:
 
       # Each start of this image is checked on its own window: one passport, no scripts, no ERROR.
       # WARN lines stay visible as a group named by the stage. A warning about items without a template
-      # is expected on the update from the published image, when an old inventory is loaded, and is not an error.
+      # is not an error. It is required only when a step passes --expect-unknown-items.
       - name: Check the server log for the world and for errors
         env:
           L2JFREE_IMAGE: l2jfree:ci
@@ -570,7 +570,9 @@ jobs:
           test "$(docker inspect -f '{{.Config.Image}}' l2jfree-server-1)" = "$NEW_IMAGE"
           python3 deploy/probe/login_init.py --host 127.0.0.1 --port 2106 --timeout 60
           java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --account smokeupdate --password "$password" --existing-characters 1
-          deploy/probe/check-server-window.sh update --since "$since_new" --expect-unknown-items
+          # edge already ships this authored catalog, so the inventory created above still has templates.
+          # The unknown-item warning belongs to a catalog cutover, not to this update.
+          deploy/probe/check-server-window.sh update --since "$since_new"
 
       - name: Upload the server logs
         if: always()

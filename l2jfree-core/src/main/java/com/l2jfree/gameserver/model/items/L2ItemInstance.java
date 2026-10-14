@@ -157,6 +157,7 @@ public final class L2ItemInstance extends L2Object implements FuncOwner, Element
 	private long _dropTime;
 	
 	private boolean _protected;
+	private boolean _huntReward;
 	
 	public static final int UNCHANGED = 0;
 	public static final int ADDED = 1;
@@ -294,6 +295,8 @@ public final class L2ItemInstance extends L2Object implements FuncOwner, Element
 	 */
 	public void setLocation(ItemLocation loc, int loc_data)
 	{
+		if (loc != ItemLocation.VOID)
+			_huntReward = false;
 		if (loc == _loc && loc_data == _locData)
 			return;
 		_loc = loc;
@@ -1592,6 +1595,18 @@ public final class L2ItemInstance extends L2Object implements FuncOwner, Element
 		return output.toString();
 	}
 	
+	public void setHuntRewardOwner(int playerId)
+	{
+		resetOwnerTimer();
+		setOwnerId(playerId);
+		_huntReward = true;
+	}
+
+	public boolean isHuntReward()
+	{
+		return _huntReward;
+	}
+
 	public void resetOwnerTimer()
 	{
 		if (itemLootShedule != null)
