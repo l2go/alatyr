@@ -5,7 +5,9 @@
 #
 # The window is the server log since TIMESTAMP, or the whole log when --since is
 # omitted. It must contain one passport line "World id=buyan-okolitsa version=3.2.0",
-# one "World has no scripts", and no ERROR line or "Exception in thread". WARN lines
+# one "World has no scripts", no ERROR line or "Exception in thread", and no
+# "Failed executing script" or "Failed loading:" line. A world without scripts
+# does not log those, so the check stays quiet until a script list returns. WARN lines
 # are printed as a group named by STAGE. --expect-unknown-items requires a warning
 # that items have no template. That warning is not an error, and a routine update
 # from the published image does not pass the flag: both sides share one catalog.
@@ -69,6 +71,11 @@ echo "::endgroup::"
 
 if grep -E '(^|\| )ERROR |Exception in thread' "$log"; then
 	echo "::error::the server log of ${stage} has an ERROR line or an uncaught exception"
+	exit 1
+fi
+
+if grep -E 'Failed executing script|Failed loading:' "$log"; then
+	echo "::error::the server log of ${stage} reports a failed script"
 	exit 1
 fi
 
