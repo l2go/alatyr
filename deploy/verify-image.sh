@@ -23,14 +23,26 @@ inside 'java -XshowSettings:properties -version 2>&1 | grep -q "java.vendor = Ec
 inside 'test ! -e /usr/bin/captree' || fail "captree is in the image: its Go standard library has fixed vulnerabilities"
 inside 'test -x /opt/l2jfree/bin/entrypoint && test -x /opt/l2jfree/bin/init-secrets' || fail "the scripts are missing"
 for file in config/server.properties config/loginserver.properties config/logback.xml l2jfree-platform.jar \
-	data/scripts.cfg catalog/npc_template.csv; do
+	world/world.properties world/LICENSE world/catalog/npc_template.csv; do
 	inside "test -s /opt/l2jfree/$file" || fail "$file is missing from the image"
 done
 
-# The world reads its datapack and catalog from the read-only tree (see the Dockerfile).
-inside 'grep -qx "DatapackRoot = /opt/l2jfree" /opt/l2jfree/config/server.properties \
-	&& grep -qx "CatalogDirectory = /opt/l2jfree/catalog" /opt/l2jfree/config/server.properties' \
+# The world reads its files from the read-only tree (see the Dockerfile).
+inside 'grep -qx "DatapackRoot = /opt/l2jfree/world" /opt/l2jfree/config/server.properties \
+	&& grep -qx "CatalogDirectory = /opt/l2jfree/world/catalog" /opt/l2jfree/config/server.properties' \
 	|| fail "the default data paths of the world do not name the image tree"
+
+# The pipeline keeps this list as the image-file-list artifact.
+inside 'find /opt/l2jfree -print | sort' > image-file-list.txt
+
+top="$(inside 'find /opt/l2jfree/world -mindepth 1 -maxdepth 1 -printf "%f\n" | sort')"
+expected="$(printf '%s\n' LICENSE catalog data world.properties)"
+[ "$top" = "$expected" ] || fail "the world directory holds unexpected entries: $top"
+
+forbidden="$(inside 'find /opt/l2jfree/world \( -name scripts.cfg -o -name "*.class" -o -name "*.py" \) -print')"
+[ -z "$forbidden" ] || fail "the world contains a script list, bytecode, or Python: $forbidden"
+inside 'test ! -e /opt/l2jfree/data && test ! -e /opt/l2jfree/catalog' \
+	|| fail "the image still has /opt/l2jfree/data or /opt/l2jfree/catalog"
 
 if inside 'ls /opt/l2jfree/libs' \
 	| grep -Eiq '(spring|hibernate|cglib|ehcache|c3p0|mchange-commons|ecj|irclib|commons-logging|jcl-over-slf4j|slf4j-jdk14|liquibase|mysql-connector|javolution|trove4j|l2j-mmocore|graalpy|polyglot|truffle)'; then
@@ -38,7 +50,7 @@ if inside 'ls /opt/l2jfree/libs' \
 fi
 
 if inside 'touch /opt/l2jfree/write-test 2>/dev/null || touch /opt/l2jfree/config/write-test 2>/dev/null \
-	|| touch /opt/l2jfree/data/write-test 2>/dev/null'; then
+	|| touch /opt/l2jfree/world/write-test 2>/dev/null'; then
 	fail "the application tree is writable by the service user"
 fi
 

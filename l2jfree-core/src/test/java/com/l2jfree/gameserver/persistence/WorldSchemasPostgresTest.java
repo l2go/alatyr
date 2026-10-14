@@ -50,8 +50,8 @@ class WorldSchemasPostgresTest
 	@Container
 	private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.6");
 	
-	/** The catalog files that ship with the datapack. Tests run with the module directory as the working directory. */
-	private static final Path CATALOG = Path.of("..", "l2jfree-datapack", "catalog");
+	/** The catalog of the authored world. Tests run with the module directory as the working directory. */
+	private static final Path CATALOG = WorldDatabase.CATALOG;
 	
 	private static HikariDataSource source;
 	
@@ -100,9 +100,10 @@ class WorldSchemasPostgresTest
 	void catalogIsLoaded() throws Exception
 	{
 		assertThat(string("SELECT revision FROM catalog.catalog_revision")).isEqualTo(CatalogLoader.revisionOf(CATALOG));
-		assertThat(count("SELECT count(*) FROM catalog.npc_template")).isGreaterThan(1_000);
-		assertThat(count("SELECT count(*) FROM catalog.weapon_template")).isGreaterThan(100);
-		assertThat(count("SELECT count(*) FROM catalog.skill_tree")).isGreaterThan(100);
+		// Authored world: 5 npcs, 2 weapons, 5 skill-tree rows. Item names are 2 weapons, 3 armor, and 2 etc items.
+		assertThat(count("SELECT count(*) FROM catalog.npc_template")).isEqualTo(5);
+		assertThat(count("SELECT count(*) FROM catalog.weapon_template")).isEqualTo(2);
+		assertThat(count("SELECT count(*) FROM catalog.skill_tree")).isEqualTo(5);
 	}
 	
 	@Test
@@ -111,7 +112,7 @@ class WorldSchemasPostgresTest
 	void reportViewsWork() throws Exception
 	{
 		assertThat(count("SELECT count(*) FROM report.player_overview")).isZero();
-		assertThat(count("SELECT count(*) FROM report.item_name")).isGreaterThan(1_000);
+		assertThat(count("SELECT count(*) FROM report.item_name")).isEqualTo(7);
 	}
 	
 	@Test
@@ -128,7 +129,7 @@ class WorldSchemasPostgresTest
 		WorldSchemas.prepare(source, CATALOG);
 		
 		assertThat(timestamp("SELECT loaded_at FROM catalog.catalog_revision")).isEqualTo(before);
-		assertThat(count("SELECT count(*) FROM report.item_name")).isGreaterThan(1_000);
+		assertThat(count("SELECT count(*) FROM report.item_name")).isEqualTo(7);
 	}
 	
 	@Test

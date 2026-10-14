@@ -26,7 +26,7 @@ class JdbcCallSitesTest
 	@Test
 	void findsStatementsWithTheirBindingsAndColumnReads() throws Exception
 	{
-		List<JdbcCallSites.Site> sites = JdbcCallSites.scan(Path.of("src/main/java"), Path.of("../l2jfree-datapack/data/scripts"));
+		List<JdbcCallSites.Site> sites = JdbcCallSites.scan(Path.of("src/main/java"));
 		assertThat(sites).hasSizeGreaterThan(300);
 		
 		JdbcCallSites.Site privileges = sites.stream().filter(

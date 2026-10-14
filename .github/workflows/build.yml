@@ -22,37 +22,6 @@ concurrency:
 
 
 jobs:
-  # Compiles every datapack Python script with the pinned Jython runtime. This checks
-  # syntax and Java interop only; it does not run quests or AI.
-  jython-syntax:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          fetch-depth: 1
-
-      - name: Set up Microsoft Build of OpenJDK 25
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          distribution: microsoft
-          java-version: "25"
-
-      - name: Download the pinned Jython 2.7.5b1 runtime
-        shell: bash
-        run: |
-          jar="$RUNNER_TEMP/jython-standalone-2.7.5b1.jar"
-          curl --fail --location --silent --show-error \
-            "https://repo.maven.apache.org/maven2/org/python/jython-standalone/2.7.5b1/jython-standalone-2.7.5b1.jar" \
-            --output "$jar"
-          echo "0b3af15fad90dd3a887a88ee4fb9af082cb335cff19a54f5927673e328761290  $jar" | sha256sum --check -
-
-      - name: Compile the datapack Python scripts and check Java interop
-        run: >-
-          java --enable-native-access=ALL-UNNAMED
-          -cp "$RUNNER_TEMP/jython-standalone-2.7.5b1.jar"
-          org.python.util.jython tools/ci/validate-jython-candidate.py l2jfree-datapack/data/scripts
-
   # Formats, vets, and tests the world tool, then checks that the authored world matches a fresh render.
   # It does not build the server and runs beside the Java build.
   world:
@@ -64,6 +33,27 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 1
+
+      - name: Check the tree has no inherited world
+        run: |
+          set -euo pipefail
+          if [ -e l2jfree-datapack ]; then
+            echo "::error::l2jfree-datapack is still in the tree"
+            exit 1
+          fi
+          cfg="$(find . -path './.git' -prune -o -name 'scripts.cfg' -print)"
+          if [ -n "$cfg" ]; then
+            echo "::error::scripts.cfg is in the tree"
+            printf '%s\n' "$cfg"
+            exit 1
+          fi
+          outside="$(find . \( -path './.git' -o -path './world' \) -prune -o -type d \( -path '*/data/scripts' -o -path '*/data/html' -o -path '*/data/stats' \) -print)"
+          if [ -n "$outside" ]; then
+            echo "::error::data/scripts, data/html, or data/stats exists outside world/"
+            printf '%s\n' "$outside"
+            exit 1
+          fi
+          echo "tree check passed: no l2jfree-datapack, no scripts.cfg, no data/scripts, data/html, or data/stats outside world/"
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -267,7 +257,7 @@ jobs:
   # and sha-* tags are kept for 30 days.
   image:
     # The image is published from main, so it waits for every check of the code, not for the build alone.
-    needs: [build, integration, jython-syntax]
+    needs: [build, integration]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -318,6 +308,14 @@ jobs:
 
       - name: Verify the image content
         run: deploy/verify-image.sh l2jfree:ci
+
+      - name: Upload the image file list
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: image-file-list
+          if-no-files-found: warn
+          path: image-file-list.txt
 
       # The policy of SECURITY.md: a fixed critical or high finding blocks the release, not the merge. The table is
       # kept in the summary of the run, and the daily scan of the published image fails on a finding that blocks.
@@ -384,23 +382,20 @@ jobs:
           L2JFREE_IMAGE: l2jfree:ci
         run: deploy/probe/check-roles.sh
 
-      # Every datapack script must have loaded: a script that fails to load is not an error of the start, so the
-      # start succeeds without it. The log must hold no ERROR line and no uncaught exception.
-      - name: Check the server log for scripts and errors
+      # The image carries the authored world: one passport line, no scripts, and no ERROR.
+      # WARN lines stay visible as a group. A warning about an item without a template is expected only
+      # after the later update from the published image, when an old inventory is loaded.
+      - name: Check the server log for the world and for errors
         env:
           L2JFREE_IMAGE: l2jfree:ci
         run: |
           docker compose -f deploy/compose.yaml logs --no-color server > server.log
-          summary="$(grep 'Script loading summary' server.log | tail -1 || true)"
-          echo "${summary:-no summary of the script loading}"
-          read -r loaded failed attempted < <(sed -nE 's/.*summary: ([0-9]+) loaded, ([0-9]+) failed from ([0-9]+) attempted.*/\1 \2 \3/p' <<< "$summary") || true
-          test -n "$loaded" || { echo "::error::the server log has no summary of the script loading"; exit 1; }
-          test "$failed" = 0 || { echo "::error::$failed datapack scripts did not load"; exit 1; }
-          test "$loaded" -ge 400 || { echo "::error::only $loaded datapack scripts were loaded, 400 or more are expected"; exit 1; }
-          if grep -E 'Failed executing script|Failed loading:' server.log; then
-            echo "::error::a datapack script did not load"
-            exit 1
-          fi
+          test "$(grep -c 'World id=buyan-okolitsa version=3.2.0 ' server.log || true)" = 1 \
+            || { echo "::error::the passport line is not unique"; exit 1; }
+          grep 'World id=buyan-okolitsa version=3.2.0 ' server.log
+          grep -q 'World has no scripts' server.log || { echo "::error::the log does not say the world has no scripts"; exit 1; }
+          test "$(grep -c 'World has no scripts' server.log || true)" = 1 \
+            || { echo "::error::the no-scripts line is not unique"; exit 1; }
           echo "::group::WARN lines of the server log"
           grep -E '(^|\| )WARN ' server.log | head -50 || true
           echo "::endgroup::"
