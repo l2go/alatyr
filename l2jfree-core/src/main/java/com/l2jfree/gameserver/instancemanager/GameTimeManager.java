@@ -130,16 +130,16 @@ public final class GameTimeManager
 				//update time for all players
 				Broadcast.toAllOnlinePlayers(ClientSetTime.STATIC_PACKET);
 				
-				// check for zaken door
+				// check for zaken door; a world without that door has nothing to open
 				if (newHour == Config.ALT_TIME_IN_A_DAY_OF_OPEN_A_DOOR)
 				{
-					DoorTable.getInstance().getDoor(21240006).openMe();
+					DoorTable.getInstance().openDoor(21240006);
 					
 					ThreadPoolManager.getInstance().schedule(new Runnable() {
 						@Override
 						public void run()
 						{
-							DoorTable.getInstance().getDoor(21240006).closeMe();
+							DoorTable.getInstance().closeDoor(21240006);
 						}
 					}, Config.ALT_TIME_OF_OPENING_A_DOOR * 60 * 1000);
 				}
