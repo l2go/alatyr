@@ -221,12 +221,21 @@ public final class L2ScriptEngineManager
 					}
 					else if (file.isFile())
 					{
+						long attemptsAtCall = _scriptLoadAttempts.sum();
 						try
 						{
 							this.executeScript(file);
 						}
 						catch (ScriptException e)
 						{
+							// executeScript records an attempt before a failure inside the load.
+							// A rejection before that, such as a Java file with no packaged
+							// bytecode, must still count as one attempt and one failure.
+							if (_scriptLoadAttempts.sum() == attemptsAtCall)
+							{
+								_scriptLoadAttempts.increment();
+								_scriptLoadFailures.increment();
+							}
 							reportScriptFileError(file, e);
 						}
 					}
