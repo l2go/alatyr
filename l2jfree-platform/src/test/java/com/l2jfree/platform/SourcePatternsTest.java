@@ -100,27 +100,6 @@ class SourcePatternsTest
 	}
 	
 	/**
-	 * Jython's {@code time.sleep} takes seconds and blocks the thread of the event: a packet thread of a player or a
-	 * scheduled-pool thread. A delay is a quest timer.
-	 */
-	@Test
-	void scriptsDoNotSleepInHandlers() throws IOException
-	{
-		List<String> found = new ArrayList<String>();
-		try (Stream<Path> files = Files.walk(Path.of("../l2jfree-datapack/data/scripts")))
-		{
-			for (Path file : (Iterable<Path>)files.filter(f -> f.toString().endsWith(".py"))::iterator)
-			{
-				String source = Files.readString(file);
-				if (source.contains("time.sleep("))
-					found.add(file.toString());
-			}
-		}
-		
-		assertThat(found).as("scripts that call time.sleep").isEmpty();
-	}
-	
-	/**
 	 * A session key and a generated password must come from a generator that cannot be predicted. {@code Rnd} has 48
 	 * bits of state, made for the rates of the game: a few outputs reveal the rest.
 	 */
@@ -198,7 +177,7 @@ class SourcePatternsTest
 	{
 		List<Path> sources = new ArrayList<Path>();
 		for (Path root : List.of(Path.of("../l2j-commons/src/main/java"), Path.of("../l2jfree-login/src/main/java"),
-				Path.of("../l2jfree-core/src/main/java"), Path.of("../l2jfree-datapack/data/scripts")))
+				Path.of("../l2jfree-core/src/main/java")))
 		{
 			assertThat(root).isDirectory();
 			try (Stream<Path> files = Files.walk(root))

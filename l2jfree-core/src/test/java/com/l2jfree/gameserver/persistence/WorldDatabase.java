@@ -32,8 +32,8 @@ import com.l2jfree.L2DatabaseFactory;
  */
 public final class WorldDatabase
 {
-	/** The catalog files that ship with the datapack. Tests run with the module directory as the working directory. */
-	public static final Path CATALOG = Path.of("..", "l2jfree-datapack", "catalog");
+	/** The catalog of the authored world. Tests run with the module directory as the working directory. */
+	public static final Path CATALOG = Path.of("..", "world", "catalog");
 	
 	private static PostgreSQLContainer container;
 	

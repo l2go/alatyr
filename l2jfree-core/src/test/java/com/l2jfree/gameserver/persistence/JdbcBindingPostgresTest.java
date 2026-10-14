@@ -39,7 +39,7 @@ import org.junit.jupiter.api.Test;
 import com.l2jfree.L2DatabaseFactory;
 
 /**
- * Every JDBC accessor of the game server and the datapack scripts against the type PostgreSQL infers.
+ * Every JDBC accessor of the game server against the type PostgreSQL infers.
  * <p>
  * {@link GameServerStatementsPostgresTest} proves that the names and the syntax of the statements are right. This test
  * proves that the code reads and writes them with the right types: it finds each {@code prepareStatement} with SQL
@@ -62,7 +62,7 @@ class JdbcBindingPostgresTest
 	{
 		L2DatabaseFactory factory = WorldDatabase.start();
 		List<JdbcCallSites.Site> sites =
-				JdbcCallSites.scan(Path.of("src/main/java"), Path.of("..", "l2jfree-datapack", "data", "scripts"));
+				JdbcCallSites.scan(Path.of("src/main/java"));
 		
 		SortedMap<String, String> failures = new TreeMap<String, String>();
 		int checked = 0;
