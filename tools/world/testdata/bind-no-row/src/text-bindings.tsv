@@ -1,0 +1,6 @@
+key	parameter	source_kind	source	selector	field
+currency.main.amount	count	csv-number	catalog/shop.csv	shop_id=9;position=0	price
+currency.main.amount	currency	text	@currency.main.name		
+dialog.seller.prices	potion	text	@item.potion.name		
+dialog.seller.prices	payment	text	@currency.main.amount		
+dialog.seller.prices	village	text	@place.village.name		

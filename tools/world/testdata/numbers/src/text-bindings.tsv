@@ -1,0 +1,6 @@
+key	parameter	source_kind	source	selector	field
+currency.main.one	count	csv-number	catalog/shop.csv	shop_id=1;position=0	price
+currency.main.zero	count	csv-number	catalog/shop.csv	shop_id=1;position=1	price
+currency.main.dozen	count	csv-number	catalog/shop.csv	shop_id=1;position=2	price
+currency.main.grouped	count	csv-number	catalog/shop.csv	shop_id=1;position=3	price
+currency.main.plain	count	csv-number	catalog/shop.csv	shop_id=1;position=3	price

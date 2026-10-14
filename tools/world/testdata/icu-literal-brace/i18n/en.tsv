@@ -1,0 +1,7 @@
+key	kind	text	note
+place.village.name	proper	Testvale	Fixture village.
+item.potion.name	common	Test Potion	Fixture item.
+currency.main.name	proper	Mark	Fixture coin.
+currency.main.amount	common	{count, plural, one {# {currency} coin} other {# {currency} coins}}	Payment phrase.
+dialog.seller.prices	common	{potion} costs {payment} in {village}.	Fixture line.
+dialog.extra.line	common	Open { brace	bad

@@ -1,0 +1,2 @@
+shop_id,position,item,price
+1,0,@item.potion.name,12

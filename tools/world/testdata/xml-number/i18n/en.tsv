@@ -1,0 +1,2 @@
+key	kind	text	note
+npc.guard.label	common	Guard {level, number, integer}	Fixture level.

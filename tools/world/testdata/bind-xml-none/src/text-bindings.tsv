@@ -1,0 +1,2 @@
+key	parameter	source_kind	source	selector	field
+npc.guard.label	level	xml-number	data/stats.xml	npc[id=8]/set[name=level]	val

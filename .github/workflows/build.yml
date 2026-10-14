@@ -53,6 +53,28 @@ jobs:
           -cp "$RUNNER_TEMP/jython-standalone-2.7.5b1.jar"
           org.python.util.jython tools/ci/validate-jython-candidate.py l2jfree-datapack/data/scripts
 
+  # Formats, vets, and tests the world tool. It does not build the server and runs beside the Java build.
+  world:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: tools/world/go.mod
+
+      - name: Check formatting, vet, and test
+        working-directory: tools/world
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test -v ./...
+
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
