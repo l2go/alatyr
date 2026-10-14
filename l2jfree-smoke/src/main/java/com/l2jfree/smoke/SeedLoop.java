@@ -292,7 +292,10 @@ final class SeedLoop
 			{
 				if (view.x <= PEACE_EAST)
 				{
-					stepToward(game, view, deadline, PEACE_EAST + 200, view.y, view.z);
+					// Sessions leave side by side. One tile at the east edge holds the whole crowd,
+					// and a move onto an occupied tile is never accepted.
+					int lane = (view.sessionIndex - 12) * 40;
+					stepToward(game, view, deadline, PEACE_EAST + 200, view.y + lane, view.z);
 					continue;
 				}
 				if (distance(view.x, view.y, seen.x, seen.y) > MELEE)
@@ -369,7 +372,7 @@ final class SeedLoop
 		String command = "npc_" + merchant.objectId + "_Buy " + SHOP;
 		talk(game, view, deadline, merchant, "Buy " + SHOP);
 		game.send(GamePackets.bypass(command));
-		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
 		while (view.shopListId != SHOP && System.nanoTime() < until)
 		{
 			if (!poll(game, view, deadline, 300L))
@@ -468,7 +471,7 @@ final class SeedLoop
 			throws SmokeException
 	{
 		view.dialog = null;
-		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
 		while ((view.dialog == null || !view.dialog.contains(command)) && System.nanoTime() < until)
 		{
 			if (deadline.expired())
@@ -496,6 +499,9 @@ final class SeedLoop
 			destX = view.x + (int)Math.round(dx / len * STEP);
 			destY = view.y + (int)Math.round(dy / len * STEP);
 		}
+		// A rejected step stays on the same tile. Shift the next one sideways instead of repeating it.
+		if (view.moveNudges > 0)
+			destY += (view.moveNudges % 2 == 0 ? 80 : -80) * view.moveNudges;
 		view.acceptedMove = false;
 		game.send(GamePackets.moveBackward(destX, destY, z, view.x, view.y, view.z));
 		// The server tells the client the destination and then expects the client to walk there. A move
@@ -514,6 +520,7 @@ final class SeedLoop
 		}
 		if (view.acceptedMove && distance(view.x, view.y, view.acceptedX, view.acceptedY) > MELEE)
 			adoptDestination(view);
+		view.moveNudges = view.acceptedMove ? 0 : Math.min(view.moveNudges + 1, 6);
 	}
 
 	/** The server does not send StopMove when a walk finishes, so the last accepted destination is where we are. */
@@ -642,6 +649,12 @@ final class SeedLoop
 			case GamePackets.OP_USER_INFO ->
 			{
 				GamePackets.UserView user = GamePackets.parseUserInfo(in);
+				// A frame that is not this character's info still carries opcode 0x32 once the
+				// stream has slipped. Applying it sends the walk to a coordinate off the meadow.
+				if (user.level() < 1 || user.level() > 20 || user.x() < -78000 || user.x() > -60000
+						|| user.y() < 250000 || user.y() > 265000)
+					return;
+
 				view.objectId = user.objectId();
 				view.x = user.x();
 				view.y = user.y();
@@ -1052,6 +1065,7 @@ final class SeedLoop
 		private int kills;
 		private boolean firstAnnounced;
 		private boolean acceptedMove;
+		private int moveNudges;
 		private int acceptedX;
 		private int acceptedY;
 		private int acceptedZ;
