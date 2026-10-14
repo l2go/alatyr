@@ -34,7 +34,7 @@ class HuntItemOwnershipTest
 		item.setHuntRewardOwner(17);
 		verify(expiry).cancel(true);
 		assertThat(item.getOwnerId()).isEqualTo(17);
-		assertThat(item.getItemLootShedule()).isNull();
+		assertThat((Object)item.getItemLootShedule()).isNull();
 		assertThat(item.isHuntReward()).isTrue();
 		item.setLocation(L2ItemInstance.ItemLocation.INVENTORY);
 		assertThat(item.isHuntReward()).isFalse();
