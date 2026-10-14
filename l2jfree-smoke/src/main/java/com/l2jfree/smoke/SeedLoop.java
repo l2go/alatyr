@@ -490,16 +490,29 @@ final class SeedLoop
 			throw new SmokeException("step enter: UserInfo did not arrive");
 	}
 
+	/**
+	 * Asks for the inventory again until an ItemList arrives. Opening a shop disables the inventory for a
+	 * short time, and a list sent by the purchase itself can satisfy one request, so a single request can
+	 * be ignored. Later requests are sent until the disable has ended.
+	 */
 	private static void askItems(GameConnection game, View view, Deadline deadline) throws SmokeException
 	{
-		int epoch = view.itemEpoch;
-		game.send(GamePackets.requestItemList());
 		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(8);
-		while (view.itemEpoch == epoch && System.nanoTime() < until)
-			poll(game, view, deadline, 300L);
+		while (System.nanoTime() < until)
+		{
+			if (deadline.expired())
+				throw new SmokeException("step inventory: the time limit ended");
 
-		if (view.itemEpoch == epoch)
-			throw new SmokeException("step inventory: ItemList did not arrive");
+			int epoch = view.itemEpoch;
+			game.send(GamePackets.requestItemList());
+			long slice = Math.min(until, System.nanoTime() + TimeUnit.SECONDS.toNanos(2));
+			while (view.itemEpoch == epoch && System.nanoTime() < slice)
+				poll(game, view, deadline, 300L);
+
+			if (view.itemEpoch != epoch)
+				return;
+		}
+		throw new SmokeException("step inventory: ItemList did not arrive");
 	}
 
 	private static void askSkills(GameConnection game, View view, Deadline deadline) throws SmokeException
