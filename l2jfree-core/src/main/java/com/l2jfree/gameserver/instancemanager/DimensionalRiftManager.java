@@ -262,28 +262,47 @@ public class DimensionalRiftManager
 	
 	public boolean checkIfInRiftZone(int x, int y, int z, boolean excludePeaceZone)
 	{
-		if (excludePeaceZone)
-			return _rooms.get((byte)0).get((byte)1).checkIfInZone(x, y, z)
-					&& !_rooms.get((byte)0).get((byte)0).checkIfInZone(x, y, z);
+		DimensionalRiftRoom area = room((byte)0, (byte)1);
+		if (area == null)
+			return false;
+		if (!excludePeaceZone)
+			return area.checkIfInZone(x, y, z);
 		
-		return _rooms.get((byte)0).get((byte)1).checkIfInZone(x, y, z);
+		DimensionalRiftRoom peace = room((byte)0, (byte)0);
+		if (peace == null)
+			return false;
+		return area.checkIfInZone(x, y, z) && !peace.checkIfInZone(x, y, z);
 	}
 	
 	public boolean checkIfInPeaceZone(int x, int y, int z)
 	{
-		return _rooms.get((byte)0).get((byte)0).checkIfInZone(x, y, z);
+		DimensionalRiftRoom peace = room((byte)0, (byte)0);
+		return peace != null && peace.checkIfInZone(x, y, z);
 	}
 	
 	public void teleportToWaitingRoom(L2Player player)
 	{
-		int[] coords = getRoom((byte)0, (byte)0).getTeleportCoords();
+		DimensionalRiftRoom peace = getRoom((byte)0, (byte)0);
+		if (peace == null)
+			return;
+		int[] coords = peace.getTeleportCoords();
 		player.teleToLocation(coords[0], coords[1], coords[2]);
 	}
 	
 	public Location getWaitingRoomTeleport()
 	{
-		int[] coords = getRoom((byte)0, (byte)0).getTeleportCoords();
+		DimensionalRiftRoom peace = getRoom((byte)0, (byte)0);
+		if (peace == null)
+			return null;
+		int[] coords = peace.getTeleportCoords();
 		return new Location(coords[0], coords[1], coords[2]);
+	}
+	
+	/** Room of a type, or null when this world has no such rift room. */
+	private DimensionalRiftRoom room(byte type, byte id)
+	{
+		Map<Byte, DimensionalRiftRoom> area = _rooms.get(type);
+		return area == null ? null : area.get(id);
 	}
 	
 	public void start(L2Player player, byte type, L2Npc npc)
