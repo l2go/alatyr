@@ -146,17 +146,26 @@ func analyze(root, locale string) ([]Diagnostic, map[string][]byte) {
 
 func asciiWorld(root string) []Diagnostic {
 	var out []Diagnostic
-	if data, err := readRel(root, "world.properties"); err == nil {
+	if data, err := readRel(root, "world.properties"); err != nil {
+		if !os.IsNotExist(err) {
+			out = append(out, readFailure("world.properties", err))
+		}
+	} else {
 		out = append(out, asciiDiags("world.properties", data)...)
 	}
 	for _, rel := range []string{"i18n", "src", "catalog", "data"} {
 		files, exists, err := regularFiles(root, rel)
-		if err != nil || !exists {
+		if err != nil {
+			out = append(out, readFailure(rel, err))
+			continue
+		}
+		if !exists {
 			continue
 		}
 		for _, file := range files {
 			data, err := readRel(root, file)
 			if err != nil {
+				out = append(out, readFailure(file, err))
 				continue
 			}
 			out = append(out, asciiDiags(file, data)...)
@@ -165,9 +174,19 @@ func asciiWorld(root string) []Diagnostic {
 	return out
 }
 
+func readFailure(rel string, err error) Diagnostic {
+	if os.IsNotExist(err) {
+		return Diagnostic{Path: rel, Line: 1, Message: "file is missing"}
+	}
+	return Diagnostic{Path: rel, Line: 1, Message: "cannot read: " + err.Error()}
+}
+
 func requireFile(root, rel string) []Diagnostic {
 	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
-	if err != nil || !info.Mode().IsRegular() {
+	if err != nil {
+		return []Diagnostic{readFailure(rel, err)}
+	}
+	if !info.Mode().IsRegular() {
 		return []Diagnostic{{Path: rel, Line: 1, Message: "file is missing"}}
 	}
 	return nil
@@ -175,7 +194,13 @@ func requireFile(root, rel string) []Diagnostic {
 
 func requireDir(root, rel string) []Diagnostic {
 	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
-	if err != nil || !info.IsDir() {
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []Diagnostic{{Path: rel, Line: 1, Message: "directory is missing"}}
+		}
+		return []Diagnostic{readFailure(rel, err)}
+	}
+	if !info.IsDir() {
 		return []Diagnostic{{Path: rel, Line: 1, Message: "directory is missing"}}
 	}
 	return nil
@@ -185,7 +210,10 @@ func otherLocales(root string) []Diagnostic {
 	dir := filepath.Join(root, "i18n")
 	ents, err := os.ReadDir(dir)
 	if err != nil {
-		return []Diagnostic{{Path: "i18n", Line: 1, Message: "directory is missing"}}
+		if os.IsNotExist(err) {
+			return []Diagnostic{{Path: "i18n", Line: 1, Message: "directory is missing"}}
+		}
+		return []Diagnostic{readFailure("i18n", err)}
 	}
 	var out []Diagnostic
 	for _, ent := range ents {
@@ -213,14 +241,33 @@ func splitLines(data []byte) []string {
 	return lines
 }
 
+func crDiags(rel string, data []byte) []Diagnostic {
+	var out []Diagnostic
+	line := 1
+	reported := false
+	for i := 0; i < len(data); i++ {
+		switch data[i] {
+		case '\r':
+			if !reported {
+				out = append(out, Diagnostic{Path: rel, Line: line, Message: "CR is not allowed"})
+				reported = true
+			}
+		case '\n':
+			line++
+			reported = false
+		}
+	}
+	return out
+}
+
 func loadEntries(root string) (map[string]*entry, []Diagnostic, bool) {
 	const rel = "i18n/en.tsv"
 	data, err := readRel(root, rel)
 	if err != nil {
-		return nil, []Diagnostic{{Path: rel, Line: 1, Message: "file is missing"}}, false
+		return nil, []Diagnostic{readFailure(rel, err)}, false
 	}
+	diags := crDiags(rel, data)
 	lines := splitLines(data)
-	var diags []Diagnostic
 	if len(lines) == 0 || lines[0] != enHeader {
 		line := 1
 		diags = append(diags, Diagnostic{Path: rel, Line: line, Message: "header must be key, kind, text, note"})
@@ -269,10 +316,10 @@ func loadBindings(root string) ([]binding, []Diagnostic, bool) {
 	const rel = "src/text-bindings.tsv"
 	data, err := readRel(root, rel)
 	if err != nil {
-		return nil, []Diagnostic{{Path: rel, Line: 1, Message: "file is missing"}}, false
+		return nil, []Diagnostic{readFailure(rel, err)}, false
 	}
+	diags := crDiags(rel, data)
 	lines := splitLines(data)
-	var diags []Diagnostic
 	if len(lines) == 0 || lines[0] != bindHeader {
 		diags = append(diags, Diagnostic{Path: rel, Line: 1, Message: "header must be key, parameter, source_kind, source, selector, field"})
 		if len(lines) == 0 {
@@ -754,13 +801,17 @@ func sourceRefs(root string, entries map[string]*entry, used map[string]bool) []
 	}
 	for _, top := range []string{"src/catalog", "src/data"} {
 		files, exists, err := regularFiles(root, top)
-		if err != nil || !exists {
+		if err != nil {
+			diags = append(diags, readFailure(top, err))
+			continue
+		}
+		if !exists {
 			continue
 		}
 		for _, rel := range files {
 			data, err := readRel(root, rel)
 			if err != nil {
-				diags = append(diags, Diagnostic{Path: rel, Line: 1, Message: "cannot read"})
+				diags = append(diags, readFailure(rel, err))
 				continue
 			}
 			switch {
@@ -873,14 +924,18 @@ func renderFiles(root string, texts map[string]string) (map[string][]byte, []Dia
 	var diags []Diagnostic
 	for _, top := range []string{"src/catalog", "src/data"} {
 		files, exists, err := regularFiles(root, top)
-		if err != nil || !exists {
+		if err != nil {
+			diags = append(diags, readFailure(top, err))
+			continue
+		}
+		if !exists {
 			diags = append(diags, Diagnostic{Path: top, Line: 1, Message: "directory is missing"})
 			continue
 		}
 		for _, rel := range files {
 			data, err := readRel(root, rel)
 			if err != nil {
-				diags = append(diags, Diagnostic{Path: rel, Line: 1, Message: "cannot read"})
+				diags = append(diags, readFailure(rel, err))
 				continue
 			}
 			dest := strings.TrimPrefix(rel, "src/")
@@ -941,23 +996,33 @@ func writeTree(root string, files map[string][]byte) error {
 
 func diffBuilt(root string, rendered map[string][]byte) []Diagnostic {
 	built := map[string][]byte{}
+	unread := map[string]bool{}
+	var diags []Diagnostic
 	for _, top := range []string{"catalog", "data"} {
 		files, exists, err := regularFiles(root, top)
-		if err != nil || !exists {
+		if err != nil {
+			diags = append(diags, readFailure(top, err))
+			continue
+		}
+		if !exists {
 			continue
 		}
 		for _, rel := range files {
 			data, err := readRel(root, rel)
 			if err != nil {
+				diags = append(diags, readFailure(rel, err))
+				unread[rel] = true
 				continue
 			}
 			built[rel] = data
 		}
 	}
-	var diags []Diagnostic
 	for rel, want := range rendered {
 		got, ok := built[rel]
 		if !ok {
+			if unread[rel] {
+				continue
+			}
 			diags = append(diags, Diagnostic{Path: rel, Line: 1, Message: "file missing from the built world"})
 			continue
 		}
@@ -977,12 +1042,17 @@ func leftovers(root string) []Diagnostic {
 	var diags []Diagnostic
 	for _, top := range []string{"catalog", "data"} {
 		files, exists, err := regularFiles(root, top)
-		if err != nil || !exists {
+		if err != nil {
+			diags = append(diags, readFailure(top, err))
+			continue
+		}
+		if !exists {
 			continue
 		}
 		for _, rel := range files {
 			data, err := readRel(root, rel)
 			if err != nil {
+				diags = append(diags, readFailure(rel, err))
 				continue
 			}
 			diags = append(diags, leftoverDiags(rel, data)...)
@@ -993,18 +1063,53 @@ func leftovers(root string) []Diagnostic {
 
 func leftoverDiags(rel string, data []byte) []Diagnostic {
 	var diags []Diagnostic
+	switch {
+	case strings.HasSuffix(rel, ".csv"):
+		diags = append(diags, leftoverCSVKeys(rel, data)...)
+	case strings.HasSuffix(rel, ".xml"):
+		diags = append(diags, leftoverXMLKeys(rel, data)...)
+	}
 	lines := bytes.Split(data, []byte{'\n'})
 	for i, chunk := range lines {
 		line := i + 1
-		if m := atKeyPattern.Find(chunk); m != nil {
-			diags = append(diags, Diagnostic{Path: rel, Line: line, Message: "unresolved " + string(m)})
-		}
 		if bytes.Contains(chunk, []byte("{{")) {
 			diags = append(diags, Diagnostic{Path: rel, Line: line, Message: "unresolved {{"})
 		}
 		if m := braceArgPattern.Find(chunk); m != nil {
 			diags = append(diags, Diagnostic{Path: rel, Line: line, Message: "unresolved " + string(m)})
 		}
+	}
+	return diags
+}
+
+func leftoverCSVKeys(rel string, data []byte) []Diagnostic {
+	rows, line, errMsg := scanCSV(data)
+	if errMsg != "" {
+		return []Diagnostic{{Path: rel, Line: line, Message: errMsg}}
+	}
+	var diags []Diagnostic
+	for _, row := range rows {
+		for _, c := range row {
+			if c.quoted {
+				continue
+			}
+			if _, ok := refKey(c.text); !ok {
+				continue
+			}
+			diags = append(diags, Diagnostic{Path: rel, Line: c.line, Message: "unresolved @" + c.text[1:]})
+		}
+	}
+	return diags
+}
+
+func leftoverXMLKeys(rel string, data []byte) []Diagnostic {
+	var diags []Diagnostic
+	for _, hit := range xmlAttrs(data) {
+		key, ok := refKey(hit.value)
+		if !ok {
+			continue
+		}
+		diags = append(diags, Diagnostic{Path: rel, Line: hit.line, Message: "unresolved @" + key})
 	}
 	return diags
 }

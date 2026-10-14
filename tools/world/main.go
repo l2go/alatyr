@@ -30,15 +30,9 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
+	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		fmt.Fprint(stdout, usage)
 		return 0
-	}
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" || arg == "help" {
-			fmt.Fprint(stdout, usage)
-			return 0
-		}
 	}
 	cmd := args[0]
 	if cmd != "render" && cmd != "check" {
@@ -48,9 +42,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	help := fs.Bool("help", false, "show help")
+	shortHelp := fs.Bool("h", false, "show help")
 	dir := fs.String("world", "", "world directory")
 	locale := fs.String("locale", "en", "locale, only en")
-	if err := fs.Parse(args[1:]); err != nil || fs.NArg() != 0 || *dir == "" {
+	if err := fs.Parse(args[1:]); err != nil {
+		if err == flag.ErrHelp {
+			fmt.Fprint(stdout, usage)
+			return 0
+		}
+		fmt.Fprint(stderr, usage)
+		return 1
+	}
+	if *help || *shortHelp {
+		fmt.Fprint(stdout, usage)
+		return 0
+	}
+	if fs.NArg() != 0 || *dir == "" {
 		fmt.Fprint(stderr, usage)
 		return 1
 	}

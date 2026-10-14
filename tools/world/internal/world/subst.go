@@ -192,7 +192,7 @@ func xmlAttrs(data []byte) []attrHit {
 			for i < len(data) && data[i] != '>' {
 				if data[i] == '=' {
 					j := i + 1
-					for j < len(data) && data[j] == ' ' {
+					for j < len(data) && (data[j] == ' ' || data[j] == '\n' || data[j] == '\r') {
 						j++
 					}
 					if j < len(data) && data[j] == '"' {

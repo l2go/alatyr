@@ -49,7 +49,6 @@ func itoa(n int) string {
 var (
 	keyPattern      = regexp.MustCompile(`^[a-z]+\.[a-z0-9-]+\.[a-z]+$`)
 	argPattern      = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
-	atKeyPattern    = regexp.MustCompile(`@[a-z]+\.[a-z0-9-]+\.[a-z]+`)
 	braceArgPattern = regexp.MustCompile(`\{[a-z][a-z0-9_]*\}`)
 )
 

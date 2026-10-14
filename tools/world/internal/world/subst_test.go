@@ -61,6 +61,24 @@ func TestXMLEscapesAttributeAndKeepsOrder(t *testing.T) {
 	}
 }
 
+func TestXMLAllowsLineBreaksAroundEquals(t *testing.T) {
+	cases := [][]byte{
+		[]byte("<village id=\"1\" name=\n\"@place.village.name\"/>\n"),
+		[]byte("<village id=\"1\" name=\r\n\"@place.village.name\"/>\n"),
+		[]byte("<village id=\"1\" name \n=\n \"@place.village.name\"/>\n"),
+	}
+	for _, in := range cases {
+		out, diags := substituteXML(in, map[string]string{"place.village.name": "Testvale"})
+		if len(diags) != 0 {
+			t.Fatal(diags)
+		}
+		want := bytes.Replace(in, []byte("@place.village.name"), []byte("Testvale"), 1)
+		if !bytes.Equal(out, want) {
+			t.Fatalf("got %q\nwant %q", out, want)
+		}
+	}
+}
+
 func TestHTMLEscapesAndDoesNotRescan(t *testing.T) {
 	out, diags := substituteHTML([]byte("{{item.potion.name}}"), map[string]string{
 		"item.potion.name": `A & B < C > "D, E`,

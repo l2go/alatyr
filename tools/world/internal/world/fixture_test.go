@@ -282,6 +282,76 @@ func TestCheckXMLNonInteger(t *testing.T) {
 	expect(t, "bind-xml-non-integer", "src/text-bindings.tsv:2: value is not an integer")
 }
 
+func TestCheckCRInEnTSV(t *testing.T) {
+	expect(t, "cr-en",
+		"i18n/en.tsv:1: CR is not allowed",
+		"i18n/en.tsv:2: CR is not allowed",
+		"i18n/en.tsv:3: CR is not allowed",
+		"i18n/en.tsv:4: CR is not allowed",
+		"i18n/en.tsv:5: CR is not allowed",
+		"i18n/en.tsv:6: CR is not allowed",
+	)
+}
+
+func TestCheckCRInBindings(t *testing.T) {
+	expect(t, "cr-bindings",
+		"src/text-bindings.tsv:1: CR is not allowed",
+		"src/text-bindings.tsv:2: CR is not allowed",
+		"src/text-bindings.tsv:3: CR is not allowed",
+		"src/text-bindings.tsv:4: CR is not allowed",
+		"src/text-bindings.tsv:5: CR is not allowed",
+		"src/text-bindings.tsv:6: CR is not allowed",
+	)
+}
+
+func TestCheckLiteralAtKeyIsNotALeftover(t *testing.T) {
+	dir := t.TempDir()
+	copyFixture(t, "good", dir)
+	replaceOnce(t, filepath.Join(dir, "src", "catalog", "shop.csv"),
+		"shop_id,position,item,price\n1,0,@item.potion.name,12",
+		"shop_id,position,item,price,note,quoted,mail\n1,0,@item.potion.name,12,prefix @item.potion.name suffix,\"@item.potion.name\",mail@place.village.name")
+	replaceOnce(t, filepath.Join(dir, "catalog", "shop.csv"),
+		"shop_id,position,item,price\n1,0,Test Potion,12",
+		"shop_id,position,item,price,note,quoted,mail\n1,0,Test Potion,12,prefix @item.potion.name suffix,\"@item.potion.name\",mail@place.village.name")
+	replaceOnce(t, filepath.Join(dir, "src", "data", "village.xml"),
+		`<village id="1"`,
+		`<village id="1" title="prefix @item.potion.name suffix"`)
+	replaceOnce(t, filepath.Join(dir, "data", "village.xml"),
+		`<village id="1"`,
+		`<village id="1" title="prefix @item.potion.name suffix"`)
+	if diags := Check(dir, "en"); len(diags) != 0 {
+		t.Fatal(diags)
+	}
+}
+
+func TestCheckXMLEqualsLineBreak(t *testing.T) {
+	for _, gap := range []string{"\n", "\r\n"} {
+		dir := t.TempDir()
+		copyFixture(t, "good", dir)
+		replaceOnce(t, filepath.Join(dir, "src", "data", "village.xml"),
+			`name="@place.village.name"`,
+			"name="+gap+`"@place.village.name"`)
+		replaceOnce(t, filepath.Join(dir, "data", "village.xml"),
+			`name="Testvale"`,
+			"name="+gap+`"Testvale"`)
+		if diags := Check(dir, "en"); len(diags) != 0 {
+			t.Fatalf("gap %q\n%v", gap, diags)
+		}
+	}
+}
+
+func TestCheckUnreadableProperties(t *testing.T) {
+	assertUnreadable(t, "world.properties", nil)
+}
+
+func TestCheckUnreadableSourceFile(t *testing.T) {
+	assertUnreadable(t, "src/note.txt", []byte("note\n"))
+}
+
+func TestCheckUnreadableBuiltFile(t *testing.T) {
+	assertUnreadable(t, "catalog/extra.csv", []byte("extra\n"))
+}
+
 func TestRejectsOtherLocale(t *testing.T) {
 	diags := Check(fixturePath("good"), "fr")
 	if len(diags) != 1 || diags[0].String() != "i18n/fr.tsv:1: only locale en is supported" {
@@ -298,6 +368,53 @@ func expect(t *testing.T, name string, lines ...string) {
 	}
 	if strings.Join(have, "\n") != strings.Join(lines, "\n") {
 		t.Fatalf("got:\n%s\nwant:\n%s", strings.Join(have, "\n"), strings.Join(lines, "\n"))
+	}
+}
+
+func replaceOnce(t *testing.T, path, old, neu string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(data, []byte(old)) {
+		t.Fatalf("missing %q in %s", old, path)
+	}
+	next := bytes.Replace(data, []byte(old), []byte(neu), 1)
+	if err := os.WriteFile(path, next, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertUnreadable(t *testing.T, rel string, body []byte) {
+	t.Helper()
+	dir := t.TempDir()
+	copyFixture(t, "good", dir)
+	path := filepath.Join(dir, filepath.FromSlash(rel))
+	if body != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, body, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+	if _, err := os.ReadFile(path); err == nil {
+		t.Skip("the file is still readable")
+	}
+	diags := Check(dir, "en")
+	var matched []Diagnostic
+	for _, d := range diags {
+		if d.Path == rel && d.Line == 1 && strings.HasPrefix(d.Message, "cannot read: ") && len(d.Message) > len("cannot read: ") {
+			matched = append(matched, d)
+		}
+	}
+	if len(matched) != 1 || len(diags) != 1 {
+		t.Fatalf("got %v", diags)
 	}
 }
 

@@ -75,6 +75,44 @@ func TestRenderCommand(t *testing.T) {
 	}
 }
 
+func TestHelpFlagAfterTheCommand(t *testing.T) {
+	var out, errb bytes.Buffer
+	if code := run([]string{"check", "--help"}, &out, &errb); code != 0 {
+		t.Fatalf("code %d\n%s", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "render") || !strings.Contains(out.String(), "check") {
+		t.Fatalf("%s", out.String())
+	}
+}
+
+func TestLocaleHelpIsRejected(t *testing.T) {
+	var out, errb bytes.Buffer
+	code := run([]string{"check", "--world", "testdata/good", "--locale", "help"}, &out, &errb)
+	if code != 1 {
+		t.Fatalf("code %d\n%s", code, errb.String())
+	}
+	if strings.Contains(out.String(), "Usage:") || strings.Contains(errb.String(), "renders catalog") {
+		t.Fatalf("usage\n%s%s", out.String(), errb.String())
+	}
+	if !strings.Contains(errb.String(), "i18n/help.tsv:1: only locale en is supported") {
+		t.Fatalf("%s", errb.String())
+	}
+}
+
+func TestWorldNamedHelpIsChecked(t *testing.T) {
+	var out, errb bytes.Buffer
+	code := run([]string{"check", "--world", "help"}, &out, &errb)
+	if code != 1 {
+		t.Fatalf("code %d\n%s", code, errb.String())
+	}
+	if strings.Contains(out.String(), "renders catalog") || strings.Contains(errb.String(), "renders catalog") {
+		t.Fatalf("usage\n%s%s", out.String(), errb.String())
+	}
+	if !strings.Contains(errb.String(), "file is missing") {
+		t.Fatalf("%s", errb.String())
+	}
+}
+
 func TestRejectsOtherLocaleOnTheCommand(t *testing.T) {
 	var errb bytes.Buffer
 	code := run([]string{"check", "--world", "testdata/good", "--locale", "fr"}, io.Discard, &errb)
