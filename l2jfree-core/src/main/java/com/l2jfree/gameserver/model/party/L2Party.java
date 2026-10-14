@@ -17,6 +17,8 @@ package com.l2jfree.gameserver.model.party;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
 import com.l2jfree.Config;
 import com.l2jfree.gameserver.datatables.ItemTable;
@@ -36,6 +38,7 @@ import com.l2jfree.gameserver.model.L2CommandChannel;
 import com.l2jfree.gameserver.model.entity.DimensionalRift;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
 import com.l2jfree.gameserver.model.sevensigns.SevenSignsFestival;
+import com.l2jfree.gameserver.model.rewards.HuntRewards;
 import com.l2jfree.gameserver.model.skills.L2Skill;
 import com.l2jfree.gameserver.model.skills.Stats;
 import com.l2jfree.gameserver.network.SystemMessageId;
@@ -72,6 +75,35 @@ public class L2Party
 	private int _partyLvl = 0;
 	private int _itemDistribution = 0;
 	private int _itemLastLoot = 0;
+	private static final AtomicLong NEXT_REWARD_ORDER = new AtomicLong();
+	private final long _rewardOrder = NEXT_REWARD_ORDER.incrementAndGet();
+	private final ReentrantLock _coinDistributionLock = new ReentrantLock();
+	private int _coinCursor;
+
+	public long getRewardOrder()
+	{
+		return _rewardOrder;
+	}
+
+	public ReentrantLock getCoinDistributionLock()
+	{
+		return _coinDistributionLock;
+	}
+
+	public int getCoinCursor()
+	{
+		return _coinCursor;
+	}
+
+	public void setCoinCursor(int cursor)
+	{
+		_coinCursor = cursor;
+	}
+
+	public L2Player getHuntLooter(L2Player player, int itemId, L2Creature target, List<L2Player> recipients)
+	{
+		return getActualLooter(player, itemId, false, target, recipients);
+	}
 	private L2CommandChannel _commandChannel = null;
 	private L2PartyRoom _partyRoom = null;
 	
@@ -137,11 +169,13 @@ public class L2Party
 	 * get random member from party
 	 * @return
 	 */
-	private L2Player getCheckedRandomMember(int ItemId, L2Creature target)
+	private L2Player getCheckedRandomMember(int ItemId, L2Creature target, List<L2Player> recipients)
 	{
 		List<L2Player> availableMembers = new ArrayList<L2Player>(getPartyMembers().size());
 		for (L2Player member : getPartyMembers())
 		{
+			if (recipients != null && !recipients.contains(member))
+				continue;
 			if (member.getInventory().validateCapacityByItemId(ItemId)
 					&& Util.checkIfInRange(Config.ALT_PARTY_RANGE2, target, member, true))
 				availableMembers.add(member);
@@ -156,7 +190,7 @@ public class L2Party
 	 * get next item looter
 	 * @return
 	 */
-	private L2Player getCheckedNextLooter(int ItemId, L2Creature target)
+	private L2Player getCheckedNextLooter(int ItemId, L2Creature target, List<L2Player> recipients)
 	{
 		for (int i = 0; i < getMemberCount(); i++)
 		{
@@ -166,6 +200,8 @@ public class L2Party
 			try
 			{
 				member = getPartyMembers().get(_itemLastLoot);
+				if (recipients != null && !recipients.contains(member))
+					continue;
 				if (member.getInventory().validateCapacityByItemId(ItemId)
 						&& Util.checkIfInRange(Config.ALT_PARTY_RANGE2, target, member, true))
 					return member;
@@ -186,27 +222,34 @@ public class L2Party
 	 */
 	private L2Player getActualLooter(L2Player player, int ItemId, boolean spoil, L2Creature target)
 	{
-		L2Player looter = player;
+		return getActualLooter(player, ItemId, spoil, target, null);
+	}
+
+	private L2Player getActualLooter(L2Player player, int ItemId, boolean spoil, L2Creature target,
+			List<L2Player> recipients)
+	{
+		L2Player fallback = recipients == null || recipients.contains(player) ? player : recipients.getFirst();
+		L2Player looter = fallback;
 		switch (_itemDistribution)
 		{
 			case ITEM_RANDOM:
 				if (!spoil)
-					looter = getCheckedRandomMember(ItemId, target);
+					looter = getCheckedRandomMember(ItemId, target, recipients);
 				break;
 			case ITEM_RANDOM_SPOIL:
-				looter = getCheckedRandomMember(ItemId, target);
+				looter = getCheckedRandomMember(ItemId, target, recipients);
 				break;
 			case ITEM_ORDER:
 				if (!spoil)
-					looter = getCheckedNextLooter(ItemId, target);
+					looter = getCheckedNextLooter(ItemId, target, recipients);
 				break;
 			case ITEM_ORDER_SPOIL:
-				looter = getCheckedNextLooter(ItemId, target);
+				looter = getCheckedNextLooter(ItemId, target, recipients);
 				break;
 		}
 		
 		if (looter == null)
-			looter = player;
+			looter = fallback;
 		return looter;
 	}
 	
@@ -746,9 +789,19 @@ public class L2Party
 		
 		// Now we can actually distribute the adena reward
 		// (Total adena splitted by the number of party members that are in range and must be rewarded)
-		long count = adena / toReward.size();
-		for (L2Player member : toReward)
-			member.addAdena("Party", count, player, true);
+		_coinDistributionLock.lock();
+		try
+		{
+			long[] shares = HuntRewards.equalCoins(adena, toReward.size(), _coinCursor);
+			for (int i = 0; i < toReward.size(); i++)
+				if (shares[i] > 0)
+					toReward.get(i).addAdena("Party", shares[i], player, true);
+			_coinCursor = (int)((Math.floorMod(_coinCursor, toReward.size()) + adena % toReward.size()) % toReward.size());
+		}
+		finally
+		{
+			_coinDistributionLock.unlock();
+		}
 	}
 	
 	/**

@@ -4178,7 +4178,7 @@ public final class L2Player extends L2Playable
 			}
 			
 			if (target.getOwnerId() != 0 && target.getOwnerId() != getObjectId()
-					&& !isInLooterParty(target.getOwnerId()))
+					&& (target.isHuntReward() || !isInLooterParty(target.getOwnerId())))
 			{
 				sendPacket(ActionFailed.STATIC_PACKET);
 				
@@ -4232,6 +4232,11 @@ public final class L2Player extends L2Playable
 		if (target.getItemType() == L2EtcItemType.HERB)
 		{
 			ItemHandler.getInstance().useItem(target.getItemId(), this, target);
+		}
+		// Assigned hunt loot is delivered without choosing a new party looter.
+		else if (target.isHuntReward())
+		{
+			addItem("Hunt", target, null, true);
 		}
 		// Cursed Weapons are not distributed
 		else if (CursedWeaponsManager.getInstance().isCursed(target.getItemId()))
