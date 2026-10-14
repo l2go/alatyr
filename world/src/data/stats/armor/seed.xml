@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE list SYSTEM "../../templates/armors.dtd">
+<list>
+  <item id="23" name="@item.hearth-coat.name">
+    <for><add order="0x10" stat="pDef" val="36"/></for>
+  </item>
+  <item id="28" name="@item.hearth-breeches.name">
+    <for><add order="0x10" stat="pDef" val="24"/></for>
+  </item>
+  <item id="39" name="@item.hearth-boots.name">
+    <for><add order="0x10" stat="pDef" val="12"/></for>
+  </item>
+</list>

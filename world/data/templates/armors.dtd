@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- Overriding %condition; from conditions.dtd -->
+<!ENTITY % condition "and|or|not|player">
+
+<!ENTITY % conditions.dtd SYSTEM "conditions.dtd"> %conditions.dtd;
+<!ENTITY % func "set|add|sub|enchant">
+
+<!-- Root -->
+<!ELEMENT list (item)*>
+
+<!-- Item -->
+<!ATTLIST item id CDATA #REQUIRED>
+<!ATTLIST item name CDATA #REQUIRED>
+<!ELEMENT item (cond?,for?)>
+
+<!-- Template -->
+<!ELEMENT for (%func;)*>
+
+<!-- Condition -->
+<!ATTLIST cond msg CDATA #IMPLIED>
+<!ATTLIST cond msgId CDATA #IMPLIED>
+<!ATTLIST cond addName (1) #IMPLIED>
+<!ELEMENT cond (%condition;)>
+
+<!-- Stat -->
+<!ATTLIST set     stat (talisman) #REQUIRED>
+<!ATTLIST add     stat (pDef|mDef|maxMp|fireRes|windRes|waterRes|earthRes|holyRes|darkRes) #REQUIRED>
+<!ATTLIST sub     stat (rEvas) #REQUIRED>
+<!ATTLIST enchant stat (pDef|mDef) #REQUIRED>
+<!ATTLIST set     order (0x50) #REQUIRED>
+<!ATTLIST add     order (0x10|0x40) #REQUIRED>
+<!ATTLIST sub     order (0x10) #REQUIRED>
+<!ATTLIST enchant order (0x0C) #REQUIRED>
+<!ATTLIST set     val CDATA #REQUIRED>
+<!ATTLIST add     val CDATA #REQUIRED>
+<!ATTLIST sub     val CDATA #REQUIRED>
+<!ATTLIST enchant val CDATA #REQUIRED>
+<!ELEMENT set     EMPTY>
+<!ELEMENT add     EMPTY>
+<!ELEMENT sub     EMPTY>
+<!ELEMENT enchant EMPTY>

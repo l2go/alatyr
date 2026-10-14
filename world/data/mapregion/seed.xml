@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapregion SYSTEM "../templates/mapregion.dtd">
+<mapregion>
+  <restartpoints>
+    <restartpoint restartId="731" name="Okolitsa" bbs="0" locname="0">
+      <normal X="-72117" Y="258063" Z="-3104"/>
+      <chaotic X="-72117" Y="258063" Z="-3104"/>
+    </restartpoint>
+  </restartpoints>
+  <regions>
+    <region restartId="731" zMin="-3904" zMax="-2304">
+      <point X="-73941" Y="255941"/>
+      <point X="-66241" Y="255941"/>
+      <point X="-66241" Y="260301"/>
+      <point X="-73941" Y="260301"/>
+    </region>
+  </regions>
+  <restartareas>
+    <restartarea restartId="731"><map X="17" Y="25"/></restartarea>
+  </restartareas>
+</mapregion>

@@ -1,0 +1,6 @@
+player_class_id,skill_id,skill_level,skill_name,sp,min_level
+0,3,1,@skill.gate-strike.name,0,1
+0,3,2,@skill.gate-strike.name,32,3
+0,3,3,@skill.gate-strike.name,72,5
+0,257,1,@skill.hedge-practice.name,12,2
+0,257,2,@skill.hedge-practice.name,24,4

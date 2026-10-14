@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!ENTITY % condition "and|or|not|player|target|using|game">
+<!ENTITY % boolean "true|false|True|False">
+
+<!-- Logic -->
+<!-- TODO: make sure <and> tags contains multiple elements
+<!ELEMENT and ((%condition;),(%condition;)+)> -->
+<!ELEMENT and (%condition;)+>
+<!ELEMENT or  ((%condition;),(%condition;)+)>
+<!ELEMENT not (%condition;)>
+
+<!-- Conditions -->
+<!ATTLIST player skill (%boolean;) #IMPLIED>
+<!ATTLIST player race (Human|Elf|Darkelf|Orc|Dwarf|Kamael) #IMPLIED>
+<!ATTLIST player level CDATA #IMPLIED>
+<!ATTLIST player resting (%boolean;) #IMPLIED>
+<!ATTLIST player moving (%boolean;) #IMPLIED>
+<!ATTLIST player running (%boolean;) #IMPLIED>
+<!ATTLIST player walking (%boolean;) #IMPLIED>
+<!ATTLIST player behind (%boolean;) #IMPLIED>
+<!ATTLIST player front (%boolean;) #IMPLIED>
+<!ATTLIST player chaotic (%boolean;) #IMPLIED>
+<!ATTLIST player olympiad (%boolean;) #IMPLIED>
+<!ATTLIST player flying (%boolean;) #IMPLIED>
+<!ATTLIST player hp CDATA #IMPLIED>
+<!ATTLIST player mp CDATA #IMPLIED>
+<!ATTLIST player cp CDATA #IMPLIED>
+<!ATTLIST player attack_stance (%boolean;) #IMPLIED>
+<!ATTLIST player grade CDATA #IMPLIED>
+<!ATTLIST player SiegeZone CDATA #IMPLIED>
+<!ATTLIST player battle_force (2|3) #IMPLIED>
+<!ATTLIST player spell_force (2|3) #IMPLIED>
+<!ATTLIST player weight CDATA #IMPLIED>
+<!ATTLIST player invSize CDATA #IMPLIED>
+<!ATTLIST player pledgeClass CDATA #IMPLIED>
+<!ATTLIST player clanHall CDATA #IMPLIED>
+<!ATTLIST player fort CDATA #IMPLIED>
+<!ATTLIST player castle CDATA #IMPLIED>
+<!ATTLIST player sex CDATA #IMPLIED>
+<!ATTLIST player flyMounted (%boolean;) #IMPLIED>
+<!ATTLIST player landingZone (%boolean;) #IMPLIED>
+<!ATTLIST player active_skill_id CDATA #IMPLIED>
+<!ATTLIST player active_skill_id_lvl CDATA #IMPLIED>
+<!ATTLIST player agathionId CDATA #IMPLIED>
+<!ATTLIST player active_effect_id CDATA #IMPLIED>
+<!ATTLIST player class_id_restriction CDATA #IMPLIED>
+<!ATTLIST player isClanLeader (%boolean;) #IMPLIED>
+<!ATTLIST player subclass (%boolean;) #IMPLIED>
+<!ATTLIST player instanceid CDATA #IMPLIED>
+<!ELEMENT player EMPTY>
+
+<!ATTLIST target aggro (%boolean;) #IMPLIED>
+<!ATTLIST target siegezone CDATA #IMPLIED>
+<!ATTLIST target level CDATA #IMPLIED>
+<!ATTLIST target class_id_restriction CDATA #IMPLIED>
+<!ATTLIST target active_effect_id CDATA #IMPLIED>
+<!ATTLIST target active_skill_id CDATA #IMPLIED>
+<!ATTLIST target mindistance CDATA #IMPLIED>
+<!ATTLIST target race_id CDATA #IMPLIED>
+<!ATTLIST target race CDATA #IMPLIED>
+<!ATTLIST target undead (%boolean;) #IMPLIED>
+<!ATTLIST target using CDATA #IMPLIED>
+<!ATTLIST target npcId CDATA #IMPLIED>
+<!ATTLIST target npcType CDATA #IMPLIED>
+<!ATTLIST target doorId CDATA #IMPLIED>
+<!ATTLIST target abnormal CDATA #IMPLIED>
+<!ELEMENT target EMPTY>
+
+<!ATTLIST using kind CDATA #IMPLIED>
+<!ATTLIST using skill CDATA #IMPLIED>
+<!ATTLIST using slotitem CDATA #IMPLIED>
+<!ATTLIST using weaponChange (%boolean;) #IMPLIED>
+<!ELEMENT using EMPTY>
+
+<!ATTLIST game night (%boolean;) #IMPLIED>
+<!ATTLIST game chance CDATA #IMPLIED>
+<!ATTLIST game skill (%boolean;) #IMPLIED>
+<!ELEMENT game EMPTY>

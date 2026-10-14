@@ -1,0 +1,4 @@
+id,name,body_part,armor_type,is_crystallizable,crystal_type,crystal_count,material,weight,physical_defense,magic_defense,evasion_modifier,mp_bonus,shadow_mana,lifetime_s,price,is_sellable,is_droppable,is_destroyable,is_tradable,is_depositable,item_skills,enchant4_skills
+23,@item.hearth-coat.name,chest,light,false,none,0,cloth,348,36,0,0,0,,,126,false,false,true,false,true,"",""
+28,@item.hearth-breeches.name,legs,light,false,none,0,cloth,252,24,0,0,0,,,90,false,false,true,false,true,"",""
+39,@item.hearth-boots.name,feet,light,false,none,0,cloth,156,12,0,0,0,,,54,false,false,true,false,true,"",""

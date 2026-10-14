@@ -1,0 +1,12 @@
+key	parameter	source_kind	source	selector	field
+currency.main.amount	count	csv-number	catalog/merchant_buylist.csv	merchant_shop_id=731;position=0	price
+currency.main.amount	currency	text	@currency.main.name		
+skill.draught-heal.name	potion	text	@item.healing-draught.name		
+dialog.hearth-tutor.greeting	village	text	@place.hearth.name		
+dialog.hearth-tutor.greeting	island	text	@place.island.name		
+dialog.hearth-tutor.guidance	meadow	text	@place.green.name		
+dialog.hearth-tutor.learn	tutor	text	@npc.hearth-tutor.name		
+dialog.hearth-merchant.prices	potion	text	@item.healing-draught.name		
+dialog.hearth-merchant.prices	payment	text	@currency.main.amount		
+dialog.hearth-merchant.prices	heal	xml-number	data/stats/skills/seed.xml	skill[id=2031]/set[name=power]	val
+dialog.hearth-merchant.prices	meadow	text	@place.green.name		

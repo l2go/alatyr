@@ -1,0 +1,32 @@
+key	kind	text	note
+place.island.name	proper	Buyan	Fictional island from Pushkin; Russian Buyan. Keep this spelling. Max 32 ASCII characters.
+place.hearth.name	proper	Okolitsa	Fictional village on Buyan. Okolitsa means village edge with a gate, not a real settlement. Max 32 ASCII characters.
+place.green.name	proper	Lugovina	Named meadow outside the village gate. Russian Lugovina means meadow ground. Max 32 ASCII characters.
+npc.hearth-tutor.name	proper	Avdey Pletnyov	Male village tutor, NPC 30001. Russian Avdey Pletnyov; yo represents the letter yo in the surname. Max 32 ASCII characters.
+npc.hearth-tutor.title	common	Wattle Tutor	Role title above NPC 30001. Tutor formerly guarded the village fence. Translate by meaning. Max 26 ASCII characters.
+npc.hearth-merchant.name	proper	Savva Kovshov	Male provision merchant, NPC 30002. Russian Savva Kovshov; sh represents the letter sha. Keep the existing male model. Max 32 ASCII characters.
+npc.hearth-merchant.title	common	Village Provisioner	Role title above NPC 30002, seller of household supplies. Translate by meaning. Max 26 ASCII characters.
+currency.main.name	proper	Veksha	Island coin denomination, item 57. Russian Veksha; the historical squirrel term is only the name, not a fur item. Max 16 ASCII characters.
+currency.main.amount	common	{count, plural, one {# {currency} coin} other {# {currency} coins}}	Payment phrase. count is numeric; currency comes from currency.main.name. Do not duplicate the coin name. Max 64 rendered ASCII characters.
+item.hedge-blade.name	common	Wattlekeeper Blade	Starter one-handed sword, item 1. Wattle is a woven village fence; no faction or real people implied. Max 48 ASCII characters.
+item.field-cudgel.name	common	Garden Beater Cudgel	Spare blunt weapon, item 4. A simple cudgel for defending garden plots. Max 48 ASCII characters.
+item.hearth-coat.name	common	Wattlekeeper Coat	Starter cloth coat, item 23. Translate by meaning; no named person in this item label. Max 48 ASCII characters.
+item.hearth-breeches.name	common	Wattlekeeper Breeches	Starter cloth legwear, item 28. Breeches are trousers, not a different armor slot. Max 48 ASCII characters.
+item.hearth-boots.name	common	Wattlekeeper Boots	Starter footwear, item 39. Translate by meaning; do not change the equipment slot. Max 48 ASCII characters.
+item.healing-draught.name	common	Zveroboy Draught	Healing drink, item 1060. Zveroboy is a Russian herb name, not a beast-slaying effect. This is fictional game medicine. Max 48 ASCII characters.
+skill.gate-strike.name	common	Wattle Guard Strike	Physical strike, skill 3 at ranks 1 to 3. Guard means the person protecting the village gate. Max 48 ASCII characters.
+skill.hedge-practice.name	common	Wattle-hand Practice	Passive attack practice, skill 257 at ranks 1 and 2. Hand means learned grip and craft, not a body transformation. Max 48 ASCII characters.
+skill.draught-heal.name	common	{potion} Effect	Internal healing skill 2031. potion is item.healing-draught.name, shared with the shop text. No independent spell to learn. Max 64 rendered ASCII characters.
+npc.field-forager.name	common	Cabbage Patch Forager	Small garden-raiding quadruped, NPC 18003. The fixed client model is not a vole; do not promise a rodent silhouette. Max 48 ASCII characters.
+npc.field-wolf.name	common	Wattlebank Wolf	Ordinary wolf near rough banks beyond the village, NPC 20120. No werewolf or intelligent faction implied. Max 48 ASCII characters.
+npc.field-spider.name	common	Nettle-web Spider	Ordinary spider among nettles beyond the meadow, NPC 20028. No venom ability is promised. Max 48 ASCII characters.
+class.starting-warrior.name	common	Human Fighter	Temporary compatibility label for catalog class 0. Preserve the accepted 3.2 label; world.player_class and the client class name stay unchanged. Max 32 ASCII characters.
+dialog.hearth-tutor.greeting	common	Welcome to {village}, on {island}. Warm yourself by the hearth, then we will see how you hold a blade.	Opening of tutor HTML 30001. village and island come from place keys. Domestic island tone, no quest. Max 220 rendered ASCII characters.
+dialog.hearth-tutor.guidance	common	Past the east gate lies {meadow}. Start with the small foragers; leave the wolves until your footing is steady.	Combat advice in tutor HTML 30001. meadow comes from place.green.name. No name-based entity lookup. Max 220 rendered ASCII characters.
+dialog.hearth-tutor.encouragement	common	A wattle fence bends in a storm, but it holds when each stake stands with its neighbours. Bring what you have learned, and we will practise.	Tutor encouragement, written afresh. A metaphor for mutual steadiness, not a promised party mechanic. Max 220 ASCII characters.
+dialog.hearth-tutor.learn	common	Practise with {tutor}	Label of SkillList link in tutor HTML 30001. tutor is npc.hearth-tutor.name; never hard-code a first name. Max 64 rendered ASCII characters.
+dialog.hearth-merchant.greeting	common	The sea wind follows you through the gate. Come in; even an island traveller needs sound boots and a full cupboard.	Opening of merchant HTML 30002. Domestic welcome on an island; no travel service or reward is offered. Max 220 ASCII characters.
+dialog.hearth-merchant.prices	common	{potion} costs {payment} and restores {heal, number, integer} HP. Take a bottle before you go back to {meadow}.	Shop explanation in HTML 30002. potion, payment and meadow are resolved text; heal is numeric from skill 2031. Max 280 rendered ASCII characters.
+dialog.hearth-merchant.closing	common	Our island coins are cast from golden nutshells. Shipfolk carry them over the sea; here they buy the small things that keep a household standing.	Island lore in merchant HTML 30002. Motif authorized from Pushkin, not from an adaptation. No crafting or ferry action. Max 220 ASCII characters.
+dialog.hearth-merchant.buy	common	Browse the cupboard	Label of Buy 731 link in merchant HTML 30002. Preserve the bypass action and shop id. Max 64 ASCII characters.
+dialog.hearth-merchant.sell	common	Sell spare supplies	Label of Sell link in merchant HTML 30002. Existing sales behavior and item flags remain unchanged. Max 64 ASCII characters.
