@@ -486,8 +486,7 @@ public class L2Attackable extends L2Npc
 		}
 		// A stable lock order also covers two simultaneous kills shared by different parties.
 		parties.sort(Comparator.comparingLong(L2Party::getRewardOrder));
-		for (L2Party party : parties)
-			party.getCoinDistributionLock().lock();
+		int locked = 0;
 		try
 		{
 			Map<Long, L2Player> players = new LinkedHashMap<>();
@@ -538,8 +537,21 @@ public class L2Attackable extends L2Npc
 				xp = Math.round(xp * _hpWhenBottled / 100);
 				sp = (int)Math.round(sp * _hpWhenBottled / 100);
 			}
+			// Capture recipients before waiting for another kill's coin distribution.
+			for (L2Party party : parties)
+			{
+				party.getCoinDistributionLock().lock();
+				locked++;
+			}
+			List<HuntRewards.Side> lockedSides = new ArrayList<>();
+			for (HuntRewards.Side side : sides)
+			{
+				L2Party party = _huntSides.get(side.id()).party;
+				lockedSides.add(new HuntRewards.Side(side.id(), side.damage(), side.level(), side.neutral(),
+						side.members(), party == null ? 0 : party.getCoinCursor()));
+			}
 			HuntRewards.Snapshot snapshot = new HuntRewards.Snapshot(WorldPassport.worldId(), huntContributions().lifeId(),
-					getLevel(), xp, sp, Config.ALT_GAME_EXPONENT_XP, Config.ALT_GAME_EXPONENT_SP, sides);
+					getLevel(), xp, sp, Config.ALT_GAME_EXPONENT_XP, Config.ALT_GAME_EXPONENT_SP, lockedSides);
 			List<RewardItem> table = new ArrayList<>();
 			if (!isMagicBottled())
 			{
@@ -605,7 +617,7 @@ public class L2Attackable extends L2Npc
 		}
 		finally
 		{
-			for (int i = parties.size() - 1; i >= 0; i--)
+			for (int i = locked - 1; i >= 0; i--)
 				parties.get(i).getCoinDistributionLock().unlock();
 		}
 	}

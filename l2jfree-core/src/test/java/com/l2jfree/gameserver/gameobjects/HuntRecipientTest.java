@@ -74,11 +74,12 @@ class HuntRecipientTest
 		doCallRealMethod().when(mob).huntContributions();
 		doCallRealMethod().when(mob).recordHuntDamage(any(), anyDouble(), anyDouble());
 		doCallRealMethod().when(mob).calculateRewards(any());
+		ReentrantLock coinLock = spy(new ReentrantLock());
 		if (grouped)
 		{
 			L2Party party = mock(L2Party.class);
 			when(party.getPartyMembers()).thenReturn(List.of(absent));
-			when(party.getCoinDistributionLock()).thenReturn(new ReentrantLock());
+			when(party.getCoinDistributionLock()).thenReturn(coinLock);
 			when(absent.getParty()).thenReturn(party);
 		}
 		doAnswer(call -> {
@@ -105,6 +106,12 @@ class HuntRecipientTest
 			verify(absent, never()).addAdena(anyString(), anyLong(), any(), anyBoolean());
 			verify(table, never()).createItem(anyString(), anyInt(), anyLong(), any(), any());
 			verify(mob, never()).dropItem(any(L2Player.class), anyInt(), anyInt());
+			if (grouped)
+			{
+				org.mockito.InOrder order = inOrder(absent, coinLock);
+				order.verify(absent).isDead();
+				order.verify(coinLock).lock();
+			}
 		}
 	}
 }
