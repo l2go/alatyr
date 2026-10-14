@@ -89,6 +89,9 @@ final class SeedLoop
 			fight(game, view, deadline, reporter, true);
 			buyPotion(game, view, deadline, reporter);
 			drink(game, view, deadline, reporter);
+			absorb(game, view, deadline, 2000L);
+			reporter.info(tag(view) + " before-level level=" + view.level + " exp=" + view.exp + " sp=" + view.sp
+					+ " hp=" + view.hp + "/" + view.maxHp);
 			fight(game, view, deadline, reporter, false);
 			learn(game, view, deadline, reporter);
 			String before = view.snapshot();
@@ -262,12 +265,16 @@ final class SeedLoop
 	 */
 	private static void attack(GameConnection game, View view, Deadline deadline, Actor target) throws SmokeException
 	{
-		long until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(KILL_LIMIT_MILLIS);
+		long until = Long.MAX_VALUE;
 		boolean started = false;
-		while (System.nanoTime() < until)
+		boolean recovered = false;
+		long nextSwing = 0L;
+		while (true)
 		{
 			if (deadline.expired())
 				throw new SmokeException("step attack: the time limit ended");
+			if (started && System.nanoTime() >= until)
+				break;
 
 			Actor seen = view.npcs.get(target.objectId);
 			if (seen == null || seen.dead)
@@ -278,6 +285,14 @@ final class SeedLoop
 			}
 			if (!started)
 			{
+				// A potion cast can fail to heal. Leave the fight until the body has recovered,
+				// or the next beast kills the character before the swing lands.
+				if (!recovered)
+				{
+					recover(game, view, deadline);
+					recovered = true;
+					continue;
+				}
 				if (view.x <= PEACE_EAST)
 				{
 					stepToward(game, view, deadline, PEACE_EAST + 200, view.y, view.z);
@@ -300,6 +315,14 @@ final class SeedLoop
 				}
 				game.send(GamePackets.action(seen.objectId, view.x, view.y, view.z));
 				started = true;
+				until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(KILL_LIMIT_MILLIS);
+				nextSwing = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
+			}
+			else if (System.nanoTime() >= nextSwing)
+			{
+				// Already attacking the same beast is ignored by the server. A dropped intention is started again.
+				game.send(GamePackets.action(seen.objectId, view.x, view.y, view.z));
+				nextSwing = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
 			}
 			absorb(game, view, deadline, ATTACK_PAUSE_MILLIS);
 		}
@@ -496,6 +519,28 @@ final class SeedLoop
 			adoptDestination(view);
 	}
 
+	/**
+	 * Stands in the peace zone until the body is fit to fight again. Regeneration is whatever the server
+	 * sends; the wait is bounded so a body that does not recover still attempts the kill.
+	 */
+	private static void recover(GameConnection game, View view, Deadline deadline) throws SmokeException
+	{
+		if (view.maxHp <= 0 || view.hp <= 0 || view.hp >= 140 || view.hp >= view.maxHp - 10)
+			return;
+
+		if (view.x > PEACE_EAST)
+			stepToward(game, view, deadline, PEACE_EAST - 400, view.y, GROUND_Z);
+
+		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(90);
+		while (view.hp < 140 && view.hp < view.maxHp - 10 && System.nanoTime() < until)
+		{
+			if (deadline.expired())
+				throw new SmokeException("step attack: the time limit ended");
+
+			poll(game, view, deadline, 500L);
+		}
+	}
+
 	/** The server does not send StopMove when a walk finishes, so the last accepted destination is where we are. */
 	private static void adoptDestination(View view)
 	{
@@ -690,7 +735,8 @@ final class SeedLoop
 			{
 				int objectId = GamePackets.parseDie(in);
 				if (objectId == view.objectId)
-					throw new SmokeException("step attack: the character died");
+					throw new SmokeException("step attack: the character died at level " + view.level + " sp "
+							+ view.sp + " hp " + view.hp + "/" + view.maxHp);
 
 				Actor npc = view.npcs.get(objectId);
 				if (npc != null)
