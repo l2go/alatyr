@@ -19,6 +19,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.IdentityHashMap;
+import java.util.Comparator;
 
 import com.l2jfree.Config;
 import com.l2jfree.gameserver.ThreadPoolManager;
@@ -33,6 +35,7 @@ import com.l2jfree.gameserver.gameobjects.ai.L2FortSiegeGuardAI;
 import com.l2jfree.gameserver.gameobjects.ai.L2SiegeGuardAI;
 import com.l2jfree.gameserver.gameobjects.base.SoulCrystal;
 import com.l2jfree.gameserver.gameobjects.instance.L2ChestInstance;
+import com.l2jfree.gameserver.gameobjects.instance.L2FestivalMonsterInstance;
 import com.l2jfree.gameserver.gameobjects.instance.L2GrandBossInstance;
 import com.l2jfree.gameserver.gameobjects.instance.L2MonsterInstance;
 import com.l2jfree.gameserver.gameobjects.instance.L2PetInstance;
@@ -53,6 +56,9 @@ import com.l2jfree.gameserver.model.drop.L2DropCategory;
 import com.l2jfree.gameserver.model.drop.L2DropData;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
 import com.l2jfree.gameserver.model.party.L2Party;
+import com.l2jfree.gameserver.model.rewards.HuntContributions;
+import com.l2jfree.gameserver.model.rewards.HuntRewards;
+import com.l2jfree.gameserver.persistence.WorldPassport;
 import com.l2jfree.gameserver.model.quest.Quest;
 import com.l2jfree.gameserver.model.quest.QuestState;
 import com.l2jfree.gameserver.model.quest.State;
@@ -235,6 +241,82 @@ public class L2Attackable extends L2Npc
 		return _aggroList;
 	}
 	
+	private HuntContributions _huntContributions = new HuntContributions();
+	private Map<Long, HuntSide> _huntSides = new LinkedHashMap<>();
+	private Map<Long, L2Player> _huntPlayers = new LinkedHashMap<>();
+	private Map<L2Party, Long> _huntParties = new IdentityHashMap<>();
+	private boolean _huntRewarded;
+	private boolean _huntReturned;
+
+	private static final class HuntSide
+	{
+		final L2Party party;
+		final L2Player representative;
+
+		HuntSide(L2Party party, L2Player representative)
+		{
+			this.party = party;
+			this.representative = representative;
+		}
+	}
+
+	boolean usesHuntRewards()
+	{
+		return this instanceof L2MonsterInstance && !(this instanceof L2ChestInstance)
+				&& !(this instanceof L2FestivalMonsterInstance) && !isRaid()
+				&& !isRaidMinion();
+	}
+
+	synchronized HuntContributions huntContributions()
+	{
+		// Also permits a minimal lifecycle test without constructing the server's managers.
+		if (_huntContributions == null)
+		{
+			_huntContributions = new HuntContributions();
+			_huntSides = new LinkedHashMap<>();
+			_huntPlayers = new LinkedHashMap<>();
+			_huntParties = new IdentityHashMap<>();
+		}
+		return _huntContributions;
+	}
+
+	/** Called only by the HP reduction path, never by assist or hate notifications. */
+	public synchronized void recordHuntDamage(L2Creature attacker, double damage, double currentHp)
+	{
+		if (!usesHuntRewards() || _huntRewarded || !Double.isFinite(damage) || damage <= 0 || currentHp <= 0)
+			return;
+		if (_huntReturned && !isReturningToSpawnPoint() && currentHp >= getMaxHp())
+			resetHuntContributions(false);
+		HuntContributions contributions = huntContributions();
+		L2Player player = attacker == null ? null : attacker.getActingPlayer();
+		long playerId = player == null ? 0 : player.getObjectId();
+		Long sideId = contributions.sideOf(playerId);
+		if (sideId == null)
+		{
+			L2Party party = player == null ? null : player.getParty();
+			if (party == null)
+				sideId = playerId;
+			else
+				sideId = _huntParties.computeIfAbsent(party, ignored -> -(long)(_huntParties.size() + 1));
+			_huntSides.putIfAbsent(sideId, new HuntSide(party, player));
+		}
+		if (contributions.add(playerId, sideId, damage, currentHp) > 0 && player != null)
+			_huntPlayers.putIfAbsent(playerId, player);
+	}
+
+	private synchronized void resetHuntContributions(boolean spawn)
+	{
+		if (spawn)
+			huntContributions().spawn();
+		else
+			huntContributions().reset();
+		_huntSides.clear();
+		_huntPlayers.clear();
+		_huntParties.clear();
+		_huntRewarded = false;
+		_huntReturned = false;
+	}
+
 	private boolean _isReturningToSpawnPoint = false;
 	
 	public final boolean isReturningToSpawnPoint()
@@ -244,6 +326,10 @@ public class L2Attackable extends L2Npc
 	
 	public final void setisReturningToSpawnPoint(boolean value)
 	{
+		if (_isReturningToSpawnPoint && !value)
+			_huntReturned = true;
+		if (_huntReturned && !value && getCurrentHp() >= getMaxHp())
+			resetHuntContributions(false);
 		_isReturningToSpawnPoint = value;
 	}
 	
@@ -388,6 +474,168 @@ public class L2Attackable extends L2Npc
 		return (AttackableStatus)_status;
 	}
 	
+	private void calculateHuntRewards(L2Creature lastAttacker)
+	{
+		List<L2Party> parties;
+		synchronized (this)
+		{
+			if (_huntRewarded)
+				return;
+			_huntRewarded = true;
+			parties = new ArrayList<>(_huntParties.keySet());
+		}
+		// A stable lock order also covers two simultaneous kills shared by different parties.
+		parties.sort(Comparator.comparingLong(L2Party::getRewardOrder));
+		int locked = 0;
+		try
+		{
+			Map<Long, L2Player> players = new LinkedHashMap<>();
+			List<HuntRewards.Side> sides = new ArrayList<>();
+			for (Map.Entry<Long, Double> entry : huntContributions().damage().entrySet())
+			{
+				long id = entry.getKey();
+				HuntSide runtime = _huntSides.get(id);
+				List<L2Player> candidates = new ArrayList<>();
+				if (runtime.party != null)
+					candidates.addAll(runtime.party.getPartyMembers());
+				for (L2Player player : _huntPlayers.values())
+					if (Long.valueOf(id).equals(huntContributions().sideOf(player.getObjectId())) && !candidates.contains(player))
+						candidates.add(player);
+				List<HuntRewards.Member> members = new ArrayList<>();
+				int level = runtime.party == null && runtime.representative != null ? runtime.representative.getLevel() : 0;
+				for (L2Player player : candidates)
+				{
+					Long boundSide = huntContributions().sideOf(player.getObjectId());
+					if (boundSide != null && boundSide != id)
+						continue;
+					if (boundSide != null)
+						level = Math.max(level, player.getLevel());
+					if (player.isDead() || !Util.checkIfInRange(Config.ALT_PARTY_RANGE, this, player, true))
+						continue;
+					level = Math.max(level, player.getLevel());
+					players.put((long)player.getObjectId(), player);
+					double rate = player.calcStat(Stats.EXPSP_RATE, 1, null, null);
+					double xpRate = rate;
+					if (player.getPet() instanceof L2SummonInstance)
+						xpRate *= 1 - ((L2SummonInstance)player.getPet()).getExpPenalty();
+					if (isOverhit() && getOverhitAttacker() != null && (player == getOverhitAttacker() || player == getOverhitAttacker().getActingPlayer()))
+						xpRate *= 1 + Math.min(0.25, getOverhitDamage() / getMaxHp());
+					members.add(new HuntRewards.Member(player.getObjectId(), player.getLevel(), xpRate, rate));
+				}
+				sides.add(new HuntRewards.Side(id, entry.getValue(), level == 0 ? getLevel() : level, id == 0, members,
+						runtime.party == null ? 0 : runtime.party.getCoinCursor()));
+			}
+			long xp = getMustRewardExpSP() ? getExpReward() : 0;
+			int sp = getMustRewardExpSP() ? getSpReward() : 0;
+			if (isChampion())
+			{
+				xp *= Config.CHAMPION_EXP_SP;
+				sp *= Config.CHAMPION_EXP_SP;
+			}
+			if (isMagicBottled())
+			{
+				xp = Math.round(xp * _hpWhenBottled / 100);
+				sp = (int)Math.round(sp * _hpWhenBottled / 100);
+			}
+			// Capture recipients before waiting for another kill's coin distribution.
+			for (L2Party party : parties)
+			{
+				party.getCoinDistributionLock().lock();
+				locked++;
+			}
+			List<HuntRewards.Side> lockedSides = new ArrayList<>();
+			for (HuntRewards.Side side : sides)
+			{
+				L2Party party = _huntSides.get(side.id()).party;
+				lockedSides.add(new HuntRewards.Side(side.id(), side.damage(), side.level(), side.neutral(),
+						side.members(), party == null ? 0 : party.getCoinCursor()));
+			}
+			HuntRewards.Snapshot snapshot = new HuntRewards.Snapshot(WorldPassport.worldId(), huntContributions().lifeId(),
+					getLevel(), xp, sp, Config.ALT_GAME_EXPONENT_XP, Config.ALT_GAME_EXPONENT_SP, lockedSides);
+			List<RewardItem> table = new ArrayList<>();
+			if (!isMagicBottled())
+			{
+				doItemDrop(getTemplate(), lastAttacker, table);
+				doEventDrop(lastAttacker);
+			}
+			List<HuntRewards.Drop> drops = new ArrayList<>();
+			for (RewardItem item : table)
+			{
+				// Nonstackable copies are independent indivisible rewards.
+				boolean stackable = ItemTable.getInstance().getTemplate(item.getItemId()).isStackable();
+				if (stackable)
+					drops.add(new HuntRewards.Drop(item.getItemId(), item.getCount()));
+				else
+					for (int i = 0; i < item.getCount(); i++)
+						drops.add(new HuntRewards.Drop(item.getItemId(), 1));
+			}
+			HuntRewards.Result result = HuntRewards.calculate(snapshot, drops);
+			boolean shared = sides.size() > 1;
+			Map<Long, List<L2Player>> recipients = new LinkedHashMap<>();
+			for (HuntRewards.SideReward side : result.sides())
+			{
+				HuntSide runtime = _huntSides.get(side.sideId());
+				recipients.put(side.sideId(), side.players().stream().map(reward -> players.get(reward.playerId())).toList());
+				for (HuntRewards.PlayerReward reward : side.players())
+				{
+					L2Player player = players.get(reward.playerId());
+					player.addExpAndSp(reward.xp(), reward.sp(), useVitalityRate());
+					if (reward.xp() > 0)
+					{
+						int mastery = player.getSkillLevel(L2Skill.SKILL_SOUL_MASTERY);
+						if (mastery > 0)
+						{
+							L2Skill skill = SkillTable.getInstance().getInfo(L2Skill.SKILL_SOUL_MASTERY, mastery);
+							if (skill.getExpNeeded() <= reward.xp())
+								player.absorbSoulFromNpc(skill, this);
+						}
+						player.updateVitalityPoints(getVitalityPoints((int)(side.damage() / side.players().size())), true, false);
+					}
+					if (shared && reward.coins() > 0)
+						player.addAdena("Hunt", reward.coins(), this, true);
+				}
+				if (shared && runtime.party != null)
+					runtime.party.setCoinCursor(side.nextCoinCursor());
+				if (!shared && !side.unclaimed() && side.coins() > 0 && runtime.representative != null)
+					dropItem(runtime.representative, HuntRewards.ADENA, Math.toIntExact(side.coins()));
+			}
+			for (HuntRewards.ItemReward reward : result.items())
+			{
+				HuntSide runtime = _huntSides.get(reward.sideId());
+				if (reward.unclaimed() || runtime.representative == null)
+					continue;
+				L2Player owner = runtime.party == null || !shared ? runtime.representative
+						: runtime.party.getHuntLooter(runtime.representative, reward.drop().itemId(), this, recipients.get(reward.sideId()));
+				dropHuntItem(owner, reward.drop(), shared);
+			}
+			if (shared && _log.isDebugEnabled())
+				_log.debug("Hunt life=" + snapshot.lifeId() + " sides=" + result.sides() + " items=" + result.items());
+		}
+		catch (Exception e)
+		{
+			_log.error("Could not deliver hunt rewards for life " + huntContributions().lifeId(), e);
+		}
+		finally
+		{
+			for (int i = locked - 1; i >= 0; i--)
+				parties.get(i).getCoinDistributionLock().unlock();
+		}
+	}
+
+	private void dropHuntItem(L2Player owner, HuntRewards.Drop drop, boolean shared)
+	{
+		if (!shared)
+		{
+			dropItem(owner, drop.itemId(), Math.toIntExact(drop.count()));
+			return;
+		}
+		L2ItemInstance item = ItemTable.getInstance().createItem("Hunt", drop.itemId(), drop.count(), owner, this);
+		item.setHuntRewardOwner(owner.getObjectId());
+		item.dropMe(this, getX(), getY(), Math.max(getZ(), owner.getZ()) + 20);
+		ItemsAutoDestroyManager.tryAddItem(item);
+		item.setProtected(false);
+	}
+
 	public synchronized void setMustRewardExpSp(boolean value)
 	{
 		_mustGiveExpSp = value;
@@ -489,6 +737,11 @@ public class L2Attackable extends L2Npc
 	@Override
 	protected void calculateRewards(L2Creature lastAttacker)
 	{
+		if (usesHuntRewards())
+		{
+			calculateHuntRewards(lastAttacker);
+			return;
+		}
 		// Creates an empty list of rewards
 		Map<L2Creature, RewardInfo> rewards = new LinkedHashMap<L2Creature, RewardInfo>();
 		
@@ -1092,7 +1345,7 @@ public class L2Attackable extends L2Npc
 	 * @param levelModifier level modifier in %'s (will be subtracted from drop
 	 *            chance)
 	 */
-	private RewardItem calculateRewardItem(L2Player lastAttacker, L2DropData drop, int levelModifier,
+	RewardItem calculateRewardItem(L2Player lastAttacker, L2DropData drop, int levelModifier,
 			boolean isSweep)
 	{
 		// Get default drop chance
@@ -1234,7 +1487,7 @@ public class L2Attackable extends L2Npc
 	 * @param levelModifier level modifier in %'s (will be subtracted from drop
 	 *            chance)
 	 */
-	private RewardItem calculateCategorizedRewardItem(L2Player lastAttacker, L2DropCategory categoryDrops,
+	RewardItem calculateCategorizedRewardItem(L2Player lastAttacker, L2DropCategory categoryDrops,
 			int levelModifier)
 	{
 		if (categoryDrops == null)
@@ -1278,7 +1531,7 @@ public class L2Attackable extends L2Npc
 	 * 
 	 * @param lastAttacker The L2Player that has killed the L2Attackable
 	 */
-	private int calculateLevelModifierForDrop(L2Player lastAttacker)
+	int calculateLevelModifierForDrop(L2Player lastAttacker)
 	{
 		if (shouldPunishDeepBlueDrops())
 		{
@@ -1336,18 +1589,24 @@ public class L2Attackable extends L2Npc
 	 */
 	public void doItemDrop(L2NpcTemplate npcTemplate, L2Creature lastAttacker)
 	{
-		if (lastAttacker == null)
+		doItemDrop(npcTemplate, lastAttacker, null);
+	}
+
+	void doItemDrop(L2NpcTemplate npcTemplate, L2Creature lastAttacker, List<RewardItem> huntDrops)
+	{
+		if (lastAttacker == null && huntDrops == null)
 			return;
 		
-		L2Player player = lastAttacker.getActingPlayer();
+		L2Player player = lastAttacker == null ? null : lastAttacker.getActingPlayer();
 		
-		if (player == null)
-			return; // Don't drop anything if the last attacker or ownere isn't L2Player
+		if (player == null && huntDrops == null)
+			return; // No player owns the legacy drop.
 			
-		int levelModifier = calculateLevelModifierForDrop(player); // level modifier in %'s (will be subtracted from drop chance)
+		int levelModifier = player == null ? 0 : calculateLevelModifierForDrop(player); // level modifier in %'s (will be subtracted from drop chance)
 		
 		// Check the drop of a cursed weapon
-		CursedWeaponsManager.getInstance().checkDrop(this, player);
+		if (player != null)
+			CursedWeaponsManager.getInstance().checkDrop(this, player);
 		
 		// now throw all categorized drops and handle spoil.
 		if (npcTemplate.getDropData() != null)
@@ -1358,7 +1617,7 @@ public class L2Attackable extends L2Npc
 				if (cat.isSweep())
 				{
 					// according to sh1ny, seeded mobs CAN be spoiled and swept.
-					if (isSpoil()/* && !isSeeded() */)
+					if (player != null && isSpoil()/* && !isSeeded() */)
 					{
 						ArrayBunch<RewardItem> sweepList = new ArrayBunch<RewardItem>();
 						
@@ -1398,8 +1657,11 @@ public class L2Attackable extends L2Npc
 						if (_log.isDebugEnabled())
 							_log.info("Item id to drop: " + item.getItemId() + " amount: " + item.getCount());
 						
-						// Looting process
-						player.doAutoLoot(this, item);
+						// The ordinary table is rolled once, before ownership is assigned.
+						if (huntDrops == null)
+							player.doAutoLoot(this, item);
+						else
+							huntDrops.add(item);
 						
 						// Broadcast message if RaidBoss was defeated
 						if (this instanceof L2Boss)
@@ -1416,7 +1678,7 @@ public class L2Attackable extends L2Npc
 		}
 		
 		// Apply Special Item drop with rnd qty for champions
-		if (isChampion() && Math.abs(getLevel() - player.getLevel()) <= Config.CHAMPION_SPCL_LVL_DIFF
+		if (player != null && isChampion() && Math.abs(getLevel() - player.getLevel()) <= Config.CHAMPION_SPCL_LVL_DIFF
 				&& Config.CHAMPION_SPCL_CHANCE > 0 && Rnd.get(100) < Config.CHAMPION_SPCL_CHANCE)
 		{
 			int champqty = Rnd.get(Config.CHAMPION_SPCL_QTY) + 1; //quantity should actually vary between 1 and whatever admin specified as max, inclusive.
@@ -1424,11 +1686,14 @@ public class L2Attackable extends L2Npc
 			// Give this or these Item(s) to the L2Player that has killed the L2Attackable
 			RewardItem item = new RewardItem(Config.CHAMPION_SPCL_ITEM, champqty);
 			
-			player.doAutoLoot(this, item);
+			if (huntDrops == null)
+				player.doAutoLoot(this, item);
+			else
+				huntDrops.add(item);
 		}
 		
 		//Instant Item Drop :>
-		if (getTemplate().dropHerbs())
+		if (player != null && getTemplate().dropHerbs())
 		{
 			boolean _hp = false;
 			boolean _mp = false;
@@ -2271,6 +2536,7 @@ public class L2Attackable extends L2Npc
 	@Override
 	public void onSpawn()
 	{
+		resetHuntContributions(true);
 		super.onSpawn();
 		// Clear mob spoil,seed
 		setSpoil(false);
