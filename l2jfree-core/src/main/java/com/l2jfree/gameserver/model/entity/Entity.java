@@ -71,12 +71,12 @@ public class Entity
 		return 0;
 	}
 	
-	// Entering the world asks every lair this question. A world without that zone is not an error: the creature is not inside.
 	public boolean checkIfInZone(L2Creature cha)
 	{
 		if (_zone != null)
 			return _zone.isInsideZone(cha);
 		
+		_log.error(getClassName() + " has no zone defined");
 		return false;
 	}
 	
@@ -85,6 +85,7 @@ public class Entity
 		if (_zone != null)
 			return _zone.isInsideZone(x, y, z);
 		
+		_log.error(getClassName() + " has no zone defined");
 		return false;
 	}
 	
@@ -93,6 +94,7 @@ public class Entity
 		if (_zone != null)
 			return _zone.isInsideZone(x, y);
 		
+		_log.error(getClassName() + " has no zone defined");
 		return false;
 	}
 	
@@ -106,8 +108,7 @@ public class Entity
 	}
 	
 	// A lair asks who is inside while it is starting, including when this world has no zone for it.
-	// An empty list is that answer. checkIfInZone answers the same absence with false and does not log.
-	// getTownId and the id lookups still report a missing zone when they run.
+	// An empty list is that answer. getTownId and the other lookups still report a missing zone when they run.
 	protected List<L2Player> getPlayersInside()
 	{
 		List<L2Player> lst = new ArrayList<L2Player>();
