@@ -1,0 +1,3 @@
+id,name,body_part,weapon_type,is_crystallizable,crystal_type,crystal_count,material,weight,soulshot_count,spiritshot_count,physical_damage,random_damage,magic_damage,critical_rate,accuracy_modifier,evasion_modifier,shield_defense,shield_defense_rate,attack_speed,mp_consumption,shadow_mana,lifetime_s,price,is_sellable,is_droppable,is_destroyable,is_tradable,is_depositable,item_skills,enchant4_skills,on_cast_skills,on_critical_skills,change_weapon_template_id
+1,@item.hedge-blade.name,rhand,sword,false,none,0,steel,340,0,0,17,7,4,60,0,0,0,0,342,0,,,56,false,false,true,false,true,"","","","",
+4,@item.field-cudgel.name,rhand,blunt,false,none,0,wood,420,0,0,23,7,5,60,0,0,0,0,342,0,,,86,true,true,true,true,true,"","","","",

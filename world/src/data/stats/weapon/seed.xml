@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE list SYSTEM "../../templates/weapons.dtd">
+<list>
+  <item id="1" name="@item.hedge-blade.name">
+    <for>
+      <set order="0x08" stat="pAtk" val="17"/>
+      <set order="0x08" stat="mAtk" val="4"/>
+      <set order="0x08" stat="rCrit" val="6"/>
+      <set order="0x08" stat="pAtkSpd" val="342"/>
+      <set order="0x08" stat="pAtkRange" val="58"/>
+    </for>
+  </item>
+  <item id="4" name="@item.field-cudgel.name">
+    <for>
+      <set order="0x08" stat="pAtk" val="23"/>
+      <set order="0x08" stat="mAtk" val="5"/>
+      <set order="0x08" stat="rCrit" val="6"/>
+      <set order="0x08" stat="pAtkSpd" val="342"/>
+      <set order="0x08" stat="pAtkRange" val="58"/>
+    </for>
+  </item>
+</list>

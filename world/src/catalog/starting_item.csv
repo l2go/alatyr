@@ -1,0 +1,5 @@
+id,player_class_id,item_template_id,amount,is_equipped
+1,0,1,1,true
+2,0,23,1,true
+3,0,28,1,true
+4,0,39,1,true

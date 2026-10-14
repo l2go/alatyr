@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE list SYSTEM "../templates/zones.dtd">
+<list>
+  <zone id="731" name="@place.hearth.name" type="Dynamic" enabled="true">
+    <settings affected="all" pvp="Peace"/>
+    <shape type="Poly" zMin="-3904" zMax="-2304">
+      <point x="-73301" y="256421"/>
+      <point x="-70837" y="256421"/>
+      <point x="-70837" y="259731"/>
+      <point x="-73301" y="259731"/>
+    </shape>
+  </zone>
+</list>

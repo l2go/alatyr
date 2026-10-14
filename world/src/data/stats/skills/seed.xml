@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE list SYSTEM "../../templates/skills.dtd">
+<list>
+  <skill id="3" name="@skill.gate-strike.name" levels="3">
+    <table name="#power">32 46 60</table>
+    <table name="#mp">4 6 8</table>
+    <set name="power" val="#power"/>
+    <set name="mpConsume" val="#mp"/>
+    <set name="mpInitialConsume" val="0"/>
+    <set name="target" val="TARGET_ONE"/>
+    <set name="skillType" val="PDAM"/>
+    <set name="operateType" val="OP_ACTIVE"/>
+    <set name="isMagic" val="false"/>
+    <set name="castRange" val="72"/>
+    <set name="effectRange" val="144"/>
+    <set name="hitTime" val="650"/>
+    <set name="reuseDelay" val="5200"/>
+    <set name="staticReuse" val="true"/>
+    <set name="staticHitTime" val="true"/>
+  </skill>
+  <skill id="257" name="@skill.hedge-practice.name" levels="2">
+    <table name="#attack">4 6</table>
+    <set name="target" val="TARGET_SELF"/>
+    <set name="skillType" val="BUFF"/>
+    <set name="operateType" val="OP_PASSIVE"/>
+    <set name="isMagic" val="false"/>
+    <for>
+      <add order="0x40" stat="pAtk" val="#attack"/>
+    </for>
+  </skill>
+  <skill id="2031" name="@skill.draught-heal.name" levels="1">
+    <set name="power" val="72"/>
+    <set name="target" val="TARGET_SELF"/>
+    <set name="skillType" val="HEAL_STATIC"/>
+    <set name="operateType" val="OP_ACTIVE"/>
+    <set name="isMagic" val="false"/>
+    <set name="isItem" val="true"/>
+    <set name="isPotion" val="true"/>
+    <set name="itemConsumeId" val="1060"/>
+    <set name="itemConsumeCount" val="1"/>
+    <set name="mpConsume" val="0"/>
+    <set name="hitTime" val="400"/>
+    <set name="reuseDelay" val="7200"/>
+    <set name="staticReuse" val="true"/>
+    <set name="staticHitTime" val="true"/>
+  </skill>
+</list>

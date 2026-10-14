@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!ENTITY % conditions.dtd SYSTEM "conditions.dtd"> %conditions.dtd;
+<!ENTITY % func "set|add|sub|mul|div|basemul">
+
+<!-- Root -->
+<!ELEMENT list (skill)*>
+
+<!-- Skill -->
+<!ATTLIST skill id CDATA #REQUIRED>
+<!ATTLIST skill name CDATA #REQUIRED>
+<!ATTLIST skill levels CDATA #REQUIRED>
+<!ATTLIST skill enchantLevels1 CDATA #IMPLIED>
+<!ATTLIST skill enchantLevels2 CDATA #IMPLIED>
+<!ATTLIST skill enchantLevels3 CDATA #IMPLIED>
+<!ATTLIST skill enchantLevels4 CDATA #IMPLIED>
+<!ATTLIST skill enchantLevels5 CDATA #IMPLIED>
+<!ATTLIST skill enchantLevels6 CDATA #IMPLIED>
+<!ATTLIST skill enchantLevels7 CDATA #IMPLIED>
+<!ATTLIST skill enchantLevels8 CDATA #IMPLIED>
+<!ELEMENT skill ((table|set|enchant1|enchant2|enchant3|enchant4|enchant5|enchant6|enchant7|enchant8)*,cond?,enchant1cond?,enchant2cond?,enchant3cond?,enchant4cond?,enchant5cond?,enchant6cond?,enchant7cond?,enchant8cond?,for?,enchant1for?,enchant2for?,enchant3for?,enchant4for?,enchant5for?,enchant6for?,enchant7for?,enchant8for?)>
+
+<!-- Table -->
+<!ATTLIST table name CDATA #REQUIRED>
+<!ELEMENT table (#PCDATA)>
+
+<!-- Property -->
+<!ATTLIST set      name CDATA #IMPLIED> <!-- overlapping with stats -->
+<!ATTLIST enchant1 name CDATA #REQUIRED>
+<!ATTLIST enchant2 name CDATA #REQUIRED>
+<!ATTLIST enchant3 name CDATA #REQUIRED>
+<!ATTLIST enchant4 name CDATA #REQUIRED>
+<!ATTLIST enchant5 name CDATA #REQUIRED>
+<!ATTLIST enchant6 name CDATA #REQUIRED>
+<!ATTLIST enchant7 name CDATA #REQUIRED>
+<!ATTLIST enchant8 name CDATA #REQUIRED>
+<!ATTLIST set      val CDATA #REQUIRED>
+<!ATTLIST enchant1 val CDATA #REQUIRED>
+<!ATTLIST enchant2 val CDATA #REQUIRED>
+<!ATTLIST enchant3 val CDATA #REQUIRED>
+<!ATTLIST enchant4 val CDATA #REQUIRED>
+<!ATTLIST enchant5 val CDATA #REQUIRED>
+<!ATTLIST enchant6 val CDATA #REQUIRED>
+<!ATTLIST enchant7 val CDATA #REQUIRED>
+<!ATTLIST enchant8 val CDATA #REQUIRED>
+<!-- <!ELEMENT set      EMPTY> --> <!-- overlapping with stats -->
+<!ELEMENT enchant1 EMPTY>
+<!ELEMENT enchant2 EMPTY>
+<!ELEMENT enchant3 EMPTY>
+<!ELEMENT enchant4 EMPTY>
+<!ELEMENT enchant5 EMPTY>
+<!ELEMENT enchant6 EMPTY>
+<!ELEMENT enchant7 EMPTY>
+<!ELEMENT enchant8 EMPTY>
+
+<!-- Template -->
+<!ELEMENT for         (effect+|(%func;)+)?> <!-- TODO -->
+<!ELEMENT enchant1for (effect+|(%func;)+)?> <!-- TODO -->
+<!ELEMENT enchant2for (effect+|(%func;)+)?> <!-- TODO -->
+<!ELEMENT enchant3for (effect+|(%func;)+)?> <!-- TODO -->
+<!ELEMENT enchant4for (effect+|(%func;)+)?> <!-- TODO -->
+<!ELEMENT enchant5for (effect+|(%func;)+)?> <!-- TODO -->
+<!ELEMENT enchant6for (effect+|(%func;)+)?> <!-- TODO -->
+<!ELEMENT enchant7for (effect+|(%func;)+)?> <!-- TODO -->
+<!ELEMENT enchant8for (effect+|(%func;)+)?> <!-- TODO -->
+
+<!-- Condition -->
+<!ATTLIST cond         msg CDATA #IMPLIED>
+<!ATTLIST enchant1cond msg CDATA #IMPLIED>
+<!ATTLIST enchant2cond msg CDATA #IMPLIED>
+<!ATTLIST enchant3cond msg CDATA #IMPLIED>
+<!ATTLIST enchant4cond msg CDATA #IMPLIED>
+<!ATTLIST enchant5cond msg CDATA #IMPLIED>
+<!ATTLIST enchant6cond msg CDATA #IMPLIED>
+<!ATTLIST enchant7cond msg CDATA #IMPLIED>
+<!ATTLIST enchant8cond msg CDATA #IMPLIED>
+<!ATTLIST cond         msgId CDATA #IMPLIED>
+<!ATTLIST enchant1cond msgId CDATA #IMPLIED>
+<!ATTLIST enchant2cond msgId CDATA #IMPLIED>
+<!ATTLIST enchant3cond msgId CDATA #IMPLIED>
+<!ATTLIST enchant4cond msgId CDATA #IMPLIED>
+<!ATTLIST enchant5cond msgId CDATA #IMPLIED>
+<!ATTLIST enchant6cond msgId CDATA #IMPLIED>
+<!ATTLIST enchant7cond msgId CDATA #IMPLIED>
+<!ATTLIST enchant8cond msgId CDATA #IMPLIED>
+<!ATTLIST cond         addName (1) #IMPLIED>
+<!ATTLIST enchant1cond addName (1) #IMPLIED>
+<!ATTLIST enchant2cond addName (1) #IMPLIED>
+<!ATTLIST enchant3cond addName (1) #IMPLIED>
+<!ATTLIST enchant4cond addName (1) #IMPLIED>
+<!ATTLIST enchant5cond addName (1) #IMPLIED>
+<!ATTLIST enchant6cond addName (1) #IMPLIED>
+<!ATTLIST enchant7cond addName (1) #IMPLIED>
+<!ATTLIST enchant8cond addName (1) #IMPLIED>
+<!ELEMENT cond         (%condition;)>
+<!ELEMENT enchant1cond (%condition;)>
+<!ELEMENT enchant2cond (%condition;)>
+<!ELEMENT enchant3cond (%condition;)>
+<!ELEMENT enchant4cond (%condition;)>
+<!ELEMENT enchant5cond (%condition;)>
+<!ELEMENT enchant6cond (%condition;)>
+<!ELEMENT enchant7cond (%condition;)>
+<!ELEMENT enchant8cond (%condition;)>
+
+<!-- Effect -->
+<!ATTLIST effect name CDATA #REQUIRED>
+<!ATTLIST effect count CDATA #IMPLIED>
+<!ATTLIST effect time CDATA #IMPLIED>
+<!ATTLIST effect self (1) #IMPLIED>
+<!ATTLIST effect noicon (1) #IMPLIED>
+<!ATTLIST effect val CDATA #IMPLIED>
+<!ATTLIST effect abnormal (bleed|bleeding|poison|redcircle|ice|wind|fear|stun|sleep|mute|root|hold1|hold2|unknown13|bighead|flame|unknown16|grow|floatroot|dancestun|firerootstun|stealth|imprison1|imprison2|magiccircle|ice2|earthquake|unknown27|invulnerable|vitality|unknown30|deathmark|unknown32) #IMPLIED>
+<!ATTLIST effect special (invulnerable|redglow|redglow2|baguettesword|yellowafro|pinkafro|blackafro|unknown8|unknown9) #IMPLIED>
+<!ATTLIST effect stackType CDATA #IMPLIED>
+<!ATTLIST effect stackOrder CDATA #IMPLIED>
+<!ATTLIST effect effectPower CDATA #IMPLIED>
+<!ATTLIST effect effectType CDATA #IMPLIED>
+<!ATTLIST effect triggeredId CDATA #IMPLIED>
+<!ATTLIST effect triggeredLevel CDATA #IMPLIED>
+<!ATTLIST effect chanceType CDATA #IMPLIED>
+<!ATTLIST effect activationChance CDATA #IMPLIED>
+<!ELEMENT effect (%func;)*>
+
+<!-- Stat -->
+<!ATTLIST set     stat CDATA #IMPLIED> <!-- overlapping with properties -->
+<!ATTLIST add     stat CDATA #REQUIRED>
+<!ATTLIST sub     stat CDATA #REQUIRED>
+<!ATTLIST mul     stat CDATA #REQUIRED>
+<!ATTLIST div     stat CDATA #REQUIRED>
+<!ATTLIST basemul stat CDATA #REQUIRED>
+<!ATTLIST set     order (0x08|0x50) #IMPLIED> <!-- one level to set it before calculations, and another to set if after --> <!-- overlapping with properties -->
+<!ATTLIST add     order (0x10|0x40) #REQUIRED> <!-- same level for add/sub -->
+<!ATTLIST sub     order (0x10|0x40) #REQUIRED> <!-- same level for add/sub -->
+<!ATTLIST mul     order (0x30) #REQUIRED> <!-- same level for mul/div -->
+<!ATTLIST div     order (0x30) #REQUIRED> <!-- same level for mul/div -->
+<!ATTLIST basemul order (0x30) #REQUIRED> <!-- same level with mul/div -> COULD CAUSE PROBLEMS -> SHOULD BE CHANGED -->
+<!ATTLIST set     val CDATA #REQUIRED>
+<!ATTLIST add     val CDATA #REQUIRED>
+<!ATTLIST sub     val CDATA #REQUIRED>
+<!ATTLIST mul     val CDATA #REQUIRED>
+<!ATTLIST div     val CDATA #REQUIRED>
+<!ATTLIST basemul val CDATA #REQUIRED>
+<!ELEMENT set     (%condition;)?> <!-- overlapping with properties -->
+<!ELEMENT add     (%condition;)?>
+<!ELEMENT sub     (%condition;)?>
+<!ELEMENT mul     (%condition;)?>
+<!ELEMENT div     (%condition;)?>
+<!ELEMENT basemul (%condition;)?>

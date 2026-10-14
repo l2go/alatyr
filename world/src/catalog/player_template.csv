@@ -1,0 +1,2 @@
+player_class_id,class_name,base_strength,base_constitution,base_dexterity,base_intelligence,base_wit,base_mental,base_physical_attack,base_physical_defense,base_magic_attack,base_magic_defense,base_attack_speed,base_casting_speed,base_accuracy,base_critical_rate,base_evasion,base_run_speed,base_max_load,can_craft,male_collision_radius,male_collision_height,female_collision_radius,female_collision_height
+0,@class.starting-warrior.name,37,39,28,19,16,24,13,72,5,31,342,278,0,60,0,128,28000,false,8.5,24.5,8.0,23.5

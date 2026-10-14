@@ -1,0 +1,7 @@
+merchant_shop_id,position,item_template_id,price,stock_count,restock_interval_s
+731,0,1060,12,,
+731,1,4,86,,
+731,2,1,56,,
+731,3,23,126,,
+731,4,28,90,,
+731,5,39,54,,
