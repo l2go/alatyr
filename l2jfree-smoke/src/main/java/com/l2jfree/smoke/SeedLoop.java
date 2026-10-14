@@ -225,6 +225,8 @@ final class SeedLoop
 			Actor target = takeTarget(game, view, deadline, reporter);
 			attack(game, view, deadline, target);
 			pickup(game, view, deadline, target.objectId);
+			reporter.info(tag(view) + " kill " + view.kills + " level=" + view.level + " exp=" + view.exp + " sp="
+					+ view.sp + " userinfo=" + view.userInfos + " recent=" + view.recentOpcodes());
 		}
 	}
 
@@ -271,7 +273,6 @@ final class SeedLoop
 	{
 		long until = Long.MAX_VALUE;
 		boolean started = false;
-		boolean recovered = false;
 		long nextSwing = 0L;
 		while (true)
 		{
@@ -289,14 +290,6 @@ final class SeedLoop
 			}
 			if (!started)
 			{
-				// A potion cast can fail to heal. Leave the fight until the body has recovered,
-				// or the next beast kills the character before the swing lands.
-				if (!recovered)
-				{
-					recover(game, view, deadline);
-					recovered = true;
-					continue;
-				}
 				if (view.x <= PEACE_EAST)
 				{
 					stepToward(game, view, deadline, PEACE_EAST + 200, view.y, view.z);
@@ -521,28 +514,6 @@ final class SeedLoop
 		}
 		if (view.acceptedMove && distance(view.x, view.y, view.acceptedX, view.acceptedY) > MELEE)
 			adoptDestination(view);
-	}
-
-	/**
-	 * Stands in the peace zone until the body is fit to fight again. Regeneration is whatever the server
-	 * sends; the wait is bounded so a body that does not recover still attempts the kill.
-	 */
-	private static void recover(GameConnection game, View view, Deadline deadline) throws SmokeException
-	{
-		if (view.maxHp <= 0 || view.hp <= 0 || view.hp >= 140 || view.hp >= view.maxHp - 10)
-			return;
-
-		if (view.x > PEACE_EAST)
-			stepToward(game, view, deadline, PEACE_EAST - 400, view.y, GROUND_Z);
-
-		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(90);
-		while (view.hp < 140 && view.hp < view.maxHp - 10 && System.nanoTime() < until)
-		{
-			if (deadline.expired())
-				throw new SmokeException("step attack: the time limit ended");
-
-			poll(game, view, deadline, 500L);
-		}
 	}
 
 	/** The server does not send StopMove when a walk finishes, so the last accepted destination is where we are. */
