@@ -35,6 +35,7 @@ import com.l2jfree.gameserver.gameobjects.ai.L2FortSiegeGuardAI;
 import com.l2jfree.gameserver.gameobjects.ai.L2SiegeGuardAI;
 import com.l2jfree.gameserver.gameobjects.base.SoulCrystal;
 import com.l2jfree.gameserver.gameobjects.instance.L2ChestInstance;
+import com.l2jfree.gameserver.gameobjects.instance.L2FestivalMonsterInstance;
 import com.l2jfree.gameserver.gameobjects.instance.L2GrandBossInstance;
 import com.l2jfree.gameserver.gameobjects.instance.L2MonsterInstance;
 import com.l2jfree.gameserver.gameobjects.instance.L2PetInstance;
@@ -261,7 +262,8 @@ public class L2Attackable extends L2Npc
 
 	boolean usesHuntRewards()
 	{
-		return this instanceof L2MonsterInstance && !(this instanceof L2ChestInstance) && !isRaid()
+		return this instanceof L2MonsterInstance && !(this instanceof L2ChestInstance)
+				&& !(this instanceof L2FestivalMonsterInstance) && !isRaid()
 				&& !isRaidMinion();
 	}
 
@@ -507,7 +509,9 @@ public class L2Attackable extends L2Npc
 					Long boundSide = huntContributions().sideOf(player.getObjectId());
 					if (boundSide != null && boundSide != id)
 						continue;
-					if (runtime.party != null && (player.isDead() || !Util.checkIfInRange(Config.ALT_PARTY_RANGE, this, player, true)))
+					if (boundSide != null)
+						level = Math.max(level, player.getLevel());
+					if (player.isDead() || !Util.checkIfInRange(Config.ALT_PARTY_RANGE, this, player, true))
 						continue;
 					level = Math.max(level, player.getLevel());
 					players.put((long)player.getObjectId(), player);
@@ -578,13 +582,13 @@ public class L2Attackable extends L2Npc
 				}
 				if (shared && runtime.party != null)
 					runtime.party.setCoinCursor(side.nextCoinCursor());
-				if (!shared && side.coins() > 0 && runtime.representative != null)
+				if (!shared && !side.unclaimed() && side.coins() > 0 && runtime.representative != null)
 					dropItem(runtime.representative, HuntRewards.ADENA, Math.toIntExact(side.coins()));
 			}
 			for (HuntRewards.ItemReward reward : result.items())
 			{
 				HuntSide runtime = _huntSides.get(reward.sideId());
-				if (runtime.representative == null)
+				if (reward.unclaimed() || runtime.representative == null)
 					continue;
 				L2Player owner = runtime.party == null || !shared ? runtime.representative
 						: runtime.party.getHuntLooter(runtime.representative, reward.drop().itemId(), this);
@@ -1327,7 +1331,7 @@ public class L2Attackable extends L2Npc
 	 * @param levelModifier level modifier in %'s (will be subtracted from drop
 	 *            chance)
 	 */
-	private RewardItem calculateRewardItem(L2Player lastAttacker, L2DropData drop, int levelModifier,
+	RewardItem calculateRewardItem(L2Player lastAttacker, L2DropData drop, int levelModifier,
 			boolean isSweep)
 	{
 		// Get default drop chance
@@ -1469,7 +1473,7 @@ public class L2Attackable extends L2Npc
 	 * @param levelModifier level modifier in %'s (will be subtracted from drop
 	 *            chance)
 	 */
-	private RewardItem calculateCategorizedRewardItem(L2Player lastAttacker, L2DropCategory categoryDrops,
+	RewardItem calculateCategorizedRewardItem(L2Player lastAttacker, L2DropCategory categoryDrops,
 			int levelModifier)
 	{
 		if (categoryDrops == null)
@@ -1513,7 +1517,7 @@ public class L2Attackable extends L2Npc
 	 * 
 	 * @param lastAttacker The L2Player that has killed the L2Attackable
 	 */
-	private int calculateLevelModifierForDrop(L2Player lastAttacker)
+	int calculateLevelModifierForDrop(L2Player lastAttacker)
 	{
 		if (shouldPunishDeepBlueDrops())
 		{
@@ -1574,7 +1578,7 @@ public class L2Attackable extends L2Npc
 		doItemDrop(npcTemplate, lastAttacker, null);
 	}
 
-	private void doItemDrop(L2NpcTemplate npcTemplate, L2Creature lastAttacker, List<RewardItem> huntDrops)
+	void doItemDrop(L2NpcTemplate npcTemplate, L2Creature lastAttacker, List<RewardItem> huntDrops)
 	{
 		if (lastAttacker == null && huntDrops == null)
 			return;
@@ -1627,11 +1631,11 @@ public class L2Attackable extends L2Npc
 						if (drop == null)
 							continue;
 						
-						item = calculateRewardItem(player, drop, huntDrops == null ? levelModifier : 0, false);
+						item = calculateRewardItem(player, drop, levelModifier, false);
 					}
 					else
 					{
-						item = calculateCategorizedRewardItem(player, cat, huntDrops == null ? levelModifier : 0);
+						item = calculateCategorizedRewardItem(player, cat, levelModifier);
 					}
 					
 					if (item != null)

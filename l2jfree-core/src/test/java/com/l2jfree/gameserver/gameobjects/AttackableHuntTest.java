@@ -42,7 +42,7 @@ class AttackableHuntTest
 
 	private static L2Player player(int id)
 	{
-		L2Player player = mock(L2Player.class);
+		L2Player player = HuntTestPlayers.mockPlayer();
 		when(player.getObjectId()).thenReturn(id);
 		when(player.getActingPlayer()).thenReturn(player);
 		return player;

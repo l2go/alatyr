@@ -245,6 +245,40 @@ class HuntRewardsTest
 	}
 
 	@Test
+	void deadGroupWithDominanceLeavesTheItemUnclaimed()
+	{
+		Side deadGroup = new Side(-1, 600, 10, false, List.of(), 0);
+		Snapshot snapshot = new Snapshot("test-world", 1, 10, 1000, 100, 0, 0, List.of(deadGroup, solo(3, 400)));
+		Result result = HuntRewards.calculate(snapshot, List.of(new Drop(57, 20), BOTTLE));
+		assertThat(result.items().getFirst().sideId()).isEqualTo(-1);
+		assertThat(result.items().getFirst().unclaimed()).isTrue();
+		assertThat(result.unclaimedCoins()).isEqualTo(12);
+		assertThat(player(result, 3)).isEqualTo(new PlayerReward(3, 400, 40, 8));
+	}
+
+	@Test
+	void deadSoloReceivesNoProgressCoinsOrItems()
+	{
+		Side dead = new Side(1, 750, 10, false, List.of(), 0);
+		Result result = reward(1, 12, dead, solo(2, 250));
+		assertThat(result.sides().getFirst().players()).isEmpty();
+		assertThat(result.sides().getFirst().unclaimed()).isTrue();
+		assertThat(result.items().getFirst().unclaimed()).isTrue();
+		assertThat(result.unclaimedCoins()).isEqualTo(9);
+	}
+
+	@Test
+	void nearbyLivingSoloKeepsOnlyItsOwnShare()
+	{
+		Side absent = new Side(1, 750, 10, false, List.of(), 0);
+		Result result = reward(1, 12, absent, solo(2, 250));
+		assertThat(player(result, 2)).isEqualTo(new PlayerReward(2, 22, 2, 3));
+		assertThat(result.items()).allMatch(HuntRewards.ItemReward::unclaimed);
+		long delivered = result.sides().stream().flatMap(side -> side.players().stream()).mapToLong(PlayerReward::coins).sum();
+		assertThat(delivered).isEqualTo(12 - result.unclaimedCoins());
+	}
+
+	@Test
 	void sameSnapshotIsIndependentOfCollectionOrder()
 	{
 		List<Side> sides = new ArrayList<>(List.of(solo(1, 400), solo(2, 390), solo(3, 210)));

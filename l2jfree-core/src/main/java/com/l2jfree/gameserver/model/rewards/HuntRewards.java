@@ -84,11 +84,11 @@ public final class HuntRewards
 	}
 
 	/** Each entry assigns one table result to exactly one side, including an unclaimed neutral side. */
-	public record ItemReward(int dropIndex, long sideId, Drop drop)
+	public record ItemReward(int dropIndex, long sideId, Drop drop, boolean unclaimed)
 	{
 	}
 
-	public record SideReward(long sideId, double damage, BigDecimal weight, boolean admitted, long coins,
+	public record SideReward(long sideId, double damage, BigDecimal weight, boolean admitted, boolean unclaimed, long coins,
 			int nextCoinCursor, List<PlayerReward> players)
 	{
 		public SideReward
@@ -103,6 +103,11 @@ public final class HuntRewards
 		{
 			sides = List.copyOf(sides);
 			items = List.copyOf(items);
+		}
+
+		public long unclaimedCoins()
+		{
+			return sides.stream().filter(SideReward::unclaimed).mapToLong(SideReward::coins).sum();
 		}
 	}
 
@@ -181,7 +186,7 @@ public final class HuntRewards
 			if (drop.itemId() != ADENA)
 			{
 				Side winner = dominant != null ? dominant : drawSide(admitted, weights, random);
-				items.add(new ItemReward(i, winner.id(), drop));
+				items.add(new ItemReward(i, winner.id(), drop, winner.neutral() || winner.members().isEmpty()));
 			}
 		}
 		List<SideReward> results = new ArrayList<>();
@@ -208,7 +213,8 @@ public final class HuntRewards
 				}
 				cursor = (int)((Math.floorMod(cursor, count) + sideCount % count) % count);
 			}
-			results.add(new SideReward(side.id(), side.damage(), weights.get(side.id()), admitted.contains(side), sideCount, cursor, players));
+			results.add(new SideReward(side.id(), side.damage(), weights.get(side.id()), admitted.contains(side),
+					side.neutral() || side.members().isEmpty(), sideCount, cursor, players));
 		}
 		return new Result(results, items);
 	}

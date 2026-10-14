@@ -26,6 +26,7 @@ import org.mockito.MockedStatic;
 
 import com.l2jfree.gameserver.gameobjects.L2Attackable;
 import com.l2jfree.gameserver.gameobjects.L2Player;
+import com.l2jfree.gameserver.gameobjects.HuntTestPlayers;
 import com.l2jfree.gameserver.util.Util;
 
 class PartyAdenaRemainderTest
@@ -33,8 +34,8 @@ class PartyAdenaRemainderTest
 	@Test
 	void realPartyDeliveryPreservesAndRotatesTheThirteenthCoin()
 	{
-		L2Player first = mock(L2Player.class);
-		L2Player second = mock(L2Player.class);
+		L2Player first = HuntTestPlayers.mockPlayer();
+		L2Player second = HuntTestPlayers.mockPlayer();
 		L2Attackable mob = mock(L2Attackable.class);
 		L2Party party = new L2Party(first, L2Party.ITEM_LOOTER);
 		party.getPartyMembers().add(second);

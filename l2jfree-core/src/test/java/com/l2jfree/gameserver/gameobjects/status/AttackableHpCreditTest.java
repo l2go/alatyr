@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 
 import com.l2jfree.gameserver.gameobjects.L2Attackable;
 import com.l2jfree.gameserver.gameobjects.L2Player;
+import com.l2jfree.gameserver.gameobjects.HuntTestPlayers;
 
 class AttackableHpCreditTest
 {
@@ -32,7 +33,7 @@ class AttackableHpCreditTest
 	void actualHpPathRecordsBeforeReducingHpAndKeepsQuestNotification()
 	{
 		L2Attackable mob = mock(L2Attackable.class);
-		L2Player attacker = mock(L2Player.class);
+		L2Player attacker = HuntTestPlayers.mockPlayer();
 		AttackableStatus status = mock(AttackableStatus.class, CALLS_REAL_METHODS);
 		when(status.getActiveChar()).thenReturn(mob);
 		when(status.getCurrentHp()).thenReturn(10.0);
