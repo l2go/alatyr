@@ -91,7 +91,11 @@ final class SeedLoop
 			drink(game, view, deadline, reporter);
 			absorb(game, view, deadline, 2000L);
 			reporter.info(tag(view) + " before-level level=" + view.level + " exp=" + view.exp + " sp=" + view.sp
-					+ " hp=" + view.hp + "/" + view.maxHp);
+					+ " hp=" + view.hp + "/" + view.maxHp + " userinfo=" + view.userInfos + " recent="
+					+ view.recentOpcodes() + " short=" + view.shorts);
+			if (view.level < 2 && view.userInfos < 2)
+				throw new SmokeException("step level: UserInfo did not arrive again after the kills; level "
+						+ view.level + " exp " + view.exp + " sp " + view.sp);
 			fight(game, view, deadline, reporter, false);
 			learn(game, view, deadline, reporter);
 			String before = view.snapshot();
@@ -636,6 +640,7 @@ final class SeedLoop
 	{
 		PacketReader in = new PacketReader(payload);
 		int opcode = in.readC();
+		view.noteOpcode(opcode);
 		try
 		{
 			applyOpcode(view, in, opcode);
@@ -645,7 +650,15 @@ final class SeedLoop
 			// Some server packets share a layout only up to a point, or are shorter than the full
 			// record. Missing the tail is not a failed step; the next full packet refreshes the view.
 			if (e.getMessage() != null && e.getMessage().startsWith("the packet is too short"))
+			{
+				view.noteShort(opcode, payload.length);
+				// UserInfo is the only packet that carries experience and SP. Dropping it leaves the
+				// level at 1 and the fight never ends.
+				if (opcode == GamePackets.OP_USER_INFO)
+					throw new SmokeException(e.getMessage() + " opcode 0x32 length " + payload.length);
+
 				return;
+			}
 
 			throw e;
 		}
@@ -667,6 +680,7 @@ final class SeedLoop
 				view.sp = user.sp();
 				view.hp = user.currentHp();
 				view.maxHp = user.maxHp();
+				view.userInfos++;
 			}
 			case GamePackets.OP_NPC_INFO ->
 			{
@@ -1055,6 +1069,10 @@ final class SeedLoop
 		private int sp;
 		private int hp;
 		private int maxHp;
+		private int userInfos;
+		private int recentN;
+		private final int[] recent = new int[24];
+		private final StringBuilder shorts = new StringBuilder();
 		private int itemEpoch;
 		private int skillEpoch;
 		private int shopListId;
@@ -1077,6 +1095,38 @@ final class SeedLoop
 		private View(int sessionIndex)
 		{
 			this.sessionIndex = sessionIndex;
+		}
+
+		private void noteOpcode(int opcode)
+		{
+			recent[recentN % recent.length] = opcode;
+			recentN++;
+		}
+
+		private void noteShort(int opcode, int length)
+		{
+			if (shorts.length() > 180)
+				return;
+
+			if (shorts.length() > 0)
+				shorts.append(' ');
+
+			shorts.append(Integer.toHexString(opcode)).append('/').append(length);
+		}
+
+		private String recentOpcodes()
+		{
+			int count = Math.min(recentN, recent.length);
+			int start = recentN - count;
+			StringBuilder out = new StringBuilder();
+			for (int i = 0; i < count; i++)
+			{
+				if (i > 0)
+					out.append(' ');
+
+				out.append(Integer.toHexString(recent[(start + i) % recent.length]));
+			}
+			return out.toString();
 		}
 
 		private void noteWait(long started)
