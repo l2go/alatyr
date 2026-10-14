@@ -34,17 +34,6 @@
 			<artifactId>l2jfree-core</artifactId>
 			<version>${project.version}</version>
 		</dependency>
-		<!--
-			The datapack is data files plus scripts compiled to class files that the world loads from data/scripts.
-			They must not be on the class path, so the datapack is not a compile or runtime dependency. It is
-			declared as provided only to build it before this module, and the assembly takes its files from its directory.
-		-->
-		<dependency>
-			<groupId>com.l2jfree</groupId>
-			<artifactId>l2jfree-datapack</artifactId>
-			<version>${project.version}</version>
-			<scope>provided</scope>
-		</dependency>
 		<dependency>
 			<groupId>com.tngtech.archunit</groupId>
 			<artifactId>archunit</artifactId>

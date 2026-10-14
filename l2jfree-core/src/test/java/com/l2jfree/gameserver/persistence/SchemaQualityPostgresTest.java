@@ -49,7 +49,7 @@ class SchemaQualityPostgresTest
 	@Container
 	private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.6");
 	
-	private static final Path CATALOG = Path.of("..", "l2jfree-datapack", "catalog");
+	private static final Path CATALOG = WorldDatabase.CATALOG;
 	
 	/** The schemas whose tables the rules cover. */
 	private static final String SCHEMAS = "('world', 'catalog')";

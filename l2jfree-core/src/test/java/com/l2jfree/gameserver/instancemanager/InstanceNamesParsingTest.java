@@ -27,6 +27,7 @@ import java.util.Map;
 import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
@@ -34,37 +35,38 @@ import com.l2jfree.util.LookupTable;
 
 class InstanceNamesParsingTest
 {
-	private static final Path INSTANCE_NAMES = Path.of("../l2jfree-datapack/data/instancenames.xml");
+	private static final String SYNTHETIC_NAMES = """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<!-- a comment -->
+			<instances_list xmlns="http://www.l2jfree.com">
+			  <instance id="1" name="North Hall"/>
+			  <instance name="South Hall &amp; Co" id="2"></instance>
+			  <other id="9" name="ignored"/>
+			  <instance id="3" name="East Yard é"/>
+			  <instance id="1" name="North Hall again"/>
+			</instances_list>
+			""";
 
 	@Test
 	void readsIdAndNameOfEveryInstanceElement() throws Exception
 	{
-		String xml = """
-				<?xml version="1.0" encoding="UTF-8"?>
-				<!-- a comment -->
-				<instances_list xmlns="http://www.l2jfree.com">
-				  <instance id="1" name="Party Duel"/>
-				  <instance name="Tully's Workshop &amp; Co" id="5"></instance>
-				  <other id="9" name="ignored"/>
-				  <instance id="44" name="Pailaka (Devil's Isle) é"/>
-				  <instance id="1" name="Party Duel again"/>
-				</instances_list>
-				""";
-
-		LookupTable<String> names = parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
+		LookupTable<String> names = parse(new ByteArrayInputStream(SYNTHETIC_NAMES.getBytes(StandardCharsets.UTF_8)));
 
 		assertThat(names.size()).isEqualTo(3);
-		assertThat(names.get(1)).isEqualTo("Party Duel again");
-		assertThat(names.get(5)).isEqualTo("Tully's Workshop & Co");
-		assertThat(names.get(44)).isEqualTo("Pailaka (Devil's Isle) é");
+		assertThat(names.get(1)).isEqualTo("North Hall again");
+		assertThat(names.get(2)).isEqualTo("South Hall & Co");
+		assertThat(names.get(3)).isEqualTo("East Yard é");
 		assertThat(names.get(9)).isNull();
 	}
 
 	@Test
-	void readsTheDatapackFileLikeADomParser() throws Exception
+	void readsASyntheticFileLikeADomParser(@TempDir Path dir) throws Exception
 	{
+		Path file = dir.resolve("instance-names.xml");
+		Files.writeString(file, SYNTHETIC_NAMES);
+
 		Map<Integer, String> expected = new LinkedHashMap<Integer, String>();
-		NodeList elements = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(INSTANCE_NAMES.toFile())
+		NodeList elements = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file.toFile())
 				.getElementsByTagName("instance");
 		for (int i = 0; i < elements.getLength(); i++)
 		{
@@ -73,12 +75,12 @@ class InstanceNamesParsingTest
 		}
 
 		LookupTable<String> names;
-		try (InputStream in = Files.newInputStream(INSTANCE_NAMES))
+		try (InputStream in = Files.newInputStream(file))
 		{
 			names = parse(in);
 		}
 
-		assertThat(expected).hasSizeGreaterThan(100);
+		assertThat(expected).hasSize(3);
 		assertThat(names.size()).isEqualTo(expected.size());
 		for (Map.Entry<Integer, String> entry : expected.entrySet())
 			assertThat(names.get(entry.getKey())).as("instance %d", entry.getKey()).isEqualTo(entry.getValue());

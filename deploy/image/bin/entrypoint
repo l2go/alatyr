@@ -30,7 +30,7 @@ fi
 
 cd "$work"
 
-# The HTML cache is built from the datapack of the image. The work volume
+# The HTML cache is built from the world of the image. The work volume
 # outlives an image update, so a cache from an older image would hide the new
 # pages. The world rebuilds it in seconds.
 rm -f "$work/cache/html.cache"

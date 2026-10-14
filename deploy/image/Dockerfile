@@ -6,7 +6,7 @@
 # The image carries the login module and the world module in one process.
 # The platform distribution is unpacked next to this file as
 # l2jfree/. It lands read-only in /opt/l2jfree: the defaults of every
-# configuration key, the libraries, the datapack data, and the catalog. State
+# configuration key, the libraries, and the world. State
 # lives in volumes: the work directory, the operator configuration,
 # the log, and the secrets.
 
@@ -30,7 +30,7 @@ COPY --from=jre /opt/jre /opt/jre
 COPY l2jfree /opt/l2jfree
 COPY --chmod=0755 bin/ /opt/l2jfree/bin/
 
-# The world reads the datapack and the catalog from the read-only tree, so the
+# The world reads its files from the read-only tree, so the
 # two path keys of the shipped defaults name it. An operator can still override
 # them. The build fails when a key is missing from the defaults.
 RUN set -eu; \
@@ -40,9 +40,9 @@ RUN set -eu; \
         [ "$#" -eq 1 ] && [ -f "$1" ] && mv "$1" l2jfree-platform.jar; \
     fi; \
     test -f l2jfree-platform.jar; \
-    sed -i -E 's|^DatapackRoot[[:space:]]*=.*|DatapackRoot = /opt/l2jfree|; s|^CatalogDirectory[[:space:]]*=.*|CatalogDirectory = /opt/l2jfree/catalog|' config/server.properties; \
-    grep -qx 'DatapackRoot = /opt/l2jfree' config/server.properties; \
-    grep -qx 'CatalogDirectory = /opt/l2jfree/catalog' config/server.properties
+    sed -i -E 's|^DatapackRoot[[:space:]]*=.*|DatapackRoot = /opt/l2jfree/world|; s|^CatalogDirectory[[:space:]]*=.*|CatalogDirectory = /opt/l2jfree/world/catalog|' config/server.properties; \
+    grep -qx 'DatapackRoot = /opt/l2jfree/world' config/server.properties; \
+    grep -qx 'CatalogDirectory = /opt/l2jfree/world/catalog' config/server.properties
 
 ENV JAVA_HOME=/opt/jre \
     PATH=/opt/jre/bin:/usr/local/sbin:/usr/local/bin:/usr/bin
