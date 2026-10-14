@@ -20,7 +20,9 @@ import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
+import java.util.concurrent.atomic.LongAdder;
 
 import javax.script.ScriptException;
 
@@ -54,5 +56,55 @@ class JavaScriptBytecodeTest
 		{
 			Config.DATAPACK_ROOT = previousRoot;
 		}
+	}
+
+	@Test
+	@DisplayName("a listed Java script without bytecode counts as one failed attempt")
+	void aListedJavaScriptWithoutBytecodeCountsAsOneFailure() throws Exception
+	{
+		File previousRoot = Config.DATAPACK_ROOT;
+		if (previousRoot == null)
+			Config.DATAPACK_ROOT = Files.createTempDirectory("l2jfree-script-list").toFile();
+		File script = new File(L2ScriptEngineManager.SCRIPT_FOLDER, "MissingBytecode.java");
+		File errorLog = new File(script.getParentFile(), script.getName() + ".error.log");
+		try
+		{
+			Files.createDirectories(script.getParentFile().toPath());
+			Files.writeString(script.toPath(), "public class MissingBytecode {}\n");
+			File list = Files.createTempFile("l2jfree-scripts", ".cfg").toFile();
+			list.deleteOnExit();
+			Files.writeString(list.toPath(), "MissingBytecode.java\n");
+			
+			L2ScriptEngineManager scripts = mock(L2ScriptEngineManager.class, CALLS_REAL_METHODS);
+			counter(scripts, "_scriptLoadAttempts");
+			counter(scripts, "_scriptLoadSuccesses");
+			counter(scripts, "_scriptLoadFailures");
+			
+			scripts.executeScriptList(list);
+			
+			assertThat(counter(scripts, "_scriptLoadAttempts").sum()).isEqualTo(1);
+			assertThat(counter(scripts, "_scriptLoadFailures").sum()).isEqualTo(1);
+			assertThat(counter(scripts, "_scriptLoadSuccesses").sum()).isZero();
+		}
+		finally
+		{
+			Files.deleteIfExists(script.toPath());
+			Files.deleteIfExists(errorLog.toPath());
+			Config.DATAPACK_ROOT = previousRoot;
+		}
+	}
+
+	/** Mockito skips field initializers, so the load counters start as empty adders. */
+	private static LongAdder counter(L2ScriptEngineManager scripts, String name) throws Exception
+	{
+		Field field = L2ScriptEngineManager.class.getDeclaredField(name);
+		field.setAccessible(true);
+		LongAdder adder = (LongAdder)field.get(scripts);
+		if (adder == null)
+		{
+			adder = new LongAdder();
+			field.set(scripts, adder);
+		}
+		return adder;
 	}
 }
