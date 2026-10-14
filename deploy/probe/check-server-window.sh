@@ -7,7 +7,8 @@
 # omitted. It must contain one passport line "World id=buyan-okolitsa version=3.2.0",
 # one "World has no scripts", and no ERROR line or "Exception in thread". WARN lines
 # are printed as a group named by STAGE. --expect-unknown-items requires a warning
-# that items have no template; that warning is not an error.
+# that items have no template. That warning is not an error, and a routine update
+# from the published image does not pass the flag: both sides share one catalog.
 # The window is written to image-server-logs/STAGE.log.
 set -euo pipefail
 
