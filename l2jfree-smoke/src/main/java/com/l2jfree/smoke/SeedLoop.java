@@ -15,7 +15,6 @@
 package com.l2jfree.smoke;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +54,8 @@ final class SeedLoop
 	private static final int STEP = 700;
 	private static final int MELEE = 80;
 	private static final int INTERACT = 120;
+	/** A beast belongs to a spawn when it stands closer than the next spawn on the grid. */
+	private static final int PLOT = 200;
 	private static final long ATTACK_PAUSE_MILLIS = 1500L;
 	private static final long KILL_LIMIT_MILLIS = 60000L;
 	private static final int ANNOUNCED_CONNECT_MILLIS = 3000;
@@ -65,8 +66,8 @@ final class SeedLoop
 	private static final int RELOGIN_ATTEMPTS = 10;
 
 	/**
-	 * Spawn coordinates of template 18003, ordered by x then y. Used only to walk toward a beast that
-	 * is not in the known list yet. The target itself is chosen from NpcInfo.
+	 * Spawn coordinates of template 18003, ordered by x then y. Forty-eight points, two for each of
+	 * twenty-four sessions. A session hunts only its own pair.
 	 */
 	private static final int[][] BEAST_SPAWNS = beastSpawns();
 
@@ -223,7 +224,16 @@ final class SeedLoop
 						+ " kills");
 			}
 			Actor target = takeTarget(game, view, deadline, reporter);
+			long expBefore = view.exp;
+			int spBefore = view.sp;
 			attack(game, view, deadline, target);
+			// The reward arrives in UserInfo after the death. A death that does not raise experience
+			// or SP was someone else's kill.
+			absorb(game, view, deadline, 1500L);
+			if (view.exp == expBefore && view.sp == spBefore)
+				continue;
+
+			view.kills++;
 			pickup(game, view, deadline, target.objectId);
 			reporter.info(tag(view) + " kill " + view.kills + " level=" + view.level + " exp=" + view.exp + " sp="
 					+ view.sp + " userinfo=" + view.userInfos + " recent=" + view.recentOpcodes());
@@ -231,38 +241,71 @@ final class SeedLoop
 	}
 
 	/**
-	 * The first target of session i is the i-th visible beast of template 18003, ordered by coordinates.
-	 * Later targets stay on that same ordering so the sessions do not all take the nearest one.
+	 * Session i hunts the two spawns i and i + 24. The target is the beast of template 18003 standing
+	 * nearest one of those points. While both points are empty the session waits out the corpse and
+	 * the respawn; a quiet server during that wait is not a failed read.
 	 */
 	private static Actor takeTarget(GameConnection game, View view, Deadline deadline, Reporter reporter)
 			throws SmokeException
 	{
 		long started = System.nanoTime();
-		boolean first = view.kills == 0;
+		int slot = Math.floorMod(view.sessionIndex, BEAST_SPAWNS.length / 2);
+		int[][] plots = { BEAST_SPAWNS[slot], BEAST_SPAWNS[slot + BEAST_SPAWNS.length / 2] };
 		while (true)
 		{
 			if (deadline.expired())
 				throw new SmokeException("step target: the time limit ended while waiting for template " + BEAST);
 
-			List<Actor> alive = view.aliveBeasts();
-			int index = first ? view.sessionIndex : -1;
-			if (!first && !alive.isEmpty())
-				index = (view.sessionIndex + view.kills + view.skipped) % alive.size();
+			Actor chosen = null;
+			int spawn = -1;
+			long nearest = Long.MAX_VALUE;
+			for (int i = 0; i < plots.length; i++)
+			{
+				Actor beast = beastAt(view, plots[i][0], plots[i][1]);
+				if (beast == null)
+					continue;
 
-			if (index >= 0 && alive.size() > index)
+				long gap = distance(beast.x, beast.y, plots[i][0], plots[i][1]);
+				if (gap < nearest)
+				{
+					nearest = gap;
+					chosen = beast;
+					spawn = slot + i * (BEAST_SPAWNS.length / 2);
+				}
+			}
+			if (chosen != null)
 			{
 				view.noteWait(started);
-				Actor chosen = alive.get(index);
-				if (first && !view.firstAnnounced)
+				if (!view.firstAnnounced)
 				{
 					view.firstAnnounced = true;
-					reporter.info(tag(view) + " first-target objectId=" + chosen.objectId);
+					reporter.info(tag(view) + " first-target objectId=" + chosen.objectId + " spawn=" + spawn);
 				}
 				return chosen;
 			}
-			int spawn = Math.min(first ? view.sessionIndex : view.sessionIndex + view.kills, BEAST_SPAWNS.length - 1);
-			stepToward(game, view, deadline, BEAST_SPAWNS[spawn][0], BEAST_SPAWNS[spawn][1], GROUND_Z);
+			int[] waitAt = plots[view.kills % plots.length];
+			stepToward(game, view, deadline, waitAt[0], waitAt[1], GROUND_Z);
 		}
+	}
+
+	/** The living beast of template 18003 closest to this spawn, when it is still on that plot. */
+	private static Actor beastAt(View view, int x, int y)
+	{
+		Actor best = null;
+		long bestDistance = Long.MAX_VALUE;
+		for (Actor npc : view.npcs.values())
+		{
+			if (npc.templateId != BEAST || npc.dead)
+				continue;
+
+			long gap = distance(npc.x, npc.y, x, y);
+			if (gap <= PLOT && gap < bestDistance)
+			{
+				best = npc;
+				bestDistance = gap;
+			}
+		}
+		return best;
 	}
 
 	/**
@@ -274,24 +317,16 @@ final class SeedLoop
 		long until = Long.MAX_VALUE;
 		boolean started = false;
 		long nextSwing = 0L;
-		long reachBy = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
 		while (true)
 		{
 			if (deadline.expired())
 				throw new SmokeException("step attack: the time limit ended");
-			if (!started && System.nanoTime() >= reachBy)
-			{
-				// This beast stayed out of reach. The next choice moves on instead of walking out the clock.
-				view.skipped++;
-				return;
-			}
 			if (started && System.nanoTime() >= until)
 				break;
 
 			Actor seen = view.npcs.get(target.objectId);
 			if (seen == null || seen.dead)
 			{
-				view.kills++;
 				adoptDestination(view);
 				return;
 			}
@@ -316,7 +351,6 @@ final class SeedLoop
 				seen = view.npcs.get(target.objectId);
 				if (seen == null || seen.dead)
 				{
-					view.kills++;
 					adoptDestination(view);
 					return;
 				}
@@ -614,7 +648,9 @@ final class SeedLoop
 		}
 		catch (SmokeException e)
 		{
-			if (e.kind() == SmokeException.Kind.TIMEOUT && !deadline.expired())
+			// A quiet stretch while a beast respawns is not a failed session. The caller's own
+			// check against the session deadline is what ends the wait.
+			if (e.kind() == SmokeException.Kind.TIMEOUT)
 				return false;
 
 			throw e;
@@ -1071,7 +1107,6 @@ final class SeedLoop
 		private boolean skillOffered;
 		private String dialog;
 		private int kills;
-		private int skipped;
 		private boolean firstAnnounced;
 		private boolean acceptedMove;
 		private int moveNudges;
@@ -1128,19 +1163,6 @@ final class SeedLoop
 			long waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
 			if (waited > longestWaitMillis)
 				longestWaitMillis = waited;
-		}
-
-		private List<Actor> aliveBeasts()
-		{
-			List<Actor> alive = new ArrayList<>();
-			for (Actor npc : npcs.values())
-			{
-				if (npc.templateId == BEAST && !npc.dead)
-					alive.add(npc);
-			}
-			alive.sort(Comparator.comparingInt((Actor npc) -> npc.x).thenComparingInt(npc -> npc.y)
-					.thenComparingInt(npc -> npc.objectId));
-			return alive;
 		}
 
 		private Actor nearest(int template)
