@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- Overriding %condition; from conditions.dtd -->
+<!ENTITY % condition "and|or|not|player|game">
+
+<!ENTITY % conditions.dtd SYSTEM "conditions.dtd"> %conditions.dtd;
+
+<!-- Root -->
+<!ELEMENT list (zone)*>
+
+<!-- Zone -->
+<!ATTLIST zone enabled (true|false) #IMPLIED>
+<!ATTLIST zone id CDATA #REQUIRED>
+<!ATTLIST zone name CDATA #REQUIRED>
+<!ATTLIST zone type (Arena|Boss|CastleTeleport|Castle|Clanhall|CoreBarrier|Damage|Danger|DefenderSpawn|Dynamic|Fishing|Fort|HeadQuarters|Jail|Mothertree|NoHQ|Pagan|Regeneration|Script|SiegeDanger|Siege|Stadium|Town|Water) #IMPLIED>
+<!ELEMENT zone (entity?,instance?,msg?,settings?,skill?,restart_chaotic*,restart_owner*,shape+,cond?)>
+
+<!-- Entity -->
+<!ATTLIST entity castleId CDATA #IMPLIED>
+<!ATTLIST entity clanhallId CDATA #IMPLIED>
+<!ATTLIST entity fortId CDATA #IMPLIED>
+<!ATTLIST entity townId CDATA #IMPLIED>
+<!ELEMENT entity EMPTY>
+
+<!-- Instance -->
+<!ATTLIST instance instanceName CDATA #REQUIRED>
+<!ATTLIST instance instanceGroup (alliance|clan|party) #REQUIRED>
+<!ATTLIST instance minPlayers CDATA #IMPLIED>
+<!ATTLIST instance maxPlayers CDATA #IMPLIED>
+<!ELEMENT instance EMPTY>
+
+<!-- Messages -->
+<!ATTLIST msg onEnter CDATA #IMPLIED>
+<!ATTLIST msg onExit CDATA #IMPLIED>
+<!ELEMENT msg EMPTY>
+
+<!-- Restarts -->
+<!ATTLIST restart_chaotic x CDATA #REQUIRED>
+<!ATTLIST restart_chaotic y CDATA #REQUIRED>
+<!ATTLIST restart_chaotic z CDATA #REQUIRED>
+<!ELEMENT restart_chaotic EMPTY>
+<!ATTLIST restart_owner x CDATA #REQUIRED>
+<!ATTLIST restart_owner y CDATA #REQUIRED>
+<!ATTLIST restart_owner z CDATA #REQUIRED>
+<!ELEMENT restart_owner EMPTY>
+
+<!-- Shape -->
+<!ATTLIST shape type (Cylinder|ExCylinder|Poly|Rect) #REQUIRED>
+<!ATTLIST shape zMin CDATA #REQUIRED>
+<!ATTLIST shape zMax CDATA #REQUIRED>
+<!ATTLIST shape radius CDATA #IMPLIED>
+<!ATTLIST shape innerRadius CDATA #IMPLIED>
+<!ATTLIST shape outerRadius CDATA #IMPLIED>
+<!ELEMENT shape (point+)>
+<!-- Point -->
+<!ATTLIST point x CDATA #REQUIRED>
+<!ATTLIST point y CDATA #REQUIRED>
+<!ELEMENT point EMPTY>
+
+<!-- Skill -->
+<!ATTLIST skill applyEnter CDATA #IMPLIED>
+<!ATTLIST skill applyExit CDATA #IMPLIED>
+<!ATTLIST skill removeEnter CDATA #IMPLIED>
+<!ATTLIST skill removeExit CDATA #IMPLIED>
+<!ELEMENT skill EMPTY>
+
+<!-- Settings -->
+<!ATTLIST settings abnormal CDATA #IMPLIED>
+<!ATTLIST settings affected (all|npc|pc|playable) #IMPLIED>
+<!ATTLIST settings boss (Anakim|Antharas|Baium|Baylor|FourSepulchers|Frintezza|LastImperialTomb|Lilith|Sailren|SunLightRoom|Valakas|VanHalter|Zaken) #IMPLIED>
+<!ATTLIST settings buffRepeat (true|false) #IMPLIED>
+<!ATTLIST settings exitOnDeath (true|false) #IMPLIED>
+<!ATTLIST settings hpDamage CDATA #IMPLIED>
+<!ATTLIST settings landing (true|false) #IMPLIED>
+<!ATTLIST settings mpDamage CDATA #IMPLIED>
+<!ATTLIST settings noEscape (true|false) #IMPLIED>
+<!ATTLIST settings noHeal (true|false) #IMPLIED>
+<!ATTLIST settings noWyvern (true|false) #IMPLIED>
+<!ATTLIST settings noPrivateStore (true|false) #IMPLIED>
+<!ATTLIST settings noSummon (true|false) #IMPLIED>
+<!ATTLIST settings pvp (Arena|General|Peace) #IMPLIED>
+<!ATTLIST settings questZoneId CDATA #IMPLIED>
+<!ELEMENT settings EMPTY>
+
+<!-- Condition -->
+<!ELEMENT cond (%condition;)>

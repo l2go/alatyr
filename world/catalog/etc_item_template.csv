@@ -1,0 +1,3 @@
+id,name,item_type,consume_type,is_crystallizable,crystal_type,crystal_count,material,weight,shadow_mana,lifetime_s,price,is_sellable,is_droppable,is_destroyable,is_tradable,is_depositable,item_skills,handler_name
+57,Veksha,none,asset,false,none,0,bronze,0,,,1,false,true,true,true,true,"",
+1060,Zveroboy Draught,potion,stackable,false,none,0,liquid,12,,,12,true,true,true,true,true,2031-1,ItemSkills

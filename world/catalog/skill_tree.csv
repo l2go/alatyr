@@ -1,0 +1,6 @@
+player_class_id,skill_id,skill_level,skill_name,sp,min_level
+0,3,1,Wattle Guard Strike,0,1
+0,3,2,Wattle Guard Strike,32,3
+0,3,3,Wattle Guard Strike,72,5
+0,257,1,Wattle-hand Practice,12,2
+0,257,2,Wattle-hand Practice,24,4
