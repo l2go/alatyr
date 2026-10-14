@@ -38,18 +38,28 @@ import java.util.concurrent.Future;
 public final class SmokeClient
 {
 	private static final String USAGE = "usage: SmokeClient [--host HOST] [--login-port N] [--world-port N] "
-			+ "[--protocol-revision N] [--timeout-seconds N] [--account NAME] [--password TEXT] [--existing-characters N] [--sessions N] [--parallel N]";
+			+ "[--protocol-revision N] [--timeout-seconds N] [--account NAME] [--password TEXT] [--existing-characters N] "
+			+ "[--sessions N] [--parallel N] [--scenario default|seed-loop]";
 
 	/** The settings of a run. */
 	record Config(String host, int loginPort, int worldPort, int protocolRevision, int timeoutSeconds, String account,
-			String password, int existingCharacters, int sessions, int parallel)
+			String password, int existingCharacters, int sessions, int parallel, String scenario)
 	{
 		/** {@code existingCharacters} when the number of characters the account has on entry is not checked */
 		static final int UNCHECKED = -1;
+		/** Create a character, enter the world, and leave. The image job uses this. */
+		static final String SCENARIO_DEFAULT = "default";
+		/** Play the authored world's loop, then enter again and compare the character. */
+		static final String SCENARIO_SEED_LOOP = "seed-loop";
 		
 		static Config defaults()
 		{
-			return new Config("127.0.0.1", 2106, 7777, 87, 120, null, null, UNCHECKED, 1, 1);
+			return new Config("127.0.0.1", 2106, 7777, 87, 120, null, null, UNCHECKED, 1, 1, SCENARIO_DEFAULT);
+		}
+		
+		boolean seedLoop()
+		{
+			return SCENARIO_SEED_LOOP.equals(scenario);
 		}
 	}
 
@@ -83,7 +93,7 @@ public final class SmokeClient
 			return;
 		}
 
-		final Result result = run(config, new Reporter(System.out));
+		final Result result = run(config, new Reporter(System.out), 0);
 		System.out.println(result.passed() ? "SMOKE PASSED" : "SMOKE FAILED: " + result.failure());
 		System.exit(result.passed() ? 0 : 1);
 	}
@@ -103,8 +113,24 @@ public final class SmokeClient
 			final List<Future<Result>> futures = new ArrayList<Future<Result>>();
 			for (int i = 0; i < config.sessions(); i++)
 			{
-				futures.add(executor.submit(() -> run(config,
-						new Reporter(new PrintStream(OutputStream.nullOutputStream())))));
+				final int sessionIndex = i;
+				// The default scenario keeps only the summary. The seed loop's object ids and counts have to
+				// stay visible when many sessions run at once, so those lines are kept and printed afterwards.
+				final java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+				final PrintStream sessionOut = config.seedLoop() ? new PrintStream(buffer)
+						: new PrintStream(OutputStream.nullOutputStream());
+				futures.add(executor.submit(() -> {
+					Result result = run(config, new Reporter(sessionOut), sessionIndex);
+					if (config.seedLoop())
+					{
+						sessionOut.flush();
+						synchronized (out)
+						{
+							out.print(buffer.toString());
+						}
+					}
+					return result;
+				}));
 			}
 			
 			final Map<String, Integer> failures = new LinkedHashMap<String, Integer>();
@@ -140,6 +166,15 @@ public final class SmokeClient
 	/** Runs the whole flow against a server and reports it. Never throws for a failed step. */
 	static Result run(Config config, Reporter reporter)
 	{
+		return run(config, reporter, 0);
+	}
+
+	/**
+	 * Runs one session. {@code sessionIndex} chooses the first beast of the seed loop: session i takes the
+	 * i-th visible beast of that template, ordered by coordinates. The default scenario does not use it.
+	 */
+	static Result run(Config config, Reporter reporter, int sessionIndex)
+	{
 		final Deadline deadline = Deadline.after(config.timeoutSeconds());
 		// the password of the test account is random, so it comes from a secure source
 		final Random random = new SecureRandom();
@@ -151,9 +186,14 @@ public final class SmokeClient
 
 		try
 		{
-			LoginFlow.Session session = LoginFlow.selectWorld(config, deadline, reporter, account, password);
-			WorldFlow.play(config, deadline, reporter, session, account, expectedCharacters, character);
-			LoginFlow.loginAgain(config, deadline, reporter, account, password);
+			if (config.seedLoop())
+				SeedLoop.play(config, deadline, reporter, account, password, character, sessionIndex);
+			else
+			{
+				LoginFlow.Session session = LoginFlow.selectWorld(config, deadline, reporter, account, password);
+				WorldFlow.play(config, deadline, reporter, session, account, expectedCharacters, character);
+				LoginFlow.loginAgain(config, deadline, reporter, account, password);
+			}
 			return new Result(true, reporter.lines(), null);
 		}
 		catch (SmokeException e)
@@ -182,6 +222,7 @@ public final class SmokeClient
 		int existingCharacters = Config.UNCHECKED;
 		int sessions = 1;
 		int parallel = 1;
+		String scenario = Config.SCENARIO_DEFAULT;
 		
 		for (int i = 0; i < args.length; i++)
 		{
@@ -222,6 +263,9 @@ public final class SmokeClient
 				case "--parallel":
 					parallel = number(name, value);
 					break;
+				case "--scenario":
+					scenario = value;
+					break;
 				default:
 					throw new IllegalArgumentException("unknown option " + name);
 			}
@@ -236,9 +280,11 @@ public final class SmokeClient
 			throw new IllegalArgumentException("--sessions and --parallel are at least 1");
 		if (sessions > 1 && account != null)
 			throw new IllegalArgumentException("--sessions makes an account for every session, so --account does not fit");
+		if (!Config.SCENARIO_DEFAULT.equals(scenario) && !Config.SCENARIO_SEED_LOOP.equals(scenario))
+			throw new IllegalArgumentException("--scenario is default or seed-loop, not '" + scenario + "'");
 		
 		return new Config(host, loginPort, worldPort, protocolRevision, timeoutSeconds, account, password,
-				existingCharacters, sessions, Math.min(parallel, sessions));
+				existingCharacters, sessions, Math.min(parallel, sessions), scenario);
 	}
 	
 	private static int number(String name, String value)

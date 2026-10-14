@@ -784,11 +784,11 @@ jobs:
         run: docker compose -f deploy/compose.yaml -f deploy/empty-world.compose.yaml down -v || true
 
   # Starts the same image on the authored world, mounted from this repository. The image and the image job stay as they
-  # are: this job only points the server at world/ and runs the existing smoke.
+  # are: this job only points the server at world/ and runs the seed-loop scenario of the smoke client.
   seed-world:
     needs: [build]
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 70
     permissions:
       contents: read
     env:
@@ -867,11 +867,11 @@ jobs:
           python3 deploy/probe/login_init.py --host 127.0.0.1 --port 2106 --timeout 60
           python3 deploy/probe/login_init.py --host 127.0.0.1 --port 7777 --timeout 60 --connect-only
 
-      - name: Take one client through a session
-        run: java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240
+      - name: Take one client through the authored loop
+        run: java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 900 --scenario seed-loop
 
-      - name: Take many clients through a session at once
-        run: java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --sessions 24 --parallel 6
+      - name: Take many clients through the authored loop at once
+        run: java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 900 --sessions 24 --parallel 24 --scenario seed-loop
 
       - name: Save the server log
         if: always()

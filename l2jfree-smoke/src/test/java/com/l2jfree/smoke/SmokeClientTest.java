@@ -39,7 +39,8 @@ class SmokeClientTest
 				"--world-port", "7778", "--protocol-revision", "83", "--timeout-seconds", "30", "--account", "anna",
 				"--password", "secret", "--existing-characters", "1" });
 		
-		assertThat(config).isEqualTo(new SmokeClient.Config("example.org", 2107, 7778, 83, 30, "anna", "secret", 1, 1, 1));
+		assertThat(config).isEqualTo(new SmokeClient.Config("example.org", 2107, 7778, 83, 30, "anna", "secret", 1, 1, 1,
+				"default"));
 	}
 	
 	@Test
@@ -77,12 +78,22 @@ class SmokeClientTest
 				.hasMessageContaining("--account does not fit");
 		assertThatThrownBy(() -> SmokeClient.parse(new String[] { "--existing-characters", "1" }))
 				.hasMessageContaining("needs --account");
+		assertThatThrownBy(() -> SmokeClient.parse(new String[] { "--scenario", "other" }))
+				.hasMessageContaining("--scenario");
+	}
+
+	@Test
+	void theScenarioDefaultsToTheShortSessionAndTheSeedLoopIsNamed()
+	{
+		assertThat(SmokeClient.parse(new String[0]).scenario()).isEqualTo("default");
+		assertThat(SmokeClient.parse(new String[] { "--scenario", "seed-loop" }).scenario()).isEqualTo("seed-loop");
 	}
 	
 	@Test
 	void aRunAgainstNothingFailsWithAReasonAndDoesNotThrow()
 	{
-		SmokeClient.Config config = new SmokeClient.Config("127.0.0.1", 1, 1, 87, 5, null, null, SmokeClient.Config.UNCHECKED, 1, 1);
+		SmokeClient.Config config = new SmokeClient.Config("127.0.0.1", 1, 1, 87, 5, null, null,
+				SmokeClient.Config.UNCHECKED, 1, 1, "default");
 		Reporter reporter = new Reporter(new java.io.PrintStream(java.io.OutputStream.nullOutputStream()));
 		
 		SmokeClient.Result result = SmokeClient.run(config, reporter);
