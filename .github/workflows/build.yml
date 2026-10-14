@@ -148,7 +148,8 @@ jobs:
             exit 1
           fi
           archive="${archives[0]}"
-          entries="$(unzip -Z1 "$archive")"
+          entries="$(unzip -Z1 "$archive" | tee dist-entries.txt)"
+          sha256sum "$archive" > dist-sha256.txt
           if grep -Eiq '(^|/)libs/[^/]*(spring|hibernate|cglib|ehcache|c3p0|mchange-commons|ecj|irclib)[^/]*\.jar$' <<< "$entries"; then
             echo "The platform distribution contains a removed persistence, compiler, or IRC library: $archive"
             exit 1
@@ -203,6 +204,16 @@ jobs:
             exit 1
           fi
           test -s target/bom.json
+
+      - name: Upload the distribution file list
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dist-file-list
+          if-no-files-found: warn
+          path: |
+            dist-entries.txt
+            dist-sha256.txt
 
       - name: Scan dependency SBOM for known vulnerabilities
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
@@ -329,13 +340,18 @@ jobs:
       - name: Verify the image content
         run: deploy/verify-image.sh l2jfree:ci
 
+      - name: Check the image world matches the repository
+        run: deploy/check-image-world.sh l2jfree:ci
+
       - name: Upload the image file list
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: image-file-list
           if-no-files-found: warn
-          path: image-file-list.txt
+          path: |
+            image-file-list.txt
+            image-world-manifest.txt
 
       # The policy of SECURITY.md: a fixed critical or high finding blocks the release, not the merge. The table is
       # kept in the summary of the run, and the daily scan of the published image fails on a finding that blocks.
@@ -402,30 +418,17 @@ jobs:
           L2JFREE_IMAGE: l2jfree:ci
         run: deploy/probe/check-roles.sh
 
-      # The image carries the authored world: one passport line, no scripts, and no ERROR.
-      # WARN lines stay visible as a group. A warning about an item without a template is expected only
-      # after the later update from the published image, when an old inventory is loaded.
+      # Each start of this image is checked on its own window: one passport, no scripts, no ERROR.
+      # WARN lines stay visible as a group named by the stage. A warning about items without a template
+      # is expected on the update from the published image, when an old inventory is loaded, and is not an error.
       - name: Check the server log for the world and for errors
         env:
           L2JFREE_IMAGE: l2jfree:ci
         run: |
-          docker compose -f deploy/compose.yaml logs --no-color server > server.log
-          test "$(grep -c 'World id=buyan-okolitsa version=3.2.0 ' server.log || true)" = 1 \
-            || { echo "::error::the passport line is not unique"; exit 1; }
-          grep 'World id=buyan-okolitsa version=3.2.0 ' server.log
-          grep -q 'World has no scripts' server.log || { echo "::error::the log does not say the world has no scripts"; exit 1; }
-          test "$(grep -c 'World has no scripts' server.log || true)" = 1 \
-            || { echo "::error::the no-scripts line is not unique"; exit 1; }
-          echo "::group::WARN lines of the server log"
-          grep -E '(^|\| )WARN ' server.log | head -50 || true
-          echo "::endgroup::"
+          deploy/probe/check-server-window.sh first-start
           # the transport of both ports: a native transport that cannot be loaded would leave the server on NIO unnoticed
-          test "$(grep -c 'Accepting connections on .* (transport epoll' server.log)" -ge 2 \
-            || { echo "::error::the ports do not run on the epoll transport"; grep -E 'Transport|Accepting' server.log | head; exit 1; }
-          if grep -E '(^|\| )ERROR |Exception in thread' server.log; then
-            echo "::error::the server log has an ERROR line or an uncaught exception"
-            exit 1
-          fi
+          test "$(grep -c 'Accepting connections on .* (transport epoll' image-server-logs/first-start.log)" -ge 2 \
+            || { echo "::error::the ports do not run on the epoll transport"; grep -E 'Transport|Accepting' image-server-logs/first-start.log | head; exit 1; }
 
       # The deploy guides change a setting with this command. The extra key is in no default file, so the server names
       # it in a warning when it reads the file, which shows after the restart that the command wrote where the server reads.
@@ -441,6 +444,7 @@ jobs:
         env:
           L2JFREE_IMAGE: l2jfree:ci
         run: |
+          since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           docker compose -f deploy/compose.yaml restart server
           docker compose -f deploy/compose.yaml up -d --wait --wait-timeout 600
           # the restart read the setting of the step before
@@ -452,6 +456,7 @@ jobs:
           java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --account smokesave --password "$SMOKE_PASSWORD" --existing-characters 1
           # and an account that is new after the restart works as well
           java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240
+          deploy/probe/check-server-window.sh restart --since "$since"
 
       # The flight recording runs from the start and keeps its chunks in the log volume.
       - name: Check the flight recording
@@ -515,9 +520,11 @@ jobs:
           grep -q 'TABLE DATA world player' backup.list || { echo "::error::the dump holds no players"; exit 1; }
           if grep -q ' catalog ' backup.list; then echo "::error::the dump holds the catalog, which the image brings"; exit 1; fi
 
+          since_clean="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           $compose down -v
           $compose up -d --wait --wait-timeout 600
           test "$(account_count)" = 0 || { echo "::error::the clean stack already has the account"; exit 1; }
+          deploy/probe/check-server-window.sh backup-clean --since "$since_clean"
 
           $compose stop server
           $compose exec -T db psql -U postgres -d l2jfree \
@@ -526,6 +533,7 @@ jobs:
             -c 'CREATE SCHEMA report AUTHORIZATION l2jfree_world'
           $compose exec -T db pg_restore -U postgres -d l2jfree --exit-on-error < l2jfree-backup.dump
           test "$(account_count)" = 1 || { echo "::error::the restore did not bring the account back"; exit 1; }
+          since_restore="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           $compose start server
           $compose up -d --wait --wait-timeout 600
 
@@ -535,6 +543,7 @@ jobs:
           java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --account smokesave --password "$SMOKE_PASSWORD" --existing-characters 2
           # the roles of the restored database still reach only their own schema
           deploy/probe/check-roles.sh
+          deploy/probe/check-server-window.sh backup-restore --since "$since_restore"
 
       # The update of the image as the runbook writes it: a stack on the image that is published now (edge) is replaced
       # by the image of this commit, on the same volumes. The account and the character of the old image must survive
@@ -556,10 +565,20 @@ jobs:
           echo "::add-mask::$password"
           java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --account smokeupdate --password "$password" --existing-characters 0
 
+          since_new="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           L2JFREE_IMAGE="$NEW_IMAGE" $compose up -d --wait --wait-timeout 600
           test "$(docker inspect -f '{{.Config.Image}}' l2jfree-server-1)" = "$NEW_IMAGE"
           python3 deploy/probe/login_init.py --host 127.0.0.1 --port 2106 --timeout 60
           java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --account smokeupdate --password "$password" --existing-characters 1
+          deploy/probe/check-server-window.sh update --since "$since_new" --expect-unknown-items
+
+      - name: Upload the server logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: image-server-logs
+          if-no-files-found: warn
+          path: image-server-logs/
 
       - name: Show the service logs after a failure
         if: failure()
