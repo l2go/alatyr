@@ -559,9 +559,11 @@ public class L2Attackable extends L2Npc
 			}
 			HuntRewards.Result result = HuntRewards.calculate(snapshot, drops);
 			boolean shared = sides.size() > 1;
+			Map<Long, List<L2Player>> recipients = new LinkedHashMap<>();
 			for (HuntRewards.SideReward side : result.sides())
 			{
 				HuntSide runtime = _huntSides.get(side.sideId());
+				recipients.put(side.sideId(), side.players().stream().map(reward -> players.get(reward.playerId())).toList());
 				for (HuntRewards.PlayerReward reward : side.players())
 				{
 					L2Player player = players.get(reward.playerId());
@@ -591,7 +593,7 @@ public class L2Attackable extends L2Npc
 				if (reward.unclaimed() || runtime.representative == null)
 					continue;
 				L2Player owner = runtime.party == null || !shared ? runtime.representative
-						: runtime.party.getHuntLooter(runtime.representative, reward.drop().itemId(), this);
+						: runtime.party.getHuntLooter(runtime.representative, reward.drop().itemId(), this, recipients.get(reward.sideId()));
 				dropHuntItem(owner, reward.drop(), shared);
 			}
 			if (shared && _log.isDebugEnabled())

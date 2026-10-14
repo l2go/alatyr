@@ -100,9 +100,9 @@ public class L2Party
 		_coinCursor = cursor;
 	}
 
-	public L2Player getHuntLooter(L2Player player, int itemId, L2Creature target)
+	public L2Player getHuntLooter(L2Player player, int itemId, L2Creature target, List<L2Player> recipients)
 	{
-		return getActualLooter(player, itemId, false, target);
+		return getActualLooter(player, itemId, false, target, recipients);
 	}
 	private L2CommandChannel _commandChannel = null;
 	private L2PartyRoom _partyRoom = null;
@@ -169,11 +169,13 @@ public class L2Party
 	 * get random member from party
 	 * @return
 	 */
-	private L2Player getCheckedRandomMember(int ItemId, L2Creature target)
+	private L2Player getCheckedRandomMember(int ItemId, L2Creature target, List<L2Player> recipients)
 	{
 		List<L2Player> availableMembers = new ArrayList<L2Player>(getPartyMembers().size());
 		for (L2Player member : getPartyMembers())
 		{
+			if (recipients != null && !recipients.contains(member))
+				continue;
 			if (member.getInventory().validateCapacityByItemId(ItemId)
 					&& Util.checkIfInRange(Config.ALT_PARTY_RANGE2, target, member, true))
 				availableMembers.add(member);
@@ -188,7 +190,7 @@ public class L2Party
 	 * get next item looter
 	 * @return
 	 */
-	private L2Player getCheckedNextLooter(int ItemId, L2Creature target)
+	private L2Player getCheckedNextLooter(int ItemId, L2Creature target, List<L2Player> recipients)
 	{
 		for (int i = 0; i < getMemberCount(); i++)
 		{
@@ -198,6 +200,8 @@ public class L2Party
 			try
 			{
 				member = getPartyMembers().get(_itemLastLoot);
+				if (recipients != null && !recipients.contains(member))
+					continue;
 				if (member.getInventory().validateCapacityByItemId(ItemId)
 						&& Util.checkIfInRange(Config.ALT_PARTY_RANGE2, target, member, true))
 					return member;
@@ -218,27 +222,34 @@ public class L2Party
 	 */
 	private L2Player getActualLooter(L2Player player, int ItemId, boolean spoil, L2Creature target)
 	{
-		L2Player looter = player;
+		return getActualLooter(player, ItemId, spoil, target, null);
+	}
+
+	private L2Player getActualLooter(L2Player player, int ItemId, boolean spoil, L2Creature target,
+			List<L2Player> recipients)
+	{
+		L2Player fallback = recipients == null || recipients.contains(player) ? player : recipients.getFirst();
+		L2Player looter = fallback;
 		switch (_itemDistribution)
 		{
 			case ITEM_RANDOM:
 				if (!spoil)
-					looter = getCheckedRandomMember(ItemId, target);
+					looter = getCheckedRandomMember(ItemId, target, recipients);
 				break;
 			case ITEM_RANDOM_SPOIL:
-				looter = getCheckedRandomMember(ItemId, target);
+				looter = getCheckedRandomMember(ItemId, target, recipients);
 				break;
 			case ITEM_ORDER:
 				if (!spoil)
-					looter = getCheckedNextLooter(ItemId, target);
+					looter = getCheckedNextLooter(ItemId, target, recipients);
 				break;
 			case ITEM_ORDER_SPOIL:
-				looter = getCheckedNextLooter(ItemId, target);
+				looter = getCheckedNextLooter(ItemId, target, recipients);
 				break;
 		}
 		
 		if (looter == null)
-			looter = player;
+			looter = fallback;
 		return looter;
 	}
 	
