@@ -57,7 +57,7 @@ final class SeedLoop
 	private static final int MELEE = 80;
 	/** Far enough that the server's own walk finishes the approach. A tighter step never arrives under load. */
 	private static final int APPROACH = 600;
-	private static final int INTERACT = 50;
+	private static final int INTERACT = 120;
 	/** A beast belongs to a spawn when it stands closer than the next spawn on the grid. */
 	private static final int PLOT = 200;
 	private static final long ATTACK_PAUSE_MILLIS = 1500L;
@@ -559,21 +559,25 @@ final class SeedLoop
 			throws SmokeException
 	{
 		view.dialog = null;
+		int empty = 0;
 		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
 		while ((view.dialog == null || !view.dialog.contains(command)) && System.nanoTime() < until)
 		{
 			if (deadline.expired())
 				throw new SmokeException("step talk: the time limit ended");
 
-			// A click from a step short of the merchant does not open the shop. Close the gap first.
-			if (distance(view.x, view.y, npc.x, npc.y) > INTERACT)
+			// Clicks from a step short of the merchant do not open the shop. Walk up and try again.
+			if (empty >= 4)
 			{
 				stepToward(game, view, deadline, npc.x, npc.y, npc.z);
+				empty = 0;
 				continue;
 			}
 			game.send(GamePackets.action(npc.objectId, view.x, view.y, view.z));
 			game.send(GamePackets.action(npc.objectId, view.x, view.y, view.z));
 			absorb(game, view, deadline, 1000L);
+			if (view.dialog == null || !view.dialog.contains(command))
+				empty++;
 		}
 		if (view.dialog == null || !view.dialog.contains(command))
 			throw new SmokeException("step talk: template " + npc.templateId + " did not open a dialog containing "
