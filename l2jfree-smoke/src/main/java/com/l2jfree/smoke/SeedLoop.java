@@ -56,7 +56,7 @@ final class SeedLoop
 	private static final int STEP = 700;
 	private static final int MELEE = 80;
 	/** Far enough that the server's own walk finishes the approach. A tighter step never arrives under load. */
-	private static final int APPROACH = 250;
+	private static final int APPROACH = 600;
 	private static final int INTERACT = 120;
 	/** A beast belongs to a spawn when it stands closer than the next spawn on the grid. */
 	private static final int PLOT = 200;
@@ -447,7 +447,8 @@ final class SeedLoop
 				absorb(game, view, deadline, 800L);
 			}
 		}
-		askItems(game, view, deadline);
+		// Coins also arrive as InventoryUpdate. A missing full list must not end the hunt.
+		askItems(game, view, deadline, false);
 	}
 
 	private static void buyPotion(GameConnection game, View view, Deadline deadline, Reporter reporter)
@@ -579,6 +580,9 @@ final class SeedLoop
 		double dx = x - view.x;
 		double dy = y - view.y;
 		double len = Math.hypot(dx, dy);
+		if (len <= MELEE)
+			return;
+
 		int destX = x;
 		int destY = y;
 		if (len > STEP)
@@ -586,14 +590,42 @@ final class SeedLoop
 			destX = view.x + (int)Math.round(dx / len * STEP);
 			destY = view.y + (int)Math.round(dy / len * STEP);
 		}
+		// A refused step is asked again a little to the side. The shift stays under the gap between
+		// spawns, so the session does not walk onto a neighbour's plot.
+		if (view.missedMoves > 0 && len > 1)
+		{
+			int mag = 36 * (1 + (view.missedMoves % 2));
+			if ((view.missedMoves % 4) >= 2)
+				mag = -mag;
+			destX += (int)Math.round(-dy / len * mag);
+			destY += (int)Math.round(dx / len * mag);
+		}
 		view.acceptedMove = false;
 		game.send(GamePackets.moveBackward(destX, destY, z, view.x, view.y, view.z));
 		// The server walks the character and does not send StopMove when the walk finishes. A second
-		// move before that cancels the first, which is how a session stays on one tile until the
-		// deadline. Once the travel time has passed, the position is the point that was asked for,
-		// whether or not the confirmation packet has been read yet.
+		// move before the confirmation cancels the first, and the session then stands on one tile
+		// until the deadline. Wait for that confirmation, and only then for the travel time.
 		long travel = (long)(Math.min(len, STEP) / RUN_SPEED * 1000L) + 800L;
 		long travelEnd = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(travel);
+		long giveUp = System.nanoTime() + TimeUnit.SECONDS.toNanos(12);
+		while (!view.acceptedMove && System.nanoTime() < giveUp)
+		{
+			if (deadline.expired())
+				throw new SmokeException("step move: the time limit ended");
+
+			poll(game, view, deadline, 200L);
+			if (distance(view.x, view.y, destX, destY) <= MELEE)
+			{
+				view.missedMoves = 0;
+				return;
+			}
+		}
+		if (!view.acceptedMove)
+		{
+			view.missedMoves++;
+			return;
+		}
+		view.missedMoves = 0;
 		while (System.nanoTime() < travelEnd)
 		{
 			if (deadline.expired())
@@ -603,14 +635,7 @@ final class SeedLoop
 			if (distance(view.x, view.y, destX, destY) <= MELEE)
 				return;
 		}
-		if (view.acceptedMove)
-			adoptDestination(view);
-		else
-		{
-			view.x = destX;
-			view.y = destY;
-			view.z = z;
-		}
+		adoptDestination(view);
 	}
 
 	/** The server does not send StopMove when a walk finishes, so the last accepted destination is where we are. */
@@ -641,6 +666,12 @@ final class SeedLoop
 	 */
 	private static void askItems(GameConnection game, View view, Deadline deadline) throws SmokeException
 	{
+		askItems(game, view, deadline, true);
+	}
+
+	private static void askItems(GameConnection game, View view, Deadline deadline, boolean required)
+			throws SmokeException
+	{
 		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
 		while (System.nanoTime() < until)
 		{
@@ -656,7 +687,8 @@ final class SeedLoop
 			if (view.itemEpoch != epoch)
 				return;
 		}
-		throw new SmokeException("step inventory: ItemList did not arrive");
+		if (required)
+			throw new SmokeException("step inventory: ItemList did not arrive");
 	}
 
 	private static void askSkills(GameConnection game, View view, Deadline deadline) throws SmokeException
@@ -751,10 +783,9 @@ final class SeedLoop
 
 				boolean firstPlace = view.objectId == 0;
 				view.objectId = user.objectId();
-				// Later UserInfo packets refresh experience. The place comes from the move the server
-				// accepted: a UserInfo from before that move would pull the session back onto the tile
-				// it just left and the next step would cancel the walk.
-				if (firstPlace)
+				// A jumped place is a frame that slipped into this opcode. A real walk is a short one,
+				// and the move confirmation is what carries the position across a step.
+				if (firstPlace || distance(view.x, view.y, user.x(), user.y()) <= 3000)
 				{
 					view.x = user.x();
 					view.y = user.y();
@@ -1181,6 +1212,8 @@ final class SeedLoop
 		private int kills;
 		private boolean firstAnnounced;
 		private boolean acceptedMove;
+		/** Steps whose confirmation never arrived. The next step asks a little to the side. */
+		private int missedMoves;
 		/** Creatures whose death was shown, so a later delete is not mistaken for a living beast. */
 		private final Set<Integer> fallen = new HashSet<>();
 		private int acceptedX;
