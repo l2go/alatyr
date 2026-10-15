@@ -220,6 +220,10 @@ final class SeedLoop
 			throws SmokeException
 	{
 		int guard = 0;
+		// Twenty-four characters appear on one tile. A move onto that tile is never accepted, so
+		// they leave one after another instead of all at once.
+		if (forCoins && view.kills == 0 && view.sessionIndex > 0)
+			absorb(game, view, deadline, view.sessionIndex * 350L);
 		while (forCoins ? view.count(COIN) < COINS_NEEDED : view.level < 2 || view.sp < SP_COST)
 		{
 			if (guard++ > 40)
@@ -373,7 +377,7 @@ final class SeedLoop
 				{
 					// Sessions leave side by side. One tile at the east edge holds the whole crowd,
 					// and a move onto an occupied tile is never accepted.
-					int lane = (view.sessionIndex - 12) * 40;
+					int lane = (view.sessionIndex - 12) * 70;
 					stepToward(game, view, deadline, PEACE_EAST + 200, view.y + lane, view.z);
 					continue;
 				}
