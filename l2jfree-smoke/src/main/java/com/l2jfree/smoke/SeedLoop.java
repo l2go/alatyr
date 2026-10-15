@@ -580,8 +580,7 @@ final class SeedLoop
 			destX = view.x + (int)Math.round(dx / len * STEP);
 			destY = view.y + (int)Math.round(dy / len * STEP);
 		}
-		view.acceptedMove = false;
-		view.moveRejected = false;
+		armMove(view, destX, destY, z);
 		int fromX = view.x;
 		int fromY = view.y;
 		int fromZ = view.z;
@@ -603,12 +602,7 @@ final class SeedLoop
 				return;
 		}
 		if (!view.acceptedMove)
-		{
-			String answer = view.moveRejected ? "ActionFailed arrived"
-					: "neither MoveToLocation nor ActionFailed arrived";
-			throw new SmokeException("step move: " + answer + " for a step from " + fromX + "," + fromY + "," + fromZ
-					+ " to " + destX + "," + destY + "," + z + "; recent=" + view.recentOpcodes());
-		}
+			throw unansweredMove(view, fromX, fromY, fromZ, destX, destY, z);
 		while (System.nanoTime() < travelEnd)
 		{
 			if (deadline.expired())
@@ -621,15 +615,41 @@ final class SeedLoop
 		adoptDestination(view);
 	}
 
-	/** AbstractAI.clientStoppedMoving does not send StopMove for this walk, so the accepted destination is where we are. */
-	private static void adoptDestination(View view)
+	/**
+	 * The request this step is waiting on. A later {@code MoveToLocation} confirms it only when the
+	 * destination is this one.
+	 */
+	static void armMove(View view, int destX, int destY, int destZ)
 	{
-		if (!view.acceptedMove)
+		view.acceptedMove = false;
+		view.moveRejected = false;
+		view.moveArmed = true;
+		view.positionSuperseded = false;
+		view.pendingDestX = destX;
+		view.pendingDestY = destY;
+		view.pendingDestZ = destZ;
+	}
+
+	/**
+	 * AbstractAI.clientStoppedMoving does not send StopMove for an ordinary walk, so the accepted
+	 * destination is where we are unless a later StopMove or ValidateLocation already said otherwise.
+	 */
+	static void adoptDestination(View view)
+	{
+		if (!view.acceptedMove || view.positionSuperseded)
 			return;
 
 		view.x = view.acceptedX;
 		view.y = view.acceptedY;
 		view.z = view.acceptedZ;
+	}
+
+	/** The session fails when this request's MoveToLocation did not arrive. ActionFailed is named when it did. */
+	static SmokeException unansweredMove(View view, int fromX, int fromY, int fromZ, int destX, int destY, int destZ)
+	{
+		String answer = view.moveRejected ? "ActionFailed arrived" : "neither MoveToLocation nor ActionFailed arrived";
+		return new SmokeException("step move: " + answer + " for a step from " + fromX + "," + fromY + "," + fromZ
+				+ " to " + destX + "," + destY + "," + destZ + "; recent=" + view.recentOpcodes());
 	}
 
 	private static void waitForSelf(GameConnection game, View view, Deadline deadline) throws SmokeException
@@ -721,7 +741,7 @@ final class SeedLoop
 		}
 	}
 
-	private static void apply(View view, byte[] payload) throws SmokeException
+	static void apply(View view, byte[] payload) throws SmokeException
 	{
 		PacketReader in = new PacketReader(payload);
 		int opcode = in.readC();
@@ -843,7 +863,13 @@ final class SeedLoop
 				int[] move = GamePackets.parseMoveToLocation(in);
 				if (move[0] == view.objectId)
 				{
+					// A confirmation of some earlier destination must not finish the request armed now.
+					if (!view.moveArmed || move[1] != view.pendingDestX || move[2] != view.pendingDestY
+							|| move[3] != view.pendingDestZ)
+						return;
+
 					view.acceptedMove = true;
+					view.positionSuperseded = false;
 					view.acceptedX = move[1];
 					view.acceptedY = move[2];
 					view.acceptedZ = move[3];
@@ -873,6 +899,9 @@ final class SeedLoop
 					view.x = place[1];
 					view.y = place[2];
 					view.z = place[3];
+					// This packet is newer than the destination of a move already confirmed.
+					if (view.acceptedMove)
+						view.positionSuperseded = true;
 				}
 				else
 				{
@@ -1128,7 +1157,7 @@ final class SeedLoop
 		}
 	}
 
-	private static final class View
+	static final class View
 	{
 		private final int sessionIndex;
 		private final Map<Integer, Actor> npcs = new LinkedHashMap<>();
@@ -1136,10 +1165,10 @@ final class SeedLoop
 		private final Map<Integer, Held> items = new LinkedHashMap<>();
 		private final Map<Integer, Integer> skills = new TreeMap<>();
 
-		private int objectId;
-		private int x;
-		private int y;
-		private int z = GROUND_Z;
+		int objectId;
+		int x;
+		int y;
+		int z = GROUND_Z;
 		private int level;
 		private long exp;
 		private int sp;
@@ -1155,9 +1184,16 @@ final class SeedLoop
 		private String dialog;
 		private int kills;
 		private boolean firstAnnounced;
-		private boolean acceptedMove;
+		boolean acceptedMove;
 		/** ActionFailed arrived while this step was waiting for MoveToLocation. */
-		private boolean moveRejected;
+		boolean moveRejected;
+		/** A move request is armed, and only its destination may confirm it. */
+		private boolean moveArmed;
+		private int pendingDestX;
+		private int pendingDestY;
+		private int pendingDestZ;
+		/** StopMove or ValidateLocation arrived after the confirmation and is the position to keep. */
+		private boolean positionSuperseded;
 		/** Creatures whose death was shown, so a later delete is not mistaken for a living beast. */
 		private final Set<Integer> fallen = new HashSet<>();
 		private int acceptedX;
@@ -1171,7 +1207,7 @@ final class SeedLoop
 		private int spBeforeLearn;
 		private int spAfterLearn;
 
-		private View(int sessionIndex)
+		View(int sessionIndex)
 		{
 			this.sessionIndex = sessionIndex;
 		}
