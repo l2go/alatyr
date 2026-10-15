@@ -46,7 +46,7 @@
 </header>
 <div class="prose">
 <p>The last commit before mine landed on 15 July 2015. Its message was "README.md edited online with Bitbucket". Behind it lay nearly nine years of history: 8,044 commits by 24 people, starting in November 2006. They built an open-source server for Lineage II, an MMORPG whose Gracia Final client shipped in 2009. The upstream repositories are archived on GitHub now; one of them describes itself as the project "as it was when it was abandoned".</p>
-<p>I picked it up on 18 September 2026. Version 3.0.0 shipped on 11 October, twenty-four days later. This series is about what happened between those dates and why: which decisions I made, what each one cost, and how each one is checked.</p>
+<p>I picked it up on 18 September 2026 to see how far a 2009 codebase can be carried by today's engineering discipline. Version 3.0.0 shipped on 11 October, twenty-four days later. This series is about what happened between those dates and why: which decisions I made, what each one cost, and how each one is checked.</p>
 <h2>What I found</h2>
 <p>The code still compiled, mostly. It also carried every habit of a 2009 game server:</p>
 <ul>
@@ -84,6 +84,92 @@
 </tbody></table></div>
 <h2>The order of the work</h2>
 <p>Big rewrites fail because they change everything at once and prove nothing until the end. I went the other way: each step left a server that started and could be checked. The work came in two phases.</p>
+<figure class="series-diagram">
+<div class="arch timeline-graphic">
+<svg viewBox="0 0 1100 320" role="img" aria-labelledby="timeline-title timeline-desc" xmlns="http://www.w3.org/2000/svg">
+<title id="timeline-title">The order of the work</title>
+<desc id="timeline-desc">The first commit in 2006, the 2009 client and the last upstream commit in 2015. Eleven years of silence precede the revival in 2026: modernize in place, then Platform 3.0. Milestones are evenly spaced, not a linear time scale.</desc>
+<path class="wire" d="M 35 145 H 235 M 335 145 H 1065"/>
+<path class="timeline-silence" d="M 235 145 H 335"/>
+<text class="t t--small" x="285" y="285" text-anchor="middle">11 years of silence</text>
+<text class="t t--title" x="510" y="310" text-anchor="middle">modernize in place</text>
+<text class="t t--title" x="945" y="310" text-anchor="middle">Platform 3.0</text>
+<circle class="timeline-dot" cx="35" cy="145" r="5"/>
+<path class="wire" d="M 35 145 V 75"/>
+<text class="t" x="35" y="65" text-anchor="start">
+<tspan x="35" dy="0">First commit</tspan>
+<tspan x="35" dy="22">2006-11-15</tspan></text>
+<circle class="timeline-dot" cx="138" cy="145" r="5"/>
+<path class="wire" d="M 138 145 V 195"/>
+<text class="t" x="138" y="215" text-anchor="middle">
+<tspan x="138" dy="0">Gracia Final</tspan>
+<tspan x="138" dy="22">2009</tspan></text>
+<circle class="timeline-dot" cx="241" cy="145" r="5"/>
+<path class="wire" d="M 241 145 V 75"/>
+<text class="t" x="241" y="65" text-anchor="middle">
+<tspan x="241" dy="0">Last upstream</tspan>
+<tspan x="241" dy="19">commit</tspan>
+<tspan x="241" dy="22">2015-07-15</tspan></text>
+<circle class="timeline-dot" cx="344" cy="145" r="5"/>
+<path class="wire" d="M 344 145 V 195"/>
+<text class="t" x="344" y="215" text-anchor="middle">
+<tspan x="344" dy="0">Revival</tspan>
+<tspan x="344" dy="22">2026-09-18</tspan></text>
+<circle class="timeline-dot" cx="447" cy="145" r="5"/>
+<path class="wire" d="M 447 145 V 75"/>
+<text class="t" x="447" y="65" text-anchor="middle">
+<tspan x="447" dy="0">1.4.0</tspan>
+<tspan x="447" dy="22">2026-09-25</tspan></text>
+<circle class="timeline-dot" cx="550" cy="145" r="5"/>
+<path class="wire" d="M 550 145 V 195"/>
+<text class="t" x="550" y="215" text-anchor="middle">
+<tspan x="550" dy="0">1.5</tspan>
+<tspan x="550" dy="22">2026-09-29</tspan></text>
+<circle class="timeline-dot" cx="653" cy="145" r="5"/>
+<path class="wire" d="M 653 145 V 75"/>
+<text class="t" x="653" y="65" text-anchor="middle">
+<tspan x="653" dy="0">2.0.0</tspan>
+<tspan x="653" dy="22">2026-09-30</tspan></text>
+<circle class="timeline-dot" cx="756" cy="145" r="5"/>
+<path class="wire" d="M 756 145 V 195"/>
+<text class="t" x="756" y="215" text-anchor="middle">
+<tspan x="756" dy="0">2.5.0</tspan>
+<tspan x="756" dy="22">2026-10-05</tspan></text>
+<circle class="timeline-dot" cx="859" cy="145" r="5"/>
+<path class="wire" d="M 859 145 V 75"/>
+<text class="t" x="859" y="65" text-anchor="middle">
+<tspan x="859" dy="0">Platform 3.0</tspan>
+<tspan x="859" dy="19">decisions</tspan>
+<tspan x="859" dy="22">2026-10-05</tspan></text>
+<circle class="timeline-dot" cx="962" cy="145" r="5"/>
+<path class="wire" d="M 962 145 V 195"/>
+<text class="t" x="962" y="215" text-anchor="middle">
+<tspan x="962" dy="0">3.0.0</tspan>
+<tspan x="962" dy="22">2026-10-11</tspan></text>
+<circle class="timeline-dot" cx="1065" cy="145" r="5"/>
+<path class="wire" d="M 1065 145 V 75"/>
+<text class="t" x="1065" y="65" text-anchor="end">
+<tspan x="1065" dy="0">3.1.0 and 3.1.1</tspan>
+<tspan x="1065" dy="22">2026-10-12</tspan></text>
+</svg>
+</div>
+<ol class="timeline-detail">
+<li><time datetime="2006-11-15">2006-11-15</time> — First commit</li>
+<li><time datetime="2009">2009</time> — Gracia Final</li>
+<li><time datetime="2015-07-15">2015-07-15</time> — Last upstream commit</li>
+<li class="timeline-gap">Eleven years of silence</li>
+<li><time datetime="2026-09-18">2026-09-18</time> — Revival</li>
+<li><time datetime="2026-09-25">2026-09-25</time> — 1.4.0</li>
+<li><time datetime="2026-09-29">2026-09-29</time> — 1.5</li>
+<li><time datetime="2026-09-30">2026-09-30</time> — 2.0.0</li>
+<li><time datetime="2026-10-05">2026-10-05</time> — 2.5.0</li>
+<li><time datetime="2026-10-05">2026-10-05</time> — Platform 3.0 decisions</li>
+<li><time datetime="2026-10-11">2026-10-11</time> — 3.0.0</li>
+<li><time datetime="2026-10-12">2026-10-12</time> — 3.1.0 and 3.1.1</li>
+</ol>
+<figcaption>Modernize in place: September–5 October 2026. Platform 3.0: decisions on 5 October, releases on 11–12 October. Dates are UTC; milestone spacing is schematic.</figcaption>
+</figure>
+
 <p><strong>First, modernize in place.</strong> For two and a half weeks the server kept its shape: two processes on MySQL. A root build and CI on every push came first. Then a correctness program filed every defect as a broken invariant, one issue and one pull request each, and shipped as 1.4.0 on 25 September. The login moved to JDBC and both servers to Java 25 in 1.5 on 29 September. HikariCP, SLF4J, and a release with checksums, an attestation, and an SBOM followed in 2.0.0 on 30 September, and the test suite came back into CI in 2.5.0 on 5 October. The 2.x line was played on its real target, Windows with MySQL 8.4.</p>
 <p><strong>Then decide what 3.0 is.</strong> On 5 October the decisions for Platform 3.0 were recorded and the 2.x line was retired. The in-place line had done its job: the code was on a modern JDK, under tests, and released by a pipeline. What was left could not be fixed in place.</p>
 <p><strong>A walking skeleton.</strong> A Linux image on a pinned base with a pinned JRE, a Compose stack that published ports 2106 and 7777, and a probe that sent the first packet of the login protocol. It did almost nothing, but it did it the same way every time.</p>
@@ -103,7 +189,8 @@
 <p>Twenty-four people built it over nearly nine years. Twenty-four days rebuilt it. Twenty-four clients play it on every merge.</p>
 <p>The rest of the series takes one decision at a time:</p>
 <ol>
-<li><strong>One process, hard boundaries</strong>: two modules in one JVM that still cannot see each other.</li>
+<li><a href="/l2jfree/notes/one-process-hard-boundaries/"><strong>One process, hard boundaries</strong></a>: two modules in one JVM that still cannot see each other.</li>
+<li><a href="/l2jfree/notes/an-island-of-our-own/"><strong>An island of our own</strong></a>: how the server left an inherited world for one it wrote.</li>
 <li><strong>One save, one transaction</strong>: how a player and their items reach the database together or not at all.</li>
 <li><strong>Every merge is a release rehearsal</strong>: what the pipeline does to an image before it may be published.</li>
 <li><strong>Releases promote, never rebuild</strong>: why the release workflow has no build step.</li>
@@ -111,6 +198,7 @@
 <li><strong>Old bugs, new invariants</strong>: the classes of defects a 2009 server carries, and the checks that keep them out.</li>
 </ol>
 <p>The code is at <a href="https://github.com/l2go/l2jfree">github.com/l2go/l2jfree</a>, under GPLv3.</p>
+<div class="aside"><strong>Update, 16 October 2026.</strong> Version 3.2.0 went a step past a revival: the server no longer ships the world it inherited, and it runs a small original one instead. That turn is part 3, <a href="/l2jfree/notes/an-island-of-our-own/">An island of our own</a>.</div>
 </div>
 <nav class="series" aria-label="Series">
 <span></span>

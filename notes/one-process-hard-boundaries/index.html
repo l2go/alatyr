@@ -71,6 +71,48 @@
 	void kick(String account);
 	void expect(String clientIp);
 }</code></pre>
+<figure class="series-diagram">
+<div class="arch contract-graphic">
+<svg viewBox="0 0 740 600" role="img" aria-labelledby="roles-title roles-desc" xmlns="http://www.w3.org/2000/svg">
+<title id="roles-title">One contract, separate database roles</title>
+<desc id="roles-desc">Platform wires login and world through the contract. World calls LoginPort: admit, leave, changeAccessLevel. Login calls WorldPort: status, addressFor, kick, expect. The login role reaches the login schema; the world role reaches world, catalog and report.</desc>
+<defs><marker id="roles-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="diagram-arrow" d="M 0 0 L 10 5 L 0 10 Z"/></marker></defs>
+<rect class="node" x="250" y="10" width="240" height="55" rx="6"/>
+<text class="t" x="370" y="45" text-anchor="middle">platform</text>
+<path class="wire diagram-directed" d="M 270 65 L 120 140 M 470 65 L 620 140"/>
+<rect class="node" x="15" y="140" width="180" height="160" rx="6"/>
+<text class="t" x="105" y="225" text-anchor="middle">login</text>
+<rect class="node" x="545" y="140" width="180" height="160" rx="6"/>
+<text class="t" x="635" y="225" text-anchor="middle">world</text>
+<rect class="frame" x="220" y="100" width="300" height="240" rx="6"/>
+<text class="t t--title" x="370" y="128" text-anchor="middle">contract</text>
+<path class="wire diagram-directed" d="M 545 170 H 195"/>
+<text class="t" x="370" y="160" text-anchor="middle">LoginPort</text>
+<text class="t t--small" x="370" y="195" text-anchor="middle">admit · leave · changeAccessLevel</text>
+<path class="wire diagram-directed" d="M 195 260 H 545"/>
+<text class="t" x="370" y="250" text-anchor="middle">WorldPort</text>
+<text class="t t--small" x="370" y="285" text-anchor="middle">status · addressFor · kick · expect</text>
+<path class="wire wire--db diagram-directed" d="M 105 300 V 385 M 635 300 V 385"/>
+<text class="t t--db" x="105" y="370" text-anchor="middle">l2jfree_login</text>
+<text class="t t--db" x="635" y="370" text-anchor="middle">l2jfree_world</text>
+<rect class="db" x="20" y="390" width="170" height="55" rx="6"/>
+<text class="t t--db" x="105" y="423" text-anchor="middle">login</text>
+<rect class="db" x="550" y="390" width="170" height="160" rx="6"/>
+<text class="t t--db" x="635" y="423" text-anchor="middle">world</text>
+<text class="t t--db" x="635" y="473" text-anchor="middle">catalog</text>
+<text class="t t--db" x="635" y="523" text-anchor="middle">report</text>
+</svg>
+</div>
+<dl class="contract-detail">
+<dt>platform</dt><dd>Wires login and world through contract.</dd>
+<dt>world → LoginPort → login</dt><dd>admit, leave, changeAccessLevel</dd>
+<dt>login → WorldPort → world</dt><dd>status, addressFor, kick, expect</dd>
+<dt>l2jfree_login → login</dt><dd>The login database role and its schema.</dd>
+<dt>l2jfree_world → world, catalog, report</dt><dd>The world database role and its schemas.</dd>
+</dl>
+<figcaption>Calls cross the typed contract; database access stays within each module's role. Interface names and roles are from release 3.1.1.</figcaption>
+</figure>
+
 <p>That is the whole conversation between the two halves of the server. <code>admit</code> is atomic: when it admits an account, the account counts as in the world and its login session closes, so a second admission of the same account is refused. What used to be a packet exchange with its own failure modes is now a method call with a return value.</p>
 <p>A <code>platform</code> module starts both, wires each to the other's port, and assembles the one distribution. It is the only code that knows both modules exist.</p>
 <h2>Keeping the modules apart</h2>
@@ -105,6 +147,7 @@
 <li>The removed pieces cannot come back unnoticed: <a href="https://github.com/l2go/l2jfree/blob/v3.1.1/l2jfree-platform/src/test/java/com/l2jfree/platform/RemovedLibrariesTest.java"><code>RemovedLibrariesTest</code></a> refuses MySQL, Liquibase, Javolution, Trove, and the old MMOCore network layer that Netty replaced.</li>
 </ul>
 <p>The result is a modular monolith in the plain sense of the words: one thing to deploy, two things to reason about, and a build that keeps them two.</p>
+<div class="aside"><strong>Update, 16 October 2026.</strong> In 3.2 the same idea, a boundary that a check keeps in place, separated the engine from its game world: the world became a directory the engine is pointed at. See part 3, <a href="/l2jfree/notes/an-island-of-our-own/">An island of our own</a>.</div>
 </div>
 <nav class="series" aria-label="Series">
 <a href="/l2jfree/notes/reviving-an-abandoned-mmo-server/"><small>Previous</small><span>Reviving an abandoned MMO server: 2009 → 2026</span></a>
