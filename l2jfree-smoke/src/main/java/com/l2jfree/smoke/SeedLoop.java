@@ -57,7 +57,7 @@ final class SeedLoop
 	private static final int MELEE = 80;
 	/** Far enough that the server's own walk finishes the approach. A tighter step never arrives under load. */
 	private static final int APPROACH = 600;
-	private static final int INTERACT = 120;
+	private static final int INTERACT = 50;
 	/** A beast belongs to a spawn when it stands closer than the next spawn on the grid. */
 	private static final int PLOT = 200;
 	private static final long ATTACK_PAUSE_MILLIS = 1500L;
@@ -559,12 +559,18 @@ final class SeedLoop
 			throws SmokeException
 	{
 		view.dialog = null;
-		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
 		while ((view.dialog == null || !view.dialog.contains(command)) && System.nanoTime() < until)
 		{
 			if (deadline.expired())
 				throw new SmokeException("step talk: the time limit ended");
 
+			// A click from a step short of the merchant does not open the shop. Close the gap first.
+			if (distance(view.x, view.y, npc.x, npc.y) > INTERACT)
+			{
+				stepToward(game, view, deadline, npc.x, npc.y, npc.z);
+				continue;
+			}
 			game.send(GamePackets.action(npc.objectId, view.x, view.y, view.z));
 			game.send(GamePackets.action(npc.objectId, view.x, view.y, view.z));
 			absorb(game, view, deadline, 1000L);
@@ -590,42 +596,22 @@ final class SeedLoop
 			destX = view.x + (int)Math.round(dx / len * STEP);
 			destY = view.y + (int)Math.round(dy / len * STEP);
 		}
-		// A refused step is asked again a little to the side. The shift stays under the gap between
-		// spawns, so the session does not walk onto a neighbour's plot.
-		if (view.missedMoves > 0 && len > 1)
-		{
-			int mag = 36 * (1 + (view.missedMoves % 2));
-			if ((view.missedMoves % 4) >= 2)
-				mag = -mag;
-			destX += (int)Math.round(-dy / len * mag);
-			destY += (int)Math.round(dx / len * mag);
-		}
 		view.acceptedMove = false;
 		game.send(GamePackets.moveBackward(destX, destY, z, view.x, view.y, view.z));
 		// The server walks the character and does not send StopMove when the walk finishes. A second
 		// move before the confirmation cancels the first, and the session then stands on one tile
-		// until the deadline. Wait for that confirmation, and only then for the travel time.
+		// until the deadline. This step sends one move and waits it out.
 		long travel = (long)(Math.min(len, STEP) / RUN_SPEED * 1000L) + 800L;
 		long travelEnd = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(travel);
-		long giveUp = System.nanoTime() + TimeUnit.SECONDS.toNanos(12);
-		while (!view.acceptedMove && System.nanoTime() < giveUp)
+		while (!view.acceptedMove)
 		{
 			if (deadline.expired())
 				throw new SmokeException("step move: the time limit ended");
 
 			poll(game, view, deadline, 200L);
 			if (distance(view.x, view.y, destX, destY) <= MELEE)
-			{
-				view.missedMoves = 0;
 				return;
-			}
 		}
-		if (!view.acceptedMove)
-		{
-			view.missedMoves++;
-			return;
-		}
-		view.missedMoves = 0;
 		while (System.nanoTime() < travelEnd)
 		{
 			if (deadline.expired())
@@ -1212,8 +1198,6 @@ final class SeedLoop
 		private int kills;
 		private boolean firstAnnounced;
 		private boolean acceptedMove;
-		/** Steps whose confirmation never arrived. The next step asks a little to the side. */
-		private int missedMoves;
 		/** Creatures whose death was shown, so a later delete is not mistaken for a living beast. */
 		private final Set<Integer> fallen = new HashSet<>();
 		private int acceptedX;
