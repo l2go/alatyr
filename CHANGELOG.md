@@ -4,6 +4,8 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-10-15
+
 The image runs a new, original world. The world inherited from the 2015 fork is gone from the repository, the image, and the release archive.
 
 ### Added
