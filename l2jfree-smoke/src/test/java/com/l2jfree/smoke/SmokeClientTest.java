@@ -102,4 +102,24 @@ class SmokeClientTest
 		assertThat(result.failure()).isNotBlank();
 		assertThat(result.lines()).anyMatch(line -> line.startsWith("FAIL"));
 	}
+
+	@Test
+	void firstTargetsComeFromTheSessionResults()
+	{
+		java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+		java.io.PrintStream out = new java.io.PrintStream(buffer);
+		SmokeClient.Result one = new SmokeClient.Result(true, java.util.List.of(), null, 10);
+		SmokeClient.Result two = new SmokeClient.Result(true, java.util.List.of(), null, 11);
+
+		assertThat(SmokeClient.distinctFirstTargets(out, java.util.List.of(one, two))).isTrue();
+
+		SmokeClient.Result again = new SmokeClient.Result(true, java.util.List.of(), null, 10);
+		assertThat(SmokeClient.distinctFirstTargets(out, java.util.List.of(one, again))).isFalse();
+		SmokeClient.Result missing = new SmokeClient.Result(true, java.util.List.of(), null, 0);
+		assertThat(SmokeClient.distinctFirstTargets(out, java.util.List.of(one, missing))).isFalse();
+
+		String text = buffer.toString();
+		assertThat(text).contains("session=0 objectId=10").contains("session=1 objectId=11")
+				.contains("session=1 objectId=10").contains("1 distinct object ids for 2 sessions");
+	}
 }

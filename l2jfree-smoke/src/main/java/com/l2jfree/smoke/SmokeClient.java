@@ -18,10 +18,12 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -138,6 +140,7 @@ public final class SmokeClient
 			}
 			
 			final Map<String, Integer> failures = new LinkedHashMap<String, Integer>();
+			final List<Result> results = new ArrayList<Result>();
 			int passed = 0;
 			for (Future<Result> future : futures)
 			{
@@ -150,6 +153,7 @@ public final class SmokeClient
 				{
 					result = new Result(false, List.of(), e.toString(), 0);
 				}
+				results.add(result);
 				if (result.passed())
 					passed++;
 				else
@@ -159,7 +163,10 @@ public final class SmokeClient
 			out.println(passed + " of " + config.sessions() + " sessions passed, " + config.parallel() + " at a time, in "
 					+ (System.nanoTime() - begin) / 1_000_000_000L + " s");
 			failures.forEach((reason, count) -> out.println("FAILED " + count + " x " + reason));
-			return passed == config.sessions();
+			// The registry already kept the objects apart, so it cannot be the proof that the first
+			// targets differ. This reads only what each session recorded.
+			boolean distinct = !config.seedLoop() || distinctFirstTargets(out, results);
+			return passed == config.sessions() && distinct;
 		}
 		finally
 		{
@@ -224,6 +231,31 @@ public final class SmokeClient
 			if (config.seedLoop())
 				targets.releaseSession(sessionIndex);
 		}
+	}
+
+	/**
+	 * Compares the first object each session recorded. The registry is not consulted.
+	 *
+	 * @return false when an id is missing or two sessions recorded the same one
+	 */
+	static boolean distinctFirstTargets(PrintStream out, List<Result> results)
+	{
+		StringBuilder line = new StringBuilder("first targets:");
+		Set<Integer> ids = new HashSet<>();
+		for (int i = 0; i < results.size(); i++)
+		{
+			int objectId = results.get(i).firstObjectId();
+			line.append(" session=").append(i).append(" objectId=").append(objectId);
+			if (objectId != 0)
+				ids.add(objectId);
+		}
+		out.println(line);
+		if (ids.size() == results.size())
+			return true;
+
+		out.println("FAILED first targets: " + ids.size() + " distinct object ids for " + results.size()
+				+ " sessions");
+		return false;
 	}
 
 	static Config parse(String[] args)
