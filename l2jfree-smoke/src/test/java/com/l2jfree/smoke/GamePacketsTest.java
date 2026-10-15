@@ -15,6 +15,7 @@
 package com.l2jfree.smoke;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 
@@ -201,6 +202,68 @@ class GamePacketsTest
 		assertThat(drop.itemId()).isEqualTo(57);
 		assertThat(drop.count()).isEqualTo(6L);
 		assertThat(drop.ownerId()).isZero();
+	}
+
+	@Test
+	void userInfoKeepsExperienceAboveAnInt() throws SmokeException
+	{
+		long experience = 2147483648L;
+		byte[] packet = new PacketWriter().writeC(0x32).writeD(1).writeD(2).writeD(3).writeD(0).writeD(44)
+				.writeS("Fighter").writeD(0).writeD(0).writeD(0).writeD(1).writeQ(experience).writeZeros(6 * 4)
+				.writeD(168).writeD(90).writeD(48).writeD(40).writeD(12).toByteArray();
+
+		assertThat(GamePackets.parseUserInfo(reader(packet)).exp()).isEqualTo(experience);
+	}
+
+	@Test
+	void itemListReadsAnEmptyListAndAdjacentRows() throws SmokeException
+	{
+		PacketWriter empty = new PacketWriter().writeC(0x11).writeH(0).writeH(0);
+		assertThat(GamePackets.parseItemList(reader(empty.toByteArray()))).isEmpty();
+
+		long wide = 2147483648L;
+		PacketWriter writer = new PacketWriter().writeC(0x11).writeH(1).writeH(2);
+		writeItem(writer, 50, 57, wide, false);
+		writeItem(writer, 51, 1060, 1L, true);
+		List<GamePackets.ItemView> items = GamePackets.parseItemList(reader(writer.toByteArray()));
+
+		assertThat(items).containsExactly(new GamePackets.ItemView(50, 57, wide, false),
+				new GamePackets.ItemView(51, 1060, 1L, true));
+	}
+
+	@Test
+	void inventoryUpdateReadsAddModifyAndRemove() throws SmokeException
+	{
+		PacketWriter writer = new PacketWriter().writeC(0x21).writeH(3);
+		writer.writeH(1);
+		writeItem(writer, 50, 57, 4L, false);
+		writer.writeH(2);
+		writeItem(writer, 50, 57, 8L, false);
+		writer.writeH(3);
+		writeItem(writer, 51, 1060, 0L, false);
+
+		assertThat(GamePackets.parseInventoryUpdate(reader(writer.toByteArray()))).containsExactly(
+				new GamePackets.ItemChange(1, new GamePackets.ItemView(50, 57, 4L, false)),
+				new GamePackets.ItemChange(2, new GamePackets.ItemView(50, 57, 8L, false)),
+				new GamePackets.ItemChange(3, new GamePackets.ItemView(51, 1060, 0L, false)));
+	}
+
+	@Test
+	void aCutListIsRejected()
+	{
+		byte[] cut = new PacketWriter().writeC(0x11).writeH(1).writeH(2).toByteArray();
+		assertThatThrownBy(() -> GamePackets.parseItemList(reader(cut))).isInstanceOf(SmokeException.class)
+				.hasMessageContaining("the packet is too short");
+	}
+
+	@Test
+	void skillListReadsAdjacentSkills() throws SmokeException
+	{
+		byte[] packet = new PacketWriter().writeC(0x5f).writeD(2).writeD(1).writeD(1).writeD(3).writeC(0).writeD(1)
+				.writeD(1).writeD(257).writeC(0).toByteArray();
+
+		assertThat(GamePackets.parseSkillList(reader(packet))).containsExactly(new GamePackets.SkillView(3, 1),
+				new GamePackets.SkillView(257, 1));
 	}
 
 	private static PacketReader reader(byte[] packet) throws SmokeException
