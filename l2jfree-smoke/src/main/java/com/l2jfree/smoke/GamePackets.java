@@ -29,6 +29,8 @@ final class GamePackets
 	static final int OP_NEW_CHARACTER_SUCCESS = 0x0d;
 	static final int OP_CHARACTER_CREATE_SUCCESS = 0x0f;
 	static final int OP_CHARACTER_CREATE_FAIL = 0x10;
+	/** ActionFailed.writeImpl writes this opcode and no further fields. */
+	static final int OP_ACTION_FAILED = 0x1f;
 	static final int OP_SERVER_CLOSE = 0x20;
 	static final int OP_USER_INFO = 0x32;
 	static final int OP_KEY_PACKET = 0x2e;

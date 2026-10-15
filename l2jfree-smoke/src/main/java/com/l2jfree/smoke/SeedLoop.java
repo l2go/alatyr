@@ -580,21 +580,16 @@ final class SeedLoop
 			destX = view.x + (int)Math.round(dx / len * STEP);
 			destY = view.y + (int)Math.round(dy / len * STEP);
 		}
-		// A refused step is asked again a little to the side. The shift stays under the gap between
-		// spawns, so the session does not walk onto a neighbour's plot.
-		if (view.missedMoves > 0 && len > 1)
-		{
-			int mag = 36 * (1 + (view.missedMoves % 2));
-			if ((view.missedMoves % 4) >= 2)
-				mag = -mag;
-			destX += (int)Math.round(-dy / len * mag);
-			destY += (int)Math.round(dx / len * mag);
-		}
 		view.acceptedMove = false;
-		game.send(GamePackets.moveBackward(destX, destY, z, view.x, view.y, view.z));
-		// The server walks the character and does not send StopMove when the walk finishes. A second
-		// move before the confirmation cancels the first, and the session then stands on one tile
-		// until the deadline. Wait for that confirmation, and only then for the travel time.
+		view.moveRejected = false;
+		int fromX = view.x;
+		int fromY = view.y;
+		int fromZ = view.z;
+		game.send(GamePackets.moveBackward(destX, destY, z, fromX, fromY, fromZ));
+		// MoveBackwardToLocation.runImpl sends ActionFailed. An accepted move also calls
+		// setIntention(MOVE_TO), and AbstractAI.moveTo then broadcasts MoveToLocation when movement
+		// is enabled. AbstractAI.clientStoppedMoving does not send StopMove for that walk, so after
+		// MoveToLocation the client waits out the travel time and takes the destination from it.
 		long travel = (long)(Math.min(len, STEP) / RUN_SPEED * 1000L) + 800L;
 		long travelEnd = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(travel);
 		long giveUp = System.nanoTime() + TimeUnit.SECONDS.toNanos(12);
@@ -605,17 +600,15 @@ final class SeedLoop
 
 			poll(game, view, deadline, 200L);
 			if (distance(view.x, view.y, destX, destY) <= MELEE)
-			{
-				view.missedMoves = 0;
 				return;
-			}
 		}
 		if (!view.acceptedMove)
 		{
-			view.missedMoves++;
-			return;
+			String answer = view.moveRejected ? "ActionFailed arrived"
+					: "neither MoveToLocation nor ActionFailed arrived";
+			throw new SmokeException("step move: " + answer + " for a step from " + fromX + "," + fromY + "," + fromZ
+					+ " to " + destX + "," + destY + "," + z + "; recent=" + view.recentOpcodes());
 		}
-		view.missedMoves = 0;
 		while (System.nanoTime() < travelEnd)
 		{
 			if (deadline.expired())
@@ -628,7 +621,7 @@ final class SeedLoop
 		adoptDestination(view);
 	}
 
-	/** The server does not send StopMove when a walk finishes, so the last accepted destination is where we are. */
+	/** AbstractAI.clientStoppedMoving does not send StopMove for this walk, so the accepted destination is where we are. */
 	private static void adoptDestination(View view)
 	{
 		if (!view.acceptedMove)
@@ -844,6 +837,7 @@ final class SeedLoop
 				view.npcs.remove(objectId);
 				view.drops.remove(objectId);
 			}
+			case GamePackets.OP_ACTION_FAILED -> view.moveRejected = true;
 			case GamePackets.OP_MOVE_TO_LOCATION ->
 			{
 				int[] move = GamePackets.parseMoveToLocation(in);
@@ -1162,8 +1156,8 @@ final class SeedLoop
 		private int kills;
 		private boolean firstAnnounced;
 		private boolean acceptedMove;
-		/** Steps whose confirmation never arrived. The next step asks a little to the side. */
-		private int missedMoves;
+		/** ActionFailed arrived while this step was waiting for MoveToLocation. */
+		private boolean moveRejected;
 		/** Creatures whose death was shown, so a later delete is not mistaken for a living beast. */
 		private final Set<Integer> fallen = new HashSet<>();
 		private int acceptedX;
