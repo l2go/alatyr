@@ -14,7 +14,7 @@
 	<packaging>pom</packaging>
 	<name>l2jfree-ct2.3 (repository root aggregator)</name>
 	<modules>
-		<module>l2jfree-module</module>
+		<module>engine/java</module>
 	</modules>
 	<build>
 		<plugins>

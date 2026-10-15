@@ -142,7 +142,7 @@ jobs:
       - name: Verify the platform distribution
         shell: bash
         run: |
-          mapfile -t archives < <(find l2jfree-platform/target -maxdepth 1 -name 'l2jfree-platform-*-dist.zip' -print)
+          mapfile -t archives < <(find engine/java/platform/target -maxdepth 1 -name 'l2jfree-platform-*-dist.zip' -print)
           if [[ ${#archives[@]} -ne 1 ]]; then
             echo "Expected one platform distribution, found ${#archives[@]}"
             exit 1
@@ -231,8 +231,8 @@ jobs:
         run: |
           version="$(./mvnw -q -N org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate -Dexpression=project.version -DforceStdout)"
           mkdir -p dist
-          cp "l2jfree-platform/target/l2jfree-platform-${version}-dist.zip" dist/
-          cp "l2jfree-smoke/target/l2jfree-smoke-${version}.jar" dist/l2jfree-smoke.jar
+          cp "engine/java/platform/target/l2jfree-platform-${version}-dist.zip" dist/
+          cp "engine/java/smoke/target/l2jfree-smoke-${version}.jar" dist/l2jfree-smoke.jar
           cp target/bom.json "dist/l2jfree-${version}-sbom.json"
           cp target/vulnerability-report.json "dist/l2jfree-${version}-vulnerability-report.json"
 
@@ -265,8 +265,8 @@ jobs:
             -Dsurefire.excludedGroups= \
             -Dl2jfree.build.revision=${{ github.sha }} \
             verify
-          reports="$(find l2jfree-core/target/surefire-reports l2jfree-login/target/surefire-reports -name 'TEST-*.xml' | wc -l | tr -d '[:space:]')"
-          expected="$(grep -rl '@Tag("integration")' --include='*.java' l2jfree-core/src/test l2jfree-login/src/test | wc -l | tr -d '[:space:]')"
+          reports="$(find engine/java/game/target/surefire-reports engine/java/login/target/surefire-reports -name 'TEST-*.xml' | wc -l | tr -d '[:space:]')"
+          expected="$(grep -rl '@Tag("integration")' --include='*.java' engine/java/game/src/test engine/java/login/src/test | wc -l | tr -d '[:space:]')"
           echo "integration reports: ${reports} of ${expected} tagged classes"
           test "${expected}" -gt 0
           test "${reports}" -ge "${expected}"
@@ -278,8 +278,8 @@ jobs:
           name: l2jfree-database-checks
           if-no-files-found: ignore
           path: |
-            l2jfree-core/target/statement-check.txt
-            l2jfree-core/target/database-docs/*
+            engine/java/game/target/statement-check.txt
+            engine/java/game/target/database-docs/*
 
   # Builds the Platform 3.0 image from the verified platform distribution,
   # starts the stack with Docker Compose, and probes the login and world ports.

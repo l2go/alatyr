@@ -80,7 +80,7 @@ Java Flight Recorder keeps the last 12 hours. PostgreSQL counts every statement 
 </tr>
 </table>
 
-The decisions in code: the [architecture rules](l2jfree-platform/src/test/java/com/l2jfree/platform/ArchitectureTest.java) between the modules, a player save in [one transaction](https://github.com/l2go/l2jfree/pull/162), and a weight-check bypass closed by [a wider type](https://github.com/l2go/l2jfree/pull/193). The [engineering notes](https://l2go.github.io/l2jfree/#notes) on the project site take one decision at a time.
+The decisions in code: the [architecture rules](engine/java/platform/src/test/java/com/l2jfree/platform/ArchitectureTest.java) between the modules, a player save in [one transaction](https://github.com/l2go/l2jfree/pull/162), and a weight-check bypass closed by [a wider type](https://github.com/l2go/l2jfree/pull/193). The [engineering notes](https://l2go.github.io/l2jfree/#notes) on the project site take one decision at a time.
 
 ## Architecture
 
@@ -127,7 +127,7 @@ Login owns the `login` schema; world owns `world`, `catalog`, and `report`. At s
 
 ## Origin, trademarks, and license
 
-L2JFree is an open-source Lineage II server from the L2J community; its history in this repository starts in 2006. This repository revives [l2jfree/l2jfree-ct2.3](https://github.com/l2jfree/l2jfree-ct2.3), archived since 2016, a descendant of [savormix/l2jfree-genesis](https://github.com/savormix/l2jfree-genesis); the upstream [README](UPSTREAM_README.md) is kept unchanged. The work here is modernization: the code moved to Java 25 and PostgreSQL 18, login and world joined in one process, a player save became one transaction, and economy exploits and concurrency races were closed, with regression checks in CI. It adds no game content, and it does not modify, patch, or distribute the game client.
+L2JFree is an open-source Lineage II server from the L2J community; its history in this repository starts in 2006. This repository revives [l2jfree/l2jfree-ct2.3](https://github.com/l2jfree/l2jfree-ct2.3), archived since 2016, a descendant of [savormix/l2jfree-genesis](https://github.com/savormix/l2jfree-genesis); the upstream [README](https://github.com/l2go/l2jfree/blob/6ead790c93a1bae8150ef23090098b4669e342b0/UPSTREAM_README.md) is kept unchanged. The work here is modernization: the code moved to Java 25 and PostgreSQL 18, login and world joined in one process, a player save became one transaction, and economy exploits and concurrency races were closed, with regression checks in CI. It adds no game content, and it does not modify, patch, or distribute the game client.
 
 Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial project, not affiliated with, endorsed, or sponsored by NCSOFT. The names say only which game client the server works with. The repository holds no game client, no client files, and no NCSOFT software, and no server is hosted. The datapack came with the fork and was not reviewed.
 
