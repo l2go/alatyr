@@ -613,11 +613,11 @@ final class SeedLoop
 		view.acceptedMove = false;
 		game.send(GamePackets.moveBackward(destX, destY, z, view.x, view.y, view.z));
 		// The server walks the character and does not send StopMove when the walk finishes. A second
-		// move before the confirmation cancels the first. Wait for the confirmation, but not forever:
-		// a move the server never accepted must be asked again or the session stands until the deadline.
+		// move before the confirmation cancels the first, and the session then stands on one tile
+		// until the deadline. Wait for that confirmation, and only then for the travel time.
 		long travel = (long)(Math.min(len, STEP) / RUN_SPEED * 1000L) + 800L;
 		long travelEnd = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(travel);
-		long giveUp = System.nanoTime() + TimeUnit.SECONDS.toNanos(8);
+		long giveUp = System.nanoTime() + TimeUnit.SECONDS.toNanos(12);
 		while (!view.acceptedMove && System.nanoTime() < giveUp)
 		{
 			if (deadline.expired())
@@ -633,15 +633,6 @@ final class SeedLoop
 		if (!view.acceptedMove)
 		{
 			view.missedMoves++;
-			// Several silent steps means the confirmation is not coming. Continue from the point that
-			// was asked for so the next step is not the same cancelled walk.
-			if (view.missedMoves >= 3)
-			{
-				view.x = destX;
-				view.y = destY;
-				view.z = z;
-				view.missedMoves = 0;
-			}
 			return;
 		}
 		view.missedMoves = 0;
