@@ -39,7 +39,8 @@ class SmokeClientTest
 				"--world-port", "7778", "--protocol-revision", "83", "--timeout-seconds", "30", "--account", "anna",
 				"--password", "secret", "--existing-characters", "1" });
 		
-		assertThat(config).isEqualTo(new SmokeClient.Config("example.org", 2107, 7778, 83, 30, "anna", "secret", 1, 1, 1));
+		assertThat(config).isEqualTo(new SmokeClient.Config("example.org", 2107, 7778, 83, 30, "anna", "secret", 1, 1, 1,
+				"default"));
 	}
 	
 	@Test
@@ -77,12 +78,22 @@ class SmokeClientTest
 				.hasMessageContaining("--account does not fit");
 		assertThatThrownBy(() -> SmokeClient.parse(new String[] { "--existing-characters", "1" }))
 				.hasMessageContaining("needs --account");
+		assertThatThrownBy(() -> SmokeClient.parse(new String[] { "--scenario", "other" }))
+				.hasMessageContaining("--scenario");
+	}
+
+	@Test
+	void theScenarioDefaultsToTheShortSessionAndTheSeedLoopIsNamed()
+	{
+		assertThat(SmokeClient.parse(new String[0]).scenario()).isEqualTo("default");
+		assertThat(SmokeClient.parse(new String[] { "--scenario", "seed-loop" }).scenario()).isEqualTo("seed-loop");
 	}
 	
 	@Test
 	void aRunAgainstNothingFailsWithAReasonAndDoesNotThrow()
 	{
-		SmokeClient.Config config = new SmokeClient.Config("127.0.0.1", 1, 1, 87, 5, null, null, SmokeClient.Config.UNCHECKED, 1, 1);
+		SmokeClient.Config config = new SmokeClient.Config("127.0.0.1", 1, 1, 87, 5, null, null,
+				SmokeClient.Config.UNCHECKED, 1, 1, "default");
 		Reporter reporter = new Reporter(new java.io.PrintStream(java.io.OutputStream.nullOutputStream()));
 		
 		SmokeClient.Result result = SmokeClient.run(config, reporter);
@@ -90,5 +101,25 @@ class SmokeClientTest
 		assertThat(result.passed()).isFalse();
 		assertThat(result.failure()).isNotBlank();
 		assertThat(result.lines()).anyMatch(line -> line.startsWith("FAIL"));
+	}
+
+	@Test
+	void firstTargetsComeFromTheSessionResults()
+	{
+		java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+		java.io.PrintStream out = new java.io.PrintStream(buffer);
+		SmokeClient.Result one = new SmokeClient.Result(true, java.util.List.of(), null, 10);
+		SmokeClient.Result two = new SmokeClient.Result(true, java.util.List.of(), null, 11);
+
+		assertThat(SmokeClient.distinctFirstTargets(out, java.util.List.of(one, two))).isTrue();
+
+		SmokeClient.Result again = new SmokeClient.Result(true, java.util.List.of(), null, 10);
+		assertThat(SmokeClient.distinctFirstTargets(out, java.util.List.of(one, again))).isFalse();
+		SmokeClient.Result missing = new SmokeClient.Result(true, java.util.List.of(), null, 0);
+		assertThat(SmokeClient.distinctFirstTargets(out, java.util.List.of(one, missing))).isFalse();
+
+		String text = buffer.toString();
+		assertThat(text).contains("session=0 objectId=10").contains("session=1 objectId=11")
+				.contains("session=1 objectId=10").contains("1 distinct object ids for 2 sessions");
 	}
 }

@@ -35,6 +35,12 @@ final class FramedConnection implements AutoCloseable
 	private final InputStream _in;
 	private final OutputStream _out;
 	private final Deadline _deadline;
+	/** Header bytes already taken from the socket for a frame that is not complete yet. */
+	private final byte[] _pendingHeader = new byte[2];
+	private int _pendingHeaderGot;
+	/** Body bytes already taken for that same frame. Null until the header is complete. */
+	private byte[] _pendingBody;
+	private int _pendingBodyGot;
 
 	private FramedConnection(Socket socket, Deadline deadline) throws IOException
 	{
@@ -121,6 +127,10 @@ final class FramedConnection implements AutoCloseable
 
 	/**
 	 * Reads one frame.
+	 * <p>
+	 * Bytes already taken from the socket stay on this connection when the wait ends first. The next
+	 * call continues the same frame. {@link SmokeException.Kind#TIMEOUT} means a complete frame has
+	 * not arrived; the bytes already read are not discarded.
 	 *
 	 * @param maxWaitMillis the longest time to wait for the whole frame; the time limit of the run
 	 *            applies as well
@@ -136,46 +146,66 @@ final class FramedConnection implements AutoCloseable
 		}
 
 		long until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(wait);
-		byte[] header = readFully(2, until, true);
-		int length = (header[0] & 0xff) | ((header[1] & 0xff) << 8);
-		if (length < 2)
-			throw new SmokeException("the server sent a frame with the invalid length " + length);
+		while (_pendingHeaderGot < 2)
+		{
+			int n = readOnce(_pendingHeader, _pendingHeaderGot, 2 - _pendingHeaderGot, until, _pendingHeaderGot == 0);
+			_pendingHeaderGot += n;
+		}
+		if (_pendingBody == null)
+		{
+			int length = (_pendingHeader[0] & 0xff) | ((_pendingHeader[1] & 0xff) << 8);
+			if (length < 2)
+				throw new SmokeException("the server sent a frame with the invalid length " + length);
 
-		return readFully(length - 2, until, false);
+			_pendingBody = new byte[length - 2];
+			_pendingBodyGot = 0;
+		}
+		while (_pendingBodyGot < _pendingBody.length)
+		{
+			int n = readOnce(_pendingBody, _pendingBodyGot, _pendingBody.length - _pendingBodyGot, until, false);
+			_pendingBodyGot += n;
+		}
+		byte[] payload = _pendingBody;
+		_pendingHeaderGot = 0;
+		_pendingBody = null;
+		_pendingBodyGot = 0;
+		return payload;
 	}
 
-	private byte[] readFully(int count, long untilNanos, boolean atFrameStart) throws SmokeException
+	/**
+	 * @param atFrameStart true only when nothing of this frame has been read yet
+	 * @return how many bytes were read; at least one
+	 */
+	private int readOnce(byte[] data, int offset, int count, long untilNanos, boolean atFrameStart)
+			throws SmokeException
 	{
-		byte[] data = new byte[count];
-		int read = 0;
-		while (read < count)
+		long left = TimeUnit.NANOSECONDS.toMillis(untilNanos - System.nanoTime());
+		if (left <= 0L)
+			throw timeout();
+
+		try
 		{
-			long left = TimeUnit.NANOSECONDS.toMillis(untilNanos - System.nanoTime());
-			if (left <= 0L)
+			_socket.setSoTimeout((int)Math.min(left, Integer.MAX_VALUE));
+			int n = _in.read(data, offset, count);
+			if (n < 0)
+			{
+				throw new SmokeException(SmokeException.Kind.CLOSED,
+						offset == 0 && atFrameStart ? "the server closed the connection"
+								: "the server closed the connection in the middle of a packet");
+			}
+			if (n == 0)
 				throw timeout();
 
-			try
-			{
-				_socket.setSoTimeout((int)Math.min(left, Integer.MAX_VALUE));
-				int n = _in.read(data, read, count - read);
-				if (n < 0)
-				{
-					throw new SmokeException(SmokeException.Kind.CLOSED,
-							read == 0 && atFrameStart ? "the server closed the connection"
-									: "the server closed the connection in the middle of a packet");
-				}
-				read += n;
-			}
-			catch (SocketTimeoutException e)
-			{
-				throw timeout();
-			}
-			catch (IOException e)
-			{
-				throw new SmokeException(SmokeException.Kind.CLOSED, "the connection to the server broke: " + e, e);
-			}
+			return n;
 		}
-		return data;
+		catch (SocketTimeoutException e)
+		{
+			throw timeout();
+		}
+		catch (IOException e)
+		{
+			throw new SmokeException(SmokeException.Kind.CLOSED, "the connection to the server broke: " + e, e);
+		}
 	}
 
 	private SmokeException timeout()

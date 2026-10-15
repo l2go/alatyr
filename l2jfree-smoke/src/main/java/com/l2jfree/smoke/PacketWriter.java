@@ -47,6 +47,12 @@ final class PacketWriter
 		return this;
 	}
 
+	/** A little-endian 64-bit word, the final-protocol form of a compressed quantity. */
+	PacketWriter writeQ(long value)
+	{
+		return writeD((int)value).writeD((int)(value >>> 32));
+	}
+
 	PacketWriter writeB(byte[] data)
 	{
 		_out.writeBytes(data);

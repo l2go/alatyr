@@ -570,11 +570,16 @@ public class L2Attackable extends L2Npc
 						drops.add(new HuntRewards.Drop(item.getItemId(), 1));
 			}
 			HuntRewards.Result result = HuntRewards.calculate(snapshot, drops);
+			// Several sides, or the one side that is a party, pay the snapshot taken at death.
+			// A party that is alone does not wait for a later pickup: a member who leaves still
+			// keeps the share, and a member who joins afterwards does not receive one.
+			// A lone player still drops on the ground.
 			boolean shared = sides.size() > 1;
 			Map<Long, List<L2Player>> recipients = new LinkedHashMap<>();
 			for (HuntRewards.SideReward side : result.sides())
 			{
 				HuntSide runtime = _huntSides.get(side.sideId());
+				boolean atDeath = shared || runtime.party != null;
 				recipients.put(side.sideId(), side.players().stream().map(reward -> players.get(reward.playerId())).toList());
 				for (HuntRewards.PlayerReward reward : side.players())
 				{
@@ -591,12 +596,12 @@ public class L2Attackable extends L2Npc
 						}
 						player.updateVitalityPoints(getVitalityPoints((int)(side.damage() / side.players().size())), true, false);
 					}
-					if (shared && reward.coins() > 0)
+					if (atDeath && reward.coins() > 0)
 						player.addAdena("Hunt", reward.coins(), this, true);
 				}
-				if (shared && runtime.party != null)
+				if (atDeath && runtime.party != null)
 					runtime.party.setCoinCursor(side.nextCoinCursor());
-				if (!shared && !side.unclaimed() && side.coins() > 0 && runtime.representative != null)
+				if (!atDeath && !side.unclaimed() && side.coins() > 0 && runtime.representative != null)
 					dropItem(runtime.representative, HuntRewards.ADENA, Math.toIntExact(side.coins()));
 			}
 			for (HuntRewards.ItemReward reward : result.items())
@@ -604,9 +609,10 @@ public class L2Attackable extends L2Npc
 				HuntSide runtime = _huntSides.get(reward.sideId());
 				if (reward.unclaimed() || runtime.representative == null)
 					continue;
-				L2Player owner = runtime.party == null || !shared ? runtime.representative
+				boolean atDeath = shared || runtime.party != null;
+				L2Player owner = runtime.party == null || !atDeath ? runtime.representative
 						: runtime.party.getHuntLooter(runtime.representative, reward.drop().itemId(), this, recipients.get(reward.sideId()));
-				dropHuntItem(owner, reward.drop(), shared);
+				dropHuntItem(owner, reward.drop(), atDeath);
 			}
 			if (shared && _log.isDebugEnabled())
 				_log.debug("Hunt life=" + snapshot.lifeId() + " sides=" + result.sides() + " items=" + result.items());
@@ -622,9 +628,9 @@ public class L2Attackable extends L2Npc
 		}
 	}
 
-	private void dropHuntItem(L2Player owner, HuntRewards.Drop drop, boolean shared)
+	private void dropHuntItem(L2Player owner, HuntRewards.Drop drop, boolean atDeath)
 	{
-		if (!shared)
+		if (!atDeath)
 		{
 			dropItem(owner, drop.itemId(), Math.toIntExact(drop.count()));
 			return;
