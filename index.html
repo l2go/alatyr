@@ -269,6 +269,7 @@
       <li class="lit reveal"><time datetime="2026-10-05">Oct 2026</time><div><h3>Platform 3.0 decided</h3><p>The 2.x line is retired, and the decisions for one process on PostgreSQL 18 are recorded. GitHub Actions is the only build of record.</p></div></li>
       <li class="lit reveal"><time datetime="2026-10-11">Oct 2026</time><div><h3>3.0.0</h3><p>Six days later: one process, PostgreSQL 18 with a schema and a role per module, a signed image, and a pipeline that plays it on every merge.</p></div></li>
       <li class="lit reveal"><time datetime="2026-10-12">Oct 2026</time><div><h3>3.1.0 and 3.1.1</h3><p>Economy and login defects closed by their invariants, a signature for the release archive, and a measured start.</p></div></li>
+      <li class="lit reveal"><time datetime="2026-10-15">Oct 2026</time><div><h3>3.2.0</h3><p>The server leaves the inherited world behind and ships Okolitsa, an original world built by a Go tool from source files that use text keys. Monsters reward the players who fought them.</p></div></li>
     </ol>
   </div>
 </section>
@@ -314,13 +315,15 @@
         <li>The compose archive of a release carries the Sigstore bundle of its own provenance.</li>
       </ul>
     </div>
-<pre class="code reveal">cosign verify ghcr.io/l2go/l2jfree:3.1.1 \
+<pre class="code reveal">VERSION=3.2.0
+cosign verify ghcr.io/l2go/l2jfree:$VERSION \
   --certificate-identity https://github.com/l2go/l2jfree/.github/workflows/build.yml@refs/heads/main \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
+gh attestation verify oci://ghcr.io/l2go/l2jfree:$VERSION --repo l2go/l2jfree
 
-gh release download v3.1.1 --repo l2go/l2jfree
-gh attestation verify l2jfree-3.1.1-compose.tar.gz --repo l2go/l2jfree \
-  --bundle l2jfree-3.1.1-compose.tar.gz.sigstore.json \
+gh release download v$VERSION --repo l2go/l2jfree
+gh attestation verify l2jfree-$VERSION-compose.tar.gz --repo l2go/l2jfree \
+  --bundle l2jfree-$VERSION-compose.tar.gz.sigstore.json \
   --signer-workflow l2go/l2jfree/.github/workflows/release.yml</pre>
   </div>
 </section>
@@ -338,7 +341,7 @@ gh attestation verify l2jfree-3.1.1-compose.tar.gz --repo l2go/l2jfree \
         <a href="https://github.com/l2go/l2jfree/blob/main/SECURITY.md">Security</a>
       </nav>
     </div>
-    <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server; it adds no game content, and it does not modify, patch, or distribute the game client.</p>
+    <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server. Since 3.2 it ships no data inherited from the fork; its world, Okolitsa, is original content. It does not modify, patch, or distribute the game client.</p>
     <p>The code is under the GNU GPLv3. Banner art generated with AI. Cinzel typeface under the SIL Open Font License. <a class="sigma" href="/l2jfree/numbers/" title="The numbers">Σ</a></p>
   </div>
 </footer>
