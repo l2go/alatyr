@@ -129,9 +129,23 @@ class SeedLoopTest
 
 		SeedLoop.markBeastDead(south, objectId);
 		targets.release(5, objectId);
+		// 4242 stays south's first target after the claim is released. North still sees it alive.
+		assertThat(SeedLoop.claimNearest(north, targets, reporter)).isNull();
+		assertThat(north.firstObjectId).isZero();
+		SeedLoop.placeBeast(north, 4243, x, 258303, -3104, "NpcInfo");
 		assertThat(SeedLoop.claimNearest(north, targets, reporter)).isNotNull();
+		assertThat(north.firstObjectId).isEqualTo(4243);
+		SeedLoop.forgetBeast(north, 4243);
+		assertThat(SeedLoop.claimNearest(north, targets, reporter)).isNotNull();
+		assertThat(north.firstObjectId).isEqualTo(4243);
 		assertThat(SeedLoop.claimNearest(south, targets, reporter)).isNull();
-		assertThat(north.firstObjectId).isEqualTo(objectId);
+
+		java.io.ByteArrayOutputStream check = new java.io.ByteArrayOutputStream();
+		SmokeClient.Result southResult = new SmokeClient.Result(true, java.util.List.of(), null, south.firstObjectId);
+		SmokeClient.Result northResult = new SmokeClient.Result(true, java.util.List.of(), null, north.firstObjectId);
+		assertThat(SmokeClient.distinctFirstTargets(new PrintStream(check), java.util.List.of(southResult, northResult)))
+				.isTrue();
+		assertThat(check.toString()).contains("session=0 objectId=4242").contains("session=1 objectId=4243");
 	}
 
 	@Test
@@ -147,7 +161,14 @@ class SeedLoopTest
 
 		SeedLoop.forgetBeast(owner, 7);
 		targets.release(5, 7);
+		assertThat(SeedLoop.claimNearest(other, targets, reporter)).isNull();
+		assertThat(other.firstObjectId).isZero();
+		SeedLoop.placeBeast(other, 9, -69637, 258303, -3104, "NpcInfo");
 		assertThat(SeedLoop.claimNearest(other, targets, reporter)).isNotNull();
+		assertThat(other.firstObjectId).isEqualTo(9);
+		SeedLoop.forgetBeast(other, 9);
+		assertThat(SeedLoop.claimNearest(other, targets, reporter)).isNotNull();
+		assertThat(other.firstObjectId).isEqualTo(9);
 		assertThat(SeedLoop.claimNearest(owner, targets, reporter)).isNull();
 	}
 
@@ -161,9 +182,14 @@ class SeedLoopTest
 		SeedLoop.FirstTargets targets = new SeedLoop.FirstTargets();
 		Reporter reporter = reporter();
 		assertThat(SeedLoop.claimNearest(owner, targets, reporter)).isNotNull();
+		SeedLoop.placeBeast(other, 9, -69637, 258303, -3104, "NpcInfo");
+		assertThat(SeedLoop.claimNearest(other, targets, reporter)).isNotNull();
+		assertThat(other.firstObjectId).isEqualTo(9);
+		SeedLoop.forgetBeast(other, 9);
 
 		targets.release(5, 7);
 		assertThat(SeedLoop.claimNearest(other, targets, reporter)).isNotNull();
+		assertThat(other.firstObjectId).isEqualTo(9);
 		assertThat(SeedLoop.claimNearest(owner, targets, reporter)).isNull();
 	}
 
@@ -184,6 +210,7 @@ class SeedLoopTest
 
 		targets.releaseSession(5);
 		assertThat(SeedLoop.claimNearest(other, targets, reporter)).isNotNull();
+		assertThat(other.firstObjectId).isEqualTo(7);
 		SeedLoop.forgetBeast(other, 8);
 		assertThat(SeedLoop.claimNearest(other, targets, reporter)).isNotNull();
 		assertThat(SeedLoop.claimNearest(owner, targets, reporter)).isNull();

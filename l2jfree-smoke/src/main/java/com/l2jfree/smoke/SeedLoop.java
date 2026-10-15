@@ -15,13 +15,13 @@
 package com.l2jfree.smoke;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -281,10 +281,11 @@ final class SeedLoop
 
 	/**
 	 * Session i hunts the two spawns i and i + 24. The target is the nearest living template 18003
-	 * within {@link #REACH} of one of those points, and not claimed by another session. The claim is
-	 * taken here, before the walk and before the attack, and kept until the beast dies, leaves the
-	 * known list, the kill wait ends, or the session ends. While both points are empty the session
-	 * waits out the corpse and the respawn; a quiet server during that wait is not a failed read.
+	 * within {@link #REACH} of one of those points, and not claimed by another session. Until this
+	 * session has a first target, an object that was already some session's first target is skipped.
+	 * The claim is taken here, before the walk and before the attack, and kept until the beast dies,
+	 * leaves the known list, the kill wait ends, or the session ends. While both points are empty the
+	 * session waits out the corpse and the respawn; a quiet server during that wait is not a failed read.
 	 * <p>
 	 * The recorded wait starts when this search begins and ends when a beast is chosen. The walk to
 	 * the plot is part of it. The walk to the merchant or the trainer is not.
@@ -320,7 +321,9 @@ final class SeedLoop
 
 	/**
 	 * Claims the nearest living beast within {@link #REACH} of this session's plots. A beast another
-	 * session already holds is refused here and is not returned. Returns null when nothing is free.
+	 * session already holds, and a beast that was already another session's first target, is refused
+	 * here and is not returned. After this session has its own first target, a released beast may be
+	 * claimed again. Returns null when nothing is free.
 	 */
 	static Actor claimNearest(View view, FirstTargets targets, Reporter reporter)
 	{
@@ -352,24 +355,30 @@ final class SeedLoop
 
 			Claim mine = new Claim(view.sessionIndex, chosen.objectId, spawn, chosen.x, chosen.y, chosen.z, view.x,
 					view.y, chosen.positionSource);
-			Claim owner = targets.claim(mine);
-			if (owner != null)
+			boolean asFirst = view.firstObjectId == 0;
+			ClaimDecision decision = targets.take(mine, asFirst);
+			if (decision.activeOwner != null)
 			{
-				reporter.info(tag(view) + " claim-taken " + claimText(mine) + " owner " + claimText(owner));
+				reporter.info(tag(view) + " claim-taken " + claimText(mine) + " owner " + claimText(decision.activeOwner));
 				refused.add(chosen.objectId);
 				continue;
 			}
-			if (targets.fresh(chosen.objectId, mine))
+			if (decision.firstSession != null)
 			{
-				if (view.firstObjectId == 0)
-				{
-					view.firstObjectId = chosen.objectId;
-					if (view.firstObjectIdOut != null)
-						view.firstObjectIdOut[0] = chosen.objectId;
-					reporter.info(tag(view) + " first-target objectId=" + chosen.objectId + " spawn=" + spawn);
-				}
-				reporter.info(tag(view) + " claim " + claimText(mine));
+				reporter.info(tag(view) + " claim-taken " + claimText(mine) + " owner session=" + decision.firstSession
+						+ " first-target");
+				refused.add(chosen.objectId);
+				continue;
 			}
+			if (decision.inserted && asFirst)
+			{
+				view.firstObjectId = chosen.objectId;
+				if (view.firstObjectIdOut != null)
+					view.firstObjectIdOut[0] = chosen.objectId;
+				reporter.info(tag(view) + " first-target objectId=" + chosen.objectId + " spawn=" + spawn);
+			}
+			if (decision.inserted)
+				reporter.info(tag(view) + " claim " + claimText(mine));
 			return chosen;
 		}
 	}
@@ -437,47 +446,79 @@ final class SeedLoop
 	}
 
 	/**
-	 * Objects claimed by the sessions of one launch. The claim is the owner. A second session does not
-	 * replace it.
+	 * Objects claimed by the sessions of one launch. The active claim is released when the beast dies,
+	 * leaves the known list, the kill wait ends, or the session ends. The first target each session was
+	 * given is kept for the whole launch: another session may fight that beast later, but not take it as
+	 * its own first target. Each session reads death and disappearance on its own connection, so one can
+	 * release an object the other still sees alive.
 	 */
 	static final class FirstTargets
 	{
-		private final ConcurrentHashMap<Integer, Claim> _owners = new ConcurrentHashMap<>();
+		private final Object _lock = new Object();
+		private final Map<Integer, Claim> _owners = new HashMap<>();
+		/** First target of a session. Entries are never removed. */
+		private final Map<Integer, Integer> _firsts = new HashMap<>();
 
-		/** The claim just inserted, so the caller can log it once. A repeat by the same session is not fresh. */
-		private final ConcurrentHashMap<Integer, Claim> _fresh = new ConcurrentHashMap<>();
-
-		/** @return the claim already held by another session, or null when this session holds it */
-		Claim claim(Claim mine)
+		/**
+		 * Claims the object and, when this is the session's first target, records that fact. The two
+		 * writes happen together: a refusal leaves both maps unchanged.
+		 */
+		ClaimDecision take(Claim mine, boolean asFirst)
 		{
-			Claim previous = _owners.putIfAbsent(mine.objectId, mine);
-			if (previous == null)
+			synchronized (_lock)
 			{
-				_fresh.put(mine.objectId, mine);
-				return null;
+				Claim previous = _owners.get(mine.objectId);
+				if (previous != null && previous.sessionIndex != mine.sessionIndex)
+					return new ClaimDecision(previous, null, false);
+
+				if (asFirst)
+				{
+					Integer recorded = _firsts.get(mine.objectId);
+					if (recorded != null && recorded != mine.sessionIndex)
+						return new ClaimDecision(null, recorded, false);
+				}
+				boolean inserted = previous == null;
+				if (inserted)
+					_owners.put(mine.objectId, mine);
+				if (asFirst)
+					_firsts.putIfAbsent(mine.objectId, mine.sessionIndex);
+				return new ClaimDecision(null, null, inserted);
 			}
-			if (previous.sessionIndex == mine.sessionIndex)
-				return null;
-
-			return previous;
 		}
 
-		/** @return true once, for the claim this call inserted */
-		boolean fresh(int objectId, Claim mine)
-		{
-			return _fresh.remove(objectId, mine);
-		}
-
-		/** Drops this session's claim. Another session's claim is left as it is. */
+		/** Drops this session's claim. The first-target record stays. */
 		void release(int sessionIndex, int objectId)
 		{
-			_owners.compute(objectId, (id, held) -> held != null && held.sessionIndex == sessionIndex ? null : held);
+			synchronized (_lock)
+			{
+				Claim held = _owners.get(objectId);
+				if (held != null && held.sessionIndex == sessionIndex)
+					_owners.remove(objectId);
+			}
 		}
 
-		/** Drops every claim this session still holds. A failed session must not keep the beasts. */
+		/** Drops every claim this session still holds. First-target records stay. */
 		void releaseSession(int sessionIndex)
 		{
-			_owners.entrySet().removeIf(entry -> entry.getValue().sessionIndex == sessionIndex);
+			synchronized (_lock)
+			{
+				_owners.entrySet().removeIf(entry -> entry.getValue().sessionIndex == sessionIndex);
+			}
+		}
+	}
+
+	/** Why a claim was refused, or that this call inserted the active claim. */
+	private static final class ClaimDecision
+	{
+		private final Claim activeOwner;
+		private final Integer firstSession;
+		private final boolean inserted;
+
+		private ClaimDecision(Claim activeOwner, Integer firstSession, boolean inserted)
+		{
+			this.activeOwner = activeOwner;
+			this.firstSession = firstSession;
+			this.inserted = inserted;
 		}
 	}
 
