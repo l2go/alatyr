@@ -412,3 +412,16 @@ code { font-family: var(--mono); font-size: .9em; }
   .is-flare .halo, .is-flare .ring { animation: none; }
   .toast { transition: none; }
 }
+
+/* Coordinate map: a fixed dark panel keeps its contrast on parchment too. */
+.island-map { margin: 2rem 0; }
+.island-map svg { width: 100%; height: auto; }
+.island-map .map-ground { fill: #0a0b12; stroke: #8fa3c7; }
+.island-map .map-village { fill: #292419; stroke: #d9a441; stroke-width: 2; }
+.island-map .map-human { fill: #f6d58e; }
+.island-map .map-beast { fill: #8fa3c7; }
+.island-map .map-line { fill: none; stroke: #f1e4c6; stroke-width: 2; }
+.island-map .map-place { fill: #f6d58e; font: 600 22px var(--sans); }
+.island-map .map-label, .island-map .map-number { fill: #f1e4c6; font: 18px var(--sans); }
+.island-map figcaption { margin: .8rem 0; font: .85rem/1.6 var(--sans); }
+.island-map .map-key { font: .9rem/1.6 var(--sans); }
