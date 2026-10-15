@@ -44,7 +44,25 @@ docker compose restart server
 
 The first login creates the account. On a public server, turn this off the same way: `AutoCreateAccounts = False` in `loginserver.properties`.
 
-Leave `DatapackRoot` and `CatalogDirectory` alone: they point into the read-only image.
+## Run another world
+
+A world is one directory: `world.properties`, `catalog/`, and `data/`. The image runs its own world from `/opt/l2jfree/world`. To run another one, mount its directory read-only in `compose.override.yaml`:
+
+```yaml
+services:
+  server:
+    volumes:
+      - /srv/my-world:/world:ro
+```
+
+With the server running, write the directory settings below. Then apply the override with `docker compose up -d --wait`:
+
+```sh
+printf 'DatapackRoot = /world\nCatalogDirectory = /world/catalog\n' | docker compose exec -T server tee /var/lib/l2jfree/config/server.properties >/dev/null
+docker compose up -d --wait
+```
+
+The first line about the world in the log names it: `World id=… version=…`. A missing world or catalog directory stops the start with the key and the path. Characters stay in the database when the world changes. When a character's inventory loads, an item whose template the selected world lacks is skipped, with one warning, and its database row is kept.
 
 ## Backup and restore
 
@@ -70,4 +88,4 @@ docker compose start server
 
 ## Limits
 
-The container runs as user `10001` with a read-only root, no added capabilities, and a 4 GB memory limit. The datapack is read-only, so the GM command `//sortmulti` cannot save multisell files.
+The container runs as user `10001` with a read-only root, no added capabilities, and a 4 GB memory limit. The world directory is read-only, so GM commands that write world files cannot save them.

@@ -16,6 +16,8 @@ docker compose up -d --wait
 
 The first start creates the database passwords and schemas and loads the game content. It takes a few minutes. When the command returns, login answers on port 2106 and the world on 7777. The first login creates the account.
 
+The server runs Okolitsa, the original world in the image. The [deploy guide](https://github.com/l2go/l2jfree/blob/main/deploy/README.md#run-another-world) tells how to run another world.
+
 | Task | Command |
 |---|---|
 | Status | `docker compose ps` |
