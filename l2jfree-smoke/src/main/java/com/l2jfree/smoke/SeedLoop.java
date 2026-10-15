@@ -83,7 +83,7 @@ final class SeedLoop
 			String characterName, int sessionIndex) throws SmokeException
 	{
 		LoginFlow.Session session = LoginFlow.selectWorld(config, deadline, reporter, account, password);
-		View view = new View(sessionIndex);
+		View view = new View(sessionIndex, characterName);
 		try (GameConnection game = connect(config, deadline, reporter, session.world()))
 		{
 			enter(config, deadline, reporter, game, session, account, characterName, true);
@@ -112,7 +112,7 @@ final class SeedLoop
 		}
 
 		LoginFlow.Session again = selectWorldAgain(config, deadline, reporter, account, password);
-		View after = new View(sessionIndex);
+		View after = new View(sessionIndex, characterName);
 		try (GameConnection game = connect(config, deadline, reporter, again.world()))
 		{
 			enter(config, deadline, reporter, game, again, account, characterName, false);
@@ -559,25 +559,15 @@ final class SeedLoop
 			throws SmokeException
 	{
 		view.dialog = null;
-		int empty = 0;
 		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
 		while ((view.dialog == null || !view.dialog.contains(command)) && System.nanoTime() < until)
 		{
 			if (deadline.expired())
 				throw new SmokeException("step talk: the time limit ended");
 
-			// Clicks from a step short of the merchant do not open the shop. Walk up and try again.
-			if (empty >= 4)
-			{
-				stepToward(game, view, deadline, npc.x, npc.y, npc.z);
-				empty = 0;
-				continue;
-			}
 			game.send(GamePackets.action(npc.objectId, view.x, view.y, view.z));
 			game.send(GamePackets.action(npc.objectId, view.x, view.y, view.z));
 			absorb(game, view, deadline, 1000L);
-			if (view.dialog == null || !view.dialog.contains(command))
-				empty++;
 		}
 		if (view.dialog == null || !view.dialog.contains(command))
 			throw new SmokeException("step talk: template " + npc.templateId + " did not open a dialog containing "
@@ -789,6 +779,10 @@ final class SeedLoop
 						|| user.y() < 0 || user.y() > 1_000_000)
 					return;
 				if (view.objectId != 0 && user.objectId() != view.objectId)
+					return;
+				// A slipped frame can carry this opcode and a plausible level. The name is the
+				// character this session created; anything else is not its position or its experience.
+				if (user.name() == null || !user.name().equals(view.characterName))
 					return;
 
 				boolean firstPlace = view.objectId == 0;
@@ -1196,6 +1190,7 @@ final class SeedLoop
 	private static final class View
 	{
 		private final int sessionIndex;
+		private final String characterName;
 		private final Map<Integer, Actor> npcs = new LinkedHashMap<>();
 		private final Map<Integer, GroundItem> drops = new LinkedHashMap<>();
 		private final Map<Integer, Held> items = new LinkedHashMap<>();
@@ -1237,9 +1232,10 @@ final class SeedLoop
 		private int spBeforeLearn;
 		private int spAfterLearn;
 
-		private View(int sessionIndex)
+		private View(int sessionIndex, String characterName)
 		{
 			this.sessionIndex = sessionIndex;
+			this.characterName = characterName;
 		}
 
 		private void noteOpcode(int opcode)
