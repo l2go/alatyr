@@ -4,17 +4,40 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ## [Unreleased]
 
+The image runs a new, original world. The world inherited from the 2015 fork is gone from the repository, the image, and the release archive.
+
+### Added
+
+- Okolitsa, an original world on the island of Buyan, under CC BY-SA 4.0: a village with a trainer and a merchant, and a meadow with beasts for the first levels. Its catalog has 13 tables and 114 rows (#247).
+- `tools/world`, a Go tool that builds the world from source files that refer to text entries by keys in a single string table. It checks that the built world matches its sources and that every text is printable ASCII (#245).
+- The server starts on an empty or partial world and logs one line for each missing component. A missing world or catalog directory stops startup, and the log identifies the configuration key and path (#239).
+- CI starts the image on an empty world and on the authored world. On the authored world, 24 clients create a character, fight, pick up coins, buy and drink a potion, learn a skill, and log out and back in (#247, #257).
+- CodeQL analyzes the Go code (#264).
+- The image check fails when a script fails to load (#265).
+
 ### Changed
 
-- Added the command that verifies a release archive against its Sigstore bundle to the security policy.
-- Added a one-sentence description to the front page; removed its support notice, which the security policy already states.
-- Replaced the front page cards with six engineering decisions and how each is enforced, placed before the architecture; removed the stack line from the banner.
-- Linked the project site at https://l2go.github.io/l2jfree/ from the front page (the banner, a badge, the navigation, and the line under the engineering cards), from the release bundle guide, and from the notes of every release.
-- Named NCSOFT Corporation as the owner of the Lineage II and NCSOFT trademarks on the front page and in the release bundle, and stated that the project is independent, adds no game content, and does not modify or distribute the game client.
+- The image and the release archive carry the authored world in `/opt/l2jfree/world`. `DatapackRoot` defaults to that directory; `CatalogDirectory` defaults to `/opt/l2jfree/world/catalog`. To run another world, set `DatapackRoot` to its root directory and `CatalogDirectory` to its `catalog/` subdirectory (#255).
+- An ordinary monster's rewards reflect the contribution of each solo player or party. Experience and SP are proportional to actual HP damage. Coins and items use contribution weighted by level, with a participation threshold of 10% of the total weight; a solo player or party with at least 60% of the total weight receives the items. Players far above the monster's level have less loot weight. Within a party, experience, SP, and coins are shared equally; items follow the party's loot rules. Only players alive and within reward range when the monster dies receive rewards (#263, #257).
+- When a character's inventory loads, an item whose template the world lacks is skipped, with one warning, and its database row is kept (#239).
+- Flyway sets the session notice level in a callback instead of `initSql` (#239).
+- The Java engine moved to `engine/java`; module artifacts keep their names (#267).
+- The security policy names the command that verifies a release archive; the front page gained a one-sentence description, the engineering cards, the trademark statement, and links to the project site.
 
 ### Fixed
 
-- Releases are titled by their tag, for example `v3.1.1`, instead of `Platform 3.1.1`.
+- Killing a monster gave no experience or SP (#263).
+- A party share of experience was applied twice, and a party lost the coins left over from an equal split (#263).
+- A merchant failed in a world without castles (#242). Entering the world failed without a dimensional rift (#251) and logged errors for lairs without a zone (#253) and for castles without a zone (#259). The hourly door task logged an error in a world without that door (#257).
+- A script rejected before loading, such as a Java script without bytecode, was missing from the loading summary (#249).
+- A broken extensions file was reported as missing (#243).
+- Releases are titled by their tag, for example `v3.1.1`.
+
+### Removed
+
+- The world inherited from the 2015 fork: 17,129 files of data, scripts, and pages (#255). The Python syntax check went with its scripts.
+- The images and archives of releases before 3.2.0.
+- `UPSTREAM_README.md`; it remains in the history (#267).
 
 ## [3.1.1] - 2026-10-12
 

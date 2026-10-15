@@ -8,7 +8,7 @@
 [![Build](https://img.shields.io/github/actions/workflow/status/l2go/l2jfree/build.yml?branch=main&style=for-the-badge&label=build&logo=githubactions&logoColor=white&labelColor=1a1610)](https://github.com/l2go/l2jfree/actions/workflows/build.yml)
 [![Release](https://img.shields.io/github/v/release/l2go/l2jfree?sort=semver&display_name=tag&style=for-the-badge&logo=github&logoColor=white&labelColor=1a1610&color=d9a441)](https://github.com/l2go/l2jfree/releases)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/l2go/l2jfree?label=openssf%20scorecard&style=for-the-badge&labelColor=1a1610)](https://scorecard.dev/viewer/?uri=github.com/l2go/l2jfree)
-[![License: GPLv3](https://img.shields.io/badge/license-GPLv3-c9a86a?style=for-the-badge&labelColor=1a1610)](LICENSE)
+[![License: GPLv3 · AGPLv3 · CC BY-SA](https://img.shields.io/badge/license-GPLv3%20%C2%B7%20AGPLv3%20%C2%B7%20CC%20BY--SA-c9a86a?style=for-the-badge&labelColor=1a1610)](#origin-trademarks-and-license)
 
 ### One process · Two ports · One command
 
@@ -28,6 +28,8 @@ docker compose up -d --wait
 ```
 
 The first start runs the `edge` image and takes a few minutes. When the command returns, login answers on port **2106** and the world on **7777**. The first login creates the account.
+
+Out of the box the server runs **Okolitsa**, a small original world on the island of Buyan: a village with a trainer and a merchant, and a meadow with beasts for the first levels. To run another world, see [Run another world](deploy/README.md#run-another-world).
 
 ## Engineering
 
@@ -51,7 +53,7 @@ Every SQL statement of the server is prepared against the migrated PostgreSQL sc
 
 **🧪 Every merge is a release rehearsal**
 
-The image starts, and 24 clients log in, create a character, enter the world, and log out. The server restarts, a backup is restored into a clean stack, and the published image is upgraded in place. The characters survive each step.
+The image starts, and 24 clients play: each creates a character, fights, picks up coins, buys and drinks a potion, learns a skill, and logs out and back in. The server restarts, a backup is restored into a clean stack, and the running stack is upgraded in place. The saved characters remain available after each restart, restore, and upgrade.
 
 </td>
 </tr>
@@ -116,7 +118,7 @@ flowchart LR
     class client ext
 ```
 
-Login owns the `login` schema; world owns `world`, `catalog`, and `report`. At start, the world updates `catalog` from the game content of the image.
+Login owns the `login` schema; world owns `world`, `catalog`, and `report`. At start, the world updates `catalog` from the world directory: the one in the image, or your own.
 
 ## Releases
 
@@ -127,8 +129,14 @@ Login owns the `login` schema; world owns `world`, `catalog`, and `report`. At s
 
 ## Origin, trademarks, and license
 
-L2JFree is an open-source Lineage II server from the L2J community; its history in this repository starts in 2006. This repository revives [l2jfree/l2jfree-ct2.3](https://github.com/l2jfree/l2jfree-ct2.3), archived since 2016, a descendant of [savormix/l2jfree-genesis](https://github.com/savormix/l2jfree-genesis); the upstream [README](https://github.com/l2go/l2jfree/blob/6ead790c93a1bae8150ef23090098b4669e342b0/UPSTREAM_README.md) is kept unchanged. The work here is modernization: the code moved to Java 25 and PostgreSQL 18, login and world joined in one process, a player save became one transaction, and economy exploits and concurrency races were closed, with regression checks in CI. It adds no game content, and it does not modify, patch, or distribute the game client.
+L2JFree is an open-source Lineage II server from the L2J community; its history in this repository starts in 2006. This repository revives [l2jfree/l2jfree-ct2.3](https://github.com/l2jfree/l2jfree-ct2.3), archived since 2016, a descendant of [savormix/l2jfree-genesis](https://github.com/savormix/l2jfree-genesis). The work here is modernization: the code moved to Java 25 and PostgreSQL 18, login and world joined in one process, each player save became a single transaction, and economy exploits and concurrency races were fixed, with regression checks in CI.
 
-Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial project, not affiliated with, endorsed, or sponsored by NCSOFT. The names say only which game client the server works with. The repository holds no game client, no client files, and no NCSOFT software, and no server is hosted. The datapack came with the fork and was not reviewed.
+Since 3.2 the repository, the image, and the release archive carry no data inherited from the fork. The world they ship, Okolitsa, is original content. The project does not modify, patch, or distribute the game client.
 
-The code is under [GPLv3](LICENSE).
+Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial project, not affiliated with, endorsed, or sponsored by NCSOFT. The names say only which game client the server works with. The repository holds no game client, no client files, and no NCSOFT software, and no server is hosted.
+
+| Path | License |
+|---|---|
+| `engine/java/`, `deploy/`, `tools/ci/`, everything not listed below | [GPL-3.0-or-later](LICENSE) |
+| `tools/world/` | [AGPL-3.0-or-later](tools/world/LICENSE) |
+| `world/` | [CC BY-SA 4.0](world/LICENSE); its format definitions in `world/src/data/templates/` stay under GPL-3.0-or-later |
