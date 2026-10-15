@@ -17,6 +17,9 @@ package com.l2jfree.smoke;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+
 import org.junit.jupiter.api.Test;
 
 /** The seed-loop decisions that do not need a running server. */
@@ -30,12 +33,12 @@ class SeedLoopTest
 		SeedLoop.apply(view, moveTo(7, 100, 0, -3104, 0, 0, -3104));
 		SeedLoop.apply(view, stopAt(7, 40, 5, -3104));
 		SeedLoop.adoptDestination(view);
-		
+
 		assertThat(view.x).isEqualTo(40);
 		assertThat(view.y).isEqualTo(5);
 		assertThat(view.z).isEqualTo(-3104);
 	}
-	
+
 	@Test
 	void aLaterValidateLocationKeepsItsPlace() throws SmokeException
 	{
@@ -44,12 +47,12 @@ class SeedLoopTest
 		SeedLoop.apply(view, moveTo(7, 100, 0, -3104, 0, 0, -3104));
 		SeedLoop.apply(view, validateAt(7, 40, 5, -3100));
 		SeedLoop.adoptDestination(view);
-		
+
 		assertThat(view.x).isEqualTo(40);
 		assertThat(view.y).isEqualTo(5);
 		assertThat(view.z).isEqualTo(-3100);
 	}
-	
+
 	@Test
 	void anOlderDestinationDoesNotConfirmTheNewRequest() throws SmokeException
 	{
@@ -58,17 +61,17 @@ class SeedLoopTest
 		SeedLoop.apply(view, moveTo(7, 100, 0, -3104, 0, 0, -3104));
 		SeedLoop.armMove(view, 250, 0, -3104);
 		SeedLoop.apply(view, moveTo(7, 100, 0, -3104, 40, 0, -3104));
-		
+
 		assertThat(view.acceptedMove).isFalse();
 		assertThat(SeedLoop.unansweredMove(view, 40, 0, -3104, 250, 0, -3104).getMessage())
 				.contains("neither MoveToLocation nor ActionFailed arrived");
-		
+
 		SeedLoop.apply(view, moveTo(7, 250, 0, -3104, 40, 0, -3104));
 		assertThat(view.acceptedMove).isTrue();
 		SeedLoop.adoptDestination(view);
 		assertThat(view.x).isEqualTo(250);
 	}
-	
+
 	@Test
 	void actionFailedBesideTheConfirmationIsNotARefusal() throws SmokeException
 	{
@@ -76,44 +79,114 @@ class SeedLoopTest
 		SeedLoop.armMove(view, 100, 0, -3104);
 		SeedLoop.apply(view, new byte[] { 0x1f });
 		SeedLoop.apply(view, moveTo(7, 100, 0, -3104, 0, 0, -3104));
-		
+
 		assertThat(view.acceptedMove).isTrue();
 		assertThat(view.moveRejected).isTrue();
 		SeedLoop.adoptDestination(view);
 		assertThat(view.x).isEqualTo(100);
 	}
-	
+
 	@Test
 	void aSilentMoveNamesThePlacesAndActionFailedWhenItArrived() throws SmokeException
 	{
 		SeedLoop.View view = moving();
 		SeedLoop.armMove(view, 100, 0, -3104);
-		
+
 		assertThat(SeedLoop.unansweredMove(view, 1, 2, 3, 100, 0, -3104).getMessage())
 				.contains("neither MoveToLocation nor ActionFailed arrived")
 				.contains("from 1,2,3")
 				.contains("to 100,0,-3104");
-		
+
 		SeedLoop.apply(view, new byte[] { 0x1f });
 		assertThat(SeedLoop.unansweredMove(view, 1, 2, 3, 100, 0, -3104).getMessage())
 				.contains("ActionFailed arrived");
 	}
 
 	@Test
-	void aBeastOnTheBoundaryBelongsToTheEarlierSpawnOnly()
+	void aBeastSeenOnBothSidesOfTheBoundaryHasOneOwner()
 	{
-		assertThat(SeedLoop.ownsSpawn(-70357, 256983, -70357, 256863)).isTrue();
-		assertThat(SeedLoop.ownsSpawn(-70357, 256983, -70357, 257103)).isFalse();
+		// Session 5 hunts spawn 29 (-69637, 258063). Session 6 hunts spawn 30 (-69637, 258303).
+		// y=258183 is the midpoint. Each view stores the same object on its own side of that line.
+		final int objectId = 4242;
+		final int x = -69637;
+		SeedLoop.View south = hunter(5, x, 258063);
+		SeedLoop.View north = hunter(6, x, 258303);
+		SeedLoop.placeBeast(south, objectId, x, 258182, -3104, "NpcInfo");
+		SeedLoop.placeBeast(north, objectId, x, 258184, -3104, "NpcInfo");
+		SeedLoop.FirstTargets targets = new SeedLoop.FirstTargets();
+		Reporter reporter = reporter();
+
+		assertThat(holders(south, north, targets, reporter)).isEqualTo(1);
+		assertThat(south.firstObjectId).isEqualTo(objectId);
+		assertThat(north.firstObjectId).isZero();
+
+		SeedLoop.moveBeast(south, objectId, x, 258184, -3104, "MoveToLocation");
+		SeedLoop.moveBeast(north, objectId, x, 258182, -3104, "StopMove");
+		assertThat(holders(south, north, targets, reporter)).isEqualTo(1);
+		assertThat(text(reporter)).contains("claim-taken")
+				.contains("session=6 objectId=4242 spawn=30 beast=-69637,258182,-3104 source=StopMove")
+				.contains("owner session=5 objectId=4242 spawn=29 beast=-69637,258182,-3104 source=NpcInfo");
+
+		SeedLoop.markBeastDead(south, objectId);
+		targets.release(5, objectId);
+		assertThat(SeedLoop.claimNearest(north, targets, reporter)).isNotNull();
+		assertThat(SeedLoop.claimNearest(south, targets, reporter)).isNull();
+		assertThat(north.firstObjectId).isEqualTo(objectId);
 	}
 
 	@Test
-	void theSameFirstTargetFailsAndDifferentOnesDoNot() throws SmokeException
+	void leavingTheViewReleasesTheBeast()
 	{
+		SeedLoop.View owner = hunter(5, -69637, 258063);
+		SeedLoop.View other = hunter(6, -69637, 258303);
+		SeedLoop.placeBeast(owner, 7, -69637, 258182, -3104, "NpcInfo");
+		SeedLoop.placeBeast(other, 7, -69637, 258184, -3104, "NpcInfo");
 		SeedLoop.FirstTargets targets = new SeedLoop.FirstTargets();
-		targets.claim(0, 100);
-		targets.claim(1, 101);
-		assertThatThrownBy(() -> targets.claim(2, 100)).isInstanceOf(SmokeException.class).hasMessageContaining("session 2")
-				.hasMessageContaining("session 0").hasMessageContaining("object 100");
+		Reporter reporter = reporter();
+		assertThat(SeedLoop.claimNearest(owner, targets, reporter)).isNotNull();
+
+		SeedLoop.forgetBeast(owner, 7);
+		targets.release(5, 7);
+		assertThat(SeedLoop.claimNearest(other, targets, reporter)).isNotNull();
+		assertThat(SeedLoop.claimNearest(owner, targets, reporter)).isNull();
+	}
+
+	@Test
+	void givingUpTheKillReleasesTheBeast()
+	{
+		SeedLoop.View owner = hunter(5, -69637, 258063);
+		SeedLoop.View other = hunter(6, -69637, 258303);
+		SeedLoop.placeBeast(owner, 7, -69637, 258182, -3104, "NpcInfo");
+		SeedLoop.placeBeast(other, 7, -69637, 258184, -3104, "ValidateLocation");
+		SeedLoop.FirstTargets targets = new SeedLoop.FirstTargets();
+		Reporter reporter = reporter();
+		assertThat(SeedLoop.claimNearest(owner, targets, reporter)).isNotNull();
+
+		targets.release(5, 7);
+		assertThat(SeedLoop.claimNearest(other, targets, reporter)).isNotNull();
+		assertThat(SeedLoop.claimNearest(owner, targets, reporter)).isNull();
+	}
+
+	@Test
+	void endingTheSessionReleasesEveryBeastItHeld()
+	{
+		SeedLoop.View owner = hunter(5, -69637, 258063);
+		SeedLoop.View other = hunter(6, -69637, 258303);
+		SeedLoop.placeBeast(owner, 7, -69637, 258182, -3104, "NpcInfo");
+		SeedLoop.placeBeast(owner, 8, -69637, 258100, -3104, "NpcInfo");
+		SeedLoop.placeBeast(other, 7, -69637, 258184, -3104, "NpcInfo");
+		SeedLoop.placeBeast(other, 8, -69637, 258200, -3104, "NpcInfo");
+		SeedLoop.FirstTargets targets = new SeedLoop.FirstTargets();
+		Reporter reporter = reporter();
+		assertThat(SeedLoop.claimNearest(owner, targets, reporter)).isNotNull();
+		SeedLoop.forgetBeast(owner, 8);
+		assertThat(SeedLoop.claimNearest(owner, targets, reporter)).isNotNull();
+
+		targets.releaseSession(5);
+		assertThat(SeedLoop.claimNearest(other, targets, reporter)).isNotNull();
+		SeedLoop.forgetBeast(other, 8);
+		assertThat(SeedLoop.claimNearest(other, targets, reporter)).isNotNull();
+		assertThat(SeedLoop.claimNearest(owner, targets, reporter)).isNull();
 	}
 
 	@Test
@@ -228,7 +301,7 @@ class SeedLoopTest
 
 		assertThat(view.snapshot()).contains("57:8:0").doesNotContain("1060");
 	}
-	
+
 	private static SeedLoop.View starter() throws SmokeException
 	{
 		SeedLoop.View view = new SeedLoop.View(0);
@@ -275,20 +348,49 @@ class SeedLoopTest
 		view.objectId = 7;
 		return view;
 	}
-	
+
 	private static byte[] moveTo(int objectId, int destX, int destY, int destZ, int fromX, int fromY, int fromZ)
 	{
 		return new PacketWriter().writeC(0x2f).writeD(objectId).writeD(destX).writeD(destY).writeD(destZ).writeD(fromX)
 				.writeD(fromY).writeD(fromZ).toByteArray();
 	}
-	
+
 	private static byte[] stopAt(int objectId, int x, int y, int z)
 	{
 		return new PacketWriter().writeC(0x47).writeD(objectId).writeD(x).writeD(y).writeD(z).writeD(0).toByteArray();
 	}
-	
+
 	private static byte[] validateAt(int objectId, int x, int y, int z)
 	{
 		return new PacketWriter().writeC(0x79).writeD(objectId).writeD(x).writeD(y).writeD(z).writeD(0).toByteArray();
+	}
+
+	private static SeedLoop.View hunter(int session, int x, int y)
+	{
+		SeedLoop.View view = new SeedLoop.View(session);
+		view.x = x;
+		view.y = y;
+		return view;
+	}
+
+	/** How many of the two views hold the beast after each has tried to claim it. */
+	private static int holders(SeedLoop.View south, SeedLoop.View north, SeedLoop.FirstTargets targets, Reporter reporter)
+	{
+		int held = 0;
+		if (SeedLoop.claimNearest(south, targets, reporter) != null)
+			held++;
+		if (SeedLoop.claimNearest(north, targets, reporter) != null)
+			held++;
+		return held;
+	}
+
+	private static Reporter reporter()
+	{
+		return new Reporter(new PrintStream(new ByteArrayOutputStream()));
+	}
+
+	private static String text(Reporter reporter)
+	{
+		return String.join("\n", reporter.lines());
 	}
 }

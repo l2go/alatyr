@@ -63,8 +63,11 @@ public final class SmokeClient
 		}
 	}
 
-	/** The outcome of a run: whether it passed, the lines it printed, and the reason when it did not. */
-	public record Result(boolean passed, List<String> lines, String failure)
+	/**
+	 * The outcome of a run: whether it passed, the lines it printed, the reason when it did not, and the
+	 * first beast this session claimed. Zero when it claimed none. The launch check reads this field.
+	 */
+	public record Result(boolean passed, List<String> lines, String failure, int firstObjectId)
 	{
 	}
 
@@ -145,7 +148,7 @@ public final class SmokeClient
 				}
 				catch (InterruptedException | ExecutionException e)
 				{
-					result = new Result(false, List.of(), e.toString());
+					result = new Result(false, List.of(), e.toString(), 0);
 				}
 				if (result.passed())
 					passed++;
@@ -178,7 +181,7 @@ public final class SmokeClient
 	/**
 	 * Runs one session. {@code sessionIndex} chooses the seed-loop plots: session i hunts the beasts at
 	 * spawns i and i + 24. The default scenario does not use it. {@code targets} is shared by the sessions
-	 * of one launch so two of them cannot keep the same first object.
+	 * of one launch. A beast claimed there is not taken by another session.
 	 */
 	static Result run(Config config, Reporter reporter, int sessionIndex, SeedLoop.FirstTargets targets)
 	{
@@ -190,29 +193,36 @@ public final class SmokeClient
 		final String character = "Smoke" + letters(random, 6);
 		// a new account has no characters; a given one has as many as the caller says, when it says
 		final int expectedCharacters = config.account() == null ? 0 : config.existingCharacters();
+		final int[] firstObjectId = { 0 };
 
 		try
 		{
 			if (config.seedLoop())
-				SeedLoop.play(config, deadline, reporter, account, password, character, sessionIndex, targets);
+				SeedLoop.play(config, deadline, reporter, account, password, character, sessionIndex, targets,
+						firstObjectId);
 			else
 			{
 				LoginFlow.Session session = LoginFlow.selectWorld(config, deadline, reporter, account, password);
 				WorldFlow.play(config, deadline, reporter, session, account, expectedCharacters, character);
 				LoginFlow.loginAgain(config, deadline, reporter, account, password);
 			}
-			return new Result(true, reporter.lines(), null);
+			return new Result(true, reporter.lines(), null, firstObjectId[0]);
 		}
 		catch (SmokeException e)
 		{
 			reporter.fail(e.getMessage());
-			return new Result(false, reporter.lines(), e.getMessage());
+			return new Result(false, reporter.lines(), e.getMessage(), firstObjectId[0]);
 		}
 		catch (RuntimeException e)
 		{
 			String reason = e.getClass().getSimpleName() + ": " + e.getMessage();
 			reporter.fail(reason);
-			return new Result(false, reporter.lines(), reason);
+			return new Result(false, reporter.lines(), reason, firstObjectId[0]);
+		}
+		finally
+		{
+			if (config.seedLoop())
+				targets.releaseSession(sessionIndex);
 		}
 	}
 

@@ -57,7 +57,15 @@ final class SeedLoop
 	/** Where the client stops stepping toward a beast. */
 	private static final int APPROACH = 600;
 	private static final int INTERACT = 120;
-	/** A beast belongs to a spawn when it stands closer than the next spawn on the grid. */
+	/**
+	 * A living beast is a candidate when it stands no farther than this from one of the session's two
+	 * spawns. {@code L2AttackableAI} walks to the spawn plus or minus {@code MaxDriftRange} on each axis
+	 * ({@code options.properties}: {@code MaxDriftRange = 200}). 300 leaves a margin past that drift.
+	 * {@code AbstractNpcInfo} sends the current coordinates and no spawn id, so the distance does not
+	 * decide which session owns the object. The launch registry does.
+	 */
+	private static final int REACH = 300;
+	/** Already on the plot: wait here instead of walking in circles while the beast is gone. */
 	private static final int PLOT = 200;
 	private static final long ATTACK_PAUSE_MILLIS = 1500L;
 	private static final long KILL_LIMIT_MILLIS = 60000L;
@@ -79,10 +87,11 @@ final class SeedLoop
 	}
 
 	static void play(SmokeClient.Config config, Deadline deadline, Reporter reporter, String account, String password,
-			String characterName, int sessionIndex, FirstTargets targets) throws SmokeException
+			String characterName, int sessionIndex, FirstTargets targets, int[] firstObjectId) throws SmokeException
 	{
 		LoginFlow.Session session = LoginFlow.selectWorld(config, deadline, reporter, account, password);
 		View view = new View(sessionIndex);
+		view.firstObjectIdOut = firstObjectId;
 		try (GameConnection game = connect(config, deadline, reporter, session.world()))
 		{
 			enter(config, deadline, reporter, game, session, account, characterName, true);
@@ -247,7 +256,16 @@ final class SeedLoop
 			Actor target = takeTarget(game, view, deadline, reporter, targets);
 			long expBefore = view.exp;
 			int spBefore = view.sp;
-			boolean fell = attack(game, view, deadline, target);
+			// Death, leaving the known list, and the kill wait all end this claim. A thrown wait does too.
+			boolean fell;
+			try
+			{
+				fell = attack(game, view, deadline, target);
+			}
+			finally
+			{
+				targets.release(view.sessionIndex, target.objectId);
+			}
 			// The reward arrives in UserInfo after the death. A beast that left the known list, or a
 			// death that does not raise experience or SP, is not this session's kill.
 			absorb(game, view, deadline, 1500L);
@@ -262,9 +280,11 @@ final class SeedLoop
 	}
 
 	/**
-	 * Session i hunts the two spawns i and i + 24. The target is the beast of template 18003 standing
-	 * nearest one of those points. While both points are empty the session waits out the corpse and
-	 * the respawn; a quiet server during that wait is not a failed read.
+	 * Session i hunts the two spawns i and i + 24. The target is the nearest living template 18003
+	 * within {@link #REACH} of one of those points, and not claimed by another session. The claim is
+	 * taken here, before the walk and before the attack, and kept until the beast dies, leaves the
+	 * known list, the kill wait ends, or the session ends. While both points are empty the session
+	 * waits out the corpse and the respawn; a quiet server during that wait is not a failed read.
 	 * <p>
 	 * The recorded wait starts when this search begins and ends when a beast is chosen. The walk to
 	 * the plot is part of it. The walk to the merchant or the trainer is not.
@@ -280,32 +300,10 @@ final class SeedLoop
 			if (deadline.expired())
 				throw new SmokeException("step target: the time limit ended while waiting for template " + BEAST);
 
-			Actor chosen = null;
-			int spawn = -1;
-			long nearest = Long.MAX_VALUE;
-			for (int i = 0; i < plots.length; i++)
-			{
-				Actor beast = beastAt(view, plots[i][0], plots[i][1]);
-				if (beast == null)
-					continue;
-
-				long gap = distance(beast.x, beast.y, plots[i][0], plots[i][1]);
-				if (gap < nearest)
-				{
-					nearest = gap;
-					chosen = beast;
-					spawn = slot + i * (BEAST_SPAWNS.length / 2);
-				}
-			}
+			Actor chosen = claimNearest(view, targets, reporter);
 			if (chosen != null)
 			{
 				view.noteBeastWait(started);
-				if (!view.firstAnnounced)
-				{
-					view.firstAnnounced = true;
-					targets.claim(view.sessionIndex, chosen.objectId);
-					reporter.info(tag(view) + " first-target objectId=" + chosen.objectId + " spawn=" + spawn);
-				}
 				return chosen;
 			}
 			int[] waitAt = plots[view.kills % plots.length];
@@ -321,58 +319,80 @@ final class SeedLoop
 	}
 
 	/**
-	 * The living beast of template 18003 closest to this spawn, when this spawn is its unique nearest.
-	 * An equal squared distance belongs to the earlier spawn. A beast that has walked off the plot is
-	 * still this session's; a neighbour's beast is not.
+	 * Claims the nearest living beast within {@link #REACH} of this session's plots. A beast another
+	 * session already holds is refused here and is not returned. Returns null when nothing is free.
 	 */
-	private static Actor beastAt(View view, int x, int y)
+	static Actor claimNearest(View view, FirstTargets targets, Reporter reporter)
+	{
+		int slot = Math.floorMod(view.sessionIndex, BEAST_SPAWNS.length / 2);
+		int half = BEAST_SPAWNS.length / 2;
+		int[][] plots = { BEAST_SPAWNS[slot], BEAST_SPAWNS[slot + half] };
+		Set<Integer> refused = new HashSet<>();
+		while (true)
+		{
+			Actor chosen = null;
+			int spawn = -1;
+			long nearest = Long.MAX_VALUE;
+			for (int i = 0; i < plots.length; i++)
+			{
+				Actor beast = beastNear(view, plots[i][0], plots[i][1], refused);
+				if (beast == null)
+					continue;
+
+				long gap = squared(beast.x, beast.y, plots[i][0], plots[i][1]);
+				if (gap < nearest)
+				{
+					nearest = gap;
+					chosen = beast;
+					spawn = slot + i * half;
+				}
+			}
+			if (chosen == null)
+				return null;
+
+			Claim mine = new Claim(view.sessionIndex, chosen.objectId, spawn, chosen.x, chosen.y, chosen.z, view.x,
+					view.y, chosen.positionSource);
+			Claim owner = targets.claim(mine);
+			if (owner != null)
+			{
+				reporter.info(tag(view) + " claim-taken " + claimText(mine) + " owner " + claimText(owner));
+				refused.add(chosen.objectId);
+				continue;
+			}
+			if (targets.fresh(chosen.objectId, mine))
+			{
+				if (view.firstObjectId == 0)
+				{
+					view.firstObjectId = chosen.objectId;
+					if (view.firstObjectIdOut != null)
+						view.firstObjectIdOut[0] = chosen.objectId;
+					reporter.info(tag(view) + " first-target objectId=" + chosen.objectId + " spawn=" + spawn);
+				}
+				reporter.info(tag(view) + " claim " + claimText(mine));
+			}
+			return chosen;
+		}
+	}
+
+	/** The closest living beast of template 18003 within {@link #REACH} of this point, ignoring refused ids. */
+	private static Actor beastNear(View view, int x, int y, Set<Integer> refused)
 	{
 		Actor best = null;
 		long bestDistance = Long.MAX_VALUE;
+		long limit = (long)REACH * REACH;
 		for (Actor npc : view.npcs.values())
 		{
-			if (npc.templateId != BEAST || npc.dead)
+			if (npc.templateId != BEAST || npc.dead || refused.contains(npc.objectId))
 				continue;
 
 			long gap = squared(npc.x, npc.y, x, y);
-			if (gap >= bestDistance || !ownsSpawn(npc.x, npc.y, x, y))
+			if (gap > limit || gap >= bestDistance)
 				continue;
 
 			best = npc;
 			bestDistance = gap;
 		}
 		return best;
-	}
-
-	/**
-	 * @return true when this spawn is the unique nearest spawn. An equal squared distance belongs to the
-	 *         earlier spawn in {@link #BEAST_SPAWNS}.
-	 */
-	static boolean ownsSpawn(int beastX, int beastY, int spawnX, int spawnY)
-	{
-		long here = squared(beastX, beastY, spawnX, spawnY);
-		int hereIndex = -1;
-		for (int i = 0; i < BEAST_SPAWNS.length; i++)
-		{
-			if (BEAST_SPAWNS[i][0] == spawnX && BEAST_SPAWNS[i][1] == spawnY)
-			{
-				hereIndex = i;
-				break;
-			}
-		}
-		if (hereIndex < 0)
-			return false;
-
-		for (int i = 0; i < BEAST_SPAWNS.length; i++)
-		{
-			if (i == hereIndex)
-				continue;
-
-			long other = squared(beastX, beastY, BEAST_SPAWNS[i][0], BEAST_SPAWNS[i][1]);
-			if (other < here || (other == here && i < hereIndex))
-				return false;
-		}
-		return true;
 	}
 
 	private static long squared(int x1, int y1, int x2, int y2)
@@ -382,19 +402,110 @@ final class SeedLoop
 		return dx * dx + dy * dy;
 	}
 
-	/** First targets of one launch. Claiming the same object from two sessions fails the second. */
+	static void placeBeast(View view, int objectId, int x, int y, int z, String source)
+	{
+		view.npcs.put(objectId, new Actor(objectId, BEAST, x, y, z, false, source));
+	}
+
+	static void moveBeast(View view, int objectId, int x, int y, int z, String source)
+	{
+		Actor npc = view.npcs.get(objectId);
+		npc.x = x;
+		npc.y = y;
+		npc.z = z;
+		npc.positionSource = source;
+	}
+
+	static void markBeastDead(View view, int objectId)
+	{
+		Actor npc = view.npcs.get(objectId);
+		if (npc != null)
+			npc.dead = true;
+		view.fallen.add(objectId);
+	}
+
+	static void forgetBeast(View view, int objectId)
+	{
+		view.npcs.remove(objectId);
+	}
+
+	private static String claimText(Claim claim)
+	{
+		return "session=" + claim.sessionIndex + " objectId=" + claim.objectId + " spawn=" + claim.spawn + " beast="
+				+ claim.beastX + "," + claim.beastY + "," + claim.beastZ + " source=" + claim.positionSource + " self="
+				+ claim.selfX + "," + claim.selfY;
+	}
+
+	/**
+	 * Objects claimed by the sessions of one launch. The claim is the owner. A second session does not
+	 * replace it.
+	 */
 	static final class FirstTargets
 	{
-		private final ConcurrentHashMap<Integer, Integer> _owner = new ConcurrentHashMap<>();
+		private final ConcurrentHashMap<Integer, Claim> _owners = new ConcurrentHashMap<>();
 
-		void claim(int sessionIndex, int objectId) throws SmokeException
+		/** The claim just inserted, so the caller can log it once. A repeat by the same session is not fresh. */
+		private final ConcurrentHashMap<Integer, Claim> _fresh = new ConcurrentHashMap<>();
+
+		/** @return the claim already held by another session, or null when this session holds it */
+		Claim claim(Claim mine)
 		{
-			Integer previous = _owner.putIfAbsent(objectId, sessionIndex);
-			if (previous != null && previous != sessionIndex)
+			Claim previous = _owners.putIfAbsent(mine.objectId, mine);
+			if (previous == null)
 			{
-				throw new SmokeException("step target: session " + sessionIndex + " and session " + previous
-						+ " both chose object " + objectId + " as the first target");
+				_fresh.put(mine.objectId, mine);
+				return null;
 			}
+			if (previous.sessionIndex == mine.sessionIndex)
+				return null;
+
+			return previous;
+		}
+
+		/** @return true once, for the claim this call inserted */
+		boolean fresh(int objectId, Claim mine)
+		{
+			return _fresh.remove(objectId, mine);
+		}
+
+		/** Drops this session's claim. Another session's claim is left as it is. */
+		void release(int sessionIndex, int objectId)
+		{
+			_owners.compute(objectId, (id, held) -> held != null && held.sessionIndex == sessionIndex ? null : held);
+		}
+
+		/** Drops every claim this session still holds. A failed session must not keep the beasts. */
+		void releaseSession(int sessionIndex)
+		{
+			_owners.entrySet().removeIf(entry -> entry.getValue().sessionIndex == sessionIndex);
+		}
+	}
+
+	/** One session's claim: where it saw the beast, and which packet last set that position. */
+	static final class Claim
+	{
+		final int sessionIndex;
+		final int objectId;
+		final int spawn;
+		final int beastX;
+		final int beastY;
+		final int beastZ;
+		final int selfX;
+		final int selfY;
+		final String positionSource;
+
+		Claim(int sessionIndex, int objectId, int spawn, int beastX, int beastY, int beastZ, int selfX, int selfY,
+				String positionSource)
+		{
+			this.sessionIndex = sessionIndex;
+			this.objectId = objectId;
+			this.spawn = spawn;
+			this.beastX = beastX;
+			this.beastY = beastY;
+			this.beastZ = beastZ;
+			this.selfX = selfX;
+			this.selfY = selfY;
+			this.positionSource = positionSource;
 		}
 	}
 
@@ -828,7 +939,7 @@ final class SeedLoop
 				if (npc.templateId() == BEAST || npc.templateId() == MERCHANT || npc.templateId() == TRAINER)
 				{
 					view.npcs.put(npc.objectId(), new Actor(npc.objectId(), npc.templateId(), npc.x(), npc.y(), npc.z(),
-							npc.dead()));
+							npc.dead(), "NpcInfo"));
 				}
 			}
 			case GamePackets.OP_STATUS_UPDATE ->
@@ -939,6 +1050,7 @@ final class SeedLoop
 						npc.x = move[4];
 						npc.y = move[5];
 						npc.z = move[6];
+						npc.positionSource = "MoveToLocation";
 					}
 				}
 			}
@@ -963,6 +1075,7 @@ final class SeedLoop
 						npc.x = place[1];
 						npc.y = place[2];
 						npc.z = place[3];
+						npc.positionSource = opcode == GamePackets.OP_STOP_MOVE ? "StopMove" : "ValidateLocation";
 					}
 				}
 			}
@@ -1189,8 +1302,9 @@ final class SeedLoop
 		private int y;
 		private int z;
 		private boolean dead;
+		private String positionSource;
 
-		private Actor(int objectId, int templateId, int x, int y, int z, boolean dead)
+		private Actor(int objectId, int templateId, int x, int y, int z, boolean dead, String positionSource)
 		{
 			this.objectId = objectId;
 			this.templateId = templateId;
@@ -1198,6 +1312,7 @@ final class SeedLoop
 			this.y = y;
 			this.z = z;
 			this.dead = dead;
+			this.positionSource = positionSource;
 		}
 	}
 
@@ -1263,7 +1378,10 @@ final class SeedLoop
 		private boolean skillOffered;
 		private String dialog;
 		private int kills;
-		private boolean firstAnnounced;
+		/** The first object this session claimed. Zero until then. The launch check reads this, not the registry. */
+		int firstObjectId;
+		/** Where {@link #firstObjectId} is copied as soon as it is known, so a later failure still reports it. */
+		private int[] firstObjectIdOut;
 		boolean acceptedMove;
 		/** ActionFailed arrived while this step was waiting for MoveToLocation. */
 		boolean moveRejected;
