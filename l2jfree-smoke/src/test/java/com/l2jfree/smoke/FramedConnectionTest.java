@@ -17,6 +17,7 @@ package com.l2jfree.smoke;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import java.io.IOException;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -38,9 +39,8 @@ class FramedConnectionTest
 			try (FramedConnection connection = connect(server.port()))
 			{
 				assertThat(server.awaitPartial()).isTrue();
-				Throwable thrown = catchThrowable(() -> connection.receive(50));
-				assertThat(thrown).isInstanceOf(SmokeException.class);
-				assertThat(((SmokeException)thrown).kind()).isEqualTo(SmokeException.Kind.TIMEOUT);
+				assertTimeout(() -> connection.receive(50));
+				server.resume();
 				assertThat(connection.receive(2_000)).containsExactly(first);
 				assertThat(connection.receive(2_000)).containsExactly(second);
 			}
@@ -68,13 +68,45 @@ class FramedConnectionTest
 				connection.cipher().setKey(key);
 				connection.cipher().enable();
 				assertThat(server.awaitPartial()).isTrue();
-				Throwable thrown = catchThrowable(() -> connection.receive(50));
-				assertThat(thrown).isInstanceOf(SmokeException.class);
-				assertThat(((SmokeException)thrown).kind()).isEqualTo(SmokeException.Kind.TIMEOUT);
+				assertTimeout(() -> connection.receive(50));
+				server.resume();
 				assertThat(connection.receive(2_000)).containsExactly(first);
 				assertThat(connection.receive(2_000)).containsExactly(second);
 			}
 		}
+	}
+
+	@Test
+	void aHeaderSplitSurvivesTwoTimeouts() throws Exception
+	{
+		byte[] first = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+		byte[] second = { 10, 11, 12 };
+		byte[] wire = concatenate(frame(first), frame(second));
+		try (SplitServer server = SplitServer.open(wire, 1))
+		{
+			try (FramedConnection connection = connect(server.port()))
+			{
+				assertThat(server.awaitPartial()).isTrue();
+				assertTimeout(() -> connection.receive(50));
+				assertTimeout(() -> connection.receive(50));
+				server.resume();
+				assertThat(connection.receive(2_000)).containsExactly(first);
+				assertThat(connection.receive(2_000)).containsExactly(second);
+			}
+		}
+	}
+
+	private static void assertTimeout(TimeoutReceive receive) throws Exception
+	{
+		Throwable thrown = catchThrowable(receive::read);
+		assertThat(thrown).isInstanceOf(SmokeException.class);
+		assertThat(((SmokeException)thrown).kind()).isEqualTo(SmokeException.Kind.TIMEOUT);
+	}
+
+	@FunctionalInterface
+	private interface TimeoutReceive
+	{
+		void read() throws SmokeException;
 	}
 
 	private static FramedConnection connect(int port) throws SmokeException
@@ -100,13 +132,14 @@ class FramedConnectionTest
 	}
 
 	/**
-	 * Writes the first {@code splitAt} bytes, pauses longer than the client's wait, then writes the rest.
+	 * Writes the first {@code splitAt} bytes and holds the rest until {@link #resume()}.
 	 */
 	private static final class SplitServer implements AutoCloseable
 	{
 		private final ServerSocket _listen;
 		private final Thread _thread;
 		private final CountDownLatch _partialSent = new CountDownLatch(1);
+		private final CountDownLatch _resume = new CountDownLatch(1);
 		private volatile Exception _failure;
 
 		private SplitServer(ServerSocket listen, byte[] wire, int splitAt)
@@ -131,6 +164,11 @@ class FramedConnectionTest
 			return _partialSent.await(2, TimeUnit.SECONDS);
 		}
 
+		private void resume()
+		{
+			_resume.countDown();
+		}
+
 		private void serve(byte[] wire, int splitAt)
 		{
 			try (Socket socket = _listen.accept())
@@ -140,10 +178,22 @@ class FramedConnectionTest
 				out.write(wire, 0, splitAt);
 				out.flush();
 				_partialSent.countDown();
-				Thread.sleep(400);
-				out.write(wire, splitAt, wire.length - splitAt);
-				out.flush();
-				Thread.sleep(2_000);
+				if (!_resume.await(5, TimeUnit.SECONDS))
+					throw new IllegalStateException("the test did not resume the frame");
+
+				try
+				{
+					out.write(wire, splitAt, wire.length - splitAt);
+					out.flush();
+					while (socket.getInputStream().read() >= 0)
+					{
+						// Wait until the client closes, so the rest is not cut off.
+					}
+				}
+				catch (IOException e)
+				{
+					// The client closed before or during the rest. That is how a failed assertion ends.
+				}
 			}
 			catch (Exception e)
 			{
@@ -155,6 +205,7 @@ class FramedConnectionTest
 		@Override
 		public void close() throws Exception
 		{
+			_resume.countDown();
 			_listen.close();
 			_thread.join(3_000);
 			if (_failure != null)
