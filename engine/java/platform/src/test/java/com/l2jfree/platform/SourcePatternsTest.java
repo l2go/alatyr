@@ -176,8 +176,8 @@ class SourcePatternsTest
 	private static List<Path> sources() throws IOException
 	{
 		List<Path> sources = new ArrayList<Path>();
-		for (Path root : List.of(Path.of("../l2j-commons/src/main/java"), Path.of("../l2jfree-login/src/main/java"),
-				Path.of("../l2jfree-core/src/main/java")))
+		for (Path root : List.of(Path.of("../commons/src/main/java"), Path.of("../login/src/main/java"),
+				Path.of("../game/src/main/java")))
 		{
 			assertThat(root).isDirectory();
 			try (Stream<Path> files = Files.walk(root))

@@ -39,11 +39,11 @@
 	<fileSets>
 		<!-- The world's files first. Its logback.xml and telnet.properties are the ones of the platform. -->
 		<fileSet>
-			<directory>../l2jfree-core/config/</directory>
+			<directory>../game/config/</directory>
 			<outputDirectory>l2jfree/config/</outputDirectory>
 		</fileSet>
 		<fileSet>
-			<directory>../l2jfree-login/config/</directory>
+			<directory>../login/config/</directory>
 			<outputDirectory>l2jfree/config/</outputDirectory>
 			<excludes>
 				<exclude>logback.xml</exclude>
@@ -52,7 +52,7 @@
 		</fileSet>
 		<!-- The authored world: passport, license, catalog, and data. Sources stay out of the archive. -->
 		<fileSet>
-			<directory>../world/</directory>
+			<directory>../../../world/</directory>
 			<outputDirectory>l2jfree/world/</outputDirectory>
 			<includes>
 				<include>world.properties</include>

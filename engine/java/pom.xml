@@ -267,7 +267,7 @@
 						</goals>
 						<configuration>
 							<silent>true</silent>
-							<markersDirectory>../l2jfree-module/target/dependency-maven-plugin-markers</markersDirectory>
+							<markersDirectory>../target/dependency-maven-plugin-markers</markersDirectory>
 						</configuration>
 					</execution>
 				</executions>
@@ -309,15 +309,15 @@
 		</pluginManagement>
 	</build>
 	<modules>
-		<module>../l2j-commons</module>
-		<module>../l2jfree-network</module>
-		<module>../l2jfree-scripting-engines</module>
-		<module>../l2jfree-contract</module>
-		<module>../l2jfree-smoke</module>
-		<module>../l2jfree-test-support</module>
-		<module>../l2jfree-login</module>
-		<module>../l2jfree-core</module>
-		<module>../l2jfree-platform</module>
+		<module>commons</module>
+		<module>network</module>
+		<module>scripting</module>
+		<module>contract</module>
+		<module>smoke</module>
+		<module>test-support</module>
+		<module>login</module>
+		<module>game</module>
+		<module>platform</module>
 	</modules>
 	<profiles>
 		<!-- Coverage of the tests, reported and never enforced: ./mvnw -Pcoverage -Dsurefire.excludedGroups= verify -->

@@ -78,7 +78,7 @@ class ProcessStdoutAppenderTest
 	void serverConfigurationsDoNotUseConsoleAppender() throws Exception
 	{
 		for (Path configuration : List.of(Path.of("src/main/resources/logback.xml"),
-				Path.of("../l2jfree-core/config/logback.xml"), Path.of("../l2jfree-login/config/logback.xml")))
+				Path.of("../game/config/logback.xml"), Path.of("../login/config/logback.xml")))
 			assertThat(Files.readString(configuration)).as(configuration.toString()).doesNotContain("ConsoleAppender")
 					.contains("com.l2jfree.util.logging.ProcessStdoutAppender");
 	}

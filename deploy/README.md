@@ -31,7 +31,7 @@ Put these in an `.env` file in the `deploy` directory, or set them in the shell.
 
 ## Server options
 
-The defaults are in [`l2jfree-core/config`](../l2jfree-core/config) (world) and [`l2jfree-login/config`](../l2jfree-login/config) (login). A file in the `config` volume overrides the keys it names in the default file of the same name; put only the changed keys in it. The server reads the files at start and warns about a key that no default file has, usually a typo.
+The defaults are in [`engine/java/game/config`](../engine/java/game/config) (world) and [`engine/java/login/config`](../engine/java/login/config) (login). A file in the `config` volume overrides the keys it names in the default file of the same name; put only the changed keys in it. The server reads the files at start and warns about a key that no default file has, usually a typo.
 
 To triple the experience rate:
 

@@ -37,7 +37,7 @@ class LogbackOperatorConfigurationTest
 		}
 		assertThat(new String(packaged)).contains("ch.qos.logback.classic.jul.LevelChangePropagator");
 		
-		assertThat(Files.readAllBytes(Path.of("..", "l2jfree-core", "config", "logback.xml"))).isEqualTo(packaged);
-		assertThat(Files.readAllBytes(Path.of("..", "l2jfree-login", "config", "logback.xml"))).isEqualTo(packaged);
+		assertThat(Files.readAllBytes(Path.of("..", "game", "config", "logback.xml"))).isEqualTo(packaged);
+		assertThat(Files.readAllBytes(Path.of("..", "login", "config", "logback.xml"))).isEqualTo(packaged);
 	}
 }

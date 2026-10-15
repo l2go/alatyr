@@ -46,7 +46,7 @@ import com.l2jfree.L2DatabaseFactory;
 @Tag("integration")
 class DataDictionaryPostgresTest
 {
-	private static final Path COMMITTED = Path.of("..", "docs", "database");
+	private static final Path COMMITTED = Path.of("..", "..", "..", "docs", "database");
 	
 	private static final Path GENERATED = Path.of("target", "database-docs");
 	
@@ -75,7 +75,7 @@ class DataDictionaryPostgresTest
 		}
 		
 		assertThat(stale).as("files of docs/database that differ from the generated ones; copy them from "
-				+ "l2jfree-core/target/database-docs").isEmpty();
+				+ "engine/java/game/target/database-docs").isEmpty();
 	}
 	
 	private static String describe(Connection connection, String schema) throws SQLException, IOException

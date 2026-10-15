@@ -3950,7 +3950,7 @@ public final class Config
 		registerConfig(new AllConfig());
 		
 		if (L2AutoInitialization.isIDEMode())
-			Config.DATAPACK_ROOT = new File("../world");
+			Config.DATAPACK_ROOT = new File("../../../world");
 	}
 	
 	private static final class AllConfig extends ConfigLoader

@@ -38,7 +38,7 @@ class SeedWorldCatalogTest
 {
 	private static final TestDatabase POSTGRES = TestDatabases.postgres();
 	
-	private static final Path CATALOG = Path.of("..", "world", "catalog");
+	private static final Path CATALOG = Path.of("..", "..", "..", "world", "catalog");
 	
 	private static final Map<String, Integer> ROWS = Map.ofEntries(Map.entry("player_template", 1),
 			Map.entry("level_up_gain", 1), Map.entry("starting_item", 4), Map.entry("weapon_template", 2),
