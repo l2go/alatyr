@@ -596,22 +596,51 @@ final class SeedLoop
 			destX = view.x + (int)Math.round(dx / len * STEP);
 			destY = view.y + (int)Math.round(dy / len * STEP);
 		}
+		// A refused step is asked again a little to the side. The shift stays under the gap between
+		// spawns, so the session does not walk onto a neighbour's plot.
+		if (view.missedMoves > 0 && len > 1)
+		{
+			int mag = 36 * (1 + (view.missedMoves % 2));
+			if ((view.missedMoves % 4) >= 2)
+				mag = -mag;
+			destX += (int)Math.round(-dy / len * mag);
+			destY += (int)Math.round(dx / len * mag);
+		}
 		view.acceptedMove = false;
 		game.send(GamePackets.moveBackward(destX, destY, z, view.x, view.y, view.z));
 		// The server walks the character and does not send StopMove when the walk finishes. A second
-		// move before the confirmation cancels the first, and the session then stands on one tile
-		// until the deadline. This step sends one move and waits it out.
+		// move before the confirmation cancels the first. Wait for the confirmation, but not forever:
+		// a move the server never accepted must be asked again or the session stands until the deadline.
 		long travel = (long)(Math.min(len, STEP) / RUN_SPEED * 1000L) + 800L;
 		long travelEnd = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(travel);
-		while (!view.acceptedMove)
+		long giveUp = System.nanoTime() + TimeUnit.SECONDS.toNanos(8);
+		while (!view.acceptedMove && System.nanoTime() < giveUp)
 		{
 			if (deadline.expired())
 				throw new SmokeException("step move: the time limit ended");
 
 			poll(game, view, deadline, 200L);
 			if (distance(view.x, view.y, destX, destY) <= MELEE)
+			{
+				view.missedMoves = 0;
 				return;
+			}
 		}
+		if (!view.acceptedMove)
+		{
+			view.missedMoves++;
+			// Several silent steps means the confirmation is not coming. Continue from the point that
+			// was asked for so the next step is not the same cancelled walk.
+			if (view.missedMoves >= 3)
+			{
+				view.x = destX;
+				view.y = destY;
+				view.z = z;
+				view.missedMoves = 0;
+			}
+			return;
+		}
+		view.missedMoves = 0;
 		while (System.nanoTime() < travelEnd)
 		{
 			if (deadline.expired())
@@ -1198,6 +1227,8 @@ final class SeedLoop
 		private int kills;
 		private boolean firstAnnounced;
 		private boolean acceptedMove;
+		/** Steps whose confirmation never arrived. The next step asks a little to the side. */
+		private int missedMoves;
 		/** Creatures whose death was shown, so a later delete is not mistaken for a living beast. */
 		private final Set<Integer> fallen = new HashSet<>();
 		private int acceptedX;
