@@ -425,3 +425,21 @@ code { font-family: var(--mono); font-size: .9em; }
 .island-map .map-label, .island-map .map-number { fill: #f1e4c6; font: 18px var(--sans); }
 .island-map figcaption { margin: .8rem 0; font: .85rem/1.6 var(--sans); }
 .island-map .map-key { font: .9rem/1.6 var(--sans); }
+
+/* Series diagrams share the architecture palette and stay legible on small screens. */
+.series-diagram { margin: 2rem 0; }
+.series-diagram .arch { padding: .75rem; background: #0a0b12; }
+.series-diagram figcaption { margin: .8rem 0; font: .85rem/1.6 var(--sans); }
+.series-diagram .diagram-directed { marker-end: url(#roles-arrow); }
+.series-diagram .diagram-arrow, .series-diagram .timeline-dot { fill: #f6d58e; }
+.series-diagram .timeline-silence { fill: none; stroke: #222635; stroke-width: 7; stroke-dasharray: 4 10; }
+.timeline-detail, .contract-detail { display: none; }
+@media (max-width: 600px) {
+  .timeline-graphic, .contract-graphic { display: none; }
+  .prose .timeline-detail { display: block; border-left: 2px solid var(--gold-lo); padding-left: 1.4rem; list-style: none; }
+  .timeline-detail time { font-weight: 600; }
+  .timeline-detail .timeline-gap { padding: 1rem 0; opacity: .7; }
+  .contract-detail { display: block; font: .95rem/1.6 var(--sans); }
+  .contract-detail dt { margin-top: 1rem; font-weight: 600; overflow-wrap: anywhere; }
+  .contract-detail dd { margin: .3rem 0 1rem; }
+}
