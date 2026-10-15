@@ -15,6 +15,7 @@
 package com.l2jfree.smoke;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 
@@ -97,7 +98,177 @@ class SeedLoopTest
 		assertThat(SeedLoop.unansweredMove(view, 1, 2, 3, 100, 0, -3104).getMessage())
 				.contains("ActionFailed arrived");
 	}
+
+	@Test
+	void aBeastOnTheBoundaryBelongsToTheEarlierSpawnOnly()
+	{
+		assertThat(SeedLoop.ownsSpawn(-70357, 256983, -70357, 256863)).isTrue();
+		assertThat(SeedLoop.ownsSpawn(-70357, 256983, -70357, 257103)).isFalse();
+	}
+
+	@Test
+	void theSameFirstTargetFailsAndDifferentOnesDoNot() throws SmokeException
+	{
+		SeedLoop.FirstTargets targets = new SeedLoop.FirstTargets();
+		targets.claim(0, 100);
+		targets.claim(1, 101);
+		assertThatThrownBy(() -> targets.claim(2, 100)).isInstanceOf(SmokeException.class).hasMessageContaining("session 2")
+				.hasMessageContaining("session 0").hasMessageContaining("object 100");
+	}
+
+	@Test
+	void starterRowsRequireOneWornUnitEach() throws SmokeException
+	{
+		SeedLoop.View view = starter();
+		SeedLoop.checkStarter(view);
+
+		SeedLoop.View doubled = starter();
+		SeedLoop.apply(doubled, itemList(row(10, 1, 2L, true), row(11, 23, 1L, true), row(12, 28, 1L, true),
+				row(13, 39, 1L, true)));
+		assertThatThrownBy(() -> SeedLoop.checkStarter(doubled)).hasMessageContaining("enter item 1 count")
+				.hasMessageContaining("expected 1").hasMessageContaining("actual 2");
+
+		SeedLoop.View empty = starter();
+		SeedLoop.apply(empty, itemList(row(10, 1, 0L, true), row(11, 23, 1L, true), row(12, 28, 1L, true),
+				row(13, 39, 1L, true)));
+		assertThatThrownBy(() -> SeedLoop.checkStarter(empty)).hasMessageContaining("enter item 1 count")
+				.hasMessageContaining("actual 0");
+
+		SeedLoop.View unworn = starter();
+		SeedLoop.apply(unworn, itemList(row(10, 1, 1L, false), row(11, 23, 1L, true), row(12, 28, 1L, true),
+				row(13, 39, 1L, true)));
+		assertThatThrownBy(() -> SeedLoop.checkStarter(unworn)).hasMessageContaining("enter item 1 equipped");
+
+		SeedLoop.View extra = starter();
+		SeedLoop.apply(extra, itemList(row(10, 1, 1L, true), row(11, 23, 1L, true), row(12, 28, 1L, true),
+				row(13, 39, 1L, true), row(14, 99, 1L, false)));
+		assertThatThrownBy(() -> SeedLoop.checkStarter(extra)).hasMessageContaining("the starter kit");
+
+		SeedLoop.View missing = new SeedLoop.View(0);
+		missing.level = 1;
+		SeedLoop.apply(missing, itemList(row(11, 23, 1L, true), row(12, 28, 1L, true), row(13, 39, 1L, true)));
+		assertThatThrownBy(() -> SeedLoop.checkStarter(missing)).hasMessageContaining("enter item 1")
+				.hasMessageContaining("absent");
+	}
+
+	@Test
+	void theRelogSnapshotKeepsEachRowAndIgnoresOrder() throws SmokeException
+	{
+		SeedLoop.View first = new SeedLoop.View(0);
+		SeedLoop.apply(first, itemList(row(10, 1, 1L, true), row(11, 1, 1L, false)));
+		SeedLoop.View second = new SeedLoop.View(0);
+		SeedLoop.apply(second, itemList(row(11, 1, 1L, false), row(10, 1, 1L, true)));
+		SeedLoop.checkRelog(first.snapshot(), second.snapshot());
+
+		SeedLoop.View bothWorn = new SeedLoop.View(0);
+		SeedLoop.apply(bothWorn, itemList(row(10, 1, 1L, true), row(11, 1, 1L, true)));
+		assertThat(bothWorn.snapshot()).isNotEqualTo(first.snapshot());
+
+		SeedLoop.View stacked = new SeedLoop.View(0);
+		SeedLoop.apply(stacked, itemList(row(10, 1, 2L, true)));
+		assertThat(stacked.snapshot()).isNotEqualTo(first.snapshot());
+
+		first.exp = 68L;
+		String before = first.snapshot();
+		first.exp = 69L;
+		assertThatThrownBy(() -> SeedLoop.checkRelog(before, first.snapshot())).hasMessageContaining("re-enter");
+		first.exp = 68L;
+		first.sp = 12;
+		assertThatThrownBy(() -> SeedLoop.checkRelog(before, first.snapshot())).hasMessageContaining("re-enter");
+		first.sp = 0;
+		SeedLoop.apply(first, new PacketWriter().writeC(0x5f).writeD(1).writeD(1).writeD(1).writeD(257).writeC(0)
+				.toByteArray());
+		String skilled = first.snapshot();
+		SeedLoop.apply(first, new PacketWriter().writeC(0x5f).writeD(1).writeD(1).writeD(2).writeD(257).writeC(0)
+				.toByteArray());
+		assertThat(first.snapshot()).isNotEqualTo(skilled);
+	}
+
+	@Test
+	void purchaseDrinkAndLearnRejectTheWrongDelta() throws SmokeException
+	{
+		assertThatThrownBy(() -> SeedLoop.checkPurchase(10, 1, 14, 0)).hasMessageContaining("buy coins");
+		assertThatThrownBy(() -> SeedLoop.checkPurchase(2, 2, 14, 0)).hasMessageContaining("buy potions");
+		SeedLoop.checkPurchase(2, 1, 14, 0);
+
+		assertThatThrownBy(() -> SeedLoop.checkDrink(1, 1)).hasMessageContaining("drink potions");
+		SeedLoop.checkDrink(0, 1);
+
+		assertThatThrownBy(() -> SeedLoop.checkLearn(60, 72, 0)).hasMessageContaining("learn skill 257");
+		assertThatThrownBy(() -> SeedLoop.checkLearn(70, 72, 1)).hasMessageContaining("learn sp");
+		SeedLoop.checkLearn(60, 72, 1);
+	}
+
+	@Test
+	void theBeastWaitDoesNotGrowFromALaterShorterInterval()
+	{
+		SeedLoop.View view = new SeedLoop.View(0);
+		view.noteBeastWait(System.nanoTime() - java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(2_000));
+		long recorded = view.longestBeastWaitMillis;
+		assertThat(recorded).isGreaterThanOrEqualTo(1_500L);
+		view.noteBeastWait(System.nanoTime());
+		assertThat(view.longestBeastWaitMillis).isEqualTo(recorded);
+	}
+
+	@Test
+	void aShortPacketFailsTheSession()
+	{
+		SeedLoop.View view = new SeedLoop.View(0);
+		assertThatThrownBy(() -> SeedLoop.apply(view, new byte[] { 0x11, 0x01 })).isInstanceOf(SmokeException.class)
+				.hasMessageContaining("the packet is too short");
+	}
+
+	@Test
+	void inventoryUpdatesAddModifyAndRemoveSeparateRows() throws SmokeException
+	{
+		SeedLoop.View view = new SeedLoop.View(0);
+		SeedLoop.apply(view, itemList());
+		SeedLoop.apply(view, inventory(1, row(10, 57, 4L, false), 1, row(11, 1060, 1L, false)));
+		SeedLoop.apply(view, inventory(2, row(10, 57, 8L, false), 3, row(11, 1060, 0L, false)));
+
+		assertThat(view.snapshot()).contains("57:8:0").doesNotContain("1060");
+	}
 	
+	private static SeedLoop.View starter() throws SmokeException
+	{
+		SeedLoop.View view = new SeedLoop.View(0);
+		view.level = 1;
+		SeedLoop.apply(view, itemList(row(10, 1, 1L, true), row(11, 23, 1L, true), row(12, 28, 1L, true),
+				row(13, 39, 1L, true)));
+		return view;
+	}
+
+	private static byte[] itemList(int[]... rows)
+	{
+		PacketWriter writer = new PacketWriter().writeC(0x11).writeH(1).writeH(rows.length);
+		for (int[] row : rows)
+			writeRow(writer, row);
+		return writer.toByteArray();
+	}
+
+	private static byte[] inventory(Object... changes)
+	{
+		int count = changes.length / 2;
+		PacketWriter writer = new PacketWriter().writeC(0x21).writeH(count);
+		for (int i = 0; i < changes.length; i += 2)
+		{
+			writer.writeH((Integer)changes[i]);
+			writeRow(writer, (int[])changes[i + 1]);
+		}
+		return writer.toByteArray();
+	}
+
+	private static int[] row(int objectId, int itemId, long count, boolean equipped)
+	{
+		return new int[] { objectId, itemId, (int)count, equipped ? 1 : 0 };
+	}
+
+	private static void writeRow(PacketWriter writer, int[] row)
+	{
+		writer.writeH(0).writeD(row[0]).writeD(row[1]).writeD(0).writeQ(row[2]).writeH(0).writeH(0).writeH(row[3])
+				.writeD(0).writeH(0).writeH(0).writeD(0).writeD(0).writeZeros(16).writeD(-1);
+	}
+
 	private static SeedLoop.View moving()
 	{
 		SeedLoop.View view = new SeedLoop.View(0);

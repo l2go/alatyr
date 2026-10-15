@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -53,7 +54,7 @@ final class SeedLoop
 	private static final int RUN_SPEED = 128;
 	private static final int STEP = 700;
 	private static final int MELEE = 80;
-	/** Far enough that the server's own walk finishes the approach. A tighter step never arrives under load. */
+	/** Where the client stops stepping toward a beast. */
 	private static final int APPROACH = 600;
 	private static final int INTERACT = 120;
 	/** A beast belongs to a spawn when it stands closer than the next spawn on the grid. */
@@ -78,7 +79,7 @@ final class SeedLoop
 	}
 
 	static void play(SmokeClient.Config config, Deadline deadline, Reporter reporter, String account, String password,
-			String characterName, int sessionIndex) throws SmokeException
+			String characterName, int sessionIndex, FirstTargets targets) throws SmokeException
 	{
 		LoginFlow.Session session = LoginFlow.selectWorld(config, deadline, reporter, account, password);
 		View view = new View(sessionIndex);
@@ -91,7 +92,7 @@ final class SeedLoop
 			if (view.itemEpoch == 0)
 				askItems(game, view, deadline);
 			checkStarter(view);
-			fight(game, view, deadline, reporter, true);
+			fight(game, view, deadline, reporter, true, targets);
 			buyPotion(game, view, deadline, reporter);
 			drink(game, view, deadline, reporter);
 			absorb(game, view, deadline, 2000L);
@@ -101,11 +102,11 @@ final class SeedLoop
 			if (view.level < 2 && view.userInfos < 2)
 				throw new SmokeException("step level: UserInfo did not arrive again after the kills; level "
 						+ view.level + " exp " + view.exp + " sp " + view.sp);
-			fight(game, view, deadline, reporter, false);
+			fight(game, view, deadline, reporter, false, targets);
 			learn(game, view, deadline, reporter);
 			String before = view.snapshot();
 			reporter.info(tag(view) + " snapshot-before " + before);
-			reporter.info(tag(view) + " kills=" + view.kills + " longest-target-wait-ms=" + view.longestWaitMillis);
+			reporter.info(tag(view) + " kills=" + view.kills + " longest-target-wait-ms=" + view.longestBeastWaitMillis);
 			logout(game, deadline);
 		}
 
@@ -120,10 +121,7 @@ final class SeedLoop
 			askSkills(game, after, deadline);
 			String seen = after.snapshot();
 			reporter.info(tag(view) + " snapshot-after " + seen);
-			if (!view.snapshot().equals(seen))
-			{
-				throw mismatch("re-enter", view.snapshot(), seen);
-			}
+			checkRelog(view.snapshot(), seen);
 			logout(game, deadline);
 		}
 	}
@@ -192,7 +190,7 @@ final class SeedLoop
 		reporter.ok(create ? "entered" : "entered again");
 	}
 
-	private static void checkStarter(View view) throws SmokeException
+	static void checkStarter(View view) throws SmokeException
 	{
 		if (view.level != 1)
 			throw mismatch("enter level", 1, view.level);
@@ -205,17 +203,36 @@ final class SeedLoop
 		if (view.count(POTION) != 0L)
 			throw mismatch("enter potions", 0, view.count(POTION));
 
-		List<Integer> equipped = view.equippedIds();
 		List<Integer> expected = List.of(STARTER[0], STARTER[1], STARTER[2], STARTER[3]);
-		if (!equipped.equals(expected))
-			throw mismatch("enter equipped", expected, equipped);
-		if (view.items.size() != expected.size())
-			throw mismatch("enter inventory size", expected.size(), view.items.size());
+		Map<Integer, Held> byTemplate = new LinkedHashMap<>();
+		for (Held item : view.items.values())
+		{
+			Held previous = byTemplate.put(item.itemId, item);
+			if (previous != null)
+				throw mismatch("enter item " + item.itemId, "one row", "more than one");
+		}
+		for (int itemId : byTemplate.keySet())
+		{
+			if (!expected.contains(itemId))
+				throw mismatch("enter item", "the starter kit", itemId);
+		}
+		for (int itemId : expected)
+		{
+			if (!byTemplate.containsKey(itemId))
+				throw mismatch("enter item " + itemId, "present", "absent");
+		}
+		for (Held item : byTemplate.values())
+		{
+			if (item.count != 1L)
+				throw mismatch("enter item " + item.itemId + " count", 1, item.count);
+			if (!item.equipped)
+				throw mismatch("enter item " + item.itemId + " equipped", "worn", "not worn");
+		}
 	}
 
 	/** Fights template 18003 until the coins are enough, or until level 2 and the SP for the skill. */
-	private static void fight(GameConnection game, View view, Deadline deadline, Reporter reporter, boolean forCoins)
-			throws SmokeException
+	private static void fight(GameConnection game, View view, Deadline deadline, Reporter reporter, boolean forCoins,
+			FirstTargets targets) throws SmokeException
 	{
 		int guard = 0;
 		while (forCoins ? view.count(COIN) < COINS_NEEDED : view.level < 2 || view.sp < SP_COST)
@@ -227,7 +244,7 @@ final class SeedLoop
 						+ view.count(COIN) + " level " + view.level + " sp " + view.sp + " after " + view.kills
 						+ " kills");
 			}
-			Actor target = takeTarget(game, view, deadline, reporter);
+			Actor target = takeTarget(game, view, deadline, reporter, targets);
 			long expBefore = view.exp;
 			int spBefore = view.sp;
 			boolean fell = attack(game, view, deadline, target);
@@ -248,9 +265,12 @@ final class SeedLoop
 	 * Session i hunts the two spawns i and i + 24. The target is the beast of template 18003 standing
 	 * nearest one of those points. While both points are empty the session waits out the corpse and
 	 * the respawn; a quiet server during that wait is not a failed read.
+	 * <p>
+	 * The recorded wait starts when this search begins and ends when a beast is chosen. The walk to
+	 * the plot is part of it. The walk to the merchant or the trainer is not.
 	 */
-	private static Actor takeTarget(GameConnection game, View view, Deadline deadline, Reporter reporter)
-			throws SmokeException
+	private static Actor takeTarget(GameConnection game, View view, Deadline deadline, Reporter reporter,
+			FirstTargets targets) throws SmokeException
 	{
 		long started = System.nanoTime();
 		int slot = Math.floorMod(view.sessionIndex, BEAST_SPAWNS.length / 2);
@@ -279,10 +299,11 @@ final class SeedLoop
 			}
 			if (chosen != null)
 			{
-				view.noteWait(started);
+				view.noteBeastWait(started);
 				if (!view.firstAnnounced)
 				{
 					view.firstAnnounced = true;
+					targets.claim(view.sessionIndex, chosen.objectId);
 					reporter.info(tag(view) + " first-target objectId=" + chosen.objectId + " spawn=" + spawn);
 				}
 				return chosen;
@@ -300,8 +321,9 @@ final class SeedLoop
 	}
 
 	/**
-	 * The living beast of template 18003 closest to this spawn, when this spawn is closer to it than any
-	 * other spawn. A beast that has walked off the plot is still this session's; a neighbour's beast is not.
+	 * The living beast of template 18003 closest to this spawn, when this spawn is its unique nearest.
+	 * An equal squared distance belongs to the earlier spawn. A beast that has walked off the plot is
+	 * still this session's; a neighbour's beast is not.
 	 */
 	private static Actor beastAt(View view, int x, int y)
 	{
@@ -312,8 +334,8 @@ final class SeedLoop
 			if (npc.templateId != BEAST || npc.dead)
 				continue;
 
-			long gap = distance(npc.x, npc.y, x, y);
-			if (gap >= bestDistance || !nearestSpawn(npc, x, y, gap))
+			long gap = squared(npc.x, npc.y, x, y);
+			if (gap >= bestDistance || !ownsSpawn(npc.x, npc.y, x, y))
 				continue;
 
 			best = npc;
@@ -322,17 +344,58 @@ final class SeedLoop
 		return best;
 	}
 
-	/** @return true when no other beast spawn is strictly closer to this beast */
-	private static boolean nearestSpawn(Actor beast, int x, int y, long gap)
+	/**
+	 * @return true when this spawn is the unique nearest spawn. An equal squared distance belongs to the
+	 *         earlier spawn in {@link #BEAST_SPAWNS}.
+	 */
+	static boolean ownsSpawn(int beastX, int beastY, int spawnX, int spawnY)
 	{
-		for (int[] spawn : BEAST_SPAWNS)
+		long here = squared(beastX, beastY, spawnX, spawnY);
+		int hereIndex = -1;
+		for (int i = 0; i < BEAST_SPAWNS.length; i++)
 		{
-			if (spawn[0] == x && spawn[1] == y)
+			if (BEAST_SPAWNS[i][0] == spawnX && BEAST_SPAWNS[i][1] == spawnY)
+			{
+				hereIndex = i;
+				break;
+			}
+		}
+		if (hereIndex < 0)
+			return false;
+
+		for (int i = 0; i < BEAST_SPAWNS.length; i++)
+		{
+			if (i == hereIndex)
 				continue;
-			if (distance(beast.x, beast.y, spawn[0], spawn[1]) < gap)
+
+			long other = squared(beastX, beastY, BEAST_SPAWNS[i][0], BEAST_SPAWNS[i][1]);
+			if (other < here || (other == here && i < hereIndex))
 				return false;
 		}
 		return true;
+	}
+
+	private static long squared(int x1, int y1, int x2, int y2)
+	{
+		long dx = (long)x1 - x2;
+		long dy = (long)y1 - y2;
+		return dx * dx + dy * dy;
+	}
+
+	/** First targets of one launch. Claiming the same object from two sessions fails the second. */
+	static final class FirstTargets
+	{
+		private final ConcurrentHashMap<Integer, Integer> _owner = new ConcurrentHashMap<>();
+
+		void claim(int sessionIndex, int objectId) throws SmokeException
+		{
+			Integer previous = _owner.putIfAbsent(objectId, sessionIndex);
+			if (previous != null && previous != sessionIndex)
+			{
+				throw new SmokeException("step target: session " + sessionIndex + " and session " + previous
+						+ " both chose object " + objectId + " as the first target");
+			}
+		}
 	}
 
 	/**
@@ -461,10 +524,7 @@ final class SeedLoop
 
 		game.send(GamePackets.buy(SHOP, POTION, 1));
 		askItems(game, view, deadline);
-		if (view.count(COIN) != beforeCoins - COIN_PRICE)
-			throw mismatch("buy coins", beforeCoins - COIN_PRICE, view.count(COIN));
-		if (view.count(POTION) != beforePotions + 1)
-			throw mismatch("buy potions", beforePotions + 1, view.count(POTION));
+		checkPurchase(view.count(COIN), view.count(POTION), beforeCoins, beforePotions);
 
 		view.coinsBeforeBuy = beforeCoins;
 		view.coinsAfterBuy = view.count(COIN);
@@ -484,8 +544,7 @@ final class SeedLoop
 			poll(game, view, deadline, 300L);
 
 		askItems(game, view, deadline);
-		if (view.count(POTION) != before - 1)
-			throw mismatch("drink potions", before - 1, view.count(POTION));
+		checkDrink(view.count(POTION), before);
 
 		view.potionsBeforeDrink = before;
 		view.potionsAfterDrink = view.count(POTION);
@@ -513,10 +572,7 @@ final class SeedLoop
 			poll(game, view, deadline, 300L);
 
 		askSkills(game, view, deadline);
-		if (view.skillLevel(SKILL) != SKILL_LEVEL)
-			throw mismatch("learn skill " + SKILL, SKILL_LEVEL, view.skillLevel(SKILL));
-		if (view.sp != before - SP_COST)
-			throw mismatch("learn sp", before - SP_COST, view.sp);
+		checkLearn(view.sp, before, view.skillLevel(SKILL));
 
 		view.spBeforeLearn = before;
 		view.spAfterLearn = view.sp;
@@ -526,7 +582,6 @@ final class SeedLoop
 	private static Actor approachNpc(GameConnection game, View view, Deadline deadline, int template, int x, int y)
 			throws SmokeException
 	{
-		long started = System.nanoTime();
 		while (true)
 		{
 			if (deadline.expired())
@@ -536,10 +591,7 @@ final class SeedLoop
 			int tx = npc == null ? x : npc.x;
 			int ty = npc == null ? y : npc.y;
 			if (npc != null && distance(view.x, view.y, npc.x, npc.y) <= INTERACT)
-			{
-				view.noteWait(started);
 				return npc;
-			}
 			stepToward(game, view, deadline, tx, ty, GROUND_Z);
 		}
 	}
@@ -1070,6 +1122,34 @@ final class SeedLoop
 		}
 	}
 
+	static void checkPurchase(long coins, long potions, long coinsBefore, long potionsBefore) throws SmokeException
+	{
+		if (coins != coinsBefore - COIN_PRICE)
+			throw mismatch("buy coins", coinsBefore - COIN_PRICE, coins);
+		if (potions != potionsBefore + 1)
+			throw mismatch("buy potions", potionsBefore + 1, potions);
+	}
+
+	static void checkDrink(long potions, long before) throws SmokeException
+	{
+		if (potions != before - 1)
+			throw mismatch("drink potions", before - 1, potions);
+	}
+
+	static void checkLearn(int sp, int before, int skillLevel) throws SmokeException
+	{
+		if (skillLevel != SKILL_LEVEL)
+			throw mismatch("learn skill " + SKILL, SKILL_LEVEL, skillLevel);
+		if (sp != before - SP_COST)
+			throw mismatch("learn sp", before - SP_COST, sp);
+	}
+
+	static void checkRelog(String before, String after) throws SmokeException
+	{
+		if (!before.equals(after))
+			throw mismatch("re-enter", before, after);
+	}
+
 	private static SmokeException mismatch(String step, Object expected, Object actual)
 	{
 		return new SmokeException("step " + step + ": expected " + expected + " actual " + actual);
@@ -1169,9 +1249,9 @@ final class SeedLoop
 		int x;
 		int y;
 		int z = GROUND_Z;
-		private int level;
-		private long exp;
-		private int sp;
+		int level;
+		long exp;
+		int sp;
 		private int hp;
 		private int maxHp;
 		private int userInfos;
@@ -1199,7 +1279,7 @@ final class SeedLoop
 		private int acceptedX;
 		private int acceptedY;
 		private int acceptedZ;
-		private long longestWaitMillis;
+		long longestBeastWaitMillis;
 		private long coinsBeforeBuy;
 		private long coinsAfterBuy;
 		private long potionsBeforeDrink;
@@ -1233,11 +1313,11 @@ final class SeedLoop
 			return out.toString();
 		}
 
-		private void noteWait(long started)
+		void noteBeastWait(long started)
 		{
 			long waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
-			if (waited > longestWaitMillis)
-				longestWaitMillis = waited;
+			if (waited > longestBeastWaitMillis)
+				longestBeastWaitMillis = waited;
 		}
 
 		private Actor nearest(int template)
@@ -1301,42 +1381,28 @@ final class SeedLoop
 			return null;
 		}
 
-		private List<Integer> equippedIds()
-		{
-			List<Integer> ids = new ArrayList<>();
-			for (Held item : items.values())
-			{
-				if (item.equipped)
-					ids.add(item.itemId);
-			}
-			ids.sort(Integer::compareTo);
-			return ids;
-		}
-
 		private int skillLevel(int skillId)
 		{
 			return skills.getOrDefault(skillId, 0);
 		}
 
-		private String snapshot()
+		String snapshot()
 		{
-			Map<Integer, long[]> byTemplate = new TreeMap<>();
+			Map<String, Integer> rows = new TreeMap<>();
 			for (Held item : items.values())
 			{
-				int itemId = item.itemId;
-				long[] row = byTemplate.computeIfAbsent(itemId, id -> new long[2]);
-				row[0] += item.count;
-				if (item.equipped)
-					row[1] = 1L;
+				String key = item.itemId + ":" + item.count + ":" + (item.equipped ? 1 : 0);
+				rows.merge(key, 1, Integer::sum);
 			}
 			StringBuilder itemsText = new StringBuilder();
-			for (Map.Entry<Integer, long[]> entry : byTemplate.entrySet())
+			for (Map.Entry<String, Integer> entry : rows.entrySet())
 			{
 				if (itemsText.length() > 0)
 					itemsText.append(',');
 
-				itemsText.append(entry.getKey()).append(':').append(entry.getValue()[0]).append(':')
-						.append(entry.getValue()[1]);
+				itemsText.append(entry.getKey());
+				if (entry.getValue() > 1)
+					itemsText.append('*').append(entry.getValue());
 			}
 			StringBuilder skillsText = new StringBuilder();
 			for (Map.Entry<Integer, Integer> entry : skills.entrySet())

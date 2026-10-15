@@ -110,6 +110,7 @@ public final class SmokeClient
 		final long begin = System.nanoTime();
 		try
 		{
+			final SeedLoop.FirstTargets targets = new SeedLoop.FirstTargets();
 			final List<Future<Result>> futures = new ArrayList<Future<Result>>();
 			for (int i = 0; i < config.sessions(); i++)
 			{
@@ -120,7 +121,7 @@ public final class SmokeClient
 				final PrintStream sessionOut = config.seedLoop() ? new PrintStream(buffer)
 						: new PrintStream(OutputStream.nullOutputStream());
 				futures.add(executor.submit(() -> {
-					Result result = run(config, new Reporter(sessionOut), sessionIndex);
+					Result result = run(config, new Reporter(sessionOut), sessionIndex, targets);
 					if (config.seedLoop())
 					{
 						sessionOut.flush();
@@ -169,11 +170,17 @@ public final class SmokeClient
 		return run(config, reporter, 0);
 	}
 
+	static Result run(Config config, Reporter reporter, int sessionIndex)
+	{
+		return run(config, reporter, sessionIndex, new SeedLoop.FirstTargets());
+	}
+
 	/**
 	 * Runs one session. {@code sessionIndex} chooses the seed-loop plots: session i hunts the beasts at
-	 * spawns i and i + 24. The default scenario does not use it.
+	 * spawns i and i + 24. The default scenario does not use it. {@code targets} is shared by the sessions
+	 * of one launch so two of them cannot keep the same first object.
 	 */
-	static Result run(Config config, Reporter reporter, int sessionIndex)
+	static Result run(Config config, Reporter reporter, int sessionIndex, SeedLoop.FirstTargets targets)
 	{
 		final Deadline deadline = Deadline.after(config.timeoutSeconds());
 		// the password of the test account is random, so it comes from a secure source
@@ -187,7 +194,7 @@ public final class SmokeClient
 		try
 		{
 			if (config.seedLoop())
-				SeedLoop.play(config, deadline, reporter, account, password, character, sessionIndex);
+				SeedLoop.play(config, deadline, reporter, account, password, character, sessionIndex, targets);
 			else
 			{
 				LoginFlow.Session session = LoginFlow.selectWorld(config, deadline, reporter, account, password);
