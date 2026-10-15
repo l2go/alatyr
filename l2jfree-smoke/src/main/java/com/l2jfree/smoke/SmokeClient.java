@@ -170,8 +170,8 @@ public final class SmokeClient
 	}
 
 	/**
-	 * Runs one session. {@code sessionIndex} chooses the first beast of the seed loop: session i takes the
-	 * i-th visible beast of that template, ordered by coordinates. The default scenario does not use it.
+	 * Runs one session. {@code sessionIndex} chooses the seed-loop plots: session i hunts the beasts at
+	 * spawns i and i + 24. The default scenario does not use it.
 	 */
 	static Result run(Config config, Reporter reporter, int sessionIndex)
 	{

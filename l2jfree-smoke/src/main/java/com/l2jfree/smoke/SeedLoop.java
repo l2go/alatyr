@@ -15,9 +15,11 @@
 package com.l2jfree.smoke;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 
@@ -53,6 +55,8 @@ final class SeedLoop
 	private static final int RUN_SPEED = 128;
 	private static final int STEP = 700;
 	private static final int MELEE = 80;
+	/** Far enough that the server's own walk finishes the approach. A tighter step never arrives under load. */
+	private static final int APPROACH = 250;
 	private static final int INTERACT = 120;
 	/** A beast belongs to a spawn when it stands closer than the next spawn on the grid. */
 	private static final int PLOT = 200;
@@ -85,7 +89,9 @@ final class SeedLoop
 			enter(config, deadline, reporter, game, session, account, characterName, true);
 			absorb(game, view, deadline, 3000L);
 			waitForSelf(game, view, deadline);
-			askItems(game, view, deadline);
+			// The enter burst already carries the inventory. Asking again only waits for a second copy.
+			if (view.itemEpoch == 0)
+				askItems(game, view, deadline);
 			checkStarter(view);
 			fight(game, view, deadline, reporter, true);
 			buyPotion(game, view, deadline, reporter);
@@ -226,11 +232,11 @@ final class SeedLoop
 			Actor target = takeTarget(game, view, deadline, reporter);
 			long expBefore = view.exp;
 			int spBefore = view.sp;
-			attack(game, view, deadline, target);
-			// The reward arrives in UserInfo after the death. A death that does not raise experience
-			// or SP was someone else's kill.
+			boolean fell = attack(game, view, deadline, target);
+			// The reward arrives in UserInfo after the death. A beast that left the known list, or a
+			// death that does not raise experience or SP, is not this session's kill.
 			absorb(game, view, deadline, 1500L);
-			if (view.exp == expBefore && view.sp == spBefore)
+			if (!fell || (view.exp == expBefore && view.sp == spBefore))
 				continue;
 
 			view.kills++;
@@ -295,7 +301,10 @@ final class SeedLoop
 		}
 	}
 
-	/** The living beast of template 18003 closest to this spawn, when it is still on that plot. */
+	/**
+	 * The living beast of template 18003 closest to this spawn, when this spawn is closer to it than any
+	 * other spawn. A beast that has walked off the plot is still this session's; a neighbour's beast is not.
+	 */
 	private static Actor beastAt(View view, int x, int y)
 	{
 		Actor best = null;
@@ -306,20 +315,35 @@ final class SeedLoop
 				continue;
 
 			long gap = distance(npc.x, npc.y, x, y);
-			if (gap <= PLOT && gap < bestDistance)
-			{
-				best = npc;
-				bestDistance = gap;
-			}
+			if (gap >= bestDistance || !nearestSpawn(npc, x, y, gap))
+				continue;
+
+			best = npc;
+			bestDistance = gap;
 		}
 		return best;
+	}
+
+	/** @return true when no other beast spawn is strictly closer to this beast */
+	private static boolean nearestSpawn(Actor beast, int x, int y, long gap)
+	{
+		for (int[] spawn : BEAST_SPAWNS)
+		{
+			if (spawn[0] == x && spawn[1] == y)
+				continue;
+			if (distance(beast.x, beast.y, spawn[0], spawn[1]) < gap)
+				return false;
+		}
+		return true;
 	}
 
 	/**
 	 * Walks into reach, selects the beast, then starts one attack and waits. A move sent after that
 	 * cancels the server's own walk into range, so the beast hits a character that never swings.
+	 *
+	 * @return true when this beast was seen to die
 	 */
-	private static void attack(GameConnection game, View view, Deadline deadline, Actor target) throws SmokeException
+	private static boolean attack(GameConnection game, View view, Deadline deadline, Actor target) throws SmokeException
 	{
 		long until = Long.MAX_VALUE;
 		boolean started = false;
@@ -332,10 +356,16 @@ final class SeedLoop
 				break;
 
 			Actor seen = view.npcs.get(target.objectId);
-			if (seen == null || seen.dead)
+			if (view.fallen.contains(target.objectId) || (seen != null && seen.dead))
 			{
 				adoptDestination(view);
-				return;
+				return true;
+			}
+			if (seen == null)
+			{
+				// Left the known list without a death. It is still alive somewhere on the plot.
+				adoptDestination(view);
+				return false;
 			}
 			if (!started)
 			{
@@ -347,7 +377,8 @@ final class SeedLoop
 					stepToward(game, view, deadline, PEACE_EAST + 200, view.y + lane, view.z);
 					continue;
 				}
-				if (distance(view.x, view.y, seen.x, seen.y) > MELEE)
+				// Close enough for the server to walk the rest. Another client step would cancel that walk.
+				if (distance(view.x, view.y, seen.x, seen.y) > APPROACH)
 				{
 					stepToward(game, view, deadline, seen.x, seen.y, seen.z);
 					continue;
@@ -356,10 +387,15 @@ final class SeedLoop
 				game.send(GamePackets.action(seen.objectId, view.x, view.y, view.z));
 				absorb(game, view, deadline, ATTACK_PAUSE_MILLIS);
 				seen = view.npcs.get(target.objectId);
-				if (seen == null || seen.dead)
+				if (view.fallen.contains(target.objectId) || (seen != null && seen.dead))
 				{
 					adoptDestination(view);
-					return;
+					return true;
+				}
+				if (seen == null)
+				{
+					adoptDestination(view);
+					return false;
 				}
 				game.send(GamePackets.action(seen.objectId, view.x, view.y, view.z));
 				started = true;
@@ -375,6 +411,9 @@ final class SeedLoop
 			absorb(game, view, deadline, ATTACK_PAUSE_MILLIS);
 		}
 		Actor seen = view.npcs.get(target.objectId);
+		if (view.fallen.contains(target.objectId) || (seen != null && seen.dead))
+			return true;
+
 		throw new SmokeException("step attack: template " + BEAST + " object " + target.objectId
 				+ " did not die; still " + (seen == null ? "gone" : "alive at " + seen.x + "," + seen.y));
 	}
@@ -549,14 +588,13 @@ final class SeedLoop
 		}
 		view.acceptedMove = false;
 		game.send(GamePackets.moveBackward(destX, destY, z, view.x, view.y, view.z));
-		// The server tells the client the destination and then expects the client to walk there. A move
-		// that finishes on its own does not send StopMove, so the position is taken from that destination
-		// once the travel time has passed. The confirmation can arrive after that, and a new move would
-		// cancel the walk, so the wait holds a little longer.
-		long travel = (long)(Math.min(len, STEP) / RUN_SPEED * 1000L) + 1500L;
+		// The server walks the character and does not send StopMove when the walk finishes. A second
+		// move before that cancels the first, which is how a session stays on one tile until the
+		// deadline. Once the travel time has passed, the position is the point that was asked for,
+		// whether or not the confirmation packet has been read yet.
+		long travel = (long)(Math.min(len, STEP) / RUN_SPEED * 1000L) + 800L;
 		long travelEnd = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(travel);
-		long until = travelEnd + TimeUnit.SECONDS.toNanos(4);
-		while (System.nanoTime() < until)
+		while (System.nanoTime() < travelEnd)
 		{
 			if (deadline.expired())
 				throw new SmokeException("step move: the time limit ended");
@@ -564,11 +602,15 @@ final class SeedLoop
 			poll(game, view, deadline, 200L);
 			if (distance(view.x, view.y, destX, destY) <= MELEE)
 				return;
-			if (view.acceptedMove && System.nanoTime() >= travelEnd)
-				break;
 		}
-		if (view.acceptedMove && distance(view.x, view.y, view.acceptedX, view.acceptedY) > MELEE)
+		if (view.acceptedMove)
 			adoptDestination(view);
+		else
+		{
+			view.x = destX;
+			view.y = destY;
+			view.z = z;
+		}
 	}
 
 	/** The server does not send StopMove when a walk finishes, so the last accepted destination is where we are. */
@@ -599,7 +641,7 @@ final class SeedLoop
 	 */
 	private static void askItems(GameConnection game, View view, Deadline deadline) throws SmokeException
 	{
-		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(8);
+		long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
 		while (System.nanoTime() < until)
 		{
 			if (deadline.expired())
@@ -700,16 +742,24 @@ final class SeedLoop
 			{
 				GamePackets.UserView user = GamePackets.parseUserInfo(in);
 				// A frame that is not this character's info still carries opcode 0x32 once the
-				// stream has slipped. A level off this range is that frame. Coordinates stay
-				// accepted anywhere on the map: a tight box froze the walk once a step left it.
+				// stream has slipped. A level off this range, or another object id, is that frame.
 				if (user.level() < 1 || user.level() > 20 || user.x() < -1_000_000 || user.x() > 1_000_000
 						|| user.y() < 0 || user.y() > 1_000_000)
 					return;
+				if (view.objectId != 0 && user.objectId() != view.objectId)
+					return;
 
+				boolean firstPlace = view.objectId == 0;
 				view.objectId = user.objectId();
-				view.x = user.x();
-				view.y = user.y();
-				view.z = user.z();
+				// Later UserInfo packets refresh experience. The place comes from the move the server
+				// accepted: a UserInfo from before that move would pull the session back onto the tile
+				// it just left and the next step would cancel the walk.
+				if (firstPlace)
+				{
+					view.x = user.x();
+					view.y = user.y();
+					view.z = user.z();
+				}
 				view.level = user.level();
 				view.exp = user.exp();
 				view.sp = user.sp();
@@ -751,7 +801,10 @@ final class SeedLoop
 						for (GamePackets.StatusAttribute attribute : status.attributes())
 						{
 							if (attribute.id() == 0x09 && attribute.value() <= 0)
+							{
 								npc.dead = true;
+								view.fallen.add(status.objectId());
+							}
 						}
 					}
 				}
@@ -792,6 +845,7 @@ final class SeedLoop
 					throw new SmokeException("step attack: the character died at level " + view.level + " sp "
 							+ view.sp + " hp " + view.hp + "/" + view.maxHp);
 
+				view.fallen.add(objectId);
 				Actor npc = view.npcs.get(objectId);
 				if (npc != null)
 					npc.dead = true;
@@ -799,10 +853,9 @@ final class SeedLoop
 			case GamePackets.OP_DELETE_OBJECT ->
 			{
 				int objectId = GamePackets.parseDeleteObject(in);
-				Actor npc = view.npcs.remove(objectId);
-				if (npc != null && npc.templateId == BEAST)
-					view.npcs.put(objectId, new Actor(objectId, BEAST, npc.x, npc.y, npc.z, true));
-
+				// Leaving the known list is not a death. Keeping the beast as dead made the session
+				// wait on an empty plot while the same beast was still alive.
+				view.npcs.remove(objectId);
 				view.drops.remove(objectId);
 			}
 			case GamePackets.OP_MOVE_TO_LOCATION ->
@@ -823,9 +876,11 @@ final class SeedLoop
 					Actor npc = view.npcs.get(move[0]);
 					if (npc != null)
 					{
-						npc.x = move[1];
-						npc.y = move[2];
-						npc.z = move[3];
+						// Where it is now, not where the walk ends. Aiming at the end keeps the session
+						// a step behind a beast that is already walking back.
+						npc.x = move[4];
+						npc.y = move[5];
+						npc.z = move[6];
 					}
 				}
 			}
@@ -1126,6 +1181,8 @@ final class SeedLoop
 		private int kills;
 		private boolean firstAnnounced;
 		private boolean acceptedMove;
+		/** Creatures whose death was shown, so a later delete is not mistaken for a living beast. */
+		private final Set<Integer> fallen = new HashSet<>();
 		private int acceptedX;
 		private int acceptedY;
 		private int acceptedZ;
