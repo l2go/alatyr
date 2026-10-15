@@ -44,8 +44,6 @@ final class SeedLoop
 	private static final int COINS_NEEDED = 12;
 	private static final int[] STARTER = { 1, 23, 28, 39 };
 
-	/** East edge of peace zone 731. Beasts of template 18003 stand east of it. */
-	private static final int PEACE_EAST = -70837;
 	private static final int MERCHANT_X = -71057;
 	private static final int MERCHANT_Y = 258243;
 	private static final int TRAINER_X = -71057;
@@ -83,7 +81,7 @@ final class SeedLoop
 			String characterName, int sessionIndex) throws SmokeException
 	{
 		LoginFlow.Session session = LoginFlow.selectWorld(config, deadline, reporter, account, password);
-		View view = new View(sessionIndex, characterName);
+		View view = new View(sessionIndex);
 		try (GameConnection game = connect(config, deadline, reporter, session.world()))
 		{
 			enter(config, deadline, reporter, game, session, account, characterName, true);
@@ -99,7 +97,7 @@ final class SeedLoop
 			absorb(game, view, deadline, 2000L);
 			reporter.info(tag(view) + " before-level level=" + view.level + " exp=" + view.exp + " sp=" + view.sp
 					+ " hp=" + view.hp + "/" + view.maxHp + " userinfo=" + view.userInfos + " recent="
-					+ view.recentOpcodes() + " short=" + view.shorts);
+					+ view.recentOpcodes());
 			if (view.level < 2 && view.userInfos < 2)
 				throw new SmokeException("step level: UserInfo did not arrive again after the kills; level "
 						+ view.level + " exp " + view.exp + " sp " + view.sp);
@@ -112,7 +110,7 @@ final class SeedLoop
 		}
 
 		LoginFlow.Session again = selectWorldAgain(config, deadline, reporter, account, password);
-		View after = new View(sessionIndex, characterName);
+		View after = new View(sessionIndex);
 		try (GameConnection game = connect(config, deadline, reporter, again.world()))
 		{
 			enter(config, deadline, reporter, game, again, account, characterName, false);
@@ -220,10 +218,6 @@ final class SeedLoop
 			throws SmokeException
 	{
 		int guard = 0;
-		// Twenty-four characters appear on one tile. A move onto that tile is never accepted, so
-		// they leave one after another instead of all at once.
-		if (forCoins && view.kills == 0 && view.sessionIndex > 0)
-			absorb(game, view, deadline, view.sessionIndex * 350L);
 		while (forCoins ? view.count(COIN) < COINS_NEEDED : view.level < 2 || view.sp < SP_COST)
 		{
 			if (guard++ > 40)
@@ -373,14 +367,6 @@ final class SeedLoop
 			}
 			if (!started)
 			{
-				if (view.x <= PEACE_EAST)
-				{
-					// Sessions leave side by side. One tile at the east edge holds the whole crowd,
-					// and a move onto an occupied tile is never accepted.
-					int lane = (view.sessionIndex - 12) * 70;
-					stepToward(game, view, deadline, PEACE_EAST + 200, view.y + lane, view.z);
-					continue;
-				}
 				// Close enough for the server to walk the rest. Another client step would cancel that walk.
 				if (distance(view.x, view.y, seen.x, seen.y) > APPROACH)
 				{
@@ -747,27 +733,7 @@ final class SeedLoop
 		PacketReader in = new PacketReader(payload);
 		int opcode = in.readC();
 		view.noteOpcode(opcode);
-		try
-		{
-			applyOpcode(view, in, opcode);
-		}
-		catch (SmokeException e)
-		{
-			// Some server packets share a layout only up to a point, or are shorter than the full
-			// record. Missing the tail is not a failed step; the next full packet refreshes the view.
-			if (e.getMessage() != null && e.getMessage().startsWith("the packet is too short"))
-			{
-				view.noteShort(opcode, payload.length);
-				// UserInfo is the only packet that carries experience and SP. Dropping it leaves the
-				// level at 1 and the fight never ends.
-				if (opcode == GamePackets.OP_USER_INFO)
-					throw new SmokeException(e.getMessage() + " opcode 0x32 length " + payload.length);
-
-				return;
-			}
-
-			throw e;
-		}
+		applyOpcode(view, in, opcode);
 	}
 
 	private static void applyOpcode(View view, PacketReader in, int opcode) throws SmokeException
@@ -777,28 +743,13 @@ final class SeedLoop
 			case GamePackets.OP_USER_INFO ->
 			{
 				GamePackets.UserView user = GamePackets.parseUserInfo(in);
-				// A frame that is not this character's info still carries opcode 0x32 once the
-				// stream has slipped. A level off this range, or another object id, is that frame.
-				if (user.level() < 1 || user.level() > 20 || user.x() < -1_000_000 || user.x() > 1_000_000
-						|| user.y() < 0 || user.y() > 1_000_000)
-					return;
 				if (view.objectId != 0 && user.objectId() != view.objectId)
 					return;
-				// A slipped frame can carry this opcode and a plausible level. The name is the
-				// character this session created; anything else is not its position or its experience.
-				if (user.name() == null || !user.name().equals(view.characterName))
-					return;
 
-				boolean firstPlace = view.objectId == 0;
 				view.objectId = user.objectId();
-				// A jumped place is a frame that slipped into this opcode. A real walk is a short one,
-				// and the move confirmation is what carries the position across a step.
-				if (firstPlace || distance(view.x, view.y, user.x(), user.y()) <= 3000)
-				{
-					view.x = user.x();
-					view.y = user.y();
-					view.z = user.z();
-				}
+				view.x = user.x();
+				view.y = user.y();
+				view.z = user.z();
 				view.level = user.level();
 				view.exp = user.exp();
 				view.sp = user.sp();
@@ -851,10 +802,6 @@ final class SeedLoop
 			case GamePackets.OP_ITEM_LIST ->
 			{
 				List<GamePackets.ItemView> items = GamePackets.parseItemList(in);
-				for (GamePackets.ItemView item : items)
-					if (item.count() < 0 || item.count() > 100_000)
-						return;
-
 				view.replaceItems(items);
 			}
 			case GamePackets.OP_INVENTORY_UPDATE ->
@@ -947,10 +894,6 @@ final class SeedLoop
 			case GamePackets.OP_SKILL_LIST ->
 			{
 				List<GamePackets.SkillView> skills = GamePackets.parseSkillList(in);
-				for (GamePackets.SkillView skill : skills)
-					if (skill.level() < 1 || skill.level() > 100)
-						return;
-
 				view.skills.clear();
 				for (GamePackets.SkillView skill : skills)
 					view.skills.put(skill.id(), skill.level());
@@ -1194,7 +1137,6 @@ final class SeedLoop
 	private static final class View
 	{
 		private final int sessionIndex;
-		private final String characterName;
 		private final Map<Integer, Actor> npcs = new LinkedHashMap<>();
 		private final Map<Integer, GroundItem> drops = new LinkedHashMap<>();
 		private final Map<Integer, Held> items = new LinkedHashMap<>();
@@ -1212,7 +1154,6 @@ final class SeedLoop
 		private int userInfos;
 		private int recentN;
 		private final int[] recent = new int[24];
-		private final StringBuilder shorts = new StringBuilder();
 		private int itemEpoch;
 		private int skillEpoch;
 		private int shopListId;
@@ -1236,27 +1177,15 @@ final class SeedLoop
 		private int spBeforeLearn;
 		private int spAfterLearn;
 
-		private View(int sessionIndex, String characterName)
+		private View(int sessionIndex)
 		{
 			this.sessionIndex = sessionIndex;
-			this.characterName = characterName;
 		}
 
 		private void noteOpcode(int opcode)
 		{
 			recent[recentN % recent.length] = opcode;
 			recentN++;
-		}
-
-		private void noteShort(int opcode, int length)
-		{
-			if (shorts.length() > 180)
-				return;
-
-			if (shorts.length() > 0)
-				shorts.append(' ');
-
-			shorts.append(Integer.toHexString(opcode)).append('/').append(length);
 		}
 
 		private String recentOpcodes()
