@@ -286,10 +286,19 @@ jobs:
   # The world loads for minutes, so the waits are long. A push to
   # main also publishes the image, signed and attested. The package is public,
   # and sha-* tags are kept for 30 days.
-  image:
+  image-platform:
     # The image is published from main, so it waits for every check of the code, not for the build alone.
+    name: image (${{ matrix.arch }}, ${{ matrix.runner }})
     needs: [build, integration]
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     permissions:
       contents: read
@@ -332,13 +341,22 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: deploy/image
+          platforms: linux/${{ matrix.arch }}
           load: true
           tags: l2jfree:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,scope=image-${{ matrix.arch }},mode=max
 
       - name: Verify the image content
-        run: deploy/verify-image.sh l2jfree:ci
+        run: |
+          deploy/verify-image.sh l2jfree:ci linux/${{ matrix.arch }}
+          docker image inspect l2jfree:ci --format '{{.Size}} bytes' | tee image-size.txt
+
+      - name: Record the previous release size
+        if: matrix.arch == 'amd64'
+        run: |
+          docker pull ghcr.io/l2go/l2jfree:3.2.0
+          docker image inspect ghcr.io/l2go/l2jfree:3.2.0 --format '{{.Size}} bytes' | tee image-size-before.txt
 
       - name: Check the image world matches the repository
         run: deploy/check-image-world.sh l2jfree:ci
@@ -347,9 +365,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: image-file-list
+          name: image-file-list-${{ matrix.arch }}
           if-no-files-found: warn
           path: |
+            image-size-before.txt
+            image-size.txt
             image-file-list.txt
             image-world-manifest.txt
 
@@ -378,6 +398,14 @@ jobs:
             cat trivy.txt 2>/dev/null || echo "no scan report"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the platform vulnerability report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: image-trivy-${{ matrix.arch }}
+          path: trivy.txt
+          if-no-files-found: warn
 
       # Every client of the load test comes from the address of the Docker gateway, and one address may open only so many
       # connections in a short time. The operator directory raises the limits, as an operator behind such an address does.
@@ -578,7 +606,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: image-server-logs
+          name: image-server-logs-${{ matrix.arch }}
           if-no-files-found: warn
           path: image-server-logs/
 
@@ -600,11 +628,6 @@ jobs:
           L2JFREE_IMAGE: l2jfree:ci
         run: docker compose -f deploy/compose.yaml down -v || true
 
-      - name: Name the commit tag
-        id: names
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: echo "short=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
-
       - name: Log in to the registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
@@ -619,13 +642,11 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: deploy/image
-          push: true
-          tags: |
-            ${{ env.REGISTRY_IMAGE }}:edge
-            ${{ env.REGISTRY_IMAGE }}:sha-${{ steps.names.outputs.short }}
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           provenance: mode=max
           sbom: true
-          cache-from: type=gha
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
 
       - name: Install cosign
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -643,23 +664,101 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-      # A signature, a provenance, or an SBOM that cannot be verified fails the pipeline of main.
-      - name: Verify the signature, the provenance, and the SBOM of the published image
+      - name: Resolve the platform manifest
+        id: manifest
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          digest="$(docker buildx imagetools inspect "$REGISTRY_IMAGE@${{ steps.push.outputs.digest }}" --raw | jq -er '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "${{ matrix.arch }}") | .digest')"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          cosign sign --yes "$REGISTRY_IMAGE@$digest"
+
+      - name: Attest the platform manifest
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-name: ${{ env.REGISTRY_IMAGE }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
+
+      - name: Save the verified platform digest
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p digests
+          digest="${{ steps.push.outputs.digest }}"
+          touch "digests/${digest#sha256:}"
+
+      - name: Upload the platform digest
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: image-digest-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+
+  # The rules of main require one check named image. It passes only when the image of every platform passed, and it
+  # runs even when one failed, because a skipped required check would count as passed.
+  image:
+    needs: [image-platform]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require the image of every platform
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RESULT: ${{ needs.image-platform.result }}
+        run: |
+          test "$RESULT" = success || { echo "::error::the image of a platform did not pass: $RESULT"; exit 1; }
+
+  image-index:
+    needs: [image, world]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      REGISTRY_IMAGE: ghcr.io/l2go/l2jfree
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: image-digest-*
+          merge-multiple: true
+          path: digests
+      - name: Merge the verified platform images
+        id: merge
         run: |
           set -euo pipefail
-          image="${REGISTRY_IMAGE}@${{ steps.push.outputs.digest }}"
-          cosign verify "$image" \
-            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/build.yml@${GITHUB_REF}" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
-          echo "signature verified"
-          gh attestation verify "oci://$image" --repo "$GITHUB_REPOSITORY" > /dev/null
-          echo "provenance verified"
-          packages="$(docker buildx imagetools inspect "$image" --format '{{ json .SBOM.SPDX }}' | jq '.packages | length')"
-          test "$packages" -gt 0 || { echo "::error::the SBOM of the image lists no packages"; exit 1; }
-          echo "SBOM lists $packages packages"
+          sources=()
+          for file in digests/*; do sources+=("$REGISTRY_IMAGE@sha256:${file##*/}"); done
+          test "${#sources[@]}" = 2
+          docker buildx imagetools create -t "$REGISTRY_IMAGE:edge" -t "$REGISTRY_IMAGE:sha-${GITHUB_SHA::12}" "${sources[@]}"
+          digest="$(docker buildx imagetools inspect "$REGISTRY_IMAGE:sha-${GITHUB_SHA::12}" --format '{{ .Manifest.Digest }}')"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: Sign the index
+        run: cosign sign --yes "$REGISTRY_IMAGE@${{ steps.merge.outputs.digest }}"
+      - name: Attest the index
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-name: ${{ env.REGISTRY_IMAGE }}
+          subject-digest: ${{ steps.merge.outputs.digest }}
+          push-to-registry: true
+      - name: Verify the index and both platforms
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: deploy/verify-published-image.sh "$REGISTRY_IMAGE@${{ steps.merge.outputs.digest }}"
 
   # Starts the same image on an empty world: the directory exists and holds a passport plus an empty catalog.
   # Readiness must come with no ERROR, no WARN and no uncaught exception. A missing catalog directory must

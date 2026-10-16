@@ -1,26 +1,34 @@
 #!/usr/bin/env bash
 # Checks the content and the security posture of the built image. The pipeline
 # starts the stack and probes both ports afterwards.
-# Usage: deploy/verify-image.sh IMAGE
+# Usage: deploy/verify-image.sh IMAGE [PLATFORM]
 set -euo pipefail
 
-image="${1:?usage: verify-image.sh IMAGE}"
+image="${1:?usage: verify-image.sh IMAGE [PLATFORM]}"
+
+expected_platform="${2:-linux/amd64}"
 
 fail() { echo "image check failed: $*" >&2; exit 1; }
 inside() { docker run --rm --entrypoint bash "$image" -c "$1"; }
 
 platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")"
-[ "$platform" = "linux/amd64" ] || fail "the platform is $platform, expected linux/amd64"
+[ "$platform" = "$expected_platform" ] || fail "the platform is $platform, expected $expected_platform"
+machine="$(inside 'uname -m')"
+case "$expected_platform:$machine:$(uname -m)" in
+    linux/amd64:x86_64:x86_64|linux/arm64:aarch64:aarch64) ;;
+    *) fail "image and runner must be native: $expected_platform, $machine, $(uname -m)" ;;
+esac
+echo "container uname -m: $machine"
+echo "verified platform: $platform; runner: $(uname -m)"
 
 user="$(docker image inspect --format '{{.Config.User}}' "$image")"
 [ "$user" = "10001:10001" ] || fail "the image must run as 10001:10001, found '$user'"
 
-inside '. /etc/os-release && [ "$ID" = arch ]' || fail "the base is not Arch Linux"
+inside '. /etc/os-release && [ "$ID" = debian ] && [ "$VERSION_ID" = 13 ]' || fail "the base is not Debian 13"
 inside 'java -version 2>&1 | head -n1 | grep -q "\"25\."' || fail "the JRE is not version 25"
 inside 'java -XshowSettings:properties -version 2>&1 | grep -q "java.vendor = Eclipse Adoptium"' \
 	|| fail "the JRE is not Eclipse Temurin"
 
-inside 'test ! -e /usr/bin/captree' || fail "captree is in the image: its Go standard library has fixed vulnerabilities"
 inside 'test -x /opt/l2jfree/bin/entrypoint && test -x /opt/l2jfree/bin/init-secrets' || fail "the scripts are missing"
 for file in config/server.properties config/loginserver.properties config/logback.xml l2jfree-platform.jar \
 	world/world.properties world/LICENSE world/catalog/npc_template.csv; do

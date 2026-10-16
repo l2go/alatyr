@@ -6,7 +6,7 @@
 		The network core: the Lineage II framing protocol on Netty. The versions of the Netty artifacts come
 		from the netty-bom of l2jfree-module. The native transports are two artifacts each: the Java classes ("classes"
 		artifacts), which every platform needs to compile and to load them, and the native library of the platform image
-		(linux/amd64), which only a Linux runtime uses. Other platforms fall back to NIO.
+		(linux/amd64 and linux/arm64), which only a Linux runtime uses. Other platforms fall back to NIO.
 	-->
 	<parent>
 		<groupId>com.l2jfree</groupId>
@@ -54,6 +54,13 @@
 		</dependency>
 		<dependency>
 			<groupId>io.netty</groupId>
+			<artifactId>netty-transport-native-epoll</artifactId>
+			<version>${netty.version}</version>
+			<classifier>linux-aarch_64</classifier>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
 			<artifactId>netty-transport-classes-io_uring</artifactId>
 		</dependency>
 		<dependency>
@@ -61,6 +68,13 @@
 			<artifactId>netty-transport-native-io_uring</artifactId>
 			<version>${netty.version}</version>
 			<classifier>linux-x86_64</classifier>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
+			<artifactId>netty-transport-native-io_uring</artifactId>
+			<version>${netty.version}</version>
+			<classifier>linux-aarch_64</classifier>
 			<scope>runtime</scope>
 		</dependency>
 	</dependencies>
