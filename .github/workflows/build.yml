@@ -351,6 +351,12 @@ jobs:
           deploy/verify-image.sh l2jfree:ci linux/${{ matrix.arch }}
           docker image inspect l2jfree:ci --format '{{.Size}} bytes' | tee image-size.txt
 
+      - name: Record the previous release size
+        if: matrix.arch == 'amd64'
+        run: |
+          docker pull ghcr.io/l2go/l2jfree:3.2.0
+          docker image inspect ghcr.io/l2go/l2jfree:3.2.0 --format '{{.Size}} bytes' | tee image-size-before.txt
+
       - name: Check the image world matches the repository
         run: deploy/check-image-world.sh l2jfree:ci
 
@@ -361,6 +367,7 @@ jobs:
           name: image-file-list-${{ matrix.arch }}
           if-no-files-found: warn
           path: |
+            image-size-before.txt
             image-size.txt
             image-file-list.txt
             image-world-manifest.txt
