@@ -74,17 +74,24 @@ jobs:
           DIGEST: ${{ steps.resolve.outputs.digest }}
         run: |
           set -euo pipefail
-          image="$REGISTRY_IMAGE@$DIGEST"
-          cosign verify "$image" \
-            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/build.yml@refs/heads/main" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
-          gh attestation verify "oci://$image" --repo "$GITHUB_REPOSITORY" > /dev/null
-          packages="$(docker buildx imagetools inspect "$image" --format '{{ json .SBOM.SPDX }}' | jq '.packages | length')"
-          test "$packages" -gt 0
-          echo "signature, provenance, and an SBOM of $packages packages verified"
+          deploy/verify-published-image.sh "$REGISTRY_IMAGE@$DIGEST"
 
-      - name: Scan the image under the vulnerability policy
+      - name: Scan linux/amd64 under the vulnerability policy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/amd64
+        with:
+          image-ref: ${{ env.REGISTRY_IMAGE }}@${{ steps.resolve.outputs.digest }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore
+
+      - name: Scan linux/arm64 under the vulnerability policy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/arm64
         with:
           image-ref: ${{ env.REGISTRY_IMAGE }}@${{ steps.resolve.outputs.digest }}
           format: table

@@ -1,5 +1,5 @@
 # `docker compose up -d --wait` is the whole installation. The stack runs on
-# Docker Desktop (Windows), Colima (macOS), and Docker Engine (Linux).
+# Docker Desktop (Windows), Colima or OrbStack (macOS, native on Apple silicon), and Docker Engine (Linux).
 #
 # The server service is one process: the login module (port 2106) and the world
 # module (port 7777), both on PostgreSQL 18, each with its own database role.

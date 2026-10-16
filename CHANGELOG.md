@@ -4,6 +4,12 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ## [Unreleased]
 
+## [3.2.1]
+
+### Changed
+
+- The image is published for linux/arm64 as well as linux/amd64; its base is Debian 13 slim instead of Arch Linux. The world and the code are unchanged.
+
 ## [3.2.0] - 2026-10-15
 
 The image runs a new, original world. The world inherited from the 2015 fork is gone from the repository, the image, and the release archive.
