@@ -286,8 +286,9 @@ jobs:
   # The world loads for minutes, so the waits are long. A push to
   # main also publishes the image, signed and attested. The package is public,
   # and sha-* tags are kept for 30 days.
-  image:
+  image-platform:
     # The image is published from main, so it waits for every check of the code, not for the build alone.
+    name: image (${{ matrix.arch }}, ${{ matrix.runner }})
     needs: [build, integration]
     strategy:
       fail-fast: false
@@ -693,6 +694,20 @@ jobs:
           name: image-digest-${{ matrix.arch }}
           path: digests/*
           if-no-files-found: error
+
+  # The rules of main require one check named image. It passes only when the image of every platform passed, and it
+  # runs even when one failed, because a skipped required check would count as passed.
+  image:
+    needs: [image-platform]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require the image of every platform
+        env:
+          RESULT: ${{ needs.image-platform.result }}
+        run: test "$RESULT" = success || { echo "::error::the image of a platform did not pass: $RESULT"; exit 1; }
 
   image-index:
     needs: [image, world]
