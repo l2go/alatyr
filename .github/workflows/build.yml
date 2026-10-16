@@ -707,7 +707,8 @@ jobs:
       - name: Require the image of every platform
         env:
           RESULT: ${{ needs.image-platform.result }}
-        run: test "$RESULT" = success || { echo "::error::the image of a platform did not pass: $RESULT"; exit 1; }
+        run: |
+          test "$RESULT" = success || { echo "::error::the image of a platform did not pass: $RESULT"; exit 1; }
 
   image-index:
     needs: [image, world]
