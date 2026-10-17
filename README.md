@@ -88,6 +88,8 @@ The decisions in code: the [architecture rules](engine/java/platform/src/test/ja
 
 ## Architecture
 
+The [Go components](docs/engine-go/README.md) establish the modules for a future gateway and world adapter.
+
 ```mermaid
 flowchart LR
     client(["Lineage II client<br/>protocol 83"])
@@ -140,5 +142,7 @@ Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporat
 | Path | License |
 |---|---|
 | `engine/java/`, `deploy/`, `tools/ci/`, everything not listed below | [GPL-3.0-or-later](LICENSE) |
+| `engine/go/protocol/` | [Apache-2.0](engine/go/protocol/LICENSE) |
+| `engine/go/gateway/`, `engine/go/bridge/` | [AGPL-3.0-or-later](engine/go/gateway/LICENSE); each module carries its own license file |
 | `tools/world/` | [AGPL-3.0-or-later](tools/world/LICENSE) |
 | `world/` | [CC BY-SA 4.0](world/LICENSE); its format definitions in `world/src/data/templates/` stay under GPL-3.0-or-later |

@@ -22,6 +22,117 @@ concurrency:
 
 
 jobs:
+  # Checks the Go module scaffolds independently of the Java server.
+  go:
+    name: go
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      GOTOOLCHAIN: local
+      GOMAXPROCS: "2"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.work
+          cache: false
+
+      - name: Check Go version and formatting
+        run: |
+          set -euo pipefail
+          test "$(go env GOVERSION)" = go1.27.1
+          test -z "$(gofmt -l engine/go tools/ci/check-engine-go.go tools/ci/check-engine-go_test.go)"
+
+      - name: Check workspace synchronization
+        run: |
+          set -euo pipefail
+          go work sync
+          git diff --exit-code -- go.work go.work.sum tools/world/go.mod tools/world/go.sum engine/go
+          test ! -e go.work.sum
+          for module in tools/world engine/go/protocol engine/go/gateway engine/go/bridge; do
+            test ! -e "$module/go.sum"
+          done
+
+      - name: Vet and test the boundary checker
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          go vet ./tools/ci/check-engine-go.go ./tools/ci/check-engine-go_test.go
+          go test -race -count=1 -timeout=2m ./tools/ci/check-engine-go.go ./tools/ci/check-engine-go_test.go
+
+      - name: Check module boundaries and public content
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          go run ./tools/ci/check-engine-go.go
+
+      - name: Vet and check each module outside the workspace
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          for module in protocol gateway bridge; do
+            (cd "engine/go/$module" && go vet ./... && go test -race -count=1 -timeout=2m ./...)
+          done
+
+      - name: Check each module in the workspace
+        run: |
+          set -euo pipefail
+          for module in protocol gateway bridge; do
+            (cd "engine/go/$module" && go test -count=1 -timeout=2m ./...)
+          done
+
+      - name: Install pinned CI tools
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          export GOBIN="$RUNNER_TEMP/go-component-tools"
+          mkdir -p "$GOBIN"
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          echo "$GOBIN" >> "$GITHUB_PATH"
+
+      - name: Lint the changed workflows
+        run: |
+          set -euo pipefail
+          actionlint .github/workflows/build.yml .github/workflows/docs-links.yml
+
+      - name: Check module vulnerabilities
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          for module in protocol gateway bridge; do
+            (cd "engine/go/$module" && govulncheck -test ./...)
+          done
+
+      - name: Check codec fuzzing readiness
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          go run ./tools/ci/check-engine-go.go -fuzz
+
+      - name: Check that validation left the source unchanged
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          test ! -e go.work.sum
+          for module in tools/world engine/go/protocol engine/go/gateway engine/go/bridge; do
+            test ! -e "$module/go.sum"
+          done
+
   # Formats, vets, and tests the world tool, then checks that the authored world matches a fresh render.
   # It does not build the server and runs beside the Java build.
   world:
@@ -289,7 +400,7 @@ jobs:
   image-platform:
     # The image is published from main, so it waits for every check of the code, not for the build alone.
     name: image (${{ matrix.arch }}, ${{ matrix.runner }})
-    needs: [build, integration]
+    needs: [build, integration, go]
     strategy:
       fail-fast: false
       matrix:
@@ -698,7 +809,7 @@ jobs:
   # The rules of main require one check named image. It passes only when the image of every platform passed, and it
   # runs even when one failed, because a skipped required check would count as passed.
   image:
-    needs: [image-platform]
+    needs: [image-platform, go]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -706,12 +817,14 @@ jobs:
     steps:
       - name: Require the image of every platform
         env:
+          GO_RESULT: ${{ needs.go.result }}
           RESULT: ${{ needs.image-platform.result }}
         run: |
+          test "$GO_RESULT" = success || { echo "::error::the Go checks did not pass: $GO_RESULT"; exit 1; }
           test "$RESULT" = success || { echo "::error::the image of a platform did not pass: $RESULT"; exit 1; }
 
   image-index:
-    needs: [image, world]
+    needs: [image, world, go]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
