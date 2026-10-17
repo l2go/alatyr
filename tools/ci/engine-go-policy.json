@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "path": "engine/go/protocol",
+      "module": "github.com/l2go/l2jfree/engine/go/protocol",
+      "package": "protocol",
+      "license": "Apache-2.0",
+      "phase": "scaffold"
+    },
+    {
+      "path": "engine/go/gateway",
+      "module": "github.com/l2go/l2jfree/engine/go/gateway",
+      "package": "gateway",
+      "license": "AGPL-3.0-or-later",
+      "phase": "scaffold"
+    },
+    {
+      "path": "engine/go/bridge",
+      "module": "github.com/l2go/l2jfree/engine/go/bridge",
+      "package": "bridge",
+      "license": "AGPL-3.0-or-later",
+      "phase": "scaffold"
+    }
+  ],
+  "denied": [
+    {
+      "id": "P01",
+      "length": 6,
+      "sha256": "04f2310c4a8ebcd2bd4f37cbd3a8511a0e5499b2644ae70c5334d3df9f78fbb2"
+    },
+    {
+      "id": "P02",
+      "length": 4,
+      "sha256": "7e3db13a983dc6347cb45f018294a91885b3aad90408c7dcd40c5654413b7bd9"
+    },
+    {
+      "id": "P03",
+      "length": 3,
+      "sha256": "9439b510876a2706733bbe0441a7885ed3a39d27bf35d9bafe5c3a301e5a1e46"
+    },
+    {
+      "id": "P04",
+      "length": 8,
+      "sha256": "2cbba3a47f1fbf2b97efbc742a5f58b9000f2a850cfc8cf154bebc64c8bacfbd"
+    },
+    {
+      "id": "P05",
+      "length": 5,
+      "sha256": "d5d274a53177a262e671c084ba09c1da2015b6c3efd1db2d8f1272c517475810"
+    },
+    {
+      "id": "P06",
+      "length": 14,
+      "sha256": "d7deafbd825e3a39d99e9e0549063519f0f1ea8e8c90121b93c85b2d0ee68aa1"
+    },
+    {
+      "id": "P07",
+      "length": 7,
+      "sha256": "841fcdf106576eafb74b7ee1788cb55ca19b66c0e0af43ee2c82f9fc9d322e07"
+    },
+    {
+      "id": "P08",
+      "length": 7,
+      "sha256": "30228a3d4739a3f6ffbf828d9b059912fccccae1f57b6882ac93cf90aa666057"
+    },
+    {
+      "id": "P09",
+      "length": 3,
+      "sha256": "cfe062be1bbee227d288296c3e8c07367716a6e3da5ffffbcdb9304457e3ef3f"
+    },
+    {
+      "id": "P10",
+      "length": 5,
+      "sha256": "2bd806c97f0e00af1a1fc3328fa763a9269723c8db8fac4f93af71db186d6e90"
+    },
+    {
+      "id": "P11",
+      "length": 3,
+      "sha256": "81b637d8fcd2c6da6359e6963113a1170de795e4b725b84d1e0b4cfd9ec58ce9"
+    },
+    {
+      "id": "P12",
+      "length": 5,
+      "sha256": "4c26d9074c27d89ede59270c0ac14b71e071b15239519f75474b2f3ba63481f5"
+    }
+  ],
+  "fuzz_targets": []
+}
