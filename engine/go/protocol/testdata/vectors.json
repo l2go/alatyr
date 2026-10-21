@@ -1,0 +1,146 @@
+{
+  "source_commit": "f7bee7224da7f6f0e980f35bc6f7b43b2e7d4415",
+  "source_sha256": "97a349e252014a43347950fba5d835bec5c527a77adb1bfefaac29db47552e89",
+  "vectors": [
+    {
+      "id": "V01",
+      "hex": "01 02 18 00",
+      "expected": "Ping nonce=0; body length2, field1 essential U."
+    },
+    {
+      "id": "V02",
+      "hex": "02 11 18 01 28 01 3a 07 62 75 79 61 6e 2f 31 48 01 58 01",
+      "expected": "Hello min=max=1, opaque profile identifier, kind=person, mode=act, client absent."
+    },
+    {
+      "id": "V03",
+      "hex": "08 12 18 17 28 01 39 00 48 01 5a 06 73 6b 69 6c 6c 73 68 01",
+      "expected": "Fact Known(23), seq1, ms0, epoch1, domain skills, essential=true; Skills nil/unknown, Complete absent."
+    },
+    {
+      "id": "V04",
+      "hex": "08 18 18 17 28 01 39 00 48 01 5a 06 73 6b 69 6c 6c 73 68 01 ea 03 00 f8 03 01",
+      "expected": "Same, Skills present empty, Complete=true; known-empty skill list."
+    },
+    {
+      "id": "V05",
+      "hex": "08 16 18 17 28 01 39 00 48 01 5a 06 73 6b 69 6c 6c 73 68 01 b2 0c 01 78",
+      "expected": "Same known fields as V03; optional field99 string x skipped."
+    },
+    {
+      "id": "V06",
+      "hex": "08 15 18 17 28 01 39 00 48 01 5a 06 73 6b 69 6c 6c 73 68 01 b8 0c 00",
+      "expected": "Unknown essential field99: no Fact application, skills incomplete, one resync."
+    },
+    {
+      "id": "V07",
+      "hex": "0a 0c 18 01 28 01 38 01 ba 01 03 00 00 00",
+      "expected": "Intent n1, walk1, control1, at(0,0,0), queue TTL absent; lifecycle validation remains separate."
+    },
+    {
+      "id": "V08",
+      "hex": "0c 0c 18 01 28 01 38 00 58 0b 68 05 78 02",
+      "expected": "Result n1, sent, reason none, requested engage11, effective talk5, backend delivery2."
+    },
+    {
+      "id": "V09",
+      "hex": "0e 06 18 02 28 01 38 01",
+      "expected": "Control granted, epoch1, next_n1."
+    },
+    {
+      "id": "V10",
+      "hex": "11 01 ff",
+      "expected": "Unknown optional record17 with opaque one-byte body; skip body without parsing its fields."
+    },
+    {
+      "id": "V11",
+      "hex": "12 00",
+      "expected": "Unknown essential record18: Bye unsupported."
+    },
+    {
+      "id": "V12",
+      "hex": "08 12 18 17 28 01 39 00 48 01 5a 06 73 6b 69 6c 6c 73 68 02",
+      "expected": "Known envelope boolean field6=2: frame error."
+    },
+    {
+      "id": "V13",
+      "hex": "02 11 18 01 28 01 3a 07 ff 75 79 61 6e 2f 31 48 01 58 01",
+      "expected": "Invalid UTF-8 in Hello meaning: frame error."
+    },
+    {
+      "id": "V14",
+      "hex": "08 17 18 17 28 01 39 00 48 01 5a 06 73 6b 69 6c 6c 73 68 01 9a 03 02 19 00",
+      "expected": "V03 plus present Stats with HP pointer zero; other members absent. Tests representability, no invented death."
+    },
+    {
+      "id": "V15",
+      "hex": "08 1b 18 17 28 01 39 00 48 01 5a 06 73 6b 69 6c 6c 73 68 01 9a 03 06 69 80 c8 af a0 25",
+      "expected": "V03 plus Stats XP exactly5000000000, no floating conversion."
+    },
+    {
+      "id": "V16",
+      "hex": "10 02 18 00",
+      "expected": "Bye normal."
+    },
+    {
+      "id": "V17",
+      "hex": "13 02 11 18 01 28 01 3a 07 62 75 79 61 6e 2f 31 48 01 58 01",
+      "expected": "**Stream**: length19 prefix plus V02, identical Hello meaning."
+    },
+    {
+      "id": "V18",
+      "hex": "01 02 18 00 00",
+      "expected": "Valid Ping followed by incomplete record: frame error, Ping not applied."
+    },
+    {
+      "id": "V19",
+      "hex": "01 04 18 00 18 01",
+      "expected": "Duplicate Ping field1: frame error."
+    },
+    {
+      "id": "V20",
+      "hex": "81 00 02 18 00",
+      "expected": "Noncanonical record type varint: frame error."
+    },
+    {
+      "id": "V21",
+      "hex": "81 80 04",
+      "expected": "**Stream** length65537 prefix, no body needed: reject before allocating oversized frame."
+    },
+    {
+      "id": "V22",
+      "hex": "0a 0d 18 01 28 02 38 01 aa 01 04 19 0e 28 01",
+      "expected": "Aim n1/control1, target Ref{id7,gen1}; no backend write if admitted."
+    },
+    {
+      "id": "V23",
+      "hex": "08 35 18 0b 28 01 39 00 48 01 5a 08 64 69 61 6c 6f 67 75 65 68 01 aa 01 04 19 0e 28 01 c2 02 06 1a 02 48 69 28 01 da 02 0b 0a 18 01 2a 06 1a 02 47 6f 28 01 98 04 01",
+      "expected": "Spoke from Ref7/1, authored text Hi, dialog1, one option1 with authored label Go; no saved action string."
+    },
+    {
+      "id": "V24",
+      "hex": "08 26 18 16 28 01 39 00 48 01 5a 06 73 6b 69 6c 6c 73 68 01 e9 02 02 f8 03 01 aa 04 0b 0a 18 01 29 06 39 02 49 04 59 14",
+      "expected": "Practice list1, complete, lesson offer1/skill3/level1/max_level2/cost10."
+    },
+    {
+      "id": "V25",
+      "hex": "08 21 18 17 28 01 39 00 48 01 5a 06 73 6b 69 6c 6c 73 68 01 ea 03 09 08 19 06 29 02 38 00 48 00 f8 03 01",
+      "expected": "Known complete, one skill3 level1, passive=false, disabled=false."
+    },
+    {
+      "id": "V26",
+      "hex": "08 22 18 0e 28 01 39 00 48 01 5a 09 69 6e 76 65 6e 74 6f 72 79 68 01 8a 03 0a 09 29 0e 39 c8 10 49 02 59 14",
+      "expected": "Carried, one good object7/item1060/count1/price10; no offer handle, not a proposal."
+    },
+    {
+      "id": "V27",
+      "hex": "08 2c 18 15 28 01 39 00 48 01 5a 06 71 75 65 73 74 73 68 01 da 03 14 13 19 02 29 04 3a 05 1a 01 51 28 01 4a 06 61 63 74 69 76 65 f8 03 01",
+      "expected": "Quests complete, one id1/step2/name Q/state active."
+    },
+    {
+      "id": "V28",
+      "hex": "08 29 18 13 28 01 39 00 48 01 5a 07 68 69 73 74 6f 72 79 68 01 c2 03 13 12 19 00 2a 04 6c 6f 6f 74 3a 08 1a 04 47 6f 6c 64 28 01",
+      "expected": "History, one entry ms0/category loot/authored text Gold."
+    }
+  ]
+}

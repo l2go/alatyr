@@ -6,7 +6,7 @@
       "module": "github.com/l2go/l2jfree/engine/go/protocol",
       "package": "protocol",
       "license": "Apache-2.0",
-      "phase": "scaffold"
+      "phase": "active"
     },
     {
       "path": "engine/go/gateway",
@@ -85,5 +85,10 @@
       "sha256": "4c26d9074c27d89ede59270c0ac14b71e071b15239519f75474b2f3ba63481f5"
     }
   ],
-  "fuzz_targets": []
+  "fuzz_targets": [
+    {
+      "package": "wire",
+      "name": "FuzzDecodeFrame"
+    }
+  ]
 }
