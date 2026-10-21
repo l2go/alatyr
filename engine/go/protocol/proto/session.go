@@ -179,6 +179,15 @@ func same(a, b Attempt) bool {
 // Begin allocates only numbers from the current controller. Mode/control errors
 // are connection-local and cannot consume another connection's next number.
 func (s *Session) Begin(owner uint64, act, ready bool, a Attempt, now int64) Admission {
+	return s.begin(owner, act, ready, a, now, true)
+}
+
+// Reserve performs only number/control/cache admission. The transport caller
+// then charges its token bucket before readiness and payload/TTL validation.
+func (s *Session) Reserve(owner uint64, act, ready bool, a Attempt, now int64) Admission {
+	return s.begin(owner, act, ready, a, now, false)
+}
+func (s *Session) begin(owner uint64, act, ready bool, a Attempt, now int64, validate bool) Admission {
 	if s.closed {
 		return Admission{Close: terminalClose(wire.ClosedWorld)}
 	}
@@ -249,7 +258,11 @@ func (s *Session) Begin(owner uint64, act, ready bool, a Attempt, now int64) Adm
 			v := *a.QueueMS
 			bounded.QueueMS = &v
 		}
-		s.entries = append(s.entries, Entry{Attempt: bounded, Owner: owner, Projection: s.projection, Terminal: true, Result: rejection(a, wire.Invalid), Oversized: true, Digest: digest})
+		s.entries = append(s.entries, Entry{Attempt: bounded, Owner: owner, Projection: s.projection, Terminal: validate, Result: nil, Oversized: true, Digest: digest})
+		if !validate {
+			return Admission{Allocated: true}
+		}
+		s.entries[len(s.entries)-1].Result = rejection(a, wire.Invalid)
 		return Admission{Allocated: true, Result: rejection(a, wire.Invalid)}
 	}
 	a.Payload = bytes.Clone(a.Payload)
@@ -258,15 +271,15 @@ func (s *Session) Begin(owner uint64, act, ready bool, a Attempt, now int64) Adm
 		a.QueueMS = &v
 	}
 	s.entries = append(s.entries, Entry{Attempt: a, Owner: owner, Projection: s.projection, Queued: now})
-	if a.EncodedBytes < 0 || a.EncodedBytes > s.config.IntentBytes {
+	if validate && (a.EncodedBytes < 0 || a.EncodedBytes > s.config.IntentBytes) {
 		o, _ := s.Refuse(a.N, wire.Invalid)
 		return Admission{Allocated: true, Result: &o}
 	}
-	if !ready {
+	if validate && !ready {
 		o, _ := s.Refuse(a.N, wire.NotReady)
 		return Admission{Allocated: true, Result: &o}
 	}
-	if a.QueueMS != nil && (*a.QueueMS < 0 || *a.QueueMS > s.config.QueueMS) {
+	if validate && a.QueueMS != nil && (*a.QueueMS < 0 || *a.QueueMS > s.config.QueueMS) {
 		o, _ := s.Refuse(a.N, wire.Invalid)
 		return Admission{Allocated: true, Result: &o}
 	}

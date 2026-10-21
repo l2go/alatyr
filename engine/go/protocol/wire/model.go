@@ -178,6 +178,9 @@ type Record struct {
 	// EncodedBytes is receive-side metadata, including skipped fields. It is not
 	// serialized, and lets admission bound a record before retaining its payload.
 	EncodedBytes int
+	// UnsupportedHash identifies an opaque unsupported request without retaining
+	// skipped extension buffers. This local metadata is never serialized.
+	UnsupportedHash [32]byte
 }
 
 func Find(fields []Field, n uint32) (Value, bool) {
@@ -233,3 +236,10 @@ func Envelopes(advertised Schema, bounds Limits) Registry {
 		Bye:        {1: enum(0, 1, 2, 3, 4, 5, 6, 7, 8), 2: text},
 	}
 }
+
+// UnsupportedRecord preserves only the validated numeric envelope kind, so a
+// transport can close an unsupported close record without a recursive reply.
+type UnsupportedRecord struct{ Type uint64 }
+
+func (e *UnsupportedRecord) Error() string { return ErrUnsupported.Error() }
+func (e *UnsupportedRecord) Unwrap() error { return ErrUnsupported }

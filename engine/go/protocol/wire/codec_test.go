@@ -211,3 +211,41 @@ func TestStreamShortWritesAndPipe(t *testing.T) {
 type shortWriter struct{ writer io.Writer }
 
 func (w *shortWriter) Write(b []byte) (int, error) { return w.writer.Write(b[:min(1, len(b))]) }
+
+func TestUnsupportedRequestIdentityUsesCanonicalOrder(t *testing.T) {
+	limits := Limits{FrameBytes: 1024, StringBytes: 100, ListItems: 10, Depth: 3, Records: 10, Fields: 20, IdentifierBytes: 64, WorldBytes: 256, ClientBytes: 128}
+	registry := Envelopes(Schema{}, limits)
+	registry[Intent][10] = Spec{Shape: Object, Essential: true, Object: Schema{1: Required(UInt), 2: Required(UInt)}}
+	codec, err := New(limits, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := []Field{U(1, true, 1), U(2, true, 1), U(3, true, 1), Obj(10, true, []Field{U(1, true, 1), U(2, true, 2)})}
+	raw, err := codec.Encode([]Record{{Type: Intent, Fields: base}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw[1] += 3
+	raw = append(raw, 0xb8, 0x0c, 0)
+	one, err := codec.Decode(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reverse the two fields inside the already validated nested object.
+	modified := append([]byte(nil), raw...)
+	for i := 0; i < len(modified)-5; i++ {
+		if modified[i] == 0x18 && modified[i+1] == 1 && modified[i+2] == 0x28 && modified[i+3] == 2 {
+			copy(modified[i:i+4], []byte{0x28, 2, 0x18, 1})
+			break
+		}
+	}
+	two, err := codec.Decode(modified)
+	if err != nil || one[0].UnsupportedHash != two[0].UnsupportedHash {
+		t.Fatal("ordering changed identity", err)
+	}
+	modified[len(modified)-1] = 1
+	three, err := codec.Decode(modified)
+	if err != nil || three[0].UnsupportedHash == one[0].UnsupportedHash {
+		t.Fatal("changed extension reused identity", err)
+	}
+}
