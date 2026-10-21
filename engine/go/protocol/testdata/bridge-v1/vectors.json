@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "profile": "bridge/1",
+  "license": "Apache-2.0",
+  "vectors": [
+    {
+      "id": "BV01",
+      "transport": "frame",
+      "hex": "80 02 40 18 01 28 01 3a 08 62 72 69 64 67 65 2f 31 4a 20 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f 20 5a 05 67 75 65 73 74 6a 05 47 75 65 73 74 78 01",
+      "expected": "ok"
+    },
+    {
+      "id": "BV02",
+      "transport": "frame",
+      "hex": "82 02 04 18 02 58 0b",
+      "expected": "ok"
+    },
+    {
+      "id": "BV03",
+      "transport": "frame",
+      "hex": "84 02 30 18 07 28 02 3a 20 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f 20 4a 08 62 72 69 64 67 65 2f 31",
+      "expected": "ok"
+    },
+    {
+      "id": "BV04",
+      "transport": "frame",
+      "hex": "86 02 06 18 07 28 01 38 00",
+      "expected": "ok"
+    },
+    {
+      "id": "BV05",
+      "transport": "frame",
+      "hex": "88 02 04 18 01 28 16",
+      "expected": "ok"
+    },
+    {
+      "id": "BV06",
+      "transport": "frame",
+      "hex": "0c 1f 18 01 28 02 38 00 58 07 68 07 78 02 aa 08 10 0a 18 01 29 c8 10 39 8c 01 49 04 04 18 02 49 19",
+      "expected": "ok"
+    },
+    {
+      "id": "BV07",
+      "transport": "frame",
+      "hex": "08 22 18 04 28 01 39 00 48 01 5a 07 6f 62 6a 65 63 74 73 68 01 da 01 03 02 04 06 89 08 0e a8 08 04 b8 08 01",
+      "expected": "ok"
+    },
+    {
+      "id": "BV08",
+      "transport": "frame",
+      "hex": "08 1f 18 04 28 01 39 00 48 01 5a 07 6f 62 6a 65 63 74 73 68 01 da 01 03 02 04 06 89 08 0e b8 08 01",
+      "expected": "frame"
+    },
+    {
+      "id": "BV09",
+      "transport": "stream",
+      "hex": "43 80 02 40 18 01 28 01 3a 08 62 72 69 64 67 65 2f 31 4a 20 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f 20 5a 05 67 75 65 73 74 6a 05 47 75 65 73 74 78 01",
+      "expected": "ok"
+    },
+    {
+      "id": "BV10",
+      "transport": "frame",
+      "hex": "0c 22 18 01 28 02 38 00 58 07 68 07 78 02 aa 08 10 0a 18 01 29 c8 10 39 8c 01 49 04 04 18 02 49 19 b8 0c 00",
+      "expected": "unsupported"
+    },
+    {
+      "id": "BV11",
+      "transport": "frame",
+      "hex": "06 10 18 02 28 01 38 00 4a 08 07 6f 62 6a 65 63 74 73",
+      "expected": "ok"
+    },
+    {
+      "id": "BV12",
+      "transport": "frame",
+      "hex": "0a 09 18 01 28 04 38 01 89 08 0e",
+      "expected": "ok"
+    },
+    {
+      "id": "BV13",
+      "transport": "frame",
+      "hex": "0c 1f 18 01 28 03 38 10 58 07 68 07 78 00 8a 08 10 78 2e 6c 32 6a 66 72 65 65 2f 62 72 69 64 67 65",
+      "expected": "frame"
+    },
+    {
+      "id": "BV14",
+      "transport": "frame",
+      "hex": "08 1f 18 04 28 01 39 00 48 01 5a 07 6f 62 6a 65 63 74 73 68 01 da 01 03 02 04 06 89 08 0e 88 04 01",
+      "expected": "frame"
+    },
+    {
+      "id": "BV15",
+      "transport": "frame",
+      "hex": "80 02 42 18 01 28 01 3a 08 62 72 69 64 67 65 2f 31 4a 20 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f 20 5a 05 67 75 65 73 74 6a 05 47 75 65 73 74 78 01 78 01",
+      "expected": "frame"
+    },
+    {
+      "id": "BV16",
+      "transport": "frame",
+      "hex": "88 02 05 18 01 28 80 02",
+      "expected": "ok"
+    }
+  ]
+}
