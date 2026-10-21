@@ -13,13 +13,16 @@
 	<artifactId>l2jfree-bridge</artifactId>
 	<name>${project.artifactId}-${project.version}</name>
 	<packaging>jar</packaging>
+	<properties>
+		<bridge.failIfNoTests>true</bridge.failIfNoTests>
+	</properties>
 	<build>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
-					<failIfNoTests>true</failIfNoTests>
+					<failIfNoTests>${bridge.failIfNoTests}</failIfNoTests>
 					<excludedGroups>${surefire.excludedGroups}</excludedGroups>
 					<!-- Repeated so this module keeps the parent agent line if a child configuration replaces it. -->
 					<argLine>-javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar ${jfr.argLine} @{jacoco.argLine}</argLine>
@@ -31,4 +34,18 @@
 			</plugin>
 		</plugins>
 	</build>
+	<profiles>
+		<profile>
+			<!-- A selected group, such as the database tag, matches nothing in this module. -->
+			<id>selected-test-group</id>
+			<activation>
+				<property>
+					<name>groups</name>
+				</property>
+			</activation>
+			<properties>
+				<bridge.failIfNoTests>false</bridge.failIfNoTests>
+			</properties>
+		</profile>
+	</profiles>
 </project>
