@@ -4,7 +4,9 @@
 package wire
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"io"
 	"math"
 	"slices"
@@ -148,6 +150,9 @@ func (c *Codec) Decode(b []byte) ([]Record, error) {
 		}
 		fields, unsupported, err := c.fields(body, s, 0)
 		if err != nil {
+			if errors.Is(err, ErrUnsupported) {
+				return nil, &UnsupportedRecord{Type: typ}
+			}
 			if missing, ok := err.(*missingRequired); ok {
 				if typ == Intent && unsupported && missing.depth == 0 {
 					return nil, ErrUnsupported
@@ -157,9 +162,12 @@ func (c *Codec) Decode(b []byte) ([]Record, error) {
 			return nil, err
 		}
 		if unsupported && typ != Fact && typ != Intent {
-			return nil, ErrUnsupported
+			return nil, &UnsupportedRecord{Type: typ}
 		}
 		record := Record{Type: typ, Fields: fields, Unsupported: unsupported, EncodedBytes: pos - start}
+		if unsupported && typ == Intent {
+			record.UnsupportedHash = sha256.Sum256(canonicalOpaque(body, s))
+		}
 		if err := validateEnvelope(record); err != nil {
 			return nil, err
 		}
@@ -549,4 +557,63 @@ func (c *Codec) Write(w io.Writer, records []Record) error {
 		}
 	}
 	return nil
+}
+
+// canonicalOpaque canonicalizes schema-known object order while keeping unknown
+// values opaque. Only a structurally validated, bounded record enters here.
+func canonicalOpaque(body []byte, schema Schema) []byte {
+	type part struct {
+		number uint64
+		bytes  []byte
+	}
+	var parts []part
+	pos := 0
+	for pos < len(body) {
+		start := pos
+		key, _ := readU(body, &pos)
+		var normalized []byte
+		switch Type(key & 7) {
+		case Unsigned, Signed:
+			_, _ = readU(body, &pos)
+		case Fixed64:
+			pos += 8
+		case LengthDelimited:
+			raw, _ := take(body, &pos)
+			spec, known := schema[uint32(key>>4)]
+			if known && spec.Shape == Object {
+				normalized = canonicalOpaque(raw, spec.Object)
+			}
+			if known && spec.Shape == List && spec.Element.Shape == Object {
+				normalized = []byte{}
+				at := 0
+				for at < len(raw) {
+					element, _ := take(raw, &at)
+					element = canonicalOpaque(element, spec.Element.Object)
+					normalized = appendU(normalized, uint64(len(element)))
+					normalized = append(normalized, element...)
+				}
+			}
+		}
+		chunk := body[start:pos]
+		if normalized != nil {
+			chunk = appendU(nil, key)
+			chunk = appendU(chunk, uint64(len(normalized)))
+			chunk = append(chunk, normalized...)
+		}
+		parts = append(parts, part{key >> 4, chunk})
+	}
+	slices.SortFunc(parts, func(a, b part) int {
+		if a.number < b.number {
+			return -1
+		}
+		if a.number > b.number {
+			return 1
+		}
+		return 0
+	})
+	out := make([]byte, 0, len(body))
+	for _, p := range parts {
+		out = append(out, p.bytes...)
+	}
+	return out
 }

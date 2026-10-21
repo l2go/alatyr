@@ -38,7 +38,7 @@ func FuzzDecodeFrame(f *testing.F) {
 		}
 		records, err := decode()
 		again, againErr := decode()
-		if !errors.Is(err, againErr) || !reflect.DeepEqual(records, again) {
+		if !sameDecodeError(err, againErr) || !reflect.DeepEqual(records, again) {
 			t.Fatal("nondeterministic frame parsing")
 		}
 		if err != nil {
@@ -72,4 +72,38 @@ func FuzzDecodeFrame(f *testing.F) {
 			t.Fatalf("canonical encoding is not stable: %v", err)
 		}
 	})
+}
+
+// Unsupported errors carry envelope metadata in independently allocated wrappers.
+// Compare that metadata rather than the identity of the two error pointers.
+func sameDecodeError(a, b error) bool {
+	var left, right *UnsupportedRecord
+	leftOK, rightOK := errors.As(a, &left), errors.As(b, &right)
+	if leftOK || rightOK {
+		return leftOK && rightOK && left.Type == right.Type &&
+			errors.Is(a, ErrUnsupported) && errors.Is(b, ErrUnsupported)
+	}
+	return errors.Is(a, b)
+}
+
+func TestFuzzErrorEquivalence(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		a, b error
+		same bool
+	}{
+		{"success", nil, nil, true},
+		{"frame", ErrFrame, ErrFrame, true},
+		{"fresh wrappers", &UnsupportedRecord{Type: Ping}, &UnsupportedRecord{Type: Ping}, true},
+		{"different record", &UnsupportedRecord{Type: Ping}, &UnsupportedRecord{Type: Bye}, false},
+		{"different class", &UnsupportedRecord{Type: Ping}, ErrFrame, false},
+		{"missing metadata", &UnsupportedRecord{Type: Ping}, ErrUnsupported, false},
+		{"missing error", nil, &UnsupportedRecord{Type: Ping}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if sameDecodeError(tc.a, tc.b) != tc.same || sameDecodeError(tc.b, tc.a) != tc.same {
+				t.Fatal("error class or envelope metadata was not preserved")
+			}
+		})
+	}
 }
