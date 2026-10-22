@@ -128,6 +128,26 @@ public final class Codec
 	}
 	
 	/**
+	 * @return a copy of the profile name the bridge codec already requires
+	 */
+	public static byte[] profileName()
+	{
+		return BRIDGE_PROFILE.clone();
+	}
+	
+	/**
+	 * @return the limits object an accepted opening must carry
+	 */
+	public static Field openedLimits()
+	{
+		List<Field> fields = new ArrayList<>();
+		for (int[] limit : OPENED_LIMITS)
+			fields.add(Field.u(limit[0], true, limit[1]));
+		
+		return Field.obj(6, true, fields);
+	}
+	
+	/**
 	 * @return the bridge registry without the profile check. Tests use it to build a frame the neutral registry
 	 *         cannot emit, because an essential field outside that registry is unsupported there.
 	 */

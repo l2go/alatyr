@@ -20,31 +20,31 @@ import java.util.Map;
 /**
  * The frozen core registry and the bridge/1 extensions. Field numbers and wire types are the shared schema.
  */
-final class Schemas
+public final class Schemas
 {
-	static final long PING = 1;
+	public static final long PING = 1;
 	static final long HELLO = 2;
-	static final long PONG = 3;
+	public static final long PONG = 3;
 	static final long WELCOME = 4;
-	static final long CHECKPOINT = 6;
-	static final long FACT = 8;
-	static final long INTENT = 10;
-	static final long RESULT = 12;
+	public static final long CHECKPOINT = 6;
+	public static final long FACT = 8;
+	public static final long INTENT = 10;
+	public static final long RESULT = 12;
 	static final long CONTROL = 14;
-	static final long BYE = 16;
-	static final long OPEN = 256;
-	static final long OPENED = 258;
-	static final long RESUME = 260;
-	static final long CLOSE = 262;
-	static final long INTENT_ERROR = 264;
+	public static final long BYE = 16;
+	public static final long OPEN = 256;
+	public static final long OPENED = 258;
+	public static final long RESUME = 260;
+	public static final long CLOSE = 262;
+	public static final long INTENT_ERROR = 264;
 	
 	static final long PERSON = 1;
 	static final long BOT = 2;
 	static final long AGENT = 3;
 	static final long ACT = 1;
 	static final long OBSERVE = 2;
-	static final long BEGIN = 1;
-	static final long END = 2;
+	public static final long BEGIN = 1;
+	public static final long END = 2;
 	static final long TAKE_CONTROL = 1;
 	static final long GRANTED = 2;
 	static final long LOST = 3;
