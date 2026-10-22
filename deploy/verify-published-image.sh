@@ -15,10 +15,11 @@ verify() {
     gh attestation verify "oci://$1" --repo "$GITHUB_REPOSITORY" > /dev/null
 }
 verify "$image"
-sbom="$(docker buildx imagetools inspect "$image" --format '{{ json .SBOM.SPDX }}')"
+# For an index of several platforms, buildx returns one SBOM per platform, keyed by os/architecture.
+sbom="$(docker buildx imagetools inspect "$image" --format '{{ json .SBOM }}')"
 for arch in amd64 arm64; do
     digest="$(jq -er --arg arch "$arch" '.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch) | .digest' <<< "$manifest")"
     verify "$repository@$digest"
-    packages="$(jq -er --arg platform "linux/$arch" '.[$platform].packages | length | select(. > 0)' <<< "$sbom")"
+    packages="$(jq -er --arg platform "linux/$arch" '.[$platform].SPDX.packages | length | select(. > 0)' <<< "$sbom")"
     echo "linux/$arch: $digest; signature, provenance, SBOM ($packages packages) verified"
 done
