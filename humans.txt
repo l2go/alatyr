@@ -2,7 +2,7 @@
 
   Builders, 2006–2015: 24 people of the L2J and L2JFree community,
   8,044 commits. Their names are in the history of the repository:
-  https://github.com/l2go/l2jfree/commits/main
+  https://github.com/l2go/alatyr/commits/main
 
   Revival, 2026: l2go
   https://github.com/l2go

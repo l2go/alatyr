@@ -11,8 +11,8 @@
 <meta property="og:type" content="article">
 <meta property="og:title" content="An island of our own">
 <meta property="og:description" content="Version 3.2 deleted 17,129 files of a game world the project had not written and shipped a small one that it had: a village, a meadow, and a Go tool that checks every word of it.">
-<meta property="og:url" content="https://l2go.github.io/l2jfree/notes/an-island-of-our-own/">
-<meta property="og:image" content="https://l2go.github.io/l2jfree/assets/img/covers/island.jpg">
+<meta property="og:url" content="https://l2go.github.io/alatyr/notes/an-island-of-our-own/">
+<meta property="og:image" content="https://l2go.github.io/alatyr/assets/img/covers/island.jpg">
 <meta property="article:published_time" content="2026-10-16">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="/l2jfree/assets/img/favicon.svg" type="image/svg+xml">
@@ -30,7 +30,7 @@
     <a href="/l2jfree/#start">Start</a>
     <a class="opt" href="/l2jfree/#engineering">Engineering</a>
     <a href="/l2jfree/#notes">Notes</a>
-    <a href="https://github.com/l2go/l2jfree">GitHub</a>
+    <a href="https://github.com/l2go/alatyr">GitHub</a>
   </nav>
 </header>
 <main id="main">
@@ -67,7 +67,7 @@ World has no weapons
 World has no doors
 World has no zones
 World has no scripts</code></pre>
-<p>There are 34 such lines on an empty start. Each one used to be an assumption. A merchant failed in a world without castles, entering the world failed without a dimensional rift, and an hourly task looked for a door that was not there. Each became a defect of its own and was fixed as one (<a href="https://github.com/l2go/l2jfree/pull/242">#242</a>, <a href="https://github.com/l2go/l2jfree/pull/251">#251</a>, <a href="https://github.com/l2go/l2jfree/pull/253">#253</a>, <a href="https://github.com/l2go/l2jfree/pull/259">#259</a>, <a href="https://github.com/l2go/l2jfree/pull/257">#257</a>). A world that is missing entirely, as a directory, still stops the start, and the log names the configuration key and the path.</p>
+<p>There are 34 such lines on an empty start. Each one used to be an assumption. A merchant failed in a world without castles, entering the world failed without a dimensional rift, and an hourly task looked for a door that was not there. Each became a defect of its own and was fixed as one (<a href="https://github.com/l2go/alatyr/pull/242">#242</a>, <a href="https://github.com/l2go/alatyr/pull/251">#251</a>, <a href="https://github.com/l2go/alatyr/pull/253">#253</a>, <a href="https://github.com/l2go/alatyr/pull/259">#259</a>, <a href="https://github.com/l2go/alatyr/pull/257">#257</a>). A world that is missing entirely, as a directory, still stops the start, and the log names the configuration key and the path.</p>
 
 <h2>An island</h2>
 <p>In Pushkin's <em>Tale of Tsar Saltan</em>, ships sail past the island of Buyan on their way to Saltan's kingdom. On the island a squirrel cracks golden nuts with emerald kernels, and the shells are cast into coin.</p>
@@ -188,13 +188,13 @@ World has no scripts</code></pre>
 <pre class="code"><code class="language-html">&lt;font color="LEVEL"&gt;{{npc.hearth-merchant.name}}&lt;/font&gt;&lt;br&gt;
 {{dialog.hearth-merchant.greeting}}&lt;br&gt;
 {{dialog.hearth-merchant.prices}}&lt;br&gt;</code></pre>
-<p>The text lives in one string table, <a href="https://github.com/l2go/l2jfree/blob/v3.2.0/world/i18n/en.tsv"><code>world/i18n/en.tsv</code></a>, 31 entries in all. Each entry has a note for whoever translates it next, with what the thing is and how long the text may be. The key names a role, not a person, so a renamed merchant does not make his key lie.</p>
+<p>The text lives in one string table, <a href="https://github.com/l2go/alatyr/blob/v3.2.0/world/i18n/en.tsv"><code>world/i18n/en.tsv</code></a>, 31 entries in all. Each entry has a note for whoever translates it next, with what the thing is and how long the text may be. The key names a role, not a person, so a renamed merchant does not make his key lie.</p>
 <p>Some sentences contain numbers, and numbers are where texts go stale. The merchant's line about the potion takes its price from the shop table and the amount it heals from the skill's definition:</p>
 <pre class="code"><code>dialog.hearth-merchant.prices   {potion} costs {payment} and restores {heal, number, integer} HP.
 payment ← price of shop 731, position 0     catalog/merchant_buylist.csv
 heal    ← skill 2031, power                 data/stats/skills/seed.xml</code></pre>
 <p>The player reads "Zveroboy Draught costs 12 Veksha coins and restores 72 HP." Change the price in the shop and the sentence changes with it. A dialog cannot quote a price the shop does not charge.</p>
-<p>A small tool in Go, <a href="https://github.com/l2go/l2jfree/tree/v3.2.0/tools/world"><code>tools/world</code></a>, does the joining. <code>world render</code> turns the sources and the string table into the plain files the engine reads. <code>world check</code> fails unless the files in the repository equal a fresh render, every key is defined and used, and every text is printable ASCII. The rendered files are committed, so the server needs no Go at run time and a reviewer sees in the diff exactly what players will see. The tool is 2,131 lines; its tests run it against 44 small worlds, most of them broken in exactly one way: an unknown key, a key nobody uses, a stray non-ASCII byte, a binding that matches two rows.</p>
+<p>A small tool in Go, <a href="https://github.com/l2go/alatyr/tree/v3.2.0/tools/world"><code>tools/world</code></a>, does the joining. <code>world render</code> turns the sources and the string table into the plain files the engine reads. <code>world check</code> fails unless the files in the repository equal a fresh render, every key is defined and used, and every text is printable ASCII. The rendered files are committed, so the server needs no Go at run time and a reviewer sees in the diff exactly what players will see. The tool is 2,131 lines; its tests run it against 44 small worlds, most of them broken in exactly one way: an unknown key, a key nobody uses, a stray non-ASCII byte, a binding that matches two rows.</p>
 <p>For now there is one language, English, and one alphabet. The names are Slavic, written in ASCII by one transliteration table. Renaming a person is one row. A translation, when it comes, is one file.</p>
 <p>The code that runs the world and the world itself now sit under different licenses, each in its own directory:</p>
 <div class="table"><table><thead><tr><th>Path</th><th>What it is</th><th>License</th></tr></thead>
@@ -217,8 +217,8 @@ heal    ← skill 2031, power                 data/stats/skills/seed.xml</code><
 </ol>
 <p>The pipeline runs one session, then 24 at once, on every merge. A mismatch fails the session with the step, the expected value, and the actual one.</p>
 <p>The first thing it found was that killing a monster gave no experience. The method that should have recorded who dealt how much damage notified quests and stopped there, so when the monster died the reward code found nobody to pay. For as long as nothing in the pipeline had killed anything, nothing had noticed.</p>
-<p>The fix became a rule for who earns what (<a href="https://github.com/l2go/l2jfree/pull/263">#263</a>). Experience and SP follow the HP each player or party actually took off the monster. Items follow the same contribution, weighted by level: a player needs 10% of the total to take part, and one who did 60% takes the items. A party shares experience, SP, and coins equally. Only those alive and in range when the monster dies are paid.</p>
-<p>The rest of what the test found was in the test. Twenty-four clients at once against one server are a small distributed system, and the client had the bugs of one (<a href="https://github.com/l2go/l2jfree/pull/257">#257</a>):</p>
+<p>The fix became a rule for who earns what (<a href="https://github.com/l2go/alatyr/pull/263">#263</a>). Experience and SP follow the HP each player or party actually took off the monster. Items follow the same contribution, weighted by level: a player needs 10% of the total to take part, and one who did 60% takes the items. A party shares experience, SP, and coins equally. Only those alive and in range when the monster dies are paid.</p>
+<p>The rest of what the test found was in the test. Twenty-four clients at once against one server are a small distributed system, and the client had the bugs of one (<a href="https://github.com/l2go/alatyr/pull/257">#257</a>):</p>
 <ul>
 <li><strong>A timeout in the middle of a packet.</strong> When a read timed out with half a frame in hand, the client dropped those bytes, and the next read started in the middle of a packet. It now keeps them and continues the frame.</li>
 <li><strong>Two hunters, one beast.</strong> A monster wanders up to 200 units each way from its spawn. The foragers' spawns are 240 apart. Two neighbours could stand on the same spot, and two sessions would walk to the same one. Each beast is now claimed in a registry shared by the whole launch before anyone walks to it, and released when it dies or leaves view.</li>
@@ -257,10 +257,10 @@ heal    ← skill 2031, power                 data/stats/skills/seed.xml</code><
     <div class="foot__top">
       <span class="foot__mark" title="L2JFREE = SIGNED = 58">L2JFREE</span>
       <nav aria-label="Project">
-        <a href="https://github.com/l2go/l2jfree">Repository</a>
-        <a href="https://github.com/l2go/l2jfree/releases">Releases</a>
-        <a href="https://github.com/l2go/l2jfree/blob/main/deploy/README.md">Deploy guide</a>
-        <a href="https://github.com/l2go/l2jfree/blob/main/SECURITY.md">Security</a>
+        <a href="https://github.com/l2go/alatyr">Repository</a>
+        <a href="https://github.com/l2go/alatyr/releases">Releases</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">Deploy guide</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/SECURITY.md">Security</a>
       </nav>
     </div>
     <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server. Since 3.2 it ships no data inherited from the fork; its world, Okolitsa, is original content. It does not modify, patch, or distribute the game client.</p>

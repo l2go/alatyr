@@ -11,8 +11,8 @@
 <meta property="og:type" content="article">
 <meta property="og:title" content="One process, hard boundaries">
 <meta property="og:description" content="Login and world used to be two servers joined by a socket protocol. Now they share a JVM and still cannot see each other: a two-interface contract, eight architecture rules, and a database role per module.">
-<meta property="og:url" content="https://l2go.github.io/l2jfree/notes/one-process-hard-boundaries/">
-<meta property="og:image" content="https://l2go.github.io/l2jfree/assets/img/covers/boundaries.jpg">
+<meta property="og:url" content="https://l2go.github.io/alatyr/notes/one-process-hard-boundaries/">
+<meta property="og:image" content="https://l2go.github.io/alatyr/assets/img/covers/boundaries.jpg">
 <meta property="article:published_time" content="2026-10-12">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="/l2jfree/assets/img/favicon.svg" type="image/svg+xml">
@@ -30,7 +30,7 @@
     <a href="/l2jfree/#start">Start</a>
     <a class="opt" href="/l2jfree/#engineering">Engineering</a>
     <a href="/l2jfree/#notes">Notes</a>
-    <a href="https://github.com/l2go/l2jfree">GitHub</a>
+    <a href="https://github.com/l2go/alatyr">GitHub</a>
   </nav>
 </header>
 <main id="main">
@@ -50,7 +50,7 @@
 <p>The socket between login and world existed for one reason: in 2006 the two could run on different machines. By 2026 that reason was gone. Nobody runs the login of a private server on a separate host, and the price of the socket was everywhere:</p>
 <ul>
 <li><strong>Registration.</strong> A world announced itself to the login with a hex id file and a row in a <code>game_server</code> table, created by a <code>register_gameserver</code> tool. Get any of the three wrong and the world never appeared in the server list.</li>
-<li><strong>A protocol to keep in step.</strong> Every change to how a session key travelled meant a change on both sides, deployed together. One of the first fixes, binding a world login to the exact key the login had checked (<a href="https://github.com/l2go/l2jfree/pull/26">#26</a>), had to change both servers and the messages between them.</li>
+<li><strong>A protocol to keep in step.</strong> Every change to how a session key travelled meant a change on both sides, deployed together. One of the first fixes, binding a world login to the exact key the login had checked (<a href="https://github.com/l2go/alatyr/pull/26">#26</a>), had to change both servers and the messages between them.</li>
 <li><strong>Two things to deploy, start, and watch.</strong> Two distributions, two launchers, two logs.</li>
 </ul>
 <h2>The decision</h2>
@@ -117,7 +117,7 @@
 <p>A <code>platform</code> module starts both, wires each to the other's port, and assembles the one distribution. It is the only code that knows both modules exist.</p>
 <h2>Keeping the modules apart</h2>
 <p>Merging two processes into one is easy. Keeping them from growing into each other is the actual work. In one JVM, nothing stops a class in the world from importing a class in the login, except a rule that fails the build.</p>
-<p>The rules live in <a href="https://github.com/l2go/l2jfree/blob/v3.1.1/l2jfree-platform/src/test/java/com/l2jfree/platform/ArchitectureTest.java"><code>ArchitectureTest</code></a>, written with ArchUnit. Each one carries its reason, so a failure explains itself:</p>
+<p>The rules live in <a href="https://github.com/l2go/alatyr/blob/v3.1.1/l2jfree-platform/src/test/java/com/l2jfree/platform/ArchitectureTest.java"><code>ArchitectureTest</code></a>, written with ArchUnit. Each one carries its reason, so a failure explains itself:</p>
 <div class="table"><table><thead><tr><th>Rule</th><th>Because</th></tr></thead>
 <tbody>
 <tr><td>The login module does not depend on the world module</td><td>The two modules know only the contract, so either can be replaced or tested alone</td></tr>
@@ -132,7 +132,7 @@
 <p>One detail matters more than it looks: a rule that selects no class fails. An ArchUnit rule over an empty set of classes passes silently, so a typo in a package name would turn the whole test into a green no-op. Here it turns into a red build.</p>
 <h2>The boundary continues into the database</h2>
 <p>A boundary that stops at the class path is half a boundary. If both modules connect as the same database user, the world can read the login's password hashes with one careless query, and no architecture test will notice.</p>
-<p>So each module has its own PostgreSQL role. The login connects as <code>l2jfree_login</code> and owns the <code>login</code> schema. The world connects as <code>l2jfree_world</code> and owns <code>world</code>, <code>catalog</code>, and <code>report</code>. The pipeline checks this on the running image, not in a unit test: <a href="https://github.com/l2go/l2jfree/blob/v3.1.1/deploy/probe/check-roles.sh"><code>check-roles.sh</code></a> runs statements as each role in a started stack and expects that each reaches the schemas it owns and nothing else, that neither is a superuser, and that neither may create a schema or an extension. It runs again after a backup is restored, so a restore cannot quietly widen the grants.</p>
+<p>So each module has its own PostgreSQL role. The login connects as <code>l2jfree_login</code> and owns the <code>login</code> schema. The world connects as <code>l2jfree_world</code> and owns <code>world</code>, <code>catalog</code>, and <code>report</code>. The pipeline checks this on the running image, not in a unit test: <a href="https://github.com/l2go/alatyr/blob/v3.1.1/deploy/probe/check-roles.sh"><code>check-roles.sh</code></a> runs statements as each role in a started stack and expects that each reaches the schemas it owns and nothing else, that neither is a superuser, and that neither may create a schema or an extension. It runs again after a backup is restored, so a restore cannot quietly widen the grants.</p>
 <h2>What it cost</h2>
 <ul>
 <li><strong>One fate.</strong> Login and world now share a JVM's lifetime, heap, and threads. A crash or an out-of-memory error takes both down, and a slow world can starve the login of CPU. For a game server this is the right trade: a login without a world is useless to a player, and the world was always the part that needed watching.</li>
@@ -144,7 +144,7 @@
 <ul>
 <li><code>ArchitectureTest</code> runs in every build. A dependency across the boundary fails the pull request with the rule's name and its reason.</li>
 <li><code>check-roles.sh</code> runs on every merge against the started image, and again after the restore rehearsal.</li>
-<li>The removed pieces cannot come back unnoticed: <a href="https://github.com/l2go/l2jfree/blob/v3.1.1/l2jfree-platform/src/test/java/com/l2jfree/platform/RemovedLibrariesTest.java"><code>RemovedLibrariesTest</code></a> refuses MySQL, Liquibase, Javolution, Trove, and the old MMOCore network layer that Netty replaced.</li>
+<li>The removed pieces cannot come back unnoticed: <a href="https://github.com/l2go/alatyr/blob/v3.1.1/l2jfree-platform/src/test/java/com/l2jfree/platform/RemovedLibrariesTest.java"><code>RemovedLibrariesTest</code></a> refuses MySQL, Liquibase, Javolution, Trove, and the old MMOCore network layer that Netty replaced.</li>
 </ul>
 <p>The result is a modular monolith in the plain sense of the words: one thing to deploy, two things to reason about, and a build that keeps them two.</p>
 <div class="aside"><strong>Update, 16 October 2026.</strong> In 3.2 the same idea, a boundary that a check keeps in place, separated the engine from its game world: the world became a directory the engine is pointed at. See part 3, <a href="/l2jfree/notes/an-island-of-our-own/">An island of our own</a>.</div>
@@ -160,10 +160,10 @@
     <div class="foot__top">
       <span class="foot__mark" title="L2JFREE = SIGNED = 58">L2JFREE</span>
       <nav aria-label="Project">
-        <a href="https://github.com/l2go/l2jfree">Repository</a>
-        <a href="https://github.com/l2go/l2jfree/releases">Releases</a>
-        <a href="https://github.com/l2go/l2jfree/blob/main/deploy/README.md">Deploy guide</a>
-        <a href="https://github.com/l2go/l2jfree/blob/main/SECURITY.md">Security</a>
+        <a href="https://github.com/l2go/alatyr">Repository</a>
+        <a href="https://github.com/l2go/alatyr/releases">Releases</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">Deploy guide</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/SECURITY.md">Security</a>
       </nav>
     </div>
     <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server. Since 3.2 it ships no data inherited from the fork; its world, Okolitsa, is original content. It does not modify, patch, or distribute the game client.</p>
