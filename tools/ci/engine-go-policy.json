@@ -20,7 +20,7 @@
       "module": "github.com/l2go/l2jfree/engine/go/bridge",
       "package": "bridge",
       "license": "AGPL-3.0-or-later",
-      "phase": "scaffold"
+      "phase": "active"
     }
   ],
   "denied": [
