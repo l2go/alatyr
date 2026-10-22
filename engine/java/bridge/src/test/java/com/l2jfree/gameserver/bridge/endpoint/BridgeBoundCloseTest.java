@@ -114,6 +114,44 @@ class BridgeBoundCloseTest
 	}
 	
 	@Test
+	void aSaveAfterTheDeadlineClosesInternallyBeforeTheTimerRuns() throws Exception
+	{
+		CountDownLatch inStore = new CountDownLatch(1);
+		CountDownLatch release = new CountDownLatch(1);
+		try (InlinePool pool = InlinePool.open(); Bound bound = Bound.open(invocation ->
+		{
+			inStore.countDown();
+			assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
+			return true;
+		}))
+		{
+			try
+			{
+				bound.closeOnce();
+				assertThat(inStore.await(5, TimeUnit.SECONDS)).isTrue();
+				synchronized (bound.transport)
+				{
+					bound.transport.resultDeadline = System.nanoTime() - 1;
+				}
+				bound.closeOnce();
+				assertThat(bound.transport.queued).isEmpty();
+			}
+			finally
+			{
+				release.countDown();
+			}
+			bound.awaitDisconnect();
+			assertThat(bound.transport.queued).hasSize(1);
+			assertThat(reason(bound.transport)).isEqualTo(BridgeFrames.BYE_INTERNAL);
+			BridgeLoopback.expire(bound.transport);
+			assertThat(bound.transport.queued).hasSize(1);
+			assertThat(reason(bound.transport)).isEqualTo(BridgeFrames.BYE_INTERNAL);
+			verify(bound.player, times(1)).store(true, true);
+			verify(bound.player, times(1)).deleteMe();
+		}
+	}
+
+	@Test
 	void aMissedSaveDeadlineClosesInternally() throws Exception
 	{
 		CountDownLatch inStore = new CountDownLatch(1);

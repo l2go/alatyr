@@ -366,7 +366,12 @@ final class BridgeLoopback implements Runnable
 	/** The disconnect save owns the terminal bye. A late bye is dropped once that bye is claimed. */
 	void fromSink(Transport transport, List<Envelope> records)
 	{
-		finishTerminal(transport, records);
+		synchronized (transport)
+		{
+			if (resultExpired(transport, System.nanoTime()))
+				records = List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL));
+			finishTerminal(transport, records);
+		}
 		selector.wakeup();
 	}
 	
@@ -375,16 +380,18 @@ final class BridgeLoopback implements Runnable
 	 */
 	static void expire(Transport transport)
 	{
-		boolean due;
 		synchronized (transport)
 		{
-			due = transport.awaitingResult && !transport.closing && !transport.terminal && transport.resultDeadline != 0
-					&& System.nanoTime() >= transport.resultDeadline;
+			if (resultExpired(transport, System.nanoTime()))
+				finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)));
 		}
-		if (!due)
-			return;
-		
-		finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)));
+	}
+
+	/** Called under the transport lock so checking the deadline and claiming the bye are one operation. */
+	private static boolean resultExpired(Transport transport, long now)
+	{
+		return transport.awaitingResult && !transport.closing && !transport.terminal && transport.resultDeadline != 0
+				&& now - transport.resultDeadline >= 0;
 	}
 	
 	private static void armResultWait(Transport transport)
