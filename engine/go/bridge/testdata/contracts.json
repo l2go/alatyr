@@ -1,0 +1,164 @@
+{
+  "Version": 1,
+  "Scenarios": [
+    {
+      "ID": "handoff-sent",
+      "Kind": "receipt",
+      "Stage": 1,
+      "Reason": 0,
+      "Delivery": 2
+    },
+    {
+      "ID": "quiet-unknown",
+      "Kind": "receipt",
+      "Stage": 4,
+      "Reason": 17,
+      "Delivery": 2
+    },
+    {
+      "ID": "interrupted-partial",
+      "Kind": "receipt",
+      "Stage": 4,
+      "Reason": 19,
+      "Delivery": 3
+    },
+    {
+      "ID": "transport-lost-before-run",
+      "Kind": "receipt",
+      "Stage": 3,
+      "Reason": 16,
+      "Delivery": 0,
+      "BridgeReason": 9
+    },
+    {
+      "ID": "backend-failure-partial",
+      "Kind": "receipt",
+      "Stage": 4,
+      "Reason": 24,
+      "Delivery": 3,
+      "BridgeReason": 20
+    },
+    {
+      "ID": "buy-receipt-is-not-a-fact",
+      "Kind": "receipt",
+      "Verb": 7,
+      "Stage": 2,
+      "Reason": 0,
+      "Delivery": 2,
+      "Effects": [
+        {
+          "Kind": 1,
+          "Item": 1060,
+          "Object": 70,
+          "Delta": 2
+        },
+        {
+          "Kind": 2,
+          "Delta": -13
+        }
+      ]
+    },
+    {
+      "ID": "sell-receipt-is-not-a-fact",
+      "Kind": "receipt",
+      "Verb": 8,
+      "Stage": 2,
+      "Reason": 0,
+      "Delivery": 2,
+      "Effects": [
+        {
+          "Kind": 1,
+          "Item": 1060,
+          "Object": 70,
+          "Delta": -2
+        },
+        {
+          "Kind": 2,
+          "Delta": 13
+        }
+      ]
+    },
+    {
+      "ID": "talk-requires-separate-witness",
+      "Kind": "receipt",
+      "Verb": 5,
+      "Stage": 2,
+      "Reason": 0,
+      "Delivery": 2,
+      "Effects": []
+    },
+    {
+      "ID": "choose-requires-separate-witness",
+      "Kind": "receipt",
+      "Verb": 6,
+      "Stage": 2,
+      "Reason": 0,
+      "Delivery": 2,
+      "Effects": []
+    },
+    {
+      "ID": "target-receipt",
+      "Kind": "receipt",
+      "Verb": 2,
+      "Stage": 2,
+      "Reason": 0,
+      "Delivery": 2,
+      "Effects": [
+        {
+          "Kind": 5,
+          "Target": 7
+        }
+      ]
+    },
+    {
+      "ID": "learning-requires-separate-witness",
+      "Kind": "receipt",
+      "Verb": 13,
+      "Stage": 2,
+      "Reason": 0,
+      "Delivery": 2,
+      "Effects": [
+        {
+          "Kind": 3,
+          "Skill": 1,
+          "Old": 0,
+          "New": 1
+        }
+      ]
+    },
+    {
+      "ID": "rise-sent-is-not-revival",
+      "Kind": "receipt",
+      "Verb": 9,
+      "Stage": 1,
+      "Reason": 0,
+      "Delivery": 2
+    },
+    {
+      "ID": "cast-sent-is-not-completion",
+      "Kind": "receipt",
+      "Verb": 12,
+      "Stage": 1,
+      "Reason": 0,
+      "Delivery": 2
+    },
+    {
+      "ID": "ordinary-refusal-after-handoff",
+      "Kind": "receipt",
+      "Verb": 5,
+      "Stage": 3,
+      "Reason": 16,
+      "Delivery": 0,
+      "BridgeReason": 3
+    },
+    {
+      "ID": "helper-refusal-no-automatic-action",
+      "Kind": "receipt",
+      "Verb": 2,
+      "Stage": 3,
+      "Reason": 16,
+      "Delivery": 0,
+      "BridgeReason": 4
+    }
+  ]
+}
