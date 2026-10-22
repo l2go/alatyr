@@ -345,3 +345,41 @@ func TestScaffoldDependencyStillRejected(t *testing.T) {
 		})
 	}
 }
+
+// The active world must retain the same stdlib-only boundary as the protocol,
+// including tests and files excluded by the current platform or build tags.
+func TestWorldImportsAcrossBuildConstraints(t *testing.T) {
+	for _, test := range []struct{ file, body string }{
+		{"bad.go", "package world\nimport _ \"" + modulePrefix + "bridge\"\n"},
+		{"bad_test.go", "package world_test\nimport _ \"example.org/foreign\"\n"},
+		{"tagged.go", "//go:build never_enabled\n\npackage world\nimport _ \"example.org/foreign\"\n"},
+		{"bad_plan9.go", "package world\nimport _ \"" + modulePrefix + "protocol\"\n"},
+		{"cgo.go", "package world\nimport \"C\"\n"},
+	} {
+		t.Run(test.file, func(t *testing.T) {
+			root, p := fixture(t)
+			p.Modules[len(p.Modules)-1].Phase = "active"
+			writeFixture(t, root, "engine/go/world/"+test.file, source("AGPL-3.0-or-later", test.body))
+			expectRule(t, checkTree(root, p), "I-3")
+		})
+	}
+}
+func TestWorldModuleDirectives(t *testing.T) {
+	for _, directive := range []string{"require example.org/foreign v1.0.0", "replace example.org/foreign => ../bridge", "exclude example.org/foreign v1.0.0", "tool example.org/foreign/cmd/tool"} {
+		t.Run(strings.Fields(directive)[0], func(t *testing.T) {
+			root, p := fixture(t)
+			p.Modules[len(p.Modules)-1].Phase = "active"
+			writeFixture(t, root, "engine/go/world/go.mod", "module "+modulePrefix+"world\ngo "+goVersion+"\n"+directive+"\n")
+			expectRule(t, checkTree(root, p), "I-3")
+		})
+	}
+}
+func TestWorldOwnSubpackages(t *testing.T) {
+	root, p := fixture(t)
+	p.Modules[len(p.Modules)-1].Phase = "active"
+	writeFixture(t, root, "engine/go/world/catalog/catalog.go", source("AGPL-3.0-or-later", "package catalog\nimport \"encoding/csv\"\nvar NewReader=csv.NewReader\n"))
+	writeFixture(t, root, "engine/go/world/doc_test.go", source("AGPL-3.0-or-later", "package world_test\nimport _ \""+modulePrefix+"world/catalog\"\n"))
+	if err := checkTree(root, p); err != nil {
+		t.Fatal(err)
+	}
+}

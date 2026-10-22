@@ -80,7 +80,7 @@ const (
 
 type Player struct {
 	Template   catalog.PlayerTemplate
-	Class      catalog.Class
+	Mage       *bool // nil when authored class metadata is absent
 	Level      int32
 	Female     bool
 	Worn       map[int32]catalog.ItemTemplate
@@ -91,7 +91,7 @@ type Player struct {
 func (p *Player) calc(stat Name, init float64) float64 {
 	fns := p.standard(stat)
 	for _, f := range p.Funcs {
-		if Name(f.Stat) == stat {
+		if Name(f.Stat) == stat && !f.Conditional && (f.Cond == nil || p.holds(*f.Cond)) {
 			fns = insert(fns, itemFn(f))
 		}
 	}
@@ -162,24 +162,28 @@ func (p *Player) holds(c catalog.Cond) bool {
 	case "or":
 		return slices.ContainsFunc(c.Args, p.holds)
 	case "not":
-		return !p.holds(c.Args[0])
+		return len(c.Args) == 1 && !p.holds(c.Args[0])
+
 	case "using":
-		if c.Mask == catalog.MaskLight || c.Mask == catalog.MaskHeavy || c.Mask == catalog.MaskMagic {
-			chest, ok := p.Worn[catalog.SlotChest]
-			if !ok || c.Mask&chest.ItemMask() == 0 {
-				return false
+		for _, kind := range c.Kinds {
+			if kind == "light" || kind == "heavy" || kind == "magic" {
+				chest, ok := p.Worn[catalog.SlotChest]
+				if !ok || !chest.IsKind(kind) {
+					continue
+				}
+				legs, ok := p.Worn[catalog.SlotLegs]
+				if chest.BodyPart() == fullArmor || ok && legs.IsKind(kind) {
+					return true
+				}
+			} else {
+				for _, t := range p.Worn {
+					if t.IsKind(kind) {
+						return true
+					}
+				}
 			}
-			if chest.BodyPart() == fullArmor {
-				return true
-			}
-			legs, ok := p.Worn[catalog.SlotLegs]
-			return ok && c.Mask&legs.ItemMask() != 0
 		}
-		worn := int32(0)
-		for _, t := range p.Worn {
-			worn |= t.ItemMask()
-		}
-		return c.Mask&worn != 0
+
 	}
 	return false
 }
@@ -284,15 +288,18 @@ func (p *Player) levelGain(add, mod float64) float64 {
 }
 
 func (p *Player) pDefMod(v float64) float64 {
-	mage := p.Class.Mage
+	mage := false
+	if p.Mage != nil {
+		mage = *p.Mage
+	}
 	if _, ok := p.Worn[catalog.SlotHead]; ok {
 		v -= 12
 	}
 	chest, hasChest := p.Worn[catalog.SlotChest]
-	if hasChest {
+	if hasChest && p.Mage != nil {
 		v -= pick(mage, 15, 31)
 	}
-	if _, ok := p.Worn[catalog.SlotLegs]; ok || hasChest && chest.BodyPart() == 0x8000 {
+	if _, ok := p.Worn[catalog.SlotLegs]; p.Mage != nil && (ok || hasChest && chest.BodyPart() == 0x8000) {
 		v -= pick(mage, 8, 18)
 	}
 	if _, ok := p.Worn[catalog.SlotGloves]; ok {
@@ -318,4 +325,15 @@ func pick(mage bool, ifMage, otherwise float64) float64 {
 		return ifMage
 	}
 	return otherwise
+}
+
+// PDefKnown reports whether class-dependent equipped base-defense adjustments
+// can be applied. PDef is a partial calculation when this returns false.
+func (p *Player) PDefKnown() bool {
+	if p.Mage != nil {
+		return true
+	}
+	_, chest := p.Worn[catalog.SlotChest]
+	_, legs := p.Worn[catalog.SlotLegs]
+	return !chest && !legs
 }

@@ -48,3 +48,10 @@ func (s *Store) PutSkill(_ context.Context, objectID int32, k world.Skill) error
 	c.Skills = append(c.Skills, k)
 	return nil
 }
+
+type Store struct {
+	mu    sync.Mutex
+	chars []world.Character
+}
+
+func New() *Store { return &Store{} }

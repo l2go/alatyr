@@ -4,14 +4,15 @@
 package catalog
 
 import (
+	"math"
 	"strconv"
 	"strings"
 )
 
 type Cond struct {
-	Op   string
-	Mask int32
-	Args []Cond
+	Op    string
+	Kinds []string
+	Args  []Cond
 }
 
 func skillFuncs(n xmlNode, value func(string) (string, error)) []ItemFunc {
@@ -41,7 +42,7 @@ func skillFunc(op string, f xmlNode, value func(string) (string, error)) ItemFun
 	valText, _ := f.attr("val")
 	v, verr := value(valText)
 	val, ferr := strconv.ParseFloat(v, 64)
-	if err != nil || verr != nil || ferr != nil {
+	if err != nil || verr != nil || ferr != nil || math.IsNaN(val) || math.IsInf(val, 0) || op == "div" && val == 0 {
 		fn.Conditional = true
 		return fn
 	}
@@ -86,11 +87,11 @@ func parseCond(n xmlNode) (Cond, bool) {
 		}
 		or := Cond{Op: "or"}
 		for alt := range strings.SplitSeq(n.Attrs[0].Value, "|") {
-			mask := int32(0)
+			var kinds []string
 			for kind := range strings.SplitSeq(alt, ",") {
-				mask |= kindMask(strings.TrimSpace(kind))
+				kinds = append(kinds, strings.ToLower(strings.TrimSpace(kind)))
 			}
-			or.Args = append(or.Args, Cond{Op: "using", Mask: mask})
+			or.Args = append(or.Args, Cond{Op: "using", Kinds: kinds})
 		}
 		if len(or.Args) == 1 {
 			return or.Args[0], true

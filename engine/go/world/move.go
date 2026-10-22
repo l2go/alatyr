@@ -6,6 +6,7 @@ package world
 import (
 	"math"
 	"slices"
+	"time"
 )
 
 const ticksPerSecond = 10
@@ -19,13 +20,13 @@ type moveData struct {
 
 func (w *World) moveTo(s *state, a actor, to Point, offset int32) {
 	c := a.base()
-	to = w.onGround(to)
+
 	speed := a.moveSpeed()
 	if speed <= 0 {
 		return
 	}
 	cur := c.pos
-	dx, dy, dz := float64(to.X-cur.X), float64(to.Y-cur.Y), float64(to.Z-cur.Z)
+	dx, dy, dz := float64(to.X)-float64(cur.X), float64(to.Y)-float64(cur.Y), float64(to.Z)-float64(cur.Z)
 	distance := math.Sqrt(dx*dx + dy*dy)
 	var cos, sin float64
 	if offset != 0 || distance < 1 {
@@ -63,7 +64,7 @@ func (w *World) updatePosition(s *state, a actor, tick int64) bool {
 	}
 	zPrev := c.pos.Z
 	dx, dy := float64(m.dest.X)-m.xExact, float64(m.dest.Y)-m.yExact
-	dz := float64(m.dest.Z - zPrev)
+	dz := float64(m.dest.Z) - float64(zPrev)
 	passed := a.moveSpeed() * float64(tick-m.lastTick) / ticksPerSecond
 	var fraction float64
 	if dx*dx+dy*dy < 10000 && dz*dz > 2500 {
@@ -76,7 +77,7 @@ func (w *World) updatePosition(s *state, a actor, tick int64) bool {
 	} else {
 		m.xExact += dx * fraction
 		m.yExact += dy * fraction
-		w.setPos(s, a, Point{int32(m.xExact), int32(m.yExact), zPrev + int32(dz*fraction+0.5)})
+		w.setPos(s, a, Point{int32(m.xExact), int32(m.yExact), int32(int64(zPrev) + int64(dz*fraction+0.5))})
 	}
 	m.lastTick = tick
 	return fraction > 1
@@ -91,4 +92,38 @@ func headingOf(dx, dy float64) int32 {
 		h -= 65536
 	}
 	return int32(h)
+}
+
+type Point struct{ X, Y, Z int32 }
+type creature struct {
+	id      int32
+	pos     Point
+	heading int32
+	move    *moveData
+}
+type actor interface {
+	base() *creature
+	moveSpeed() float64
+}
+
+func (w *World) setPos(_ *state, a actor, p Point) { a.base().pos = p }
+func (w *World) notifyArrived(_ *state, a actor) {
+	p := a.(*player)
+	p.move = nil
+	p.send(Stopped{ObjectID: p.id, Pos: p.pos, Heading: p.heading})
+}
+func (w *World) tickMovement(s *state) {
+	s.ticks++
+	s.moving = slices.DeleteFunc(s.moving, func(id int32) bool {
+		p, ok := s.players[id]
+		if !ok {
+			return true
+		}
+		if w.updatePosition(s, p, s.ticks) {
+			w.notifyArrived(s, p)
+			return true
+		}
+		return false
+	})
+	s.after(time.Second/ticksPerSecond, w.tickMovement)
 }

@@ -21,6 +21,13 @@
       "package": "bridge",
       "license": "AGPL-3.0-or-later",
       "phase": "active"
+    },
+    {
+      "path": "engine/go/world",
+      "module": "github.com/l2go/alatyr/engine/go/world",
+      "package": "world",
+      "license": "AGPL-3.0-or-later",
+      "phase": "active"
     }
   ],
   "denied": [

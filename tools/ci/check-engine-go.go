@@ -62,7 +62,7 @@ type policy struct {
 	FuzzTargets []fuzzTarget   `json:"fuzz_targets"`
 }
 
-var moduleNames = []string{"protocol", "gateway", "bridge"}
+var moduleNames = []string{"protocol", "gateway", "bridge", "world"}
 var windowsProfile = regexp.MustCompile(`(?i)[a-z]:[\\/](users|documents and settings)[\\/]`)
 var fuzzName = regexp.MustCompile(`^Fuzz[A-Z0-9_][A-Za-z0-9_]*$`)
 
@@ -204,7 +204,14 @@ func checkTree(root string, p policy) error {
 	if err != nil {
 		return err
 	}
-	return checkProtocolDeps(root, p.Modules[0])
+	for _, m := range p.Modules {
+		if m.Package == "protocol" || m.Package == "world" {
+			if err := checkProtocolDeps(root, m); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func scanScope(root, scope string, denied []denyRule) error {
@@ -339,10 +346,10 @@ func checkWorkspace(root string) error {
 		Replace   []json.RawMessage
 	}
 	if json.Unmarshal(data, &work) != nil || work.Go != goVersion || work.Toolchain != "go"+goVersion ||
-		len(work.Replace) != 0 || len(work.Use) != 4 {
+		len(work.Replace) != 0 || len(work.Use) != len(moduleNames)+1 {
 		return errors.New("I-1: workspace boundary or version")
 	}
-	expected := map[string]bool{"tools/world": true, "engine/go/protocol": true, "engine/go/gateway": true, "engine/go/bridge": true}
+	expected := map[string]bool{"tools/world": true, "engine/go/protocol": true, "engine/go/gateway": true, "engine/go/bridge": true, "engine/go/world": true}
 	for _, use := range work.Use {
 		path := filepath.ToSlash(filepath.Clean(use.DiskPath))
 		if filepath.IsAbs(use.DiskPath) || !expected[path] {
@@ -371,7 +378,7 @@ func checkModule(root string, m modulePolicy) error {
 	if json.Unmarshal(data, &mod) != nil || mod.Module.Path != m.Module || mod.Go != goVersion || (mod.Toolchain != "" && mod.Toolchain != "go"+goVersion) {
 		return errors.New("I-1: module path or version")
 	}
-	if (m.Package == "protocol" || m.Phase == "scaffold") &&
+	if (m.Package == "protocol" || m.Package == "world" || m.Phase == "scaffold") &&
 		len(mod.Require)+len(mod.Replace)+len(mod.Exclude)+len(mod.Tool) != 0 {
 		return errors.New("I-3: forbidden module dependency directive")
 	}
@@ -428,23 +435,23 @@ func checkProtocolDeps(root string, m modulePolicy) error {
 	dir := filepath.Join(root, m.Path)
 	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
-			return errors.New("I-3: cannot read protocol source")
+			return errors.New("I-3: cannot read stdlib-only module source")
 		}
 		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return errors.New("I-3: cannot read protocol source")
+			return errors.New("I-3: cannot read stdlib-only module source")
 		}
 		file, err := parser.ParseFile(token.NewFileSet(), "source.go", data, parser.ImportsOnly)
 		if err != nil {
-			return errors.New("I-3: invalid protocol source")
+			return errors.New("I-3: invalid stdlib-only module source")
 		}
 		for _, imp := range file.Imports {
 			path, err := strconv.Unquote(imp.Path.Value)
 			if err != nil || !allowedImport(path, m.Module, dir) {
-				return errors.New("I-3: protocol imports outside its own packages and standard library")
+				return errors.New("I-3: stdlib-only module imports outside its own packages and standard library")
 			}
 		}
 		return nil
@@ -454,7 +461,7 @@ func checkProtocolDeps(root string, m modulePolicy) error {
 	}
 	data, err := goCommand(dir, filepath.Join(root, "go.work"), "list", "-deps", "-test", "-json", "./...")
 	if err != nil {
-		return errors.New("I-3: cannot resolve protocol dependency graph")
+		return errors.New("I-3: cannot resolve stdlib-only module dependency graph")
 	}
 	return checkDependencyJSON(data, m.Module, dir)
 }
@@ -503,7 +510,7 @@ func checkDependencyJSON(data []byte, module, dir string) error {
 			err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) ||
 			!(importPath == module || strings.HasPrefix(importPath, module+"/") ||
 				importPath == module+".test" || importPath == module+"_test") {
-			return errors.New("I-3: external package in protocol dependency graph")
+			return errors.New("I-3: external package in stdlib-only module dependency graph")
 		}
 	}
 	if count == 0 {

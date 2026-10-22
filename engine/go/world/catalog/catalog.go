@@ -8,12 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
+	"path/filepath"
 	"strconv"
-	"strings"
 )
 
 type PlayerTemplate struct {
+	Name                             string
 	ClassID                          int32
 	STR, CON, DEX, INT, WIT, MEN     int32
 	PAtk, PDef, MAtk, MDef           float64
@@ -93,8 +95,8 @@ func (r *row) float(name string) float64 {
 		return 0
 	}
 	v, err := strconv.ParseFloat(s, 64)
-	if err != nil && r.err == nil {
-		r.err = fmt.Errorf("column %q: %w", name, err)
+	if (err != nil || math.IsNaN(v) || math.IsInf(v, 0)) && r.err == nil {
+		r.err = fmt.Errorf("column %q: invalid finite number", name)
 	}
 	return v
 }
@@ -121,6 +123,12 @@ func readCSV(path string, each func(row) error) error {
 	}
 	cols := make(map[string]int, len(head))
 	for i, h := range head {
+		if h == "" {
+			return errors.New("empty column")
+		}
+		if _, ok := cols[h]; ok {
+			return errors.New("duplicate column")
+		}
 		cols[h] = i
 	}
 	for line := 2; ; line++ {
@@ -139,8 +147,8 @@ func readCSV(path string, each func(row) error) error {
 
 func (c *Catalog) playerRow(r row) error {
 	t := PlayerTemplate{
-		ClassID: r.int("player_class_id"),
-		STR:     r.int("base_strength"), CON: r.int("base_constitution"), DEX: r.int("base_dexterity"),
+		ClassID: r.int("player_class_id"), Name: r.str("class_name"),
+		STR: r.int("base_strength"), CON: r.int("base_constitution"), DEX: r.int("base_dexterity"),
 		INT: r.int("base_intelligence"), WIT: r.int("base_wit"), MEN: r.int("base_mental"),
 		PAtk: r.float("base_physical_attack"), PDef: r.float("base_physical_defense"),
 		MAtk: r.float("base_magic_attack"), MDef: r.float("base_magic_defense"),
@@ -154,6 +162,12 @@ func (c *Catalog) playerRow(r row) error {
 	}
 	if r.err != nil {
 		return r.err
+	}
+	if _, ok := c.players[t.ClassID]; ok {
+		return fmt.Errorf("duplicate player template %d", t.ClassID)
+	}
+	if t.RunSpd <= 0 {
+		return errors.New("nonpositive run speed")
 	}
 	c.players[t.ClassID] = t
 	return nil
@@ -185,4 +199,57 @@ func (c *Catalog) addItem(t ItemTemplate, err error) error {
 	}
 	c.items[t.ID] = t
 	return nil
+}
+
+type Catalog struct {
+	players   map[int32]PlayerTemplate
+	items     map[int32]ItemTemplate
+	itemFuncs map[int32][]ItemFunc
+	passive   map[[2]int32][]ItemFunc
+}
+
+func (c *Catalog) Player(id int32) (PlayerTemplate, bool) { t, ok := c.players[id]; return t, ok }
+func (c *Catalog) Item(id int32) (ItemTemplate, bool)     { t, ok := c.items[id]; return t, ok }
+func (c *Catalog) PassiveFuncs(id, level int32) []ItemFunc {
+	return cloneFuncs(c.passive[[2]int32{id, level}])
+}
+
+// Load reads the rendered world root. Source authoring files are never opened.
+// This base reads player templates, level gains, item templates and stat XML;
+// other catalog consumers are introduced with their gameplay.
+func Load(root string) (*Catalog, error) {
+	c := &Catalog{players: map[int32]PlayerTemplate{}, items: map[int32]ItemTemplate{}, itemFuncs: map[int32][]ItemFunc{}, passive: map[[2]int32][]ItemFunc{}}
+	for _, s := range []struct {
+		file string
+		row  func(row) error
+	}{
+		{"player_template.csv", c.playerRow}, {"level_up_gain.csv", c.levelRow},
+		{"weapon_template.csv", c.weaponRow}, {"armor_template.csv", c.etcArmorRow}, {"etc_item_template.csv", c.etcRow},
+	} {
+		if err := readCSV(filepath.Join(root, "catalog", s.file), s.row); err != nil {
+			return nil, fmt.Errorf("catalog: %s: %w", s.file, err)
+		}
+	}
+	for _, kind := range []string{"weapon", "armor", "etcitem", "skills"} {
+		if err := c.loadStatXML(filepath.Join(root, "data", "stats", kind), kind); err != nil {
+			return nil, fmt.Errorf("catalog: %s XML: %w", kind, err)
+		}
+	}
+	return c, nil
+}
+func (c *Catalog) weaponRow(r row) error {
+	t := ItemTemplate{ID: r.int("id"), Name: r.str("name"), Kind: Weapon, BodyPartName: r.str("body_part"), Weight: r.int("weight"),
+		WeaponType: r.str("weapon_type"), PhysicalDamage: r.int("physical_damage"), MagicDamage: r.int("magic_damage"),
+		RandomDamage: r.int("random_damage"), CritRate: r.int("critical_rate"), AccuracyMod: r.int("accuracy_modifier"),
+		EvasionMod: r.int("evasion_modifier"), AttackSpeed: r.int("attack_speed"), SoulshotCount: r.int("soulshot_count"), SpiritshotCount: r.int("spiritshot_count")}
+	return c.addItem(t, r.err)
+}
+func (c *Catalog) etcArmorRow(r row) error {
+	t := ItemTemplate{ID: r.int("id"), Name: r.str("name"), Kind: Armor, BodyPartName: r.str("body_part"), Weight: r.int("weight"),
+		ArmorType: r.str("armor_type"), PDef: r.int("physical_defense"), MDef: r.int("magic_defense"), ArmorEvasionMod: r.int("evasion_modifier"), MPBonus: r.int("mp_bonus")}
+	return c.addItem(t, r.err)
+}
+func (c *Catalog) etcRow(r row) error {
+	t := ItemTemplate{ID: r.int("id"), Name: r.str("name"), Kind: EtcItem, Weight: r.int("weight"), EtcType: r.str("item_type"), ConsumeType: r.str("consume_type")}
+	return c.addItem(t, r.err)
 }

@@ -5,18 +5,15 @@ package world
 
 import (
 	"context"
-	"log/slog"
 	"slices"
 	"testing"
 	"testing/synctest"
 	"time"
-
-	"github.com/l2go/alatyr/engine/go/world/itemlog"
 )
 
 func TestScheduledWork(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		w := New(nil, nil, nil, FreshSettings, itemlog.Discard, NoGround{}, slog.New(slog.DiscardHandler))
+		w := New(nil, nil)
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		go w.Run(ctx)
@@ -30,9 +27,9 @@ func TestScheduledWork(t *testing.T) {
 			})
 			s.after(8500*time.Millisecond, func(*state) { got = append(got, "same time") })
 		})
-		synctest.Sleep(9 * time.Second)
+		time.Sleep(9 * time.Second)
 		w.do(ctx, func(*state) { got = append(got, "command") })
-		synctest.Sleep(30 * time.Second)
+		time.Sleep(30 * time.Second)
 		w.do(ctx, func(*state) {})
 		want := []string{"decay", "same time", "command", "respawn", "after decay"}
 		if !slices.Equal(got, want) {
