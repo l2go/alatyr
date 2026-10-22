@@ -81,6 +81,10 @@ class BridgeShutdownRaceTest
 					if (atGate.await(5, TimeUnit.SECONDS))
 						loop.stopAdmitting();
 				}
+				catch (InterruptedException e)
+				{
+					Thread.currentThread().interrupt();
+				}
 				finally
 				{
 					release.countDown();
