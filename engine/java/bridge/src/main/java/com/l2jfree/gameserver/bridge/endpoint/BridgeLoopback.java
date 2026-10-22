@@ -50,6 +50,8 @@ final class BridgeLoopback implements Runnable
 	static final int FRAME_CAP = 65536;
 	static final int OUT_QUEUE_BYTES = 262144;
 	static final long BYE_CLOSE_NS = 100_000_000L;
+	/** How long a bound close waits for the disconnect save before the bye is internal. */
+	static final long RESULT_BUDGET_NS = 30_000_000_000L;
 	
 	private final BridgeSettings settings;
 	private final ServerSocketChannel server;
@@ -136,6 +138,11 @@ final class BridgeLoopback implements Runnable
 			try
 			{
 				selector.select(nextWaitMs());
+				for (SelectionKey key : selector.keys())
+				{
+					if (key.attachment() instanceof Transport)
+						expire((Transport) key.attachment());
+				}
 				flushAll();
 				Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
 				while (keys.hasNext())
@@ -289,12 +296,17 @@ final class BridgeLoopback implements Runnable
 			}
 			return;
 		}
+		if (reply.close && transport.client != null)
+		{
+			armResultWait(transport);
+			disconnectBound(transport);
+			selector.wakeup();
+			return;
+		}
 		if (!reply.records.isEmpty())
 			offer(transport, frame(reply.records));
 		if (reply.close)
 		{
-			if (!reply.records.isEmpty())
-				disconnectBound(transport);
 			armClose(transport);
 			selector.wakeup();
 		}
@@ -315,7 +327,7 @@ final class BridgeLoopback implements Runnable
 		if (transport.client != null)
 			throw new IllegalStateException("already admitted");
 		
-		BridgeSink sink = new BridgeSink(records -> enqueue(transport, records));
+		BridgeSink sink = new BridgeSink(records -> fromSink(transport, records));
 		LocalChannel channel = new LocalChannel();
 		virtualChannels.register(channel).syncUninterruptibly();
 		L2Client client = L2Client.forBridge(context.getNetworkServer(), channel,
@@ -325,6 +337,60 @@ final class BridgeLoopback implements Runnable
 		watch(client);
 		BridgeAdmission.schedule(client, LoginLink.getInstance(), reply.account, reply.character,
 				records -> enqueue(transport, records));
+	}
+	
+	/** The disconnect save owns the terminal bye. A late bye is dropped once that bye is claimed. */
+	void fromSink(Transport transport, List<Envelope> records)
+	{
+		if (!claimTerminal(transport))
+			return;
+		
+		offer(transport, frame(records));
+		armClose(transport);
+		selector.wakeup();
+	}
+	
+	/**
+	 * A bound close waits for {@link #fromSink}. When the wait exceeds the disconnect budget, the bye is internal.
+	 */
+	static void expire(Transport transport)
+	{
+		boolean due;
+		synchronized (transport)
+		{
+			due = transport.awaitingResult && !transport.closing && !transport.terminal && transport.resultDeadline != 0
+					&& System.nanoTime() >= transport.resultDeadline;
+		}
+		if (!due || !claimTerminal(transport))
+			return;
+		
+		offer(transport, frame(List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL))));
+		armClose(transport);
+	}
+	
+	private static void armResultWait(Transport transport)
+	{
+		synchronized (transport)
+		{
+			if (transport.closing || transport.terminal || transport.awaitingResult)
+				return;
+			
+			transport.awaitingResult = true;
+			transport.resultDeadline = System.nanoTime() + RESULT_BUDGET_NS;
+		}
+	}
+	
+	private static boolean claimTerminal(Transport transport)
+	{
+		synchronized (transport)
+		{
+			if (transport.terminal || transport.closing)
+				return false;
+			
+			transport.terminal = true;
+			transport.awaitingResult = false;
+			return true;
+		}
 	}
 	
 	private void enqueue(Transport transport, List<Envelope> records)
@@ -404,7 +470,12 @@ final class BridgeLoopback implements Runnable
 			long deadline;
 			synchronized (transport)
 			{
-				deadline = transport.closing ? transport.closeDeadline : 0;
+				if (transport.closing)
+					deadline = transport.closeDeadline;
+				else if (transport.awaitingResult)
+					deadline = transport.resultDeadline;
+				else
+					deadline = 0;
 			}
 			wait = Math.min(wait, selectTimeout(now, deadline));
 		}
@@ -623,6 +694,9 @@ final class BridgeLoopback implements Runnable
 		int held;
 		boolean closing;
 		long closeDeadline;
+		boolean awaitingResult;
+		long resultDeadline;
+		boolean terminal;
 		boolean disconnectStarted;
 		L2Client client;
 		
