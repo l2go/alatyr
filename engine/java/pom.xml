@@ -33,13 +33,13 @@
 		<surefire.excludedGroups>integration</surefire.excludedGroups>
 	</properties>
 	<scm>
-		<connection>scm:git:https://github.com/l2go/l2jfree.git</connection>
-		<developerConnection>scm:git:ssh://git@github.com/l2go/l2jfree.git</developerConnection>
-		<url>https://github.com/l2go/l2jfree</url>
+		<connection>scm:git:https://github.com/l2go/alatyr.git</connection>
+		<developerConnection>scm:git:ssh://git@github.com/l2go/alatyr.git</developerConnection>
+		<url>https://github.com/l2go/alatyr</url>
 	</scm>
 	<issueManagement>
 		<system>GitHub</system>
-		<url>https://github.com/l2go/l2jfree/issues</url>
+		<url>https://github.com/l2go/alatyr/issues</url>
 	</issueManagement>
 	<inceptionYear>2010</inceptionYear>
 	<dependencyManagement>
@@ -250,9 +250,9 @@
 					<doctitle>L2JFree ${project.version} ${l2jfree.build.revision} documentation</doctitle>
 					<windowtitle>L2JFree ${project.version} ${l2jfree.build.revision}
 						documentation</windowtitle>
-					<header><![CDATA[<a href="https://github.com/l2go/l2jfree" target="_top">L2JFree source</a>]]></header>
-					<footer><![CDATA[<a href="https://github.com/l2go/l2jfree" target="_top">L2JFree source</a>]]></footer>
-					<packagesheader><![CDATA[<a href="https://github.com/l2go/l2jfree" target="_top">L2JFree source</a>]]></packagesheader>
+					<header><![CDATA[<a href="https://github.com/l2go/alatyr" target="_top">L2JFree source</a>]]></header>
+					<footer><![CDATA[<a href="https://github.com/l2go/alatyr" target="_top">L2JFree source</a>]]></footer>
+					<packagesheader><![CDATA[<a href="https://github.com/l2go/alatyr" target="_top">L2JFree source</a>]]></packagesheader>
 				</configuration>
 			</plugin>
 			<plugin>

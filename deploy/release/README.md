@@ -16,7 +16,7 @@ docker compose up -d --wait
 
 The first start creates the database passwords and schemas and loads the game content. It takes a few minutes. When the command returns, login answers on port 2106 and the world on 7777. The first login creates the account.
 
-The server runs Okolitsa, the original world in the image. The [deploy guide](https://github.com/l2go/l2jfree/blob/main/deploy/README.md#run-another-world) tells how to run another world.
+The server runs Okolitsa, the original world in the image. The [deploy guide](https://github.com/l2go/alatyr/blob/main/deploy/README.md#run-another-world) tells how to run another world.
 
 | Task | Command |
 |---|---|
@@ -36,10 +36,10 @@ printf 'RateXp = 3.\n' | docker compose exec -T server tee /var/lib/l2jfree/conf
 docker compose restart server
 ```
 
-`tee` replaces the file, so write all changed keys of one file at once. The defaults: [world](https://github.com/l2go/l2jfree/tree/main/engine/java/game/config), [login](https://github.com/l2go/l2jfree/tree/main/engine/java/login/config). On a public server, turn off the automatic creation of accounts with `AutoCreateAccounts = False` in `loginserver.properties`.
+`tee` replaces the file, so write all changed keys of one file at once. The defaults: [world](https://github.com/l2go/alatyr/tree/main/engine/java/game/config), [login](https://github.com/l2go/alatyr/tree/main/engine/java/login/config). On a public server, turn off the automatic creation of accounts with `AutoCreateAccounts = False` in `loginserver.properties`.
 
-The restore and every setting are in the [deploy guide](https://github.com/l2go/l2jfree/blob/main/deploy/README.md).
-The [project site](https://l2go.github.io/l2jfree/) tells how the server is built and checked.
+The restore and every setting are in the [deploy guide](https://github.com/l2go/alatyr/blob/main/deploy/README.md).
+The [project site](https://l2go.github.io/alatyr/) tells how the server is built and checked.
 
 ## Trademarks
 
