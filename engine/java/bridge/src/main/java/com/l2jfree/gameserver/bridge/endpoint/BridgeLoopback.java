@@ -239,7 +239,7 @@ final class BridgeLoopback implements Runnable
 		flushKey(key);
 	}
 	
-	private void acceptFrame(Transport transport, List<Envelope> records) throws IOException
+	void acceptFrame(Transport transport, List<Envelope> records) throws IOException
 	{
 		BridgeReply reply = transport.dialogue.accept(records);
 		if (reply.admit)
@@ -258,7 +258,11 @@ final class BridgeLoopback implements Runnable
 		if (!reply.records.isEmpty())
 			offer(transport, frame(reply.records));
 		if (reply.close)
+		{
+			if (!reply.records.isEmpty())
+				disconnectBound(transport);
 			armClose(transport);
+		}
 	}
 	
 	/**
@@ -415,6 +419,13 @@ final class BridgeLoopback implements Runnable
 				transport.writing = null;
 			}
 		}
+	}
+	
+	private void disconnectBound(Transport transport)
+	{
+		L2Client client = transport.client;
+		if (client != null)
+			client.requestBridgeDisconnect();
 	}
 	
 	private void drop(SelectionKey key)
