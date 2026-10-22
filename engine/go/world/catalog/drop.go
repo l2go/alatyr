@@ -7,35 +7,54 @@ import (
 	"cmp"
 	"slices"
 )
+
 const MaxDropChance = 1000000
+
 type Drop struct {
 	ItemID   int32
 	Min, Max int64
 	Chance   int32
 }
 type DropCategory struct {
-	Type  int32
-	Drops []*Drop
-	Chance int32
+	Type     int32
+	Drops    []*Drop
+	Chance   int32
 	balanced int32
 }
+
 func (c *DropCategory) DropOne(intN func(n int) int) *Drop {
+	if c.balanced <= 0 {
+		return nil
+	}
 	point := int32(intN(int(c.balanced)))
 	var sum int32
 	for _, d := range c.Drops {
 		sum += min(d.Chance, MaxDropChance)
-		if sum >= point {
+		if sum > point {
 			return d
 		}
 	}
 	return nil
 }
-func (c *Catalog) DropCategories(npc int32) []*DropCategory { return c.drops[npc] }
+func (c *Catalog) DropCategories(npc int32) []*DropCategory {
+	var out []*DropCategory
+	for _, cat := range c.drops[npc] {
+		cp := *cat
+		cp.Drops = nil
+		for _, d := range cat.Drops {
+			v := *d
+			cp.Drops = append(cp.Drops, &v)
+		}
+		out = append(out, &cp)
+	}
+	return out
+}
 
 type dropRow struct {
 	npc, category int32
 	drop          Drop
 }
+
 func (c *Catalog) buildDrops(rows []dropRow) {
 	slices.SortStableFunc(rows, func(a, b dropRow) int {
 		return cmp.Or(cmp.Compare(a.npc, b.npc), cmp.Compare(b.drop.Chance, a.drop.Chance))

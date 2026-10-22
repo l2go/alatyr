@@ -5,8 +5,9 @@ package world
 
 import (
 	"cmp"
-	"slices"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
+	"slices"
+	"strings"
 )
 
 func (p *player) skillLevel(id int32) int32 {
@@ -68,4 +69,26 @@ func (w *World) skillFuncs(known []Skill, worn map[int32]catalog.ItemTemplate) [
 		funcs = append(funcs, sk.Funcs...)
 	}
 	return funcs
+}
+
+func weaponAllowed(sk catalog.Skill, worn map[int32]catalog.ItemTemplate) bool {
+	if len(sk.WeaponsAllowed) == 0 {
+		return true
+	}
+	for _, slot := range []int32{catalog.SlotRHand, catalog.SlotLHand} {
+		if t, ok := worn[slot]; ok && t.Kind == catalog.Weapon && slices.Contains(sk.WeaponsAllowed, strings.ToLower(t.WeaponType)) {
+			return true
+		}
+	}
+	return false
+}
+func (w *World) removeSkill(s *state, p *player, id int32) bool {
+	had := p.skillLevel(id) >= 1
+	p.char.Skills = slices.DeleteFunc(p.char.Skills, func(k Skill) bool { return k.ID == id })
+	p.memSkills = slices.DeleteFunc(p.memSkills, func(k Skill) bool { return k.ID == id })
+	if had {
+		w.refreshSkillFuncs(p)
+		w.markBroadcast(s, p, broadcastFullInfo|broadcastSkillList)
+	}
+	return had
 }

@@ -5,7 +5,6 @@ package world
 
 import (
 	"context"
-	"math"
 	"time"
 )
 
@@ -14,7 +13,7 @@ func (w *World) act(ctx context.Context, id int32, f func(s *state, p *player)) 
 	if derr := w.do(ctx, func(s *state) {
 		p, ok := s.players[id]
 		if !ok {
-			err = ErrNotInWorld
+			err = ErrNotPresent
 			return
 		}
 		f(s, p)
@@ -30,7 +29,7 @@ func (w *World) playerOnAction(s *state, p, q *player) {
 		return
 	}
 	p.send(PositionSync{ObjectID: q.id, Pos: q.pos, Heading: q.heading})
-	p.send(ActionFailed{})
+	p.send(RequestIgnored{})
 }
 
 func (w *World) sitDown(s *state, p *player) {
@@ -70,3 +69,9 @@ func (w *World) setCP(s *state, p *player, cp float64) {
 		w.startRegen(s, p)
 	}
 }
+
+const (
+	playerAttackRange = 40
+	sitStandLock      = 2333 * time.Millisecond
+	retargetBlocking  = 400 * time.Millisecond
+)

@@ -9,7 +9,9 @@ import (
 
 	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
+
 const npcWatch = 1500
+
 func playerWatch(known int) float64 {
 	switch {
 	case known <= 25:
@@ -21,6 +23,7 @@ func playerWatch(known int) float64 {
 	}
 	return 1700
 }
+
 const (
 	aiPeriod         = time.Second
 	randomWalkRate   = 30
@@ -33,22 +36,24 @@ const (
 	globalAggroStart = -10
 	npcBaseCrit      = 38
 )
+
 type npc struct {
 	creature
 	tmpl  catalog.NPCTemplate
 	spawn catalog.Spawn
 
-	knownPlayers map[int32]bool
-	aiTask      bool
-	globalAggro int
-	animating   bool
-	lastAnim    time.Time
-	animDelay   time.Duration
-	hate []hateEntry
+	knownPlayers    map[int32]bool
+	aiTask          bool
+	globalAggro     int
+	animating       bool
+	lastAnim        time.Time
+	animDelay       time.Duration
+	hate            []hateEntry
 	overhit         bool
 	overhitDamage   float64
 	overhitAttacker int32
 }
+
 func (n *npc) takeOverhit(attacker int32, value float64) {
 	if value <= 0 || !n.overhit {
 		n.overhit = false
@@ -66,7 +71,8 @@ type hateEntry struct {
 	id           int32
 	damage, hate int64
 }
-func (n *npc) mob() bool { return n.tmpl.InstanceType == "L2Monster" }
+
+func (n *npc) mob() bool { return n.tmpl.Role == catalog.Monster }
 
 func (n *npc) home() Point { return Point{n.spawn.Point.X, n.spawn.Point.Y, n.spawn.Point.Z} }
 
@@ -131,6 +137,7 @@ func (w *World) spawnAll(s *state) {
 		}
 	}
 }
+
 type NPCView struct {
 	ObjectID        int32
 	Template        catalog.NPCTemplate
@@ -150,13 +157,13 @@ func (n *npc) view(time.Time) NPCView {
 	return NPCView{
 		ObjectID: n.id, Template: n.tmpl, Pos: n.pos, Heading: n.heading,
 		Attackable: n.mob(), Running: n.running, InCombat: n.ai.autoAttacking, Dead: n.dead,
-		MoveMul:   1,
-		AtkSpdMul: float32(1.1 * n.tmpl.PAtkSpd / n.tmpl.PAtkSpd),
+		MoveMul:         1,
+		AtkSpdMul:       float32(1.1 * n.tmpl.PAtkSpd / n.tmpl.PAtkSpd),
 		CollisionRadius: math.Trunc(n.tmpl.CollisionRadius), CollisionHeight: math.Trunc(n.tmpl.CollisionHigh),
 	}
 }
 func (w *World) learnPlayer(s *state, n *npc, p *player) {
-	if n.dead || distance3D(n.pos, p.pos) > npcWatch || n.knownPlayers[p.id] {
+	if p.teleporting || n.dead || distance3D(n.pos, p.pos) > npcWatch || n.knownPlayers[p.id] {
 		return
 	}
 	n.knownPlayers[p.id] = true
@@ -222,7 +229,7 @@ func (w *World) thinkAttackMob(s *state, n *npc) {
 		return
 	}
 	n.target = t.base().id
-	dx, dy := float64(n.pos.X-t.base().pos.X), float64(n.pos.Y-t.base().pos.Y)
+	dx, dy := (float64(n.pos.X) - float64(t.base().pos.X)), (float64(n.pos.Y) - float64(t.base().pos.Y))
 	dist2 := dx*dx + dy*dy
 	rng := float64(n.attackRange() + n.collision() + t.collision())
 	if t.base().move != nil {
@@ -295,4 +302,46 @@ func (w *World) setRunning(s *state, a actor, running bool) {
 	c.running = running
 	w.broadcastToKnown(s, a, MoveType{ObjectID: c.id, Running: running})
 	w.markBroadcast(s, a, broadcastFullInfo)
+}
+
+func (w *World) spawnNPC(s *state, sp catalog.Spawn, t catalog.NPCTemplate) *npc {
+	n := &npc{creature: creature{
+		id: s.newID(), pos: Point{sp.Point.X, sp.Point.Y, sp.Point.Z}, heading: sp.Heading, running: t.Role != catalog.Monster,
+		hp: t.MaxHP, mp: t.MaxMP, listeners: map[int32]bool{}, regen: time.Now(),
+	}, tmpl: t, spawn: sp, knownPlayers: map[int32]bool{}, globalAggro: globalAggroStart}
+	n.pos = w.onGround(n.pos)
+	if n.id == 0 {
+		return nil
+	}
+	if n.heading == -1 {
+		n.heading = int32(s.rng.IntN(65536))
+	}
+	n.region = regionOf(n.pos)
+	s.region(n.region).objects = append(s.region(n.region).objects, n.id)
+	s.npcs[n.id] = n
+	return n
+}
+func (w *World) tryAnimation(s *state, n *npc, force, init bool) bool {
+	if n.dead || !s.region(n.region).active || n.mob() && n.ai.intention != intentActive {
+		return false
+	}
+	now := time.Now()
+	if now.Sub(n.lastAnim) > minSocial && len(n.knownPlayers) > 0 && (force || now.Sub(n.lastAnim) > n.animDelay) {
+		s.rng.IntN(2)
+		if force {
+			s.rng.IntN(8)
+		}
+		w.broadcastToKnown(s, n, Animation{ObjectID: n.id, Forced: force})
+		lo, hi := minNPCAnim, maxNPCAnim
+		if n.mob() {
+			lo, hi = minMonsterAnim, maxMonsterAnim
+		}
+		n.lastAnim = now
+		n.animDelay = time.Duration(lo+s.rng.IntN(hi-lo+1)) * time.Second
+	}
+	if init && !n.animating {
+		n.animating = true
+		s.animators = append(s.animators, n.id)
+	}
+	return true
 }

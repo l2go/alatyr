@@ -23,9 +23,10 @@ type zoneShape struct {
 	hasZ         bool
 	zMin, zMax   int32
 	x, y         []int32
-	radiusSq     int32
-	innerSq, out int32
+	radiusSq     float64
+	innerSq, out float64
 }
+
 func (zn zone) contains(x, y, z int32) bool {
 	in := false
 	for _, s := range zn.shapes {
@@ -49,7 +50,7 @@ func (s zoneShape) contains(x, y, z int32) bool {
 		inside := false
 		for i, j := 0, len(s.x)-1; i < len(s.x); j, i = i, i+1 {
 			if ((s.y[i] <= y && y < s.y[j]) || (s.y[j] <= y && y < s.y[i])) &&
-				float64(x) < float64(s.x[j]-s.x[i])*float64(y-s.y[i])/float64(s.y[j]-s.y[i])+float64(s.x[i]) {
+				float64(x) < (float64(s.x[j])-float64(s.x[i]))*(float64(y)-float64(s.y[i]))/(float64(s.y[j])-float64(s.y[i]))+float64(s.x[i]) {
 				inside = !inside
 			}
 		}
@@ -57,11 +58,12 @@ func (s zoneShape) contains(x, y, z int32) bool {
 	case "Rect":
 		return x >= s.x[0] && x <= s.x[1] && y >= s.y[0] && y <= s.y[1]
 	case "Cylinder":
-		dx, dy := int64(x-s.x[0]), int64(y-s.y[0])
-		return dx*dx+dy*dy <= int64(s.radiusSq)
+		dx, dy := float64(x)-float64(s.x[0]), float64(y)-float64(s.y[0])
+		return dx*dx+dy*dy <= s.radiusSq
 	case "ExCylinder":
-		d := int64(x-s.x[0])*int64(x-s.x[0]) + int64(y-s.y[0])*int64(y-s.y[0])
-		return d <= int64(s.out) && d >= int64(s.innerSq)
+		dx, dy := float64(x)-float64(s.x[0]), float64(y)-float64(s.y[0])
+		d := dx*dx + dy*dy
+		return d <= s.out && d >= s.innerSq
 	}
 	return false
 }
@@ -88,8 +90,7 @@ func (c *Catalog) loadZones(dir string) error {
 			}
 			zn, keep, err := parseZone(n)
 			if err != nil {
-				c.zonesLeftOut++
-				continue
+				return err
 			}
 			if keep {
 				c.zones = append(c.zones, zn)
@@ -162,6 +163,9 @@ func parseShape(n xmlNode) (zoneShape, error) {
 	if err != nil {
 		return s, err
 	}
+	if okMin != okMax || okMin && zMin > zMax {
+		return s, errors.New("invalid zone height bounds")
+	}
 	s.hasZ, s.zMin, s.zMax = okMin && okMax, zMin, zMax
 	for _, p := range n.Children {
 		if p.XMLName.Local != "point" {
@@ -195,16 +199,35 @@ func parseShape(n xmlNode) (zoneShape, error) {
 		if err != nil || !ok || r <= 0 || len(s.x) != 1 {
 			return s, errors.New("a cylinder without one centre and a radius")
 		}
-		s.radiusSq = r * r
+		s.radiusSq = float64(r) * float64(r)
 	case "ExCylinder":
 		in, okIn, err1 := num("innerRadius")
 		out, okOut, err2 := num("outerRadius")
 		if err1 != nil || err2 != nil || !okIn || !okOut || len(s.x) != 1 {
 			return s, errors.New("an ex-cylinder without one centre and radii")
 		}
-		s.innerSq, s.out = in*in, out*out
+		if in < 0 || out <= in {
+			return s, errors.New("invalid annulus radii")
+		}
+		s.innerSq, s.out = float64(in)*float64(in), float64(out)*float64(out)
 	default:
 		return s, fmt.Errorf("shape %q", s.kind)
 	}
 	return s, nil
+}
+
+type ZoneState struct{ Peace, PvP bool }
+
+func (c *Catalog) ZoneAt(x, y, z int32) ZoneState {
+	var state ZoneState
+	for _, zone := range c.zones {
+		if zone.contains(x, y, z) {
+			state.Peace = state.Peace || zone.peace
+			state.PvP = state.PvP || zone.pvp
+		}
+	}
+	if state.Peace {
+		state.PvP = false
+	}
+	return state
 }

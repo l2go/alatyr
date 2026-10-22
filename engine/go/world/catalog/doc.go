@@ -2,6 +2,7 @@
 // Copyright 2026 l2go
 
 // Package catalog reads an immutable rendered authored world.
-// Accessors return values or detached copies. The base reads only the content
-// required for ready-character movement and its equipment and passive stats.
+// Accessors return values or detached copies. Templates, spawns, skill trees,
+// drops, stat XML, authored pages and geometry share one rendered root.
+// Missing class metadata, skill levels and restart regions are not inferred.
 package catalog

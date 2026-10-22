@@ -2,6 +2,23 @@
 // Copyright 2026 l2go
 
 package catalog
+
+import (
+	"fmt"
+	"math"
+)
+
+type Point struct{ X, Y, Z int32 }
+
+type Role string
+
+const (
+	Monster  Role = "monster"
+	Trainer  Role = "trainer"
+	Merchant Role = "merchant"
+	Folk     Role = "folk"
+)
+
 type NPCTemplate struct {
 	ID, ClientID                   int32
 	Name, Title                    string
@@ -9,7 +26,7 @@ type NPCTemplate struct {
 	CollisionRadius, CollisionHigh float64
 	Level                          int32
 	Female                         bool
-	InstanceType                   string
+	Role                           Role
 	AttackRange                    int32
 	MaxHP, MaxMP                   float64
 	HPRegen, MPRegen               float64
@@ -34,6 +51,7 @@ type Spawn struct {
 	RespawnDelay int32
 	PeriodOfDay  string
 }
+
 func (c *Catalog) NPC(id int32) (NPCTemplate, bool) {
 	t, ok := c.npcs[id]
 	return t, ok
@@ -53,7 +71,7 @@ func (c *Catalog) npcTemplateRow(r row) error {
 		ID: r.int("id"), ClientID: r.int("client_template_id"), Name: r.str("name"), Title: r.str("title"),
 		SendsServerName: r.bool("sends_server_name"), SendsTitle: r.bool("sends_server_title"),
 		CollisionRadius: r.float("collision_radius"), CollisionHigh: r.float("collision_height"),
-		Level: r.int("level"), Female: r.str("sex") == "female", InstanceType: r.str("instance_type"),
+		Level: r.int("level"), Female: r.str("sex") == "female",
 		AttackRange: r.int("attack_range"), MaxHP: r.float("max_hp"), MaxMP: r.float("max_mp"),
 		HPRegen: r.float("hp_regen"), MPRegen: r.float("mp_regen"),
 		STR: r.int("strength"), CON: r.int("constitution"), DEX: r.int("dexterity"),
@@ -68,8 +86,30 @@ func (c *Catalog) npcTemplateRow(r row) error {
 	if r.err != nil {
 		return r.err
 	}
+	for _, v := range []float64{t.MaxHP, t.MaxMP, t.PAtk, t.PDef, t.PAtkSpd, t.CollisionRadius, t.CollisionHigh, t.WalkSpeed, t.RunSpeed} {
+		if v > math.MaxInt32 {
+			return fmt.Errorf("NPC value exceeds integer range")
+		}
+	}
+	switch r.str("instance_type") {
+	case "L2Monster":
+		t.Role = Monster
+	case "L2Trainer":
+		t.Role = Trainer
+	case "L2Merchant":
+		t.Role = Merchant
+	case "L2Npc":
+		t.Role = Folk
+	default:
+		return fmt.Errorf("unsupported NPC role")
+	}
+	if t.ID <= 0 || t.Level < 1 || t.MaxHP < 1 || t.MaxMP < 0 || t.PDef <= 0 || t.PAtkSpd <= 0 || t.PAtk < 0 || t.DEX < 0 || t.CollisionRadius < 0 || t.CollisionHigh < 0 || t.WalkSpeed <= 0 || t.RunSpeed <= 0 || t.RewardExp < 0 || t.RewardSP < 0 {
+		return fmt.Errorf("invalid NPC template %d", t.ID)
+	}
+	if _, dup := c.npcs[t.ID]; dup {
+		return fmt.Errorf("duplicate NPC %d", t.ID)
+	}
 	c.npcs[t.ID] = t
-	c.npcNames[lower(t.Name)] = true
 	return nil
 }
 
@@ -81,6 +121,14 @@ func (c *Catalog) spawnRow(r row) error {
 	}
 	if r.err != nil {
 		return r.err
+	}
+	if _, ok := c.npcs[s.NPC]; !ok || s.Count < 1 || s.Count > 10000 || s.RespawnDelay < 0 || s.Heading < -1 || s.Heading > 65535 {
+		return fmt.Errorf("invalid spawn %d", s.ID)
+	}
+	for _, old := range c.spawns {
+		if old.ID == s.ID {
+			return fmt.Errorf("duplicate spawn %d", s.ID)
+		}
 	}
 	c.spawns = append(c.spawns, s)
 	return nil

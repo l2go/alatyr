@@ -10,6 +10,7 @@ import (
 )
 
 const regenInterval = 3 * time.Second
+
 func (w *World) startRegen(s *state, a actor) {
 	c := a.base()
 	if c.dead || c.regenOn {

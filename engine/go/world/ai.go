@@ -20,6 +20,7 @@ const (
 	intentCast
 	intentInteract
 )
+
 type order struct {
 	intent intention
 	object int32
@@ -46,7 +47,9 @@ type ai struct {
 	thinking      bool
 	attackTimeout int64
 }
+
 const maxAttackTimeout = 300
+
 func (w *World) inProtectedAction(s *state, a actor) bool {
 	now := time.Now()
 	if a.base().attackingNow(now) || a.base().casting {
@@ -60,7 +63,7 @@ func (w *World) inProtectedAction(s *state, a actor) bool {
 func (w *World) setIntention(s *state, a actor, o order) {
 	c := a.base()
 	if w.inProtectedAction(s, a) {
-		w.clientActionFailed(s, a)
+		w.clientRequestIgnored(s, a)
 		c.ai.next = &o
 		return
 	}
@@ -156,11 +159,11 @@ func (w *World) onIntentionAttack(s *state, a actor, target int32) {
 		c.ai.attackTimeout = maxAttackTimeout + s.ticks
 	}
 	if target == 0 || c.ai.intention == intentRest {
-		w.clientActionFailed(s, a)
+		w.clientRequestIgnored(s, a)
 		return
 	}
 	if c.ai.intention == intentAttack && c.ai.object == target {
-		w.clientActionFailed(s, a)
+		w.clientRequestIgnored(s, a)
 		return
 	}
 	w.changeIntention(s, a, intentAttack, target, Point{})
@@ -171,7 +174,7 @@ func (w *World) onIntentionAttack(s *state, a actor, target int32) {
 func (w *World) onIntentionMoveTo(s *state, a actor, to Point) {
 	c := a.base()
 	if c.ai.intention == intentRest {
-		w.clientActionFailed(s, a)
+		w.clientRequestIgnored(s, a)
 		return
 	}
 	w.changeIntention(s, a, intentMoveTo, 0, to)
@@ -183,7 +186,7 @@ func (w *World) onIntentionMoveTo(s *state, a actor, to Point) {
 func (w *World) onIntentionPickUp(s *state, a actor, item int32) {
 	c := a.base()
 	if c.ai.intention == intentRest {
-		w.clientActionFailed(s, a)
+		w.clientRequestIgnored(s, a)
 		return
 	}
 	w.clientStopAutoAttack(s, a)
@@ -201,7 +204,7 @@ func (w *World) notifyThink(s *state, a actor) {
 	c := a.base()
 	if a.isPlayer() {
 		if c.ai.thinking && c.ai.intention != intentCast {
-			w.clientActionFailed(s, a)
+			w.clientRequestIgnored(s, a)
 			return
 		}
 		c.ai.thinking = true
@@ -235,6 +238,9 @@ func (w *World) notifyArrived(s *state, a actor) {
 	c := a.base()
 	w.revalidateZone(s, a)
 	c.move = nil
+	if c.ai.pawnOffset == 0 {
+		w.broadcastToKnown(s, a, Stopped{ObjectID: c.id, Pos: c.pos, Heading: c.heading})
+	}
 	w.clientStoppedMoving(s, a)
 	if c.ai.intention == intentMoveTo {
 		w.setIntention(s, a, order{intent: intentActive})
@@ -307,9 +313,9 @@ func (w *World) notifyForget(s *state, a actor, object int32) {
 		w.setIntention(s, a, order{intent: intentActive})
 	}
 }
-func (w *World) clientActionFailed(s *state, a actor) {
+func (w *World) clientRequestIgnored(s *state, a actor) {
 	if p, ok := a.(*player); ok {
-		p.send(ActionFailed{})
+		p.send(RequestIgnored{})
 	}
 }
 func (w *World) moveToPawn(s *state, a actor, pawn int32, offset int32) {
@@ -343,17 +349,17 @@ func (w *World) moveToPawn(s *state, a actor, pawn int32, offset int32) {
 	w.moveTo(s, a, ppos, walk)
 	if c.move == nil {
 		if p, ok := a.(*player); ok {
-			p.send(ActionFailed{})
+			p.send(RequestIgnored{})
 		}
 		return
 	}
 	if creature {
 		if send {
-			w.broadcastToKnown(s, a, MoveToPawn{ObjectID: c.id, TargetID: pawn, Distance: c.ai.pawnOffset, From: c.pos, To: ppos})
+			w.broadcastToKnown(s, a, Following{ObjectID: c.id, TargetID: pawn, Distance: c.ai.pawnOffset, From: c.pos, To: ppos})
 		}
 		return
 	}
-	w.broadcastToKnown(s, a, MoveStarted{ObjectID: c.id, From: c.pos, To: c.move.dest})
+	w.broadcastToKnown(s, a, Moving{ObjectID: c.id, From: c.pos, To: c.move.dest})
 }
 func (w *World) aiMoveTo(s *state, a actor, to Point) {
 	c := a.base()
@@ -364,7 +370,7 @@ func (w *World) aiMoveTo(s *state, a actor, to Point) {
 	if c.move != nil {
 		dest = c.move.dest
 	}
-	w.broadcastToKnown(s, a, MoveStarted{ObjectID: c.id, From: c.pos, To: dest})
+	w.broadcastToKnown(s, a, Moving{ObjectID: c.id, From: c.pos, To: dest})
 }
 func (w *World) clientStopMoving(s *state, a actor) {
 	c := a.base()
@@ -480,7 +486,7 @@ func (w *World) maybeMoveToPawn(s *state, a actor, target int32, offset int32) b
 			return true
 		}
 		if p, ok := a.(*player); ok && c.ai.intention == intentCast && c.ai.cast != nil && c.ai.cast.shift {
-			p.send(ActionFailed{})
+			p.send(RequestIgnored{})
 			return true
 		}
 		if !c.running && !a.isPlayer() {
@@ -503,16 +509,16 @@ func (w *World) thinkAttackPlayer(s *state, a actor) {
 	c := a.base()
 	t, ok := s.actor(c.ai.object)
 	if !ok {
-		w.clientActionFailed(s, a)
+		w.clientRequestIgnored(s, a)
 		return
 	}
 	if t.base().dead {
 		w.setIntention(s, a, order{intent: intentActive})
-		w.clientActionFailed(s, a)
+		w.clientRequestIgnored(s, a)
 		return
 	}
 	if w.maybeMoveToPawn(s, a, c.ai.object, a.attackRange()) {
-		w.clientActionFailed(s, a)
+		w.clientRequestIgnored(s, a)
 		return
 	}
 	w.doAttack(s, a, t)
@@ -521,11 +527,11 @@ func (w *World) thinkPickUp(s *state, p *player) {
 	c := p.base()
 	if _, ok := s.ground[c.ai.target]; !ok {
 		w.setIntention(s, p, order{intent: intentActive})
-		w.clientActionFailed(s, p)
+		w.clientRequestIgnored(s, p)
 		return
 	}
 	if w.maybeMoveToPawn(s, p, c.ai.target, 36) {
-		w.clientActionFailed(s, p)
+		w.clientRequestIgnored(s, p)
 		return
 	}
 	item := c.ai.target
@@ -542,7 +548,7 @@ func (w *World) notifyDead(s *state, a actor) {
 		c.ai.pawnOffset = 0
 		c.ai.clientMoving = false
 	}
-	w.broadcastToKnown(s, a, Died{ObjectID: c.id, ToVillage: a.isPlayer()})
+	w.broadcastToKnown(s, a, Died{ObjectID: c.id})
 	c.ai.intention, c.ai.object = intentIdle, 0
 	c.ai.target = 0
 	w.stopFollow(s, a)

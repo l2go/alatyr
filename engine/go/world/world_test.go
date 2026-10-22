@@ -89,11 +89,14 @@ func TestEnterMoveLeaveSave(t *testing.T) {
 		if err = w.Leave(ctx, 1); err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := (<-entry.Events).(world.LeftWorld); !ok {
-			t.Fatal("missing departure")
+		left := false
+		for event := range entry.Events {
+			if _, ok := event.(world.LeftWorld); ok {
+				left = true
+			}
 		}
-		if _, open := <-entry.Events; open {
-			t.Fatal("events still open")
+		if !left {
+			t.Fatal("missing departure")
 		}
 		saved, err := store.Characters(ctx, "test")
 		if err != nil {

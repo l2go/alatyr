@@ -15,6 +15,7 @@ var compactTags = func() []string {
 	}
 	return out
 }()
+
 func CompactHTML(html string) string {
 	s := strings.Map(func(r rune) rune {
 		if javaWhitespace(r) {

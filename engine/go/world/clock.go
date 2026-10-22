@@ -4,19 +4,23 @@
 package world
 
 import "time"
+
 const (
 	gameStartMinute = 23*60 + 45
-	timeMulti  = 6
-	gameMinute = time.Minute / timeMulti
+	timeMulti       = 6
+	gameMinute      = time.Minute / timeMulti
 )
+
 func (w *World) GameTime() int32 {
 	elapsed := int(time.Since(w.started) / gameMinute)
 	return int32((gameStartMinute + 1 + elapsed) % (24 * 60))
 }
+
 type GameClock struct {
 	Minute     int32
 	Multiplier int32
 }
+
 func (w *World) startGameClock(s *state) {
 	var k int
 	var run func(*state)

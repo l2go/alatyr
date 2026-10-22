@@ -25,6 +25,7 @@ func TestMovementKeepsFractionalCoordinates(t *testing.T) {
 
 type testActor struct {
 	creature
+	actor
 	speed float64
 }
 

@@ -4,6 +4,7 @@
 package world
 
 import (
+	"slices"
 	"time"
 )
 
@@ -106,6 +107,9 @@ func (w *World) knows(s *state, a actor, id int32) bool {
 }
 
 func (w *World) updateKnown(s *state, a actor) {
+	if p, ok := a.(*player); ok && p.teleporting {
+		return
+	}
 	c := a.base()
 	now := time.Now()
 	if now.Sub(c.lastKnown) < 100*time.Millisecond {
@@ -119,7 +123,7 @@ func (w *World) updateKnown(s *state, a actor) {
 	case *npc:
 		for id := range v.knownPlayers {
 			p, ok := s.players[id]
-			if !ok || distance3D(c.pos, p.pos) > v.forgetDistance(id) {
+			if !ok || p.teleporting || distance3D(c.pos, p.pos) > v.forgetDistance(id) {
 				w.forgetPlayer(s, v, id)
 			}
 		}
@@ -128,7 +132,7 @@ func (w *World) updateKnown(s *state, a actor) {
 				continue
 			}
 			for _, p := range s.players {
-				if regionOf(p.pos) == k {
+				if !p.teleporting && regionOf(p.pos) == k {
 					w.learnPlayer(s, v, p)
 				}
 			}
@@ -140,7 +144,7 @@ func (w *World) playerForget(s *state, p *player) {
 	limit := playerForgetDistance(len(p.known))
 	for id := range p.known {
 		pos, _, _, ok := s.objectAt(id)
-		if !ok || distance3D(p.pos, pos) > limit {
+		if !ok || p.teleporting || distance3D(p.pos, pos) > limit {
 			w.playerForgetObject(s, p, id)
 		}
 		if q, ok := s.players[id]; ok && q.known[p.id] && distance3D(q.pos, p.pos) > playerForgetDistance(len(q.known)) {
@@ -163,6 +167,9 @@ func (w *World) playerForgetObject(s *state, p *player, id int32) {
 }
 
 func (w *World) playerLearn(s *state, p *player, now time.Time) {
+	if p.teleporting {
+		return
+	}
 	for _, nk := range neighbourhood(regionOf(p.pos)) {
 		nr, ok := s.regions[nk]
 		if !ok {
@@ -188,10 +195,17 @@ func (w *World) playerLearn(s *state, p *player, now time.Time) {
 			}
 		}
 	}
+	for _, g := range s.ground {
+		if !p.known[g.id] && distance3D(p.pos, g.pos) <= playerWatch(len(p.known)) {
+			t, _ := w.cat.Item(g.templateID)
+			p.known[g.id] = true
+			p.send(ItemDropped{ObjectID: g.id, TemplateID: g.templateID, Count: g.count, Pos: g.pos, Stackable: t.Stackable()})
+		}
+	}
 }
 
 func (w *World) playerKnow(s *state, p, q *player) {
-	if p.known[q.id] || distance3D(p.pos, q.pos) > playerWatch(len(p.known)) {
+	if p.teleporting || q.teleporting || p.known[q.id] || distance3D(p.pos, q.pos) > playerWatch(len(p.known)) {
 		return
 	}
 	p.known[q.id] = true
@@ -206,7 +220,7 @@ func (w *World) describeState(s *state, a actor, p *player) {
 	}
 	if c.ai.pawnOffset != 0 && c.ai.follow != 0 {
 		if pos, _, _, ok := s.objectAt(c.ai.follow); ok {
-			p.send(MoveToPawn{ObjectID: c.id, TargetID: c.ai.follow, Distance: c.ai.pawnOffset, From: c.pos, To: pos})
+			p.send(Following{ObjectID: c.id, TargetID: c.ai.follow, Distance: c.ai.pawnOffset, From: c.pos, To: pos})
 			return
 		}
 	}
@@ -214,7 +228,7 @@ func (w *World) describeState(s *state, a actor, p *player) {
 	if c.move != nil {
 		dest = c.move.dest
 	}
-	p.send(MoveStarted{ObjectID: c.id, From: c.pos, To: dest})
+	p.send(Moving{ObjectID: c.id, From: c.pos, To: dest})
 }
 
 func playerForgetDistance(known int) float64 {
@@ -247,4 +261,123 @@ func (s *state) objectAt(id int32) (Point, int32, bool, bool) {
 		return g.pos, 0, false, true
 	}
 	return Point{}, 0, false, false
+}
+
+func (w *World) place(s *state, p *player) {
+	p.region = regionOf(p.pos)
+	r := s.region(p.region)
+	r.objects = append(r.objects, p.id)
+	r.players++
+	w.activate(s, p.region)
+	k := p.region
+	s.after(neighbourTurnOn, func(s *state) {
+		if s.players[p.id] != p || p.teleporting {
+			return
+		}
+		for _, nk := range neighbourhood(k) {
+			if nk != k {
+				w.activate(s, nk)
+			}
+		}
+	})
+	w.playerLearn(s, p, time.Now())
+	p.lastKnown = time.Now()
+}
+func (w *World) revalidateZone(s *state, a actor) {
+	if p, ok := a.(*player); ok && !p.teleporting {
+		zone := w.cat.ZoneAt(p.pos.X, p.pos.Y, p.pos.Z)
+		if zone != p.zone {
+			p.zone = zone
+			p.send(ZoneChanged{ObjectID: p.id, Zone: zone})
+		}
+	}
+}
+
+type broadcastMask uint8
+
+const (
+	broadcastFullInfo broadcastMask = 1 << iota
+	broadcastStatus
+	broadcastSkillList
+)
+const (
+	tickPeriod         = 100 * time.Millisecond
+	broadcastPeriod    = 100 * time.Millisecond
+	revalidatePeriod   = 500 * time.Millisecond
+	attackFollowPeriod = 500 * time.Millisecond
+	stancePeriod       = time.Second
+	regenPeriod        = time.Second
+	combatTime         = 15 * time.Second
+)
+
+func (w *World) startManagers(s *state) {
+	s.after(tickPeriod, w.tickMovement)
+	for _, m := range []struct {
+		period time.Duration
+		run    func(*state)
+	}{
+		{broadcastPeriod, w.tickBroadcast}, {revalidatePeriod, w.tickRevalidate},
+		{attackFollowPeriod, w.tickFollow}, {stancePeriod, w.tickStance}, {regenPeriod, w.tickRegen},
+		{aiPeriod, w.tickAI}, {aiPeriod, w.tickAnimation},
+	} {
+		s.after(m.period, m.run)
+	}
+}
+func (w *World) markBroadcast(s *state, a actor, m broadcastMask) {
+	c := a.base()
+	c.broadcast |= m
+	if !c.queued {
+		c.queued = true
+		s.broadcastQueue = append(s.broadcastQueue, c.id)
+	}
+}
+func (w *World) tickBroadcast(s *state) {
+	queue := s.broadcastQueue
+	s.broadcastQueue = nil
+	for _, id := range queue {
+		a, ok := s.actor(id)
+		if !ok {
+			continue
+		}
+		c := a.base()
+		m := c.broadcast
+		c.broadcast = 0
+		c.queued = false
+		if m&broadcastFullInfo != 0 {
+			if c.dying != notDying {
+				c.dying = dyingBroadcastNeeded
+			} else {
+				w.fullInfo(s, a)
+			}
+		}
+		if m&broadcastStatus != 0 {
+			w.statusInfo(s, a)
+		}
+		if m&broadcastSkillList != 0 {
+			if p, ok := a.(*player); ok {
+				p.send(SkillsShown{Skills: p.shownSkills()})
+			}
+		}
+	}
+	s.after(broadcastPeriod, w.tickBroadcast)
+}
+func (w *World) vitals(a actor) Vitals {
+	c := a.base()
+	v := Vitals{ObjectID: c.id, HP: c.hp, MP: c.mp, MaxHP: a.maxHP(), MaxMP: a.maxMP()}
+	if p, ok := a.(*player); ok {
+		v.CP = p.cp
+		v.MaxCP = p.stats.MaxCP()
+	}
+	return v
+}
+func (w *World) statusInfo(s *state, a actor) {
+	v := w.vitals(a)
+	if p, ok := a.(*player); ok {
+		p.send(v)
+	}
+	for id := range a.base().listeners {
+		if p, ok := s.players[id]; ok && p != a {
+			p.send(v)
+		}
+	}
 }

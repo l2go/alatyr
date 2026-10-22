@@ -7,6 +7,7 @@ import (
 	"math"
 	"time"
 )
+
 const (
 	regionShift     = 12
 	regionOffsetX   = 80
@@ -19,6 +20,7 @@ type regionKey struct{ x, y int32 }
 func regionOf(p Point) regionKey {
 	return regionKey{p.X>>regionShift + regionOffsetX, p.Y>>regionShift + regionOffsetY}
 }
+
 type region struct {
 	objects []int32
 	players int
@@ -26,6 +28,9 @@ type region struct {
 }
 
 func (s *state) region(k regionKey) *region {
+	if s.regions == nil {
+		s.regions = map[regionKey]*region{}
+	}
 	r, ok := s.regions[k]
 	if !ok {
 		r = &region{}
@@ -42,8 +47,8 @@ func neighbourhood(k regionKey) []regionKey {
 	}
 	return out
 }
-type Point struct{ X, Y, Z int32 }
+
 func distance3D(a, b Point) float64 {
-	dx, dy, dz := float64(a.X-b.X), float64(a.Y-b.Y), float64(a.Z-b.Z)
+	dx, dy, dz := (float64(a.X) - float64(b.X)), (float64(a.Y) - float64(b.Y)), (float64(a.Z) - float64(b.Z))
 	return math.Sqrt(dx*dx + dy*dy + dz*dz)
 }

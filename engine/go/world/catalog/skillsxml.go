@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"strconv"
 	"strings"
 )
 
@@ -18,15 +17,16 @@ const (
 	SkillNeutral   SkillState = 0
 	SkillPositive  SkillState = 1
 )
+
 type Skill struct {
-	ID, Level    int32
-	DisplayID    int32
-	Name         string
-	Passive      bool
-	Operate      string
-	Type, Target string
-	SendToClient bool
-	State        SkillState
+	ID, Level                             int32
+	DisplayID                             int32
+	Name                                  string
+	Passive                               bool
+	Operate                               string
+	Type, Target                          string
+	SendToClient                          bool
+	State                                 SkillState
 	Magic                                 bool
 	Power                                 float64
 	MPConsume, MPInitialConsume           int32
@@ -34,7 +34,7 @@ type Skill struct {
 	HitTime, CoolTime, ReuseDelay         int32
 	CastRange                             int32
 	EffectRange                           int32
-	WeaponsAllowed                        int32
+	WeaponsAllowed                        []string
 	OverHit                               bool
 	SSBoost                               float64
 	BaseCritRate                          int32
@@ -43,12 +43,14 @@ type Skill struct {
 	IgnoreShld, IgnoreResists             bool
 	CanBeReflected                        bool
 	NeededCharges, ItemConsume, SoulCount int32
-	Precondition bool
-	Funcs []ItemFunc
+	Precondition                          bool
+	Funcs                                 []ItemFunc
 }
-func (s Skill) Toggle() bool { return s.Operate == "OP_TOGGLE" }
+
+func (s Skill) Toggle() bool    { return s.Operate == "OP_TOGGLE" }
 func (s Skill) Offensive() bool { return s.State == SkillOffensive }
-func (s Skill) NotDone() bool { return s.Type == "NOTDONE" || s.Target == "TARGET_NONE" }
+func (s Skill) NotDone() bool   { return s.Type == "NOTDONE" || s.Target == "TARGET_NONE" }
+
 type skillLevels struct {
 	levels   map[int32]Skill
 	maxLevel int32
@@ -68,12 +70,18 @@ func parseSkill(n xmlNode) (int32, skillLevels, error) {
 	if err != nil {
 		return 0, skillLevels{}, err
 	}
+	if id <= 0 || levels < 1 || levels > 1000 {
+		return 0, skillLevels{}, errors.New("invalid skill id or levels")
+	}
 	tables := map[string][]string{}
 	for _, ch := range n.Children {
 		if ch.XMLName.Local == "table" {
 			name, _ := ch.attr("name")
 			if !strings.HasPrefix(name, "#") {
 				return 0, skillLevels{}, fmt.Errorf("table %q", name)
+			}
+			if _, exists := tables[name]; exists {
+				return 0, skillLevels{}, errors.New("duplicate skill table")
 			}
 			tables[name] = strings.Fields(ch.Text)
 		}
@@ -135,6 +143,9 @@ func parseSkill(n xmlNode) (int32, skillLevels, error) {
 		count, err := javaDecode(strings.TrimSpace(countText))
 		if err != nil {
 			return 0, skillLevels{}, err
+		}
+		if count < 1 || count > 99 {
+			return 0, skillLevels{}, errors.New("invalid enchant levels")
 		}
 		for i := range count {
 			set := make(map[string]string, len(last))

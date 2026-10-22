@@ -8,6 +8,8 @@ import (
 	"slices"
 )
 
+type SkillLearn struct{ SkillID, Level, MinLevel, SP int32 }
+
 func (c *Catalog) sortSkillTree() {
 	for _, rows := range c.skillTree {
 		slices.SortStableFunc(rows, func(a, b SkillLearn) int {
