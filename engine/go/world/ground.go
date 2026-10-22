@@ -6,10 +6,11 @@ package world
 import (
 	"context"
 	"errors"
-	"github.com/l2go/alatyr/engine/go/world/itemlog"
 	"math"
 	"slices"
 	"time"
+
+	"github.com/l2go/alatyr/engine/go/world/itemlog"
 )
 
 const (
@@ -138,6 +139,8 @@ func (w *World) doPickup(s *state, p *player, item int32) {
 	w.removeFromGround(s, g)
 	_ = w.addItem(s, p, it, "Pickup", itemlog.Null, true)
 }
+
+// Pickup asks the player to pick up a known ground item.
 func (w *World) Pickup(ctx context.Context, id, item int32) error {
 	return w.act(ctx, id, func(s *state, p *player) {
 		if p.dead || p.teleporting || !p.known[item] {
@@ -165,14 +168,4 @@ func (w *World) logItem(op, process string, objectID, templateID int32, count in
 		Op: op, Process: process, ObjectID: objectID, Item: t.Name, Count: count,
 		Player: p.char.Name, Ref: ref, EtcType: t.EtcType,
 	})
-}
-
-func (w *World) logRef(s *state, object int32) string {
-	if n, ok := s.npcs[object]; ok {
-		return n.tmpl.Name
-	}
-	if q, ok := s.players[object]; ok {
-		return "player " + q.char.Name
-	}
-	return itemlog.Null
 }

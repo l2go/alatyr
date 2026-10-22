@@ -104,7 +104,18 @@ jobs:
           mkdir -p "$GOBIN"
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
           echo "$GOBIN" >> "$GITHUB_PATH"
+
+      - name: Check Go code with Staticcheck
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          for module in engine/go/*/go.mod; do
+            (cd "${module%/go.mod}" && staticcheck ./...)
+          done
+          staticcheck ./tools/ci/*.go
 
       - name: Lint the changed workflows
         run: |
