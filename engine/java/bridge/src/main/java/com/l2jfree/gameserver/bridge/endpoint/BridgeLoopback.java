@@ -29,6 +29,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import com.l2jfree.gameserver.LoginLink;
 import com.l2jfree.gameserver.bridge.wire.Codec;
@@ -62,6 +63,7 @@ final class BridgeLoopback implements Runnable
 	private final List<L2Client> clients = new CopyOnWriteArrayList<>();
 	private final byte[] fullBye;
 	private volatile boolean admitting = true;
+	private volatile Consumer<L2Client> beforeWatch;
 	private int transports;
 	private volatile boolean stopping;
 	
@@ -101,6 +103,17 @@ final class BridgeLoopback implements Runnable
 	{
 		if (client != null)
 			clients.add(client);
+	}
+	
+	/** Test gate between building a client and adding it to the shutdown walk. */
+	void holdBeforeWatch(Consumer<L2Client> gate)
+	{
+		beforeWatch = gate;
+	}
+	
+	boolean admitting()
+	{
+		return admitting;
 	}
 	
 	int clientCount()
@@ -334,7 +347,15 @@ final class BridgeLoopback implements Runnable
 				InetAddress.getByAddress(new byte[] { 127, 0, 0, 1 }), sink);
 		sink.attach(client);
 		transport.client = client;
+		Consumer<L2Client> gate = beforeWatch;
+		if (gate != null)
+			gate.accept(client);
 		watch(client);
+		if (!admitting)
+		{
+			client.requestBridgeDisconnect();
+			return;
+		}
 		BridgeAdmission.schedule(client, LoginLink.getInstance(), reply.account, reply.character,
 				records -> enqueue(transport, records));
 	}
