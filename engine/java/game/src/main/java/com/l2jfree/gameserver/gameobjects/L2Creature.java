@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,6 +97,7 @@ import com.l2jfree.gameserver.model.world.L2World;
 import com.l2jfree.gameserver.model.world.L2WorldRegion;
 import com.l2jfree.gameserver.model.zone.L2Zone;
 import com.l2jfree.gameserver.network.Disconnection;
+import com.l2jfree.gameserver.network.L2Client;
 import com.l2jfree.gameserver.network.SystemMessageId;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 import com.l2jfree.gameserver.network.packets.server.ActionFailed;
@@ -187,6 +189,15 @@ public abstract class L2Creature extends L2Object
 	private boolean _isStunned = false; // Cannot move/attack until stun
 	// timed out
 	protected boolean _isTeleporting = false;
+	
+	/** Serialises a bridge character's own teleport. Ordinary creatures never take it. */
+	final ReentrantLock _teleportLock = new ReentrantLock();
+	
+	/** The generation of the bridge teleport in progress. Zero means none yet; the counter does not wrap. */
+	long _teleportGeneration;
+	
+	/** True while a queued bridge completion holds {@link #_teleportLock}. */
+	boolean _bridgeCompleting;
 	protected boolean _isInvul = false;
 	protected L2Effect _invulEffect = null;
 	protected boolean _isDisarmed = false;
@@ -590,6 +601,17 @@ public abstract class L2Creature extends L2Object
 	
 	public final void teleToLocation(int x, int y, int z, int heading, boolean allowRandomOffset)
 	{
+		if (this instanceof L2Player && ((L2Player)this).isBridgeSession())
+		{
+			teleToLocationBridge(x, y, z, heading, allowRandomOffset);
+			return;
+		}
+		
+		teleToLocationNow(x, y, z, heading, allowRandomOffset);
+	}
+	
+	private void teleToLocationNow(int x, int y, int z, int heading, boolean allowRandomOffset)
+	{
 		// Restrict teleport during restart/shutdown
 		if (Shutdown.isActionDisabled(DisableType.TELEPORT))
 		{
@@ -637,6 +659,119 @@ public abstract class L2Creature extends L2Object
 			onTeleported();
 		
 		revalidateZone(true);
+	}
+	
+	/**
+	 * A bridge character's teleport. The lock covers the whole body. A nested call on this thread gets its own
+	 * generation; the outer call stops before it writes a position that generation no longer owns. A new generation
+	 * does not start while a completion of an older one is inside the lock.
+	 */
+	private void teleToLocationBridge(int x, int y, int z, int heading, boolean allowRandomOffset)
+	{
+		_teleportLock.lock();
+		try
+		{
+			if (_bridgeCompleting)
+				return;
+			
+			L2Player player = (L2Player)this;
+			if (player.isBridgeClosing())
+				return;
+			
+			L2Client client = player.getClient();
+			if (client == null || client.isBridgeDisconnectRequested())
+				return;
+			
+			if (Shutdown.isActionDisabled(DisableType.TELEPORT))
+			{
+				sendMessage("Teleport is not allowed during restart/shutdown.");
+				return;
+			}
+			
+			// Generations are 1..2^64-1. The next value would be 0, which is the unused sentinel, so stop.
+			if (_teleportGeneration == -1L)
+			{
+				if (client != null)
+					client.requestBridgeDisconnect();
+				return;
+			}
+			
+			final long generation = ++_teleportGeneration;
+			
+			int destX = x;
+			int destY = y;
+			int destZ = z;
+			if (Config.RESPAWN_RANDOM_ENABLED && allowRandomOffset)
+			{
+				destX += Rnd.get(-Config.RESPAWN_RANDOM_MAX_OFFSET, Config.RESPAWN_RANDOM_MAX_OFFSET);
+				destY += Rnd.get(-Config.RESPAWN_RANDOM_MAX_OFFSET, Config.RESPAWN_RANDOM_MAX_OFFSET);
+			}
+			destZ += 5;
+			
+			if (_log.isDebugEnabled())
+				_log.debug("Teleporting to: " + destX + ", " + destY + ", " + destZ);
+			
+			setTarget(this);
+			abortAttack();
+			abortCast();
+			isFalling(false, 0);
+			getAI().setIntention(CtrlIntention.AI_INTENTION_ACTIVE);
+			if (!ownsBridgeTeleport(generation))
+				return;
+			
+			setIsTeleporting(true);
+			if (!ownsBridgeTeleport(generation))
+				return;
+			
+			decayMe();
+			if (!ownsBridgeTeleport(generation))
+				return;
+			
+			broadcastPacket(new TeleportToLocation(this, destX, destY, destZ, heading));
+			if (!ownsBridgeTeleport(generation))
+				return;
+			
+			getPosition().setWorldPosition(destX, destY, destZ);
+			if (!ownsBridgeTeleport(generation))
+				return;
+			
+			if (heading != 0)
+				getPosition().setHeading(heading);
+			if (!ownsBridgeTeleport(generation))
+				return;
+			
+			isFalling(false, 0);
+			
+			if (player.isInOfflineMode())
+				onTeleported();
+			if (!ownsBridgeTeleport(generation))
+				return;
+			
+			revalidateZone(true);
+			if (!ownsBridgeTeleport(generation))
+				return;
+			
+			client = player.getClient();
+			if (client != null)
+				client.publishOwnTeleport(generation);
+		}
+		finally
+		{
+			_teleportLock.unlock();
+		}
+	}
+	
+	private boolean ownsBridgeTeleport(long generation)
+	{
+		if (_teleportGeneration != generation || _bridgeCompleting)
+			return false;
+		
+		L2Player player = (L2Player)this;
+		if (player.isBridgeClosing())
+			return false;
+		
+		L2Client client = player.getClient();
+		return client != null && !client.isBridgeDisconnectRequested();
 	}
 	
 	public final void teleToLocation(int x, int y, int z)

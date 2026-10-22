@@ -81,6 +81,11 @@ final class TestProtocol
 			super(server, channel);
 		}
 		
+		Peer(Server server, Channel channel, InetAddress address)
+		{
+			super(server, channel, address);
+		}
+		
 		@Override
 		protected boolean decrypt(ByteBuffer buf, int size)
 		{
@@ -189,6 +194,37 @@ final class TestProtocol
 		@Override
 		protected void runImpl()
 		{
+		}
+	}
+	
+	/** A direct packet that does nothing. */
+	static final class Idle extends Inbound
+	{
+		@Override
+		protected boolean read()
+		{
+			return true;
+		}
+		
+		@Override
+		protected void runImpl()
+		{
+		}
+	}
+	
+	/** A direct packet whose run fails. */
+	static final class Broken extends Inbound
+	{
+		@Override
+		protected boolean read()
+		{
+			return true;
+		}
+		
+		@Override
+		protected void runImpl()
+		{
+			throw new IllegalStateException("broken");
 		}
 	}
 	

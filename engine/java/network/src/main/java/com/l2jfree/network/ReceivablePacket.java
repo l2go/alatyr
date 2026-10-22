@@ -29,10 +29,33 @@ public abstract class ReceivablePacket<T extends Connection<T, RP, SP>, RP exten
 	}
 	
 	private T _client;
+	private boolean _direct;
+	private boolean _ranDirect;
+	private boolean _failed;
 	
 	final void setClient(T client)
 	{
 		_client = client;
+	}
+	
+	/**
+	 * Binds a bridge-built packet to its client. Null, a second bind, and a second {@link #run()} are rejected.
+	 */
+	public final void bindDirect(T client)
+	{
+		if (client == null)
+			throw new IllegalArgumentException("client");
+		if (_client != null)
+			throw new IllegalStateException("already bound");
+		
+		_client = client;
+		_direct = true;
+	}
+	
+	/** True after {@link #run()} failed. The failure is still reported. */
+	public final boolean failed()
+	{
+		return _failed;
 	}
 	
 	public final T getClient()
@@ -57,16 +80,25 @@ public abstract class ReceivablePacket<T extends Connection<T, RP, SP>, RP exten
 	@Override
 	public final void run()
 	{
+		if (_direct)
+		{
+			if (_ranDirect)
+				throw new IllegalStateException("already run");
+			_ranDirect = true;
+		}
+		
 		try
 		{
 			runImpl();
 		}
 		catch (InvalidPacketException e)
 		{
+			_failed = true;
 			getClient().getNetworkServer().report(ErrorMode.FAILED_RUNNING, getClient(), (RP)this, e);
 		}
 		catch (RuntimeException e)
 		{
+			_failed = true;
 			getClient().getNetworkServer().report(ErrorMode.FAILED_RUNNING, getClient(), (RP)this, e);
 		}
 	}
