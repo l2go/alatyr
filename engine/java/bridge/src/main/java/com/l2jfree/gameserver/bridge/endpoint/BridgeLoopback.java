@@ -466,6 +466,9 @@ final class BridgeLoopback implements Runnable
 	
 	private void disconnectBound(Transport transport)
 	{
+		if (transport == null || transport.disconnectStarted)
+			return;
+		transport.disconnectStarted = true;
 		L2Client client = transport.client;
 		if (client != null)
 			client.requestBridgeDisconnect();
@@ -473,6 +476,8 @@ final class BridgeLoopback implements Runnable
 	
 	private void drop(SelectionKey key)
 	{
+		if (key.attachment() instanceof Transport)
+			disconnectBound((Transport) key.attachment());
 		try
 		{
 			key.cancel();
@@ -589,6 +594,7 @@ final class BridgeLoopback implements Runnable
 		int held;
 		boolean closing;
 		long closeDeadline;
+		boolean disconnectStarted;
 		L2Client client;
 		
 		Transport(byte[] secret)
