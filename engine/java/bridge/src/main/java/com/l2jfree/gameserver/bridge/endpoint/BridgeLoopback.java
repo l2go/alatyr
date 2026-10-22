@@ -135,7 +135,7 @@ final class BridgeLoopback implements Runnable
 		{
 			try
 			{
-				selector.select(1000);
+				selector.select(nextWaitMs());
 				flushAll();
 				Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
 				while (keys.hasNext())
@@ -273,6 +273,7 @@ final class BridgeLoopback implements Runnable
 			if (!reply.records.isEmpty())
 				disconnectBound(transport);
 			armClose(transport);
+			selector.wakeup();
 		}
 	}
 	
@@ -348,6 +349,36 @@ final class BridgeLoopback implements Runnable
 			if (transport.closeDeadline == 0)
 				transport.closeDeadline = System.nanoTime() + BYE_CLOSE_NS;
 		}
+	}
+	
+	/** The selector waits no longer than the nearest bye deadline, and never longer than one second. */
+	static long selectTimeout(long now, long deadline)
+	{
+		if (deadline == 0)
+			return 1000;
+		long left = (deadline - now) / 1_000_000L;
+		if (left < 1)
+			return 1;
+		return Math.min(1000, left);
+	}
+	
+	private long nextWaitMs()
+	{
+		long now = System.nanoTime();
+		long wait = 1000;
+		for (SelectionKey key : selector.keys())
+		{
+			if (!(key.attachment() instanceof Transport))
+				continue;
+			Transport transport = (Transport) key.attachment();
+			long deadline;
+			synchronized (transport)
+			{
+				deadline = transport.closing ? transport.closeDeadline : 0;
+			}
+			wait = Math.min(wait, selectTimeout(now, deadline));
+		}
+		return wait;
 	}
 	
 	private void flushAll() throws IOException
