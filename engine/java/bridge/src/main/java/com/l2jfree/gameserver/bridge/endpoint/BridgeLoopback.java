@@ -219,6 +219,7 @@ final class BridgeLoopback implements Runnable
 		int n = socket.read(transport.input);
 		if (n < 0)
 		{
+			disconnectBound(transport);
 			drop(key);
 			return;
 		}
