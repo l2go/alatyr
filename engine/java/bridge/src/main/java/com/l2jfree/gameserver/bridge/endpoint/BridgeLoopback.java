@@ -51,9 +51,11 @@ final class BridgeLoopback implements Runnable
 	static final int FRAME_CAP = 65536;
 	static final int OUT_QUEUE_BYTES = 262144;
 	static final long BYE_CLOSE_NS = 100_000_000L;
+	static final long FRAME_READ_NS = 5_000_000_000L;
+	static final long OPENING_NS = 10_000_000_000L;
 	/** How long a bound close waits for the disconnect save before the bye is internal. */
 	static final long RESULT_BUDGET_NS = 30_000_000_000L;
-	
+
 	private final BridgeSettings settings;
 	private final ServerSocketChannel server;
 	private final Selector selector;
@@ -66,7 +68,7 @@ final class BridgeLoopback implements Runnable
 	private volatile Consumer<L2Client> beforeWatch;
 	private int transports;
 	private volatile boolean stopping;
-	
+
 	private BridgeLoopback(BridgeSettings settings, GameServerContext context, ServerSocketChannel server,
 			Selector selector)
 	{
@@ -79,7 +81,7 @@ final class BridgeLoopback implements Runnable
 		this.thread = new Thread(this, "bridge-listener");
 		this.thread.setDaemon(true);
 	}
-	
+
 	static BridgeLoopback open(BridgeSettings settings, GameServerContext context)
 	{
 		try
@@ -98,29 +100,35 @@ final class BridgeLoopback implements Runnable
 			throw new IllegalStateException("Bridge listener could not bind", e);
 		}
 	}
-	
+
 	void watch(L2Client client)
 	{
 		if (client != null)
 			clients.add(client);
 	}
-	
+
 	/** Test gate between building a client and adding it to the shutdown walk. */
 	void holdBeforeWatch(Consumer<L2Client> gate)
 	{
 		beforeWatch = gate;
 	}
-	
+
 	boolean admitting()
 	{
 		return admitting;
 	}
-	
+
 	int clientCount()
 	{
 		return clients.size();
 	}
-	
+
+	void reapClients()
+	{
+		clients.removeIf(L2Client::isBridgeDisconnectFinished);
+		BridgeAdmission.reapSessions();
+	}
+
 	private boolean disconnectsFinished()
 	{
 		for (L2Client client : clients)
@@ -130,7 +138,7 @@ final class BridgeLoopback implements Runnable
 		}
 		return true;
 	}
-	
+
 	int port()
 	{
 		try
@@ -142,7 +150,7 @@ final class BridgeLoopback implements Runnable
 			throw new UncheckedIOException(e);
 		}
 	}
-	
+
 	@Override
 	public void run()
 	{
@@ -151,6 +159,7 @@ final class BridgeLoopback implements Runnable
 			try
 			{
 				selector.select(nextWaitMs());
+				reapClients();
 				for (SelectionKey key : selector.keys())
 				{
 					if (key.attachment() instanceof Transport)
@@ -172,7 +181,7 @@ final class BridgeLoopback implements Runnable
 			}
 		}
 	}
-	
+
 	/** One key. A failure of this transport does not stop the listener. */
 	void serve(SelectionKey key)
 	{
@@ -192,31 +201,31 @@ final class BridgeLoopback implements Runnable
 			drop(key);
 		}
 	}
-	
+
 	void account()
 	{
 		transports++;
 	}
-	
+
 	int transports()
 	{
 		return transports;
 	}
-	
+
 	boolean alive()
 	{
 		return thread.isAlive() && !stopping;
 	}
-	
+
 	private void accept() throws IOException
 	{
 		SocketChannel socket = server.accept();
 		if (socket == null)
 			return;
-		
+
 		receive(socket);
 	}
-	
+
 	/**
 	 * Configures one accepted socket. A failure here closes that socket only. The listener socket stays open, and a
 	 * slot is counted only after the socket is registered.
@@ -253,11 +262,17 @@ final class BridgeLoopback implements Runnable
 			}
 		}
 	}
-	
+
 	private void read(SelectionKey key) throws IOException
 	{
 		Transport transport = (Transport) key.attachment();
 		SocketChannel socket = (SocketChannel) key.channel();
+		expire(transport);
+		if (transport.closing)
+		{
+			flushKey(key);
+			return;
+		}
 		int n = socket.read(transport.input);
 		if (n < 0)
 		{
@@ -265,6 +280,8 @@ final class BridgeLoopback implements Runnable
 			drop(key);
 			return;
 		}
+		if (n > 0 && transport.pending.size() == 0)
+			transport.readDeadline = System.nanoTime() + FRAME_READ_NS;
 		transport.input.flip();
 		byte[] got = new byte[transport.input.remaining()];
 		transport.input.get(got);
@@ -282,6 +299,8 @@ final class BridgeLoopback implements Runnable
 					break;
 				}
 				acceptFrame(transport, records);
+				if (transport.closing || transport.awaitingResult)
+					break;
 			}
 		}
 		catch (WireException e)
@@ -292,9 +311,12 @@ final class BridgeLoopback implements Runnable
 		}
 		flushKey(key);
 	}
-	
+
 	void acceptFrame(Transport transport, List<Envelope> records) throws IOException
 	{
+		expire(transport);
+		if (transport.closing || transport.terminal)
+			return;
 		BridgeReply reply = transport.dialogue.accept(records);
 		if (reply.admit)
 		{
@@ -327,7 +349,7 @@ final class BridgeLoopback implements Runnable
 		if (!reply.records.isEmpty())
 			offer(transport, frame(reply.records));
 	}
-	
+
 	/**
 	 * Builds the virtual channel and queues admission. Returns before the client queue reads the account.
 	 */
@@ -342,7 +364,7 @@ final class BridgeLoopback implements Runnable
 		}
 		if (transport.client != null)
 			throw new IllegalStateException("already admitted");
-		
+
 		BridgeSink sink = new BridgeSink(records -> fromSink(transport, records));
 		LocalChannel channel = new LocalChannel();
 		virtualChannels.register(channel).syncUninterruptibly();
@@ -362,7 +384,7 @@ final class BridgeLoopback implements Runnable
 		BridgeAdmission.schedule(client, LoginLink.getInstance(), reply.account, reply.character,
 				records -> enqueue(transport, records));
 	}
-	
+
 	/** The disconnect save owns the terminal bye. A late bye is dropped once that bye is claimed. */
 	void fromSink(Transport transport, List<Envelope> records)
 	{
@@ -374,16 +396,28 @@ final class BridgeLoopback implements Runnable
 		}
 		selector.wakeup();
 	}
-	
+
 	/**
 	 * A bound close waits for {@link #fromSink}. When the wait exceeds the disconnect budget, the bye is internal.
 	 */
 	static void expire(Transport transport)
 	{
+		expire(transport, System.nanoTime());
+	}
+
+	static void expire(Transport transport, long now)
+	{
 		synchronized (transport)
 		{
-			if (resultExpired(transport, System.nanoTime()))
+			if (resultExpired(transport, now))
 				finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)));
+			else if (!transport.closing && !transport.terminal && !transport.awaitingResult)
+			{
+				if (transport.readDeadline != 0 && now - transport.readDeadline >= 0)
+					finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
+				else if (!transport.opened && now - transport.openingDeadline >= 0)
+					finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)));
+			}
 		}
 	}
 
@@ -393,42 +427,53 @@ final class BridgeLoopback implements Runnable
 		return transport.awaitingResult && !transport.closing && !transport.terminal && transport.resultDeadline != 0
 				&& now - transport.resultDeadline >= 0;
 	}
-	
+
 	private static void armResultWait(Transport transport)
 	{
 		synchronized (transport)
 		{
 			if (transport.closing || transport.terminal || transport.awaitingResult)
 				return;
-			
+
 			transport.awaitingResult = true;
 			transport.resultDeadline = System.nanoTime() + RESULT_BUDGET_NS;
 		}
 	}
-	
+
 	private static void finishTerminal(Transport transport, List<Envelope> records)
 	{
 		synchronized (transport)
 		{
 			if (transport.terminal || transport.closing)
 				return;
-			
+
 			transport.terminal = true;
 			transport.awaitingResult = false;
 			offer(transport, frame(records));
 			armClose(transport);
 		}
 	}
-	
+
 	private void enqueue(Transport transport, List<Envelope> records)
 	{
 		if (records == null || records.isEmpty())
 			return;
-		
-		offer(transport, frame(records));
+
+		synchronized (transport)
+		{
+			expire(transport);
+			if (transport.terminal || transport.closing)
+				return;
+			for (Envelope record : records)
+			{
+				if (record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.OPENED)
+					transport.opened = true;
+			}
+			offer(transport, frame(records));
+		}
 		selector.wakeup();
 	}
-	
+
 	/**
 	 * Queues one whole frame. A frame that would pass {@link #OUT_QUEUE_BYTES} is not stored: the transport is closed
 	 * for a slow consumer instead, and bytes already queued stay whole.
@@ -437,7 +482,7 @@ final class BridgeLoopback implements Runnable
 	{
 		if (bytes == null || bytes.length == 0)
 			return;
-		
+
 		synchronized (transport)
 		{
 			if (transport.closing)
@@ -451,7 +496,7 @@ final class BridgeLoopback implements Runnable
 			transport.held += bytes.length;
 		}
 	}
-	
+
 	private static void failSlow(Transport transport)
 	{
 		byte[] bye = frame(List.of(BridgeFrames.bye(BridgeFrames.BYE_SLOW)));
@@ -462,7 +507,7 @@ final class BridgeLoopback implements Runnable
 		}
 		armClose(transport);
 	}
-	
+
 	/** After a bye, the socket closes once the queue has been written, and in any case within 100 ms. */
 	static void armClose(Transport transport)
 	{
@@ -473,7 +518,7 @@ final class BridgeLoopback implements Runnable
 				transport.closeDeadline = System.nanoTime() + BYE_CLOSE_NS;
 		}
 	}
-	
+
 	/** The selector waits no longer than the nearest bye deadline, and never longer than one second. */
 	static long selectTimeout(long now, long deadline)
 	{
@@ -484,7 +529,7 @@ final class BridgeLoopback implements Runnable
 			return 1;
 		return Math.min(1000, left);
 	}
-	
+
 	private long nextWaitMs()
 	{
 		long now = System.nanoTime();
@@ -502,13 +547,17 @@ final class BridgeLoopback implements Runnable
 				else if (transport.awaitingResult)
 					deadline = transport.resultDeadline;
 				else
-					deadline = 0;
+				{
+					deadline = transport.opened ? 0 : transport.openingDeadline;
+					if (transport.readDeadline != 0)
+						deadline = deadline == 0 ? transport.readDeadline : Math.min(deadline, transport.readDeadline);
+				}
 			}
 			wait = Math.min(wait, selectTimeout(now, deadline));
 		}
 		return wait;
 	}
-	
+
 	private void flushAll() throws IOException
 	{
 		for (SelectionKey key : selector.keys())
@@ -518,7 +567,7 @@ final class BridgeLoopback implements Runnable
 			flushKey(key);
 		}
 	}
-	
+
 	private void flushKey(SelectionKey key)
 	{
 		if (!key.isValid() || !(key.channel() instanceof SocketChannel))
@@ -532,12 +581,12 @@ final class BridgeLoopback implements Runnable
 			drop(key);
 		}
 	}
-	
+
 	private void flushKeyThrows(SelectionKey key) throws IOException
 	{
 		if (!key.isValid() || !(key.channel() instanceof SocketChannel))
 			return;
-		
+
 		Transport transport = (Transport) key.attachment();
 		flush(transport, (SocketChannel) key.channel());
 		boolean close;
@@ -551,7 +600,7 @@ final class BridgeLoopback implements Runnable
 		if (close)
 			drop(key);
 	}
-	
+
 	/**
 	 * Writes what the socket will take. A zero write keeps the unread tail queued.
 	 *
@@ -590,7 +639,7 @@ final class BridgeLoopback implements Runnable
 			}
 		}
 	}
-	
+
 	private void disconnectBound(Transport transport)
 	{
 		if (transport == null || transport.disconnectStarted)
@@ -600,7 +649,7 @@ final class BridgeLoopback implements Runnable
 		if (client != null)
 			client.requestBridgeDisconnect();
 	}
-	
+
 	private void drop(SelectionKey key)
 	{
 		if (key.attachment() instanceof Transport)
@@ -618,12 +667,12 @@ final class BridgeLoopback implements Runnable
 		if (transports > 0)
 			transports--;
 	}
-	
+
 	void close()
 	{
 		close(30_000);
 	}
-	
+
 	/**
 	 * Refuses new clients, then asks every client already on the list to disconnect. A client published after this
 	 * list is copied has to notice {@link #admitting} itself.
@@ -635,7 +684,7 @@ final class BridgeLoopback implements Runnable
 		for (L2Client client : clients)
 			client.requestBridgeDisconnect();
 	}
-	
+
 	/**
 	 * Asks each session for its one full disconnect, keeps writing while those saves run, and waits until they finish
 	 * or {@code budgetMs} has passed. The selector thread is stopped after that wait.
@@ -657,6 +706,7 @@ final class BridgeLoopback implements Runnable
 				break;
 			}
 		}
+		reapClients();
 		stopping = true;
 		selector.wakeup();
 		try
@@ -678,7 +728,7 @@ final class BridgeLoopback implements Runnable
 			throw new UncheckedIOException(e);
 		}
 	}
-	
+
 	/** Blocking write used only for the one-frame refusal of a socket that is about to be closed. */
 	private static void writeAll(SocketChannel socket, byte[] bytes) throws IOException
 	{
@@ -686,14 +736,14 @@ final class BridgeLoopback implements Runnable
 		while (buffer.hasRemaining())
 			socket.write(buffer);
 	}
-	
+
 	private static byte[] frame(List<Envelope> records)
 	{
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		Codec.bridge().write(out, records);
 		return out.toByteArray();
 	}
-	
+
 	/**
 	 * @return the records of one complete frame, or null when more bytes are required
 	 */
@@ -702,7 +752,7 @@ final class BridgeLoopback implements Runnable
 		byte[] data = transport.pending.toByteArray();
 		if (data.length == 0)
 			return null;
-		
+
 		Codec.FramePrefix prefix = Codec.bridge().framePrefix(data);
 		if (prefix == null)
 			return null;
@@ -710,15 +760,18 @@ final class BridgeLoopback implements Runnable
 		long length = prefix.length();
 		if (data.length < size + length)
 			return null;
-		
+
 		byte[] body = new byte[(int) length];
 		System.arraycopy(data, size, body, 0, body.length);
 		transport.pending.reset();
 		if (data.length > size + length)
 			transport.pending.write(data, size + (int) length, data.length - size - (int) length);
+		// A coalesced next prefix arrived in the same read: retain its original deadline.
+		if (transport.pending.size() == 0)
+			transport.readDeadline = 0;
 		return Codec.bridge().decode(body);
 	}
-	
+
 	static final class Transport
 	{
 		final BridgeDialogue dialogue;
@@ -734,8 +787,11 @@ final class BridgeLoopback implements Runnable
 		long resultDeadline;
 		boolean terminal;
 		boolean disconnectStarted;
+		long readDeadline;
+		final long openingDeadline = System.nanoTime() + OPENING_NS;
+		boolean opened;
 		L2Client client;
-		
+
 		Transport(byte[] secret)
 		{
 			this.dialogue = new BridgeDialogue(secret);

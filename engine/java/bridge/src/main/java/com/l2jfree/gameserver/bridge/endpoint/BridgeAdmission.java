@@ -34,7 +34,7 @@ public final class BridgeAdmission
 	private BridgeAdmission()
 	{
 	}
-	
+
 	/**
 	 * Queues admission. The consumer is called on the client queue with the records to write, or an empty list when
 	 * the full disconnect owns the bye.
@@ -44,10 +44,10 @@ public final class BridgeAdmission
 	{
 		if (client == null || login == null || replies == null)
 			throw new IllegalArgumentException("admission");
-		
+
 		client.submit(() -> replies.accept(open(client, login, account, character)));
 	}
-	
+
 	static List<com.l2jfree.gameserver.bridge.wire.Envelope> open(L2Client client, LoginLink login, String account,
 			String character)
 	{
@@ -57,46 +57,46 @@ public final class BridgeAdmission
 		{
 			if (client.isBridgeDisconnectRequested())
 				return List.of();
-			
+
 			if (!login.admitTrusted(account, client))
 				return List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_ALREADY_ONLINE));
-			
+
 			reserved = true;
 			client.setState(GameClientState.AUTHED);
 			client.setProtocolOk(true);
 			client.setGameGuardOk(true);
-			
+
 			if (client.isBridgeDisconnectRequested())
 			{
 				login.leaveTrusted(account, client);
 				return List.of();
 			}
-			
+
 			int slot = slot(client, character);
 			if (slot < 0)
 			{
 				login.leaveTrusted(account, client);
 				return List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_NO_CHARACTER));
 			}
-			
+
 			if (!CharacterSelection.enter(client, slot))
 			{
 				if (client.getActiveChar() != null)
 					return List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_NOT_ALLOWED));
-				
+
 				if (client.bridgePlayerForCleanup() != null)
 				{
 					cleanupUnpublished(client);
 					login.leaveTrusted(account, client);
 					return List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_NOT_ALLOWED));
 				}
-				
+
 				login.leaveTrusted(account, client);
 				return List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_BACKEND));
 			}
-			
+
 			published = true;
-			return BridgeFrames.accepted(newSession(), 1);
+			return BridgeFrames.accepted(newSession(client), 1);
 		}
 		catch (RuntimeException e)
 		{
@@ -111,7 +111,7 @@ public final class BridgeAdmission
 			return List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_BACKEND));
 		}
 	}
-	
+
 	private static int slot(L2Client client, String character)
 	{
 		CharSelectInfoPackage[] packages = new CharSelectionInfo(client).packages();
@@ -122,13 +122,13 @@ public final class BridgeAdmission
 		}
 		return -1;
 	}
-	
+
 	private static void cleanupUnpublished(L2Client client)
 	{
 		L2Player loaded = client.bridgePlayerForCleanup();
 		if (loaded == null || loaded == client.getActiveChar())
 			return;
-		
+
 		client.discardOpeningPlayer(loaded);
 		try
 		{
@@ -139,15 +139,26 @@ public final class BridgeAdmission
 			// The opening did not publish the character. A failed cleanup must not start the full disconnect.
 		}
 	}
-	
-	private static final java.util.Set<Long> SESSIONS = java.util.concurrent.ConcurrentHashMap.newKeySet();
-	
-	private static long newSession()
+
+	private static final java.util.concurrent.ConcurrentMap<Long, L2Client> SESSIONS =
+			new java.util.concurrent.ConcurrentHashMap<>();
+
+	static void reapSessions()
+	{
+		SESSIONS.entrySet().removeIf(entry -> entry.getValue().isBridgeDisconnectFinished());
+	}
+
+	static int sessionCount()
+	{
+		return SESSIONS.size();
+	}
+
+	static long newSession(L2Client client)
 	{
 		for (int attempt = 0; attempt < 8; attempt++)
 		{
 			long id = java.util.concurrent.ThreadLocalRandom.current().nextLong() & Long.MAX_VALUE;
-			if (id != 0 && SESSIONS.add(id))
+			if (id != 0 && SESSIONS.putIfAbsent(id, client) == null)
 				return id;
 		}
 		throw new IllegalStateException("Bridge session id collided");
