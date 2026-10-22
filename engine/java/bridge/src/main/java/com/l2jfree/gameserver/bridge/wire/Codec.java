@@ -128,6 +128,16 @@ public final class Codec
 	}
 	
 	/**
+	 * @return the bridge registry without the profile check. Tests use it to build a frame the neutral registry
+	 *         cannot emit, because an essential field outside that registry is unsupported there.
+	 */
+	static Codec structured()
+	{
+		Limits limits = Limits.profile();
+		return new Codec(limits, Schemas.bridge(limits), false);
+	}
+	
+	/**
 	 * @param frame one complete frame, without a stream length prefix
 	 * @return the records. An empty list means every record in the frame was an unknown odd type.
 	 */
@@ -832,14 +842,30 @@ public final class Codec
 	private void checkResult(Envelope envelope)
 	{
 		boolean namespace = has(envelope, 64);
-		boolean reason = has(envelope, 65);
-		if (namespace != reason || namespace && !Arrays.equals(data(envelope, 64), BRIDGE_NAMESPACE))
+		boolean bridgeReason = has(envelope, 65);
+		if (namespace != bridgeReason || namespace && !Arrays.equals(data(envelope, 64), BRIDGE_NAMESPACE))
 			throw frameError();
 		
-		if (reason && Long.compareUnsigned(u(envelope, 65), 21) > 0)
-			throw unsupported();
+		long stage = u(envelope, 2);
+		long reason = u(envelope, 3);
+		long delivery = u(envelope, 7);
+		if ((stage == SENT || stage == DONE) && delivery != BACKEND)
+			throw frameError();
 		
-		if (u(envelope, 2) == DONE && !has(envelope, 66))
+		if (stage == UNRECOVERABLE && (!bridgeReason || u(envelope, 65) != 21))
+			throw frameError();
+		
+		if (bridgeReason)
+		{
+			long code = u(envelope, 65);
+			if (Long.compareUnsigned(code, 21) > 0)
+				throw unsupported();
+			
+			// 0 is success without this pair. 11-13 belong to Opened. 19 is diagnostic only.
+			if (code == 0 || code == 11 || code == 12 || code == 13 || code == 19 || !profilePair(code, reason))
+				throw frameError();
+		}
+		if (has(envelope, 66) != (stage == DONE))
 			throw frameError();
 		
 		if (has(envelope, 66))
@@ -849,12 +875,45 @@ public final class Codec
 		}
 	}
 	
+	/**
+	 * @param bridgeReason field 65
+	 * @param coreReason field 3
+	 * @return whether the pair is one the profile allows on a Result
+	 */
+	private static boolean profilePair(long bridgeReason, long coreReason)
+	{
+		if (bridgeReason >= 1 && bridgeReason <= 5 || bridgeReason >= 14 && bridgeReason <= 18)
+			return coreReason == 16;
+		
+		if (bridgeReason == 6)
+			return coreReason == 10 || coreReason == 6;
+		
+		if (bridgeReason == 7)
+			return coreReason == 1;
+		
+		if (bridgeReason == 8)
+			return coreReason == 7;
+		
+		if (bridgeReason == 9 || bridgeReason == 10)
+			return coreReason == 16;
+		
+		if (bridgeReason == 20)
+			return coreReason == 24;
+		
+		if (bridgeReason == 21)
+			return coreReason == 20;
+		
+		return false;
+	}
+	
 	private void checkFact(Envelope envelope)
 	{
 		if (has(envelope, 10) || has(envelope, 16) || has(envelope, 32))
 			throw frameError();
 		
-		if (has(envelope, 67) && u(envelope, 67) == 1 && (!has(envelope, 66) || u(envelope, 66) == 0))
+		boolean generation = has(envelope, 66);
+		boolean own = has(envelope, 67);
+		if (generation != own || own && u(envelope, 67) != 1 || generation && u(envelope, 66) == 0)
 			throw frameError();
 		
 		if (has(envelope, 21) && has(envelope, 68))

@@ -172,6 +172,140 @@ class ConformanceTest
 		assertSame(decoded.get("BV09"), decoded.get("BV01"));
 	}
 	
+	@Test
+	void profileRulesRejectConstructedFrames()
+	{
+		// The neutral registry can emit these. Delivery 1 is legal for the core and illegal for the profile.
+		profileFrame("sent local", result(1, 0, 1, -1, null), true);
+		profileFrame("done without effects", result(2, 0, 2, -1, null), true);
+		profileFrame("unrecoverable without the pair", result(5, 20, 0, -1, null), true);
+		
+		// Essential bridge fields are unsupported on the neutral registry, so the bytes come from the bridge
+		// registry with the profile check held back.
+		Field coin = coinEffect(1);
+		profileFrame("effects before done", result(1, 0, 2, -1, coin), false);
+		profileFrame("bridge reason zero", result(2, 0, 2, 0, emptyEffects()), false);
+		for (int code : new int[] { 11, 12, 13, 19 })
+			profileFrame("reason " + code, result(3, 16, 0, code, null), false);
+		
+		profileFrame("world pair", result(3, 10, 0, 1, null), false);
+		profileFrame("later world pair", result(3, 10, 0, 14, null), false);
+		profileFrame("invalid pair", result(3, 16, 0, 6, null), false);
+		profileFrame("not ready pair", result(3, 16, 0, 7, null), false);
+		profileFrame("rate pair", result(3, 16, 0, 8, null), false);
+		profileFrame("transport pair", result(3, 10, 0, 9, null), false);
+		profileFrame("closing pair", result(3, 10, 0, 10, null), false);
+		profileFrame("backend pair", result(4, 17, 2, 20, null), false);
+		profileFrame("too old pair", result(5, 20, 0, 1, null), false);
+		
+		profileFrame("generation alone", fact(Field.u(66, true, 1)), false);
+		profileFrame("own teleport alone", fact(Field.u(67, true, 1)), false);
+		profileFrame("own teleport false", fact(Field.u(67, true, 0)), false);
+		profileFrame("own teleport false with generation", fact(Field.u(66, true, 1), Field.u(67, true, 0)), false);
+	}
+	
+	@Test
+	void legalProfileFramesRoundTrip()
+	{
+		keeps(result(1, 0, 2, -1, null));
+		keeps(result(2, 0, 2, -1, emptyEffects()));
+		keeps(result(2, 0, 2, -1, coinEffect(-13)));
+		keeps(result(3, 6, 0, 6, null));
+		keeps(result(3, 10, 0, 6, null));
+		keeps(result(3, 1, 0, 7, null));
+		keeps(result(3, 7, 0, 8, null));
+		keeps(result(3, 16, 0, 1, null));
+		keeps(result(3, 16, 0, 9, null));
+		keeps(result(3, 16, 0, 10, null));
+		keeps(result(3, 16, 0, 18, null));
+		keeps(result(4, 17, 2, -1, null));
+		keeps(result(4, 19, 3, -1, null));
+		keeps(result(4, 24, 2, 20, null));
+		keeps(result(4, 24, 3, 20, null));
+		keeps(result(5, 20, 0, 21, null));
+		keeps(fact(Field.u(66, true, 4), Field.u(67, true, 1)));
+	}
+	
+	@Test
+	void extremeUnsignedAndSignedRoundTrip()
+	{
+		Codec codec = Codec.bridge();
+		long full = 0xFFFF_FFFF_FFFF_FFFFL;
+		Envelope ping = new Envelope(Schemas.PING, List.of(Field.u(1, true, full)), false, 0, null);
+		Envelope decoded = only(codec.decode(codec.encode(List.of(ping))));
+		assertThat(numbers(decoded.fields())).containsExactly(1);
+		assertThat(u(decoded, 1)).isEqualTo(full);
+		for (long extreme : new long[] { Long.MIN_VALUE, Long.MAX_VALUE })
+		{
+			Envelope intent = new Envelope(Schemas.INTENT, List.of(Field.u(1, true, 1), Field.u(2, true, 1),
+					Field.u(3, true, 1), Field.s(16, true, extreme)), false, 0, null);
+			Envelope back = only(codec.decode(codec.encode(List.of(intent))));
+			assertThat(numbers(back.fields())).containsExactly(1, 2, 3, 16);
+			assertThat(s(back, 16)).isEqualTo(extreme);
+		}
+	}
+	
+	private static void profileFrame(String name, Envelope envelope, boolean neutralBytes)
+	{
+		List<Envelope> records = List.of(envelope);
+		assertThatThrownBy(() -> Codec.bridge().encode(records)).as(name).isInstanceOf(WireException.class)
+				.extracting(thrown -> ((WireException) thrown).kind()).isEqualTo(WireException.Kind.FRAME);
+		Codec source = neutralBytes ? Codec.neutral() : Codec.structured();
+		byte[] frame = source.encode(records);
+		assertThatThrownBy(() -> Codec.bridge().decode(frame)).as(name).isInstanceOf(WireException.class)
+				.extracting(thrown -> ((WireException) thrown).kind()).isEqualTo(WireException.Kind.FRAME);
+	}
+	
+	private static void keeps(Envelope envelope)
+	{
+		Codec codec = Codec.bridge();
+		assertSame(envelope, only(codec.decode(codec.encode(List.of(envelope)))));
+	}
+	
+	private static Envelope result(long stage, long reason, long delivery, int bridgeCode, Field effects)
+	{
+		List<Field> fields = new ArrayList<>();
+		fields.add(Field.u(1, true, 1));
+		fields.add(Field.u(2, true, stage));
+		fields.add(Field.u(3, true, reason));
+		fields.add(Field.u(5, true, 1));
+		fields.add(Field.u(6, true, 1));
+		fields.add(Field.u(7, true, delivery));
+		if (bridgeCode >= 0)
+		{
+			fields.add(Field.data(64, true, ascii("x.l2jfree/bridge")));
+			fields.add(Field.u(65, true, bridgeCode));
+		}
+		if (effects != null)
+			fields.add(effects);
+		
+		return new Envelope(Schemas.RESULT, List.copyOf(fields), false, 0, null);
+	}
+	
+	private static Field emptyEffects()
+	{
+		return Field.items(66, true, List.of());
+	}
+	
+	private static Field coinEffect(long delta)
+	{
+		Value coin = Value.ofFields(List.of(Field.u(1, true, 2), Field.s(4, true, delta)));
+		return Field.items(66, true, List.of(coin));
+	}
+	
+	private static Envelope fact(Field... extra)
+	{
+		List<Field> fields = new ArrayList<>();
+		fields.add(Field.u(1, true, 1));
+		fields.add(Field.u(2, true, 1));
+		fields.add(Field.s(3, true, 0));
+		fields.add(Field.u(4, true, 1));
+		fields.add(Field.data(5, true, ascii("town")));
+		fields.add(Field.u(6, true, 1));
+		fields.addAll(List.of(extra));
+		return new Envelope(Schemas.FACT, List.copyOf(fields), false, 0, null);
+	}
+	
 	private static void assertCoreValues(Map<String, Envelope> decoded)
 	{
 		Envelope v01 = decoded.get("V01");
@@ -253,6 +387,26 @@ class ConformanceTest
 		assertThat(u(close, 3)).isZero();
 		assertThat(u(decoded.get("BV05"), 1)).isEqualTo(1);
 		assertThat(u(decoded.get("BV05"), 2)).isEqualTo(22);
+		Envelope buy = decoded.get("BV06");
+		assertThat(u(buy, 1)).isEqualTo(1);
+		assertThat(u(buy, 2)).isEqualTo(2);
+		assertThat(u(buy, 3)).isZero();
+		assertThat(u(buy, 5)).isEqualTo(7);
+		assertThat(u(buy, 6)).isEqualTo(7);
+		assertThat(u(buy, 7)).isEqualTo(2);
+		assertThat(buy.field(64)).isNull();
+		assertThat(buy.field(65)).isNull();
+		assertThat(buy.field(66).value().items()).hasSize(2);
+		List<Field> item = buy.field(66).value().items().get(0).fields();
+		assertThat(numbers(item)).containsExactly(1, 2, 3, 4);
+		assertThat(u(item, 1)).isEqualTo(1);
+		assertThat(s(item, 2)).isEqualTo(1060);
+		assertThat(s(item, 3)).isEqualTo(70);
+		assertThat(s(item, 4)).isEqualTo(2);
+		List<Field> coin = buy.field(66).value().items().get(1).fields();
+		assertThat(numbers(coin)).containsExactly(1, 4);
+		assertThat(u(coin, 1)).isEqualTo(2);
+		assertThat(s(coin, 4)).isEqualTo(-13);
 		Envelope corrected = decoded.get("BV07");
 		assertThat(corrected.field(13).value().x()).isEqualTo(1);
 		assertThat(corrected.field(13).value().y()).isEqualTo(2);
@@ -262,7 +416,13 @@ class ConformanceTest
 		assertThat(u(corrected, 67)).isEqualTo(1);
 		assertThat(corrected.field(10)).isNull();
 		assertThat(corrected.field(32)).isNull();
-		assertThat(u(decoded.get("BV11"), 3)).isZero();
+		Envelope checkpoint = decoded.get("BV11");
+		assertThat(u(checkpoint, 1)).isEqualTo(Schemas.END);
+		assertThat(u(checkpoint, 2)).isEqualTo(1);
+		assertThat(checkpoint.field(3)).isNotNull();
+		assertThat(u(checkpoint, 3)).isZero();
+		assertThat(checkpoint.field(4).value().items()).hasSize(1);
+		assertBytes(checkpoint.field(4).value().items().get(0).data(), ascii("objects"));
 		assertThat(u(decoded.get("BV12"), 2)).isEqualTo(4);
 		assertThat(s(decoded.get("BV12"), 64)).isEqualTo(7);
 		assertThat(u(decoded.get("BV16"), 2)).isEqualTo(256);
