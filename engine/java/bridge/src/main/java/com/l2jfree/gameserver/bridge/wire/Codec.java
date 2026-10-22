@@ -313,6 +313,56 @@ public final class Codec
 	}
 	
 	/**
+	 * The same length-prefix check as {@link #read(InputStream)}. Null means the prefix is not complete yet. An illegal
+	 * prefix is a frame error before any body is allocated.
+	 */
+	public FramePrefix framePrefix(byte[] data)
+	{
+		if (data == null || data.length == 0)
+			return null;
+		
+		int size = 0;
+		while (size < data.length && (data[size] & 0xff) >= 128)
+		{
+			size++;
+			if (size == 10)
+				throw frameError();
+		}
+		if (size == data.length)
+			return null;
+		
+		size++;
+		UOut length = readU(Arrays.copyOf(data, size), 0);
+		if (length.error() || length.pos() != size || length.value() == 0
+				|| Long.compareUnsigned(length.value(), limits.frameBytes) > 0)
+			throw frameError();
+		return new FramePrefix(size, length.value());
+	}
+	
+	/** A length prefix that {@link #readU} accepted. */
+	public static final class FramePrefix
+	{
+		private final int _size;
+		private final long _length;
+		
+		FramePrefix(int size, long length)
+		{
+			_size = size;
+			_length = length;
+		}
+		
+		public int size()
+		{
+			return _size;
+		}
+		
+		public long length()
+		{
+			return _length;
+		}
+	}
+	
+	/**
 	 * @param records at least one record
 	 * @return the canonical frame
 	 */

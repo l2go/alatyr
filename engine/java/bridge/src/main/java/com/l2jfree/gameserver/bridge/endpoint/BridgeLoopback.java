@@ -454,24 +454,11 @@ final class BridgeLoopback implements Runnable
 		if (data.length == 0)
 			return null;
 		
-		int size = 0;
-		while (size < data.length && size < 10 && (data[size] & 0xff) >= 128)
-			size++;
-		if (size == data.length)
+		Codec.FramePrefix prefix = Codec.bridge().framePrefix(data);
+		if (prefix == null)
 			return null;
-		if (size == 10)
-			throw WireException.frame();
-		
-		size++;
-		long length = 0;
-		int shift = 0;
-		for (int i = 0; i < size; i++)
-		{
-			length |= (long) (data[i] & 0x7f) << shift;
-			shift += 7;
-		}
-		if (length == 0 || length > FRAME_CAP)
-			throw WireException.frame();
+		int size = prefix.size();
+		long length = prefix.length();
 		if (data.length < size + length)
 			return null;
 		
