@@ -4,6 +4,7 @@
 package wire
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
@@ -13,11 +14,16 @@ import (
 	"unicode/utf8"
 )
 
+// Codec reads and writes frames of one Registry within fixed Limits. A Codec
+// is immutable after New and safe for concurrent use.
 type Codec struct {
 	limits   Limits
 	registry Registry
 }
 
+// New returns a Codec for limits l and registry r. It copies r, so later
+// changes to r do not affect the Codec. New returns ErrConfig when a limit is
+// not positive or the registry is malformed.
 func New(l Limits, r Registry) (*Codec, error) {
 	if l.FrameBytes < 1 || l.StringBytes < 1 || l.ListItems < 1 || l.Depth < 1 || l.Records < 1 || l.Fields < 1 || l.IdentifierBytes < 1 || l.WorldBytes < 1 || l.ClientBytes < 1 {
 		return nil, ErrConfig
@@ -79,7 +85,7 @@ func New(l Limits, r Registry) (*Codec, error) {
 
 func readU(b []byte, pos *int) (uint64, error) {
 	var n uint64
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if *pos >= len(b) {
 			return 0, ErrFrame
 		}
@@ -88,7 +94,7 @@ func readU(b []byte, pos *int) (uint64, error) {
 		if i == 9 && v > 1 {
 			return 0, ErrFrame
 		}
-		n |= uint64(v&127) << uint(i*7)
+		n |= uint64(v&127) << (i * 7)
 		if v < 128 {
 			if i > 0 && v == 0 {
 				return 0, ErrFrame
@@ -120,7 +126,9 @@ func wireType(s Shape) Type {
 	}
 }
 
-// Decode is pure: no consumer callback runs until the entire frame is valid.
+// Decode returns the records of frame body b. It validates the whole frame
+// before returning any record and runs no callbacks. Unknown odd record kinds
+// are skipped; an unknown even kind returns ErrUnsupported.
 func (c *Codec) Decode(b []byte) ([]Record, error) {
 	if len(b) == 0 || len(b) > c.limits.FrameBytes {
 		return nil, ErrFrame
@@ -153,7 +161,7 @@ func (c *Codec) Decode(b []byte) ([]Record, error) {
 			if errors.Is(err, ErrUnsupported) {
 				return nil, &UnsupportedRecord{Type: typ}
 			}
-			if missing, ok := err.(*missingRequired); ok {
+			if missing, ok := errors.AsType[*missingRequired](err); ok {
 				if typ == Intent && unsupported && missing.depth == 0 {
 					return nil, ErrUnsupported
 				}
@@ -194,9 +202,9 @@ func (c *Codec) fields(b []byte, schema Schema, depth int) ([]Field, bool, error
 		var v Value
 		switch t {
 		case Unsigned, Signed:
-			x, e := readU(b, &pos)
-			if e != nil {
-				return nil, false, e
+			x, err := readU(b, &pos)
+			if err != nil {
+				return nil, false, err
 			}
 			if t == Signed {
 				v.S = int64(x>>1) ^ -int64(x&1)
@@ -223,9 +231,9 @@ func (c *Codec) fields(b []byte, schema Schema, depth int) ([]Field, bool, error
 		if t != wireType(s.Shape) || s.Essential != essential {
 			return nil, false, ErrFrame
 		}
-		flag, e := c.value(&v, raw, s, depth)
-		if e != nil {
-			return nil, unsupported || flag, e
+		flag, err := c.value(&v, raw, s, depth)
+		if err != nil {
+			return nil, unsupported || flag, err
 		}
 		unsupported = unsupported || flag
 		out = append(out, Field{uint32(n), essential, t, v})
@@ -255,7 +263,7 @@ func (c *Codec) value(v *Value, raw []byte, s Spec, depth int) (bool, error) {
 		}
 	case Int:
 		if s.Bits > 0 && s.Bits < 64 {
-			lim := int64(1) << uint(s.Bits-1)
+			lim := int64(1) << (s.Bits - 1)
 			if v.S < -lim || v.S >= lim {
 				return false, ErrFrame
 			}
@@ -287,9 +295,9 @@ func (c *Codec) value(v *Value, raw []byte, s Spec, depth int) (bool, error) {
 	case Position:
 		p := 0
 		for i := range v.XYZ {
-			u, e := readU(raw, &p)
-			if e != nil {
-				return false, e
+			u, err := readU(raw, &p)
+			if err != nil {
+				return false, err
 			}
 			x := int64(u>>1) ^ -int64(u&1)
 			if x < math.MinInt32 || x > math.MaxInt32 {
@@ -318,17 +326,17 @@ func (c *Codec) value(v *Value, raw []byte, s Spec, depth int) (bool, error) {
 			if len(v.Items) >= c.limits.ListItems {
 				return false, ErrFrame
 			}
-			element, e := take(raw, &pos)
-			if e != nil {
-				return false, e
+			element, err := take(raw, &pos)
+			if err != nil {
+				return false, err
 			}
 			var item Value
 			el := *s.Element
 			level := depth + 1
 			if el.Shape == UInt || el.Shape == Bool || el.Shape == Int {
 				p := 0
-				u, e := readU(element, &p)
-				if e != nil || p != len(element) {
+				u, err := readU(element, &p)
+				if err != nil || p != len(element) {
 					return false, ErrFrame
 				}
 				if el.Shape == Int {
@@ -337,9 +345,9 @@ func (c *Codec) value(v *Value, raw []byte, s Spec, depth int) (bool, error) {
 					item.U = u
 				}
 			}
-			flag, e := c.value(&item, element, el, level)
-			if e != nil {
-				return false, e
+			flag, err := c.value(&item, element, el, level)
+			if err != nil {
+				return false, err
 			}
 			unknown = unknown || flag
 			v.Items = append(v.Items, item)
@@ -357,9 +365,9 @@ func (c *Codec) Read(r io.Reader) ([]Record, error) {
 		if size == len(prefix) {
 			return nil, ErrFrame
 		}
-		_, e := io.ReadFull(r, prefix[size:size+1])
-		if e != nil {
-			if size == 0 && e == io.EOF {
+		_, err := io.ReadFull(r, prefix[size:size+1])
+		if err != nil {
+			if size == 0 && errors.Is(err, io.EOF) {
 				return nil, io.EOF
 			}
 			return nil, ErrFrame
@@ -370,12 +378,12 @@ func (c *Codec) Read(r io.Reader) ([]Record, error) {
 		}
 	}
 	p := 0
-	n, e := readU(prefix[:size], &p)
-	if e != nil || n == 0 || n > uint64(c.limits.FrameBytes) {
+	n, err := readU(prefix[:size], &p)
+	if err != nil || n == 0 || n > uint64(c.limits.FrameBytes) {
 		return nil, ErrFrame
 	}
 	b := make([]byte, int(n))
-	if _, e = io.ReadFull(r, b); e != nil {
+	if _, err = io.ReadFull(r, b); err != nil {
 		return nil, ErrFrame
 	}
 	return c.Decode(b)
@@ -391,6 +399,9 @@ func (c *Codec) appendBounded(b, more []byte) ([]byte, error) {
 	return append(b, more...), nil
 }
 
+// Encode returns the frame body for records, without the length prefix. The
+// result is decoded again before it is returned, so Encode never produces a
+// frame its own Decode would reject.
 func (c *Codec) Encode(records []Record) ([]byte, error) {
 	if len(records) == 0 || len(records) > c.limits.Records {
 		return nil, ErrFrame
@@ -401,23 +412,23 @@ func (c *Codec) Encode(records []Record) ([]byte, error) {
 		if !ok || r.Unsupported {
 			return nil, ErrUnsupported
 		}
-		b, e := c.encodeFields(r.Fields, s, 0)
-		if e != nil {
-			return nil, e
+		b, err := c.encodeFields(r.Fields, s, 0)
+		if err != nil {
+			return nil, err
 		}
 		header := appendU(appendU(nil, r.Type), uint64(len(b)))
-		out, e = c.appendBounded(out, header)
-		if e != nil {
-			return nil, e
+		out, err = c.appendBounded(out, header)
+		if err != nil {
+			return nil, err
 		}
-		out, e = c.appendBounded(out, b)
-		if e != nil {
-			return nil, e
+		out, err = c.appendBounded(out, b)
+		if err != nil {
+			return nil, err
 		}
 	}
 	// Use the same validator on both directions; no malformed value is emitted.
-	if _, e := c.Decode(out); e != nil {
-		return nil, e
+	if _, err := c.Decode(out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -469,20 +480,20 @@ func (c *Codec) encodeFields(fields []Field, schema Schema, depth int) ([]byte, 
 		case Fixed64:
 			b = append(b, f.Value.Fixed[:]...)
 		case LengthDelimited:
-			raw, e := c.encodeValue(f.Value, s, depth)
-			if e != nil {
-				return nil, e
+			raw, err := c.encodeValue(f.Value, s, depth)
+			if err != nil {
+				return nil, err
 			}
 			b = appendU(b, uint64(len(raw)))
-			b, e = c.appendBounded(b, raw)
-			if e != nil {
-				return nil, e
+			b, err = c.appendBounded(b, raw)
+			if err != nil {
+				return nil, err
 			}
 		}
-		var e error
-		out, e = c.appendBounded(out, b)
-		if e != nil {
-			return nil, e
+		var err error
+		out, err = c.appendBounded(out, b)
+		if err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
@@ -502,25 +513,25 @@ func (c *Codec) encodeValue(v Value, s Spec, depth int) ([]byte, error) {
 		var out []byte
 		for _, item := range v.Items {
 			var raw []byte
-			var e error
+			var err error
 			switch s.Element.Shape {
 			case UInt, Bool:
 				raw = appendU(nil, item.U)
 			case Int:
 				raw = appendS(nil, item.S)
 			default:
-				raw, e = c.encodeValue(item, *s.Element, depth+1)
+				raw, err = c.encodeValue(item, *s.Element, depth+1)
 			}
-			if e != nil {
-				return nil, e
+			if err != nil {
+				return nil, err
 			}
-			out, e = c.appendBounded(out, appendU(nil, uint64(len(raw))))
-			if e != nil {
-				return nil, e
+			out, err = c.appendBounded(out, appendU(nil, uint64(len(raw))))
+			if err != nil {
+				return nil, err
 			}
-			out, e = c.appendBounded(out, raw)
-			if e != nil {
-				return nil, e
+			out, err = c.appendBounded(out, raw)
+			if err != nil {
+				return nil, err
 			}
 		}
 		return out, nil
@@ -538,10 +549,11 @@ func (c *Codec) encodeValue(v Value, s Spec, depth int) ([]byte, error) {
 	}
 }
 
+// Write encodes records and writes them to w as one length-prefixed frame.
 func (c *Codec) Write(w io.Writer, records []Record) error {
-	b, e := c.Encode(records)
-	if e != nil {
-		return e
+	b, err := c.Encode(records)
+	if err != nil {
+		return err
 	}
 	header := appendU(nil, uint64(len(b)))
 	for _, p := range [][]byte{header, b} {
@@ -574,7 +586,7 @@ func canonicalOpaque(body []byte, schema Schema) []byte {
 		var normalized []byte
 		switch Type(key & 7) {
 		case Unsigned, Signed:
-			_, _ = readU(body, &pos)
+			_, _ = readU(body, &pos) // validated by Decode before this call
 		case Fixed64:
 			pos += 8
 		case LengthDelimited:
@@ -602,15 +614,7 @@ func canonicalOpaque(body []byte, schema Schema) []byte {
 		}
 		parts = append(parts, part{key >> 4, chunk})
 	}
-	slices.SortFunc(parts, func(a, b part) int {
-		if a.number < b.number {
-			return -1
-		}
-		if a.number > b.number {
-			return 1
-		}
-		return 0
-	})
+	slices.SortFunc(parts, func(a, b part) int { return cmp.Compare(a.number, b.number) })
 	out := make([]byte, 0, len(body))
 	for _, p := range parts {
 		out = append(out, p.bytes...)

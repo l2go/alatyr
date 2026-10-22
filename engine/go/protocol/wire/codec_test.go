@@ -92,10 +92,10 @@ func TestSignedExtremesAndOwnership(t *testing.T) {
 func TestAllEnvelopeRecordsAndReasonCodes(t *testing.T) {
 	c := testCodec(t)
 	records := []Record{
-		{Type: Hello, Fields: []Field{U(1, true, 1), U(2, true, 1), Data(3, true, "v/1"), U(4, true, Person), U(5, true, Act)}},
-		{Type: Welcome, Fields: []Field{U(1, true, 1), Data(2, true, "v/1"), Data(3, true, "world"), U(4, true, 1), U(5, true, Act), U(6, true, 0), Obj(7, true, []Field{U(1, true, 7)})}},
-		{Type: Checkpoint, Fields: []Field{U(1, true, Begin), U(2, true, 1), U(3, true, 0)}},
-		{Type: Control, Fields: []Field{U(1, true, Granted), U(2, true, 1), U(3, true, 1)}},
+		{Type: Hello, Fields: []Field{U(1, true, 1), U(2, true, 1), Data(3, true, "v/1"), U(4, true, uint64(ParticipantPerson)), U(5, true, uint64(ModeAct))}},
+		{Type: Welcome, Fields: []Field{U(1, true, 1), Data(2, true, "v/1"), Data(3, true, "world"), U(4, true, 1), U(5, true, uint64(ModeAct)), U(6, true, 0), Obj(7, true, []Field{U(1, true, 7)})}},
+		{Type: Checkpoint, Fields: []Field{U(1, true, uint64(CheckpointBegin)), U(2, true, 1), U(3, true, 0)}},
+		{Type: Control, Fields: []Field{U(1, true, uint64(ControlGranted)), U(2, true, 1), U(3, true, 1)}},
 		{Type: Pong, Fields: []Field{U(1, true, math.MaxUint64)}},
 	}
 	for _, r := range records {
@@ -109,21 +109,21 @@ func TestAllEnvelopeRecordsAndReasonCodes(t *testing.T) {
 			t.Fatalf("%d: %v %#v", r.Type, e, got)
 		}
 	}
-	reasons := []Reason{None, NotReady, Watch, StaleControl, StaleTarget, StaleOffer, QueueExpired, Rate, Busy, UnknownEssential, Invalid, NoAction, NotAlive, SkillUnknown, SkillPassive, SkillDisabled, World, Timeout, WorldClosed, Interrupted, TooOld, OutOfOrder, DuplicateMismatch, TargetUnconfirmed, BackendError}
+	reasons := []Reason{ReasonNone, ReasonNotReady, ReasonWatch, ReasonStaleControl, ReasonStaleTarget, ReasonStaleOffer, ReasonQueueExpired, ReasonRate, ReasonBusy, ReasonUnknownEssential, ReasonInvalid, ReasonNoAction, ReasonNotAlive, ReasonSkillUnknown, ReasonSkillPassive, ReasonSkillDisabled, ReasonWorld, ReasonTimeout, ReasonWorldClosed, ReasonInterrupted, ReasonTooOld, ReasonOutOfOrder, ReasonDuplicateMismatch, ReasonTargetUnconfirmed, ReasonBackendError}
 	for i, reason := range reasons {
 		if uint64(reason) != uint64(i) {
 			t.Fatal("reason registry changed")
 		}
-		stage, delivery := Refused, NoDelivery
-		if reason == None {
-			stage, delivery = Sent, Local
+		stage, delivery := StageRefused, DeliveryNone
+		if reason == ReasonNone {
+			stage, delivery = StageSent, DeliveryLocal
 		}
 		r := Record{Type: Result, Fields: []Field{U(1, true, 1), U(2, true, uint64(stage)), U(3, true, uint64(reason)), U(5, true, 1), U(6, true, 1), U(7, true, uint64(delivery))}}
 		if _, e := c.Encode([]Record{r}); e != nil {
 			t.Fatalf("reason %d: %v", reason, e)
 		}
 	}
-	for i, reason := range []CloseReason{Normal, Unsupported, FrameError, SlowConsumer, Full, Auth, Origin, Internal, ClosedWorld} {
+	for i, reason := range []CloseReason{CloseNormal, CloseUnsupported, CloseFrameError, CloseSlowConsumer, CloseFull, CloseAuth, CloseOrigin, CloseInternal, CloseWorldClosed} {
 		if uint64(reason) != uint64(i) {
 			t.Fatal("close registry changed")
 		}
@@ -162,10 +162,10 @@ func TestStructuralLimitsBeforeAllocation(t *testing.T) {
 		t.Fatal("list cap", e)
 	}
 	raw := bytes.Repeat([]byte{'x'}, l.StringBytes+1)
-	if _, e = d.Encode([]Record{{Type: Hello, Fields: []Field{U(1, true, 1), U(2, true, 1), Data(3, true, "v"), U(4, true, Person), U(5, true, Act), Data(6, false, string(raw))}}}); !errors.Is(e, ErrFrame) {
+	if _, e = d.Encode([]Record{{Type: Hello, Fields: []Field{U(1, true, 1), U(2, true, 1), Data(3, true, "v"), U(4, true, uint64(ParticipantPerson)), U(5, true, uint64(ModeAct)), Data(6, false, string(raw))}}}); !errors.Is(e, ErrFrame) {
 		t.Fatal("string cap", e)
 	}
-	badControl := Record{Type: Control, Fields: []Field{U(1, true, Granted)}}
+	badControl := Record{Type: Control, Fields: []Field{U(1, true, uint64(ControlGranted))}}
 	if _, e = c.Encode([]Record{badControl}); !errors.Is(e, ErrFrame) {
 		t.Fatal(e)
 	}

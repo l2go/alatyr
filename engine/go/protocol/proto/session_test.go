@@ -50,18 +50,18 @@ func TestReplayFloorAndPendingRetention(t *testing.T) {
 	}
 	_, epoch := s.Controller()
 	old := s.Begin(1, true, true, Attempt{N: 2, Control: epoch, Verb: 9, Payload: []byte{2}}, 11)
-	if old.Result == nil || old.Result.Stage != wire.Unrecoverable || old.Result.Reason != wire.TooOld {
+	if old.Result == nil || old.Result.Stage != wire.StageUnrecoverable || old.Result.Reason != wire.ReasonTooOld {
 		t.Fatalf("old %+v", old)
 	}
 	replay := s.Begin(1, true, true, Attempt{N: 1, Control: epoch, Verb: 9, Payload: []byte{1}}, 11)
-	if !replay.Duplicate || replay.Allocated || replay.Result == nil || replay.Result.Stage != wire.Sent {
+	if !replay.Duplicate || replay.Allocated || replay.Result == nil || replay.Result.Stage != wire.StageSent {
 		t.Fatal(replay)
 	}
 	if len(s.entries) != s.config.Results || s.Floor() <= 2 {
 		t.Fatal("cache is not bounded", s.Floor())
 	}
 	mismatch := s.Begin(1, true, true, Attempt{N: 1, Control: epoch, Verb: 9, Payload: []byte("different")}, 11)
-	if mismatch.Close == nil || mismatch.Result.Reason != wire.DuplicateMismatch {
+	if mismatch.Close == nil || mismatch.Result.Reason != wire.ReasonDuplicateMismatch {
 		t.Fatal(mismatch)
 	}
 }
@@ -74,7 +74,7 @@ func TestTaintSurvivesExpiryAndProjection(t *testing.T) {
 		t.Fatal("window edges")
 	}
 	o := s.Expire(110)
-	if len(o) != 1 || o[0].Stage != wire.Unknown {
+	if len(o) != 1 || o[0].Stage != wire.StageUnknown {
 		t.Fatal(o)
 	}
 	if _, e := s.Relocate(0); e != nil {
@@ -101,7 +101,7 @@ func TestBusyUsesResolvedEffectAndClassesAreIndependent(t *testing.T) {
 		t.Fatal(ad)
 	}
 	out, e := s.Prepare(2, 5, "a", true)
-	if e != nil || out == nil || out.Reason != wire.Busy || out.Requested != 11 || out.Effective != 5 {
+	if e != nil || out == nil || out.Reason != wire.ReasonBusy || out.Requested != 11 || out.Effective != 5 {
 		t.Fatal(out, e)
 	}
 	add(t, s, 3, "b", true)
@@ -119,11 +119,11 @@ func TestControlFenceAndUnallocatedNumbers(t *testing.T) {
 		t.Fatal(grant, e)
 	}
 	late := s.Begin(1, true, true, Attempt{N: 2, Control: 1, Verb: 9}, 10)
-	if late.Allocated || late.Result.Reason != wire.StaleControl || s.NextN() != 2 {
+	if late.Allocated || late.Result.Reason != wire.ReasonStaleControl || s.NextN() != 2 {
 		t.Fatal(late)
 	}
 	out, e := s.CheckWrite(1, 11)
-	if e != nil || out.Reason != wire.StaleControl || out.Stage != wire.Refused {
+	if e != nil || out.Reason != wire.ReasonStaleControl || out.Stage != wire.StageRefused {
 		t.Fatal(out, e)
 	}
 	ad := s.Begin(2, true, true, Attempt{N: 2, Control: grant.Epoch, Verb: 9}, 11)
@@ -137,11 +137,11 @@ func TestControlFenceAndUnallocatedNumbers(t *testing.T) {
 	s.Contact(2, 11)
 	s.Take(1)
 	out, e = s.CheckWrite(2, 12)
-	if e != nil || out.Stage != wire.Unknown || out.Reason != wire.Interrupted || out.Delivery != wire.Partial {
+	if e != nil || out.Stage != wire.StageUnknown || out.Reason != wire.ReasonInterrupted || out.Delivery != wire.DeliveryPartial {
 		t.Fatal(out, e)
 	}
 	watch := s.Begin(9, false, true, Attempt{N: s.NextN(), Control: 1, Verb: 9}, 12)
-	if watch.Allocated || watch.Result.Reason != wire.Watch {
+	if watch.Allocated || watch.Result.Reason != wire.ReasonWatch {
 		t.Fatal(watch)
 	}
 }
@@ -149,7 +149,7 @@ func TestQueueExpiryAndPartialFailure(t *testing.T) {
 	s := fixture(t)
 	add(t, s, 1, "", false)
 	o, e := s.CheckWrite(1, 31)
-	if e != nil || o.Reason != wire.QueueExpired {
+	if e != nil || o.Reason != wire.ReasonQueueExpired {
 		t.Fatal(o, e)
 	}
 	add(t, s, 2, "a", true)
@@ -157,7 +157,7 @@ func TestQueueExpiryAndPartialFailure(t *testing.T) {
 		t.Fatal(e)
 	}
 	o, e = s.CheckWrite(2, 110)
-	if e != nil || o.Stage != wire.Unknown || o.Reason != wire.Timeout {
+	if e != nil || o.Stage != wire.StageUnknown || o.Reason != wire.ReasonTimeout {
 		t.Fatal(o, e)
 	}
 }
@@ -170,30 +170,30 @@ func TestCandidateFinalizesAtWindowEnd(t *testing.T) {
 		t.Fatal("deadline receipt counted")
 	}
 	out, e := s.CommitWitness(1, 30, 110)
-	if e != nil || out.Stage != wire.Done {
+	if e != nil || out.Stage != wire.StageDone {
 		t.Fatal(out, e)
 	}
 	if got := s.Expire(110); len(got) != 0 {
 		t.Fatal(got)
 	}
-	if _, e := s.Fail(1, wire.Timeout); e == nil {
+	if _, e := s.Fail(1, wire.ReasonTimeout); e == nil {
 		t.Fatal("final result regressed")
 	}
 }
 func TestExhaustionAndOversizedReplay(t *testing.T) {
 	s := fixture(t)
 	future := s.Begin(1, true, true, Attempt{N: 2, Control: 1, Verb: 1}, 1)
-	if future.Result == nil || future.Result.Reason != wire.OutOfOrder || future.Close == nil || s.NextN() != 1 || len(s.entries) != 0 {
+	if future.Result == nil || future.Result.Reason != wire.ReasonOutOfOrder || future.Close == nil || s.NextN() != 1 || len(s.entries) != 0 {
 		t.Fatal("future number allocated", future)
 	}
 	payload := make([]byte, 17)
 	a := Attempt{N: 1, Control: 1, Verb: 1, Payload: payload}
 	ad := s.Begin(1, true, true, a, 1)
-	if ad.Result == nil || ad.Result.Reason != wire.Invalid {
+	if ad.Result == nil || ad.Result.Reason != wire.ReasonInvalid {
 		t.Fatal(ad)
 	}
 	ad = s.Begin(1, true, true, a, 1)
-	if !ad.Duplicate || ad.Result.Reason != wire.Invalid {
+	if !ad.Duplicate || ad.Result.Reason != wire.ReasonInvalid {
 		t.Fatal(ad)
 	}
 	if len(s.entries[0].Attempt.Payload) != 0 {
@@ -201,7 +201,7 @@ func TestExhaustionAndOversizedReplay(t *testing.T) {
 	}
 	s.next = math.MaxUint64
 	ad = s.Begin(1, true, true, Attempt{N: math.MaxUint64, Control: 1, Verb: 1}, 1)
-	if ad.Close == nil || *ad.Close != wire.Internal {
+	if ad.Close == nil || *ad.Close != wire.CloseInternal {
 		t.Fatal(ad)
 	}
 	s = fixture(t)
@@ -220,7 +220,7 @@ func TestConnectionCannotRegainLostControlThroughCheckpoint(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = c.Welcome(1, wire.Act); e != nil {
+	if e = c.Welcome(1, uint64(wire.ModeAct)); e != nil {
 		t.Fatal(e)
 	}
 	c.Begin(1)
@@ -253,7 +253,7 @@ func TestConnectionCannotRegainLostControlThroughCheckpoint(t *testing.T) {
 	if _, e = c.Incomplete("d"); e != wire.ErrUnsupported {
 		t.Fatal("repair loop", e)
 	}
-	if CheckpointFailure(true) != wire.SlowConsumer || CheckpointFailure(false) != wire.ClosedWorld {
+	if CheckpointFailure(true) != wire.CloseSlowConsumer || CheckpointFailure(false) != wire.CloseWorldClosed {
 		t.Fatal("timeout causes merged")
 	}
 }

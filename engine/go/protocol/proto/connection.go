@@ -9,7 +9,8 @@ import (
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
 
-// Connection is the receiving projection/control automaton. It owns no socket.
+// Connection tracks the participant side of one connection: the welcome, the
+// projection checkpoints, control grants and attempt numbers. It owns no socket.
 type Connection struct {
 	Mode, Session, Projection, Control, NextN, LastSeq uint64
 	Ready, Acting                                      bool
@@ -19,14 +20,18 @@ type Connection struct {
 	maxDomains                                         int
 }
 
+// NewConnection returns a Connection that may request repair of at most
+// maxDomains projection domains.
 func NewConnection(maxDomains int) (*Connection, error) {
 	if maxDomains < 1 {
 		return nil, wire.ErrConfig
 	}
 	return &Connection{maxDomains: maxDomains, repairs: map[string]bool{}}, nil
 }
+
+// Welcome records the world's acceptance: the session and the granted Mode.
 func (c *Connection) Welcome(session, mode uint64) error {
-	if c.welcome || c.closed || session == 0 || (mode != wire.Act && mode != wire.Observe) {
+	if c.welcome || c.closed || session == 0 || (wire.Mode(mode) != wire.ModeAct && wire.Mode(mode) != wire.ModeObserve) {
 		return ErrState
 	}
 	c.Session = session
@@ -34,6 +39,8 @@ func (c *Connection) Welcome(session, mode uint64) error {
 	c.welcome = true
 	return nil
 }
+
+// Begin starts a checkpoint of projection epoch. Acting stops until End.
 func (c *Connection) Begin(epoch uint64) error {
 	if !c.welcome || c.closed || epoch == 0 || epoch < c.Projection {
 		return ErrState
@@ -44,17 +51,21 @@ func (c *Connection) Begin(epoch uint64) error {
 	c.checkpoint = true
 	return nil
 }
+
+// End finishes the checkpoint of epoch and records whether the projection is ready.
 func (c *Connection) End(epoch uint64, ready bool) error {
 	if c.closed || !c.checkpoint || epoch != c.Projection {
 		return ErrState
 	}
 	c.checkpoint = false
 	c.Ready = ready
-	c.Acting = ready && c.hasGrant && c.Mode == wire.Act
+	c.Acting = ready && c.hasGrant && wire.Mode(c.Mode) == wire.ModeAct
 	return nil
 }
+
+// Grant records a control grant with control epoch and the next attempt number.
 func (c *Connection) Grant(epoch, next uint64) error {
-	if c.closed || !c.Ready || c.Mode != wire.Act || epoch == 0 || epoch < c.Control || next == 0 {
+	if c.closed || !c.Ready || wire.Mode(c.Mode) != wire.ModeAct || epoch == 0 || epoch < c.Control || next == 0 {
 		return ErrState
 	}
 	c.Control = epoch
@@ -63,6 +74,8 @@ func (c *Connection) Grant(epoch, next uint64) error {
 	c.Acting = true
 	return nil
 }
+
+// Lose records that control moved away at control epoch.
 func (c *Connection) Lose(epoch uint64) error {
 	if c.closed || epoch == 0 || epoch < c.Control {
 		return ErrState
@@ -72,6 +85,9 @@ func (c *Connection) Lose(epoch uint64) error {
 	c.Acting = false
 	return nil
 }
+
+// Fact checks a fact of projection epoch with sequence seq. It reports false
+// for a fact of an older epoch, which the caller drops.
 func (c *Connection) Fact(epoch, seq uint64) (bool, error) {
 	if c.closed || !c.welcome || c.Projection == 0 {
 		return false, ErrState
@@ -98,8 +114,10 @@ func (c *Connection) Incomplete(domain string) (wire.Record, error) {
 		return wire.Record{}, wire.ErrUnsupported
 	}
 	c.repairs[domain] = true
-	return wire.Record{Type: wire.Control, Fields: []wire.Field{wire.U(1, true, wire.Resync), wire.U(2, true, c.Projection)}}, nil
+	return wire.Record{Type: wire.Control, Fields: []wire.Field{wire.U(1, true, uint64(wire.ControlResync)), wire.U(2, true, c.Projection)}}, nil
 }
+
+// Allocate returns the next attempt number while the connection may act.
 func (c *Connection) Allocate() (uint64, error) {
 	if !c.Acting || !c.Ready || c.closed {
 		return 0, ErrState
@@ -113,12 +131,18 @@ func (c *Connection) Allocate() (uint64, error) {
 	return n, nil
 }
 
-func (c *Connection) Close() { c.closed = true; c.Ready = false; c.Acting = false; c.hasGrant = false }
+// Close closes the connection; it can no longer act.
+func (c *Connection) Close() {
+	c.closed = true
+	c.Ready = false
+	c.Acting = false
+	c.hasGrant = false
+}
 
 // CheckpointFailure keeps incomplete knowledge distinct from a slow transport.
 func CheckpointFailure(transferBlocked bool) wire.CloseReason {
 	if transferBlocked {
-		return wire.SlowConsumer
+		return wire.CloseSlowConsumer
 	}
-	return wire.ClosedWorld
+	return wire.CloseWorldClosed
 }
