@@ -27,6 +27,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -171,6 +173,30 @@ class BridgeTeleportDeferralTest
 		verify(probe.position, never()).setWorldPosition(anyInt(), anyInt(), anyInt());
 	}
 	
+	/** The production lock is final. A mock does not run the field initializer, so the test installs one. */
+	private static void installLock(L2Player player)
+	{
+		try
+		{
+			java.lang.reflect.Field field = L2Creature.class.getDeclaredField("_teleportLock");
+			field.setAccessible(true);
+			field.set(player, new ReentrantLock());
+		}
+		catch (ReflectiveOperationException e)
+		{
+			try
+			{
+				VarHandle handle = MethodHandles.privateLookupIn(L2Creature.class, MethodHandles.lookup())
+						.findVarHandle(L2Creature.class, "_teleportLock", ReentrantLock.class);
+				handle.set(player, new ReentrantLock());
+			}
+			catch (ReflectiveOperationException again)
+			{
+				throw new IllegalStateException(again);
+			}
+		}
+	}
+	
 	private static final class Probe
 	{
 		final L2Player player = HuntTestPlayers.mockPlayer();
@@ -180,7 +206,7 @@ class BridgeTeleportDeferralTest
 		
 		Probe()
 		{
-			player._teleportLock = new ReentrantLock();
+			installLock(player);
 			when(player.isBridgeSession()).thenReturn(true);
 			when(player.getClient()).thenReturn(client);
 			when(player.getAI()).thenReturn(mock(L2CreatureAI.class));

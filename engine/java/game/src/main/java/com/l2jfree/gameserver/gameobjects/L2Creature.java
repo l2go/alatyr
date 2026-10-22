@@ -191,7 +191,7 @@ public abstract class L2Creature extends L2Object
 	protected boolean _isTeleporting = false;
 	
 	/** Serialises a bridge character's own teleport. Ordinary creatures never take it. */
-	ReentrantLock _teleportLock = new ReentrantLock();
+	final ReentrantLock _teleportLock = new ReentrantLock();
 	
 	/** The generation of the bridge teleport in progress. Zero means none yet; the counter does not wrap. */
 	long _teleportGeneration;
