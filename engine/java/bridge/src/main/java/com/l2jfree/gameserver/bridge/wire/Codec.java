@@ -38,8 +38,8 @@ import java.util.Map;
  * Bounded frames for the frozen core registry and, when asked, the bridge/1 profile.
  * <p>
  * Decoding is pure: a failure discards every record from the frame. Encoding sorts fields and then decodes
- * its own output, so a value that cannot be read is not written. The bridge profile check runs inside
- * decoding, which means encoding rejects the same profile failures.
+ * its own output, so a value that cannot be read is not written. The profile check runs after the structural
+ * walk of the whole frame, so encoding rejects the same profile failures.
  */
 public final class Codec
 {
@@ -138,6 +138,18 @@ public final class Codec
 	}
 	
 	/**
+	 * Appends an empty record. Tests use a type the registry does not know.
+	 */
+	static byte[] withTrailingRecord(byte[] frame, long type)
+	{
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		out.writeBytes(frame);
+		appendU(out, type);
+		appendU(out, 0);
+		return out.toByteArray();
+	}
+	
+	/**
 	 * @param frame one complete frame, without a stream length prefix
 	 * @return the records. An empty list means every record in the frame was an unknown odd type.
 	 */
@@ -197,10 +209,12 @@ public final class Codec
 			
 			Envelope envelope = new Envelope(type.value(), List.copyOf(parsed.fields), parsed.unsupported, pos - start, hash);
 			validateEnvelope(envelope);
-			if (bridgeProfile)
-				checkBridge(envelope);
-			
 			records.add(envelope);
+		}
+		if (bridgeProfile)
+		{
+			for (Envelope envelope : records)
+				checkBridge(envelope);
 		}
 		return List.copyOf(records);
 	}
