@@ -143,7 +143,7 @@ func TestProtocolImportsAcrossBuildConstraints(t *testing.T) {
 		{"bad.go", "package protocol\nimport _ \"" + modulePrefix + "gateway\"\n"},
 		{"bad_test.go", "package protocol_test\nimport _ \"" + modulePrefix + "bridge\"\n"},
 		{"tagged.go", "//go:build never_enabled\n\npackage protocol\nimport _ \"example.org/foreign\"\n"},
-		{"bad_plan9.go", "package protocol\nimport _ \"github.com/l2go/l2jfree/tools/world\"\n"},
+		{"bad_plan9.go", "package protocol\nimport _ \"github.com/l2go/alatyr/tools/world\"\n"},
 		{"escaped.go", "package protocol\nimport _ \"example.org/for\\x65ign\"\n"},
 		{"bad.go", "package protocol\nimport \"C\"\n"},
 	}

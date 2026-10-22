@@ -17,7 +17,7 @@ import (
 )
 
 func TestDependencyBoundary(t *testing.T) {
-	const own = "github.com/l2go/l2jfree/engine/go/bridge"
+	const own = "github.com/l2go/alatyr/engine/go/bridge"
 	const protocol = "github.com/l2go/l2jfree/engine/go/protocol"
 	const version = "v0.0.0-20261021214322-a0349830aa3d"
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, e error) error {

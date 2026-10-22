@@ -1,6 +1,6 @@
 <div align="center">
 
-<a href="https://l2go.github.io/alatyr/" title="Open the L2JFree project site"><img src="assets/l2jfree-hero.svg" width="100%" alt="L2JFree: Lineage II server for Gracia Final, protocol 83. Opens the project site."></a>
+<a href="https://l2go.github.io/alatyr/" title="Open the Alatyr project site"><img src="assets/l2jfree-hero.svg" width="100%" alt="Alatyr: the stone beneath the world. Opens the project site."></a>
 
 <br>
 

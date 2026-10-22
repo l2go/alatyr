@@ -6,7 +6,7 @@ package transport
 
 import (
 	"context"
-	"github.com/l2go/l2jfree/engine/go/bridge/profile"
+	"github.com/l2go/alatyr/engine/go/bridge/profile"
 	"github.com/l2go/l2jfree/engine/go/protocol/wire"
 	"io"
 	"net"

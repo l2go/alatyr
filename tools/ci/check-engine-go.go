@@ -33,7 +33,7 @@ import (
 )
 
 const goVersion = "1.27.1"
-const modulePrefix = "github.com/l2go/l2jfree/engine/go/"
+const modulePrefix = "github.com/l2go/alatyr/engine/go/"
 const apacheSHA256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
 
 type modulePolicy struct {
