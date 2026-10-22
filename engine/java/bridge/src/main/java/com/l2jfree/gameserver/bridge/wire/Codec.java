@@ -136,6 +136,14 @@ public final class Codec
 	}
 	
 	/**
+	 * @return a copy of the namespace carried with an internal bridge reason
+	 */
+	public static byte[] reasonNamespace()
+	{
+		return BRIDGE_NAMESPACE.clone();
+	}
+	
+	/**
 	 * @return the limits object an accepted opening must carry
 	 */
 	public static Field openedLimits()

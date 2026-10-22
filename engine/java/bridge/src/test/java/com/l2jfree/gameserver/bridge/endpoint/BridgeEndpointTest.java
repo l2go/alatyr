@@ -93,6 +93,38 @@ class BridgeEndpointTest
 	}
 	
 	@Test
+	void anEnabledEmptySecretOrBadPortFailsClosed()
+	{
+		Properties emptySecret = new Properties();
+		emptySecret.setProperty("bridge.enabled", "true");
+		emptySecret.setProperty("bridge.secret", "");
+		assertThatThrownBy(() -> BridgeSettings.parse(emptySecret)).isInstanceOf(IllegalStateException.class);
+		
+		Properties badPort = new Properties();
+		badPort.setProperty("bridge.port", "0");
+		assertThatThrownBy(() -> BridgeSettings.parse(badPort)).isInstanceOf(IllegalStateException.class);
+		
+		Properties disabled = new Properties();
+		disabled.setProperty("bridge.enabled", "false");
+		disabled.setProperty("bridge.secret", "");
+		assertThat(BridgeSettings.parse(disabled).enabled()).isFalse();
+	}
+	
+	@Test
+	void aSecondCloseIsEmpty()
+	{
+		BridgeDialogue dialogue = new BridgeDialogue(SECRET);
+		dialogue.accept(List.of(open(SECRET)));
+		Envelope close = Envelope.of(Schemas.CLOSE, List.of(Field.u(1, true, 1), Field.u(2, true, 1), Field.u(3, true, 0)));
+		BridgeReply first = dialogue.accept(List.of(close));
+		assertThat(first.records.get(0).field(1).value().u()).isEqualTo(BridgeFrames.BYE_NORMAL);
+		BridgeReply second = dialogue.accept(List.of(close));
+		assertThat(second.records).isEmpty();
+		assertThat(second.close).isTrue();
+		assertThat(second.admit).isFalse();
+	}
+	
+	@Test
 	void aMatchingSecretAsksForAdmissionAndDoesNotAnswerYet()
 	{
 		BridgeDialogue dialogue = new BridgeDialogue(SECRET);

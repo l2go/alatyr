@@ -26,10 +26,20 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 
+import com.l2jfree.gameserver.LoginLink;
 import com.l2jfree.gameserver.bridge.wire.Codec;
 import com.l2jfree.gameserver.bridge.wire.Envelope;
 import com.l2jfree.gameserver.bridge.wire.WireException;
+import com.l2jfree.gameserver.extension.GameServerContext;
+import com.l2jfree.gameserver.network.L2Client;
+import com.l2jfree.network.NetworkServer;
+
+import io.netty.channel.DefaultEventLoopGroup;
+import io.netty.channel.local.LocalChannel;
 
 /**
  * One selector thread on 127.0.0.1. The 65th socket is refused with a small frame before a read buffer is allocated.
@@ -43,21 +53,27 @@ final class BridgeLoopback implements Runnable
 	private final ServerSocketChannel server;
 	private final Selector selector;
 	private final Thread thread;
+	private final GameServerContext context;
+	private final DefaultEventLoopGroup virtualChannels;
+	private final List<L2Client> clients = new CopyOnWriteArrayList<>();
 	private final byte[] fullBye;
 	private int transports;
 	private volatile boolean stopping;
 	
-	private BridgeLoopback(BridgeSettings settings, ServerSocketChannel server, Selector selector)
+	private BridgeLoopback(BridgeSettings settings, GameServerContext context, ServerSocketChannel server,
+			Selector selector)
 	{
 		this.settings = settings;
+		this.context = context;
 		this.server = server;
 		this.selector = selector;
+		this.virtualChannels = new DefaultEventLoopGroup(1);
 		this.fullBye = frame(List.of(BridgeFrames.bye(BridgeFrames.BYE_FULL)));
 		this.thread = new Thread(this, "bridge-listener");
 		this.thread.setDaemon(true);
 	}
 	
-	static BridgeLoopback open(BridgeSettings settings)
+	static BridgeLoopback open(BridgeSettings settings, GameServerContext context)
 	{
 		try
 		{
@@ -66,7 +82,7 @@ final class BridgeLoopback implements Runnable
 			server.configureBlocking(false);
 			server.bind(new InetSocketAddress(InetAddress.getByAddress(new byte[] { 127, 0, 0, 1 }), settings.port()));
 			server.register(selector, SelectionKey.OP_ACCEPT);
-			BridgeLoopback loopback = new BridgeLoopback(settings, server, selector);
+			BridgeLoopback loopback = new BridgeLoopback(settings, context, server, selector);
 			loopback.thread.start();
 			return loopback;
 		}
@@ -96,6 +112,7 @@ final class BridgeLoopback implements Runnable
 			try
 			{
 				selector.select(1000);
+				drain();
 				Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
 				while (keys.hasNext())
 				{
@@ -159,10 +176,15 @@ final class BridgeLoopback implements Runnable
 			BridgeReply reply = transport.dialogue.accept(records);
 			if (reply.admit)
 			{
-				// The client queue that admits the account is not attached yet. Fail closed and release nothing,
-				// because no reserve was taken. The shipped default does not reach this branch.
-				writeAll(socket, frame(List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_BACKEND))));
-				drop(key);
+				try
+				{
+					admit(transport, reply);
+				}
+				catch (RuntimeException e)
+				{
+					writeAll(socket, frame(List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL))));
+					drop(key);
+				}
 				return;
 			}
 			if (!reply.records.isEmpty())
@@ -178,6 +200,52 @@ final class BridgeLoopback implements Runnable
 		}
 	}
 	
+	/**
+	 * Builds the virtual channel and queues admission. Returns before the client queue reads the account.
+	 */
+	private void admit(Transport transport, BridgeReply reply) throws IOException
+	{
+		if (transport.client != null)
+			throw new IllegalStateException("already admitted");
+		
+		BridgeSink sink = new BridgeSink(records -> enqueue(transport, records));
+		LocalChannel channel = new LocalChannel();
+		virtualChannels.register(channel).syncUninterruptibly();
+		L2Client client = L2Client.forBridge(context.getNetworkServer(), channel,
+				InetAddress.getByAddress(new byte[] { 127, 0, 0, 1 }), sink);
+		sink.attach(client);
+		transport.client = client;
+		clients.add(client);
+		BridgeAdmission.schedule(client, LoginLink.getInstance(), reply.account, reply.character,
+				records -> enqueue(transport, records));
+	}
+	
+	private void enqueue(Transport transport, List<Envelope> records)
+	{
+		if (records == null || records.isEmpty())
+			return;
+		
+		transport.outbound.add(frame(records));
+		selector.wakeup();
+	}
+	
+	private void drain() throws IOException
+	{
+		for (SelectionKey key : selector.keys())
+		{
+			if (!key.isValid() || !(key.channel() instanceof SocketChannel))
+				continue;
+			if (!(key.attachment() instanceof Transport))
+				continue;
+			
+			SocketChannel socket = (SocketChannel) key.channel();
+			Transport transport = (Transport) key.attachment();
+			byte[] bytes;
+			while ((bytes = transport.outbound.poll()) != null)
+				writeAll(socket, bytes);
+		}
+	}
+	
 	private void drop(SelectionKey key) throws IOException
 	{
 		key.cancel();
@@ -190,14 +258,17 @@ final class BridgeLoopback implements Runnable
 	{
 		stopping = true;
 		selector.wakeup();
+		for (L2Client client : clients)
+			client.requestBridgeDisconnect();
 		try
 		{
-			thread.join(settings.graceMs());
+			thread.join(30_000);
 		}
 		catch (InterruptedException e)
 		{
 			Thread.currentThread().interrupt();
 		}
+		virtualChannels.shutdownGracefully(0, 1, TimeUnit.SECONDS);
 		try
 		{
 			selector.close();
@@ -276,6 +347,8 @@ final class BridgeLoopback implements Runnable
 		final BridgeDialogue dialogue;
 		final ByteBuffer input = ByteBuffer.allocate(FRAME_CAP + 10);
 		final ByteArrayOutputStream pending = new ByteArrayOutputStream();
+		final ConcurrentLinkedQueue<byte[]> outbound = new ConcurrentLinkedQueue<>();
+		L2Client client;
 		
 		Transport(byte[] secret)
 		{

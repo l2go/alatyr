@@ -29,6 +29,8 @@ import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.junit.jupiter.api.Test;
@@ -109,9 +111,69 @@ class BridgeTeleportDeferralTest
 		verify(probe.client, never()).submit(any());
 	}
 	
+	@Test
+	void aTeleportWaitsUntilTheTeleportLockIsFree() throws Exception
+	{
+		Probe probe = new Probe();
+		probe.player._teleportLock.lock();
+		CountDownLatch started = new CountDownLatch(1);
+		CountDownLatch finished = new CountDownLatch(1);
+		Thread other = new Thread(() ->
+		{
+			started.countDown();
+			probe.player.teleToLocation(8, 9, 10, 1, false);
+			finished.countDown();
+		});
+		other.start();
+		assertThat(started.await(2, TimeUnit.SECONDS)).isTrue();
+		assertThat(finished.await(200, TimeUnit.MILLISECONDS)).isFalse();
+		assertThat(probe.queued).isEmpty();
+		probe.player._bridgeCompleting = true;
+		probe.player._teleportLock.unlock();
+		assertThat(finished.await(2, TimeUnit.SECONDS)).isTrue();
+		assertThat(probe.player._teleportGeneration).isZero();
+		assertThat(probe.queued).hasSize(1);
+		other.join(1000);
+	}
+	
+	@Test
+	void anOlderCompletionDoesNotClearANewerTeleport()
+	{
+		Probe probe = new Probe();
+		doCallRealMethod().when(probe.player).markBridgeSession();
+		doCallRealMethod().when(probe.player).completeBridgeTeleport(anyLong());
+		probe.player.markBridgeSession();
+		probe.player._teleportGeneration = 2L;
+		probe.player._bridgeCompleting = true;
+		when(probe.player.isTeleporting()).thenReturn(true);
+		
+		probe.player.completeBridgeTeleport(1L);
+		
+		assertThat(probe.player._bridgeCompleting).isTrue();
+		assertThat(probe.player._teleportGeneration).isEqualTo(2L);
+		verify(probe.position, never()).setWorldPosition(anyInt(), anyInt(), anyInt());
+	}
+	
+	@Test
+	void aClosingCharacterDoesNotComplete()
+	{
+		Probe probe = new Probe();
+		doCallRealMethod().when(probe.player).markBridgeSession();
+		doCallRealMethod().when(probe.player).completeBridgeTeleport(anyLong());
+		probe.player.markBridgeSession();
+		when(probe.player.isBridgeClosing()).thenReturn(true);
+		probe.player._teleportGeneration = 1L;
+		when(probe.player.isTeleporting()).thenReturn(true);
+		
+		probe.player.completeBridgeTeleport(1L);
+		
+		assertThat(probe.player._bridgeCompleting).isFalse();
+		verify(probe.position, never()).setWorldPosition(anyInt(), anyInt(), anyInt());
+	}
+	
 	private static final class Probe
 	{
-		final L2Player player = mock(L2Player.class);
+		final L2Player player = HuntTestPlayers.mockPlayer();
 		final L2Client client = mock(L2Client.class);
 		final ObjectPosition position = mock(ObjectPosition.class);
 		final List<Runnable> queued = new ArrayList<>();

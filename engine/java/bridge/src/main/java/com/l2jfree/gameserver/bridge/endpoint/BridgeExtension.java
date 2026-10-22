@@ -34,7 +34,7 @@ public final class BridgeExtension implements GameServerExtension
 		if (!settings.enabled())
 			return;
 		
-		loopback = BridgeLoopback.open(settings);
+		loopback = BridgeLoopback.open(settings, context);
 	}
 	
 	@Override

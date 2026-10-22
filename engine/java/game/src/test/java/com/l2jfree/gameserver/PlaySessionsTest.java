@@ -346,4 +346,15 @@ class PlaySessionsTest
 		
 		assertThat(_clients.events).containsExactly("close bridge");
 	}
+	
+	@Test
+	void aSecondReserveDoesNotBindAgain()
+	{
+		assertThat(_sessions.admitTrusted("anna", "bridge", () -> _clients.events.add("bind"))).isTrue();
+		assertThat(_sessions.admitTrusted("anna", "other", () -> _clients.events.add("bind-again"))).isFalse();
+		
+		assertThat(_clients.events).containsExactly("bind");
+		assertThat(_login.admitted).isEmpty();
+		assertThat(_login.left).isEmpty();
+	}
 }
