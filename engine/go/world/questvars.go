@@ -3,10 +3,9 @@
 
 package world
 
-import (
-	"slices"
-)
+import "slices"
 
+// QuestVar returns the named variable for a quest and whether it exists.
 func (c *Character) QuestVar(quest, name string) (string, bool) {
 	i := slices.IndexFunc(c.QuestVars, func(v QuestVar) bool { return v.Quest == quest && v.Name == name })
 	if i < 0 {
@@ -15,20 +14,11 @@ func (c *Character) QuestVar(quest, name string) (string, bool) {
 	return c.QuestVars[i].Value, true
 }
 
+// SetQuestVar sets the named quest variable, replacing its value if it exists.
 func (c *Character) SetQuestVar(quest, name, value string) {
 	if i := slices.IndexFunc(c.QuestVars, func(v QuestVar) bool { return v.Quest == quest && v.Name == name }); i >= 0 {
 		c.QuestVars[i].Value = value
 		return
 	}
 	c.QuestVars = append(c.QuestVars, QuestVar{Quest: quest, Name: name, Value: value})
-}
-
-func (p *player) count(templateID int32) int64 {
-	var n int64
-	for _, it := range p.char.Items {
-		if it.TemplateID == templateID {
-			n += it.Count
-		}
-	}
-	return n
 }

@@ -28,18 +28,6 @@ func (n xmlNode) attr(name string) (string, bool) {
 	}
 	return "", false
 }
-func (n xmlNode) set(name string) string {
-	for _, a := range n.Children {
-		if a.XMLName.Local == "set" {
-			k, _ := a.attr("name")
-			if k == name {
-				v, _ := a.attr("val")
-				return v
-			}
-		}
-	}
-	return ""
-}
 
 // encoding/xml does not fetch the external document type or expand entities.
 func (c *Catalog) loadStatXML(dir, kind string) error {
