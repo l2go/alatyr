@@ -3,21 +3,21 @@
   "modules": [
     {
       "path": "engine/go/protocol",
-      "module": "github.com/l2go/l2jfree/engine/go/protocol",
+      "module": "github.com/l2go/alatyr/engine/go/protocol",
       "package": "protocol",
       "license": "Apache-2.0",
       "phase": "active"
     },
     {
       "path": "engine/go/gateway",
-      "module": "github.com/l2go/l2jfree/engine/go/gateway",
+      "module": "github.com/l2go/alatyr/engine/go/gateway",
       "package": "gateway",
       "license": "AGPL-3.0-or-later",
       "phase": "scaffold"
     },
     {
       "path": "engine/go/bridge",
-      "module": "github.com/l2go/l2jfree/engine/go/bridge",
+      "module": "github.com/l2go/alatyr/engine/go/bridge",
       "package": "bridge",
       "license": "AGPL-3.0-or-later",
       "phase": "active"
