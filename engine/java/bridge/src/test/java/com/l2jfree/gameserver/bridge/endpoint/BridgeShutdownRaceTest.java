@@ -19,7 +19,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
@@ -48,8 +47,6 @@ class BridgeShutdownRaceTest
 	@Test
 	void aClientBuiltDuringShutdownIsDisconnectedWithoutAdmission() throws Exception
 	{
-		String previousDirectory = System.getProperty("user.dir");
-		System.setProperty("user.dir", Path.of("..", "game").toAbsolutePath().normalize().toString());
 		byte[] secret = new byte[32];
 		for (int i = 0; i < secret.length; i++)
 			secret[i] = 0x3c;
@@ -58,7 +55,7 @@ class BridgeShutdownRaceTest
 		GameServerContext context = mock(GameServerContext.class);
 		when(context.getNetworkServer()).thenReturn(network);
 		BridgeLoopback loop = listener(secret, context);
-		try
+		try (InlinePool pool = InlinePool.open())
 		{
 			Transport transport = new Transport(secret);
 			CountDownLatch atGate = new CountDownLatch(1);
@@ -106,7 +103,6 @@ class BridgeShutdownRaceTest
 		{
 			loop.holdBeforeWatch(null);
 			loop.close(1_000);
-			System.setProperty("user.dir", previousDirectory);
 		}
 	}
 	
