@@ -74,7 +74,7 @@ class BridgeBoundCloseTest
 	{
 		CountDownLatch inStore = new CountDownLatch(1);
 		CountDownLatch release = new CountDownLatch(1);
-		try (Bound bound = Bound.open(invocation ->
+		try (InlinePool pool = InlinePool.open(); Bound bound = Bound.open(invocation ->
 		{
 			inStore.countDown();
 			assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
@@ -109,7 +109,7 @@ class BridgeBoundCloseTest
 	
 	private static void assertBye(org.mockito.stubbing.Answer<Boolean> store, long reason) throws Exception
 	{
-		try (Bound bound = Bound.open(store))
+		try (InlinePool pool = InlinePool.open(); Bound bound = Bound.open(store))
 		{
 			bound.closeOnce();
 			long end = System.nanoTime() + 5_000_000_000L;

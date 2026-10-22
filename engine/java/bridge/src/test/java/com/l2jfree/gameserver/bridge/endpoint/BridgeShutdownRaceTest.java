@@ -17,8 +17,6 @@ package com.l2jfree.gameserver.bridge.endpoint;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.mockStatic;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayOutputStream;
@@ -33,9 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
-import org.mockito.MockedStatic;
 
-import com.l2jfree.gameserver.LoginLink;
 import com.l2jfree.gameserver.bridge.wire.Codec;
 import com.l2jfree.gameserver.bridge.wire.Envelope;
 import com.l2jfree.gameserver.bridge.wire.Field;
@@ -83,7 +79,7 @@ class BridgeShutdownRaceTest
 				Thread.currentThread().interrupt();
 			}
 		});
-		try (MockedStatic<LoginLink> link = mockStatic(LoginLink.class); Socket socket = new Socket())
+		try (InlinePool pool = InlinePool.open(); Socket socket = new Socket())
 		{
 			socket.connect(new InetSocketAddress("127.0.0.1", loop.port()), 1000);
 			socket.getOutputStream().write(frame(open(secret)));
@@ -104,7 +100,7 @@ class BridgeShutdownRaceTest
 			assertThat(loop.clientCount()).isEqualTo(2);
 			finished.set(true);
 			closer.join(5_000);
-			link.verify(LoginLink::getInstance, never());
+			assertThat(admitted.get().getState()).isEqualTo(L2Client.GameClientState.CONNECTED);
 		}
 		finally
 		{
