@@ -313,6 +313,7 @@
 		<module>network</module>
 		<module>scripting</module>
 		<module>contract</module>
+		<module>bridge</module>
 		<module>smoke</module>
 		<module>test-support</module>
 		<module>login</module>

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<!-- Frame codec for the bridge profile. It does not depend on the game or open a port. -->
+	<parent>
+		<groupId>com.l2jfree</groupId>
+		<artifactId>l2jfree-module</artifactId>
+		<version>3.2.0</version>
+		<relativePath>..</relativePath>
+	</parent>
+	<modelVersion>4.0.0</modelVersion>
+	<artifactId>l2jfree-bridge</artifactId>
+	<name>${project.artifactId}-${project.version}</name>
+	<packaging>jar</packaging>
+	<properties>
+		<bridge.failIfNoTests>true</bridge.failIfNoTests>
+	</properties>
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<failIfNoTests>${bridge.failIfNoTests}</failIfNoTests>
+					<excludedGroups>${surefire.excludedGroups}</excludedGroups>
+					<!-- Repeated so this module keeps the parent agent line if a child configuration replaces it. -->
+					<argLine>-javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar ${jfr.argLine} @{jacoco.argLine}</argLine>
+					<systemPropertyVariables>
+						<bridge.coreVectors>${project.basedir}/../../go/protocol/testdata/vectors.json</bridge.coreVectors>
+						<bridge.profileVectors>${project.basedir}/../../go/protocol/testdata/bridge-v1/vectors.json</bridge.profileVectors>
+					</systemPropertyVariables>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+	<profiles>
+		<profile>
+			<!-- A selected group, such as the database tag, matches nothing in this module. -->
+			<id>selected-test-group</id>
+			<activation>
+				<property>
+					<name>groups</name>
+				</property>
+			</activation>
+			<properties>
+				<bridge.failIfNoTests>false</bridge.failIfNoTests>
+			</properties>
+		</profile>
+	</profiles>
+</project>
