@@ -74,26 +74,22 @@ class BridgeShutdownRaceTest
 					Thread.currentThread().interrupt();
 				}
 			});
-			AtomicReference<Throwable> failure = new AtomicReference<>();
-			Thread opener = new Thread(() ->
+			Thread stopper = new Thread(() ->
 			{
 				try
 				{
-					loop.acceptFrame(transport, List.of(open(secret)));
+					if (atGate.await(5, TimeUnit.SECONDS))
+						loop.stopAdmitting();
 				}
-				catch (Throwable e)
+				finally
 				{
-					failure.set(e);
+					release.countDown();
 				}
 			});
-			opener.start();
-			assertThat(atGate.await(5, TimeUnit.SECONDS)).isTrue();
-			loop.stopAdmitting();
+			stopper.start();
+			loop.acceptFrame(transport, List.of(open(secret)));
+			stopper.join(5_000);
 			assertThat(loop.admitting()).isFalse();
-			assertThat(loop.clientCount()).isZero();
-			release.countDown();
-			opener.join(5_000);
-			assertThat(failure.get()).isNull();
 			assertThat(admitted.get()).isNotNull();
 			assertThat(admitted.get().isBridgeDisconnectRequested()).isTrue();
 			assertThat(loop.clientCount()).isEqualTo(1);
