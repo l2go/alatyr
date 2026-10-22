@@ -1,8 +1,37 @@
-# Bridge
+# World bridge client
 
-This module is reserved for the Go adapter to the Java world endpoint.
-It is a documentation-only scaffold with no transport or world implementation.
+This module provides a bounded Go client for the Java world endpoint using the
+`bridge/1` profile and the shared protocol codec. It depends on the protocol
+module and the Go standard library.
+
+The raw world port exposes opening, command handoff, ordered observations,
+receipts, recovery, and closure. Open and Opened negotiate the connection;
+participant Hello, Welcome, and Control records are not accepted by this profile.
+
+One writer owns the connection. Recovery restores a complete checkpoint before
+new commands are admitted. Cached receipts are never replayed as mutations and
+commands are not re-executed after ambiguous transport failures.
+
+The caller owns participant admission, observation references, proposal lifetime,
+and outcome policy. An endpoint receipt alone does not prove a participant
+outcome. Relocation completion remains inside the Java endpoint; the client
+does not acknowledge it with another command.
+
+Core and endpoint conformance inputs are shared with Java in the protocol
+module's testdata directory. CI checks bounds, dependencies, race safety,
+profile fuzzing, and port-level contract traces with a scripted endpoint.
+Joint scenarios run in GitHub Actions after the Java endpoint code is merged.
+Shared gateway traces belong to the separate gateway integration work.
 
 See [Go components](../../../docs/engine-go/README.md).
 
-License: [AGPL-3.0-or-later](LICENSE).
+License: [AGPL-3.0-or-later](LICENSE). The shared protocol fixtures remain under
+the protocol module's Apache-2.0 license.
+
+The protocol dependency is pinned to one published commit. Tests locate the shared
+fixtures through the Go module directory; they do not download a separate copy.
+
+The client returns raw facts and receipts. Participant outcome policy and gateway
+traces remain separate integration work. All returned views transfer read-only
+ownership to the caller. Do not modify them. Command keys must remain unique for
+the lifetime of a client, including across recovery.

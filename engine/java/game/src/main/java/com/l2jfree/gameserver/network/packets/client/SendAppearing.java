@@ -15,8 +15,8 @@
 package com.l2jfree.gameserver.network.packets.client;
 
 import com.l2jfree.gameserver.gameobjects.L2Player;
+import com.l2jfree.gameserver.network.bridge.TeleportCompletion;
 import com.l2jfree.gameserver.network.packets.L2ClientPacket;
-import com.l2jfree.gameserver.network.packets.server.UserInfo;
 
 public final class SendAppearing extends L2ClientPacket
 {
@@ -32,14 +32,10 @@ public final class SendAppearing extends L2ClientPacket
 	protected void runImpl()
 	{
 		L2Player activeChar = getActiveChar();
-		if (activeChar == null)
+		if (activeChar == null || activeChar.isBridgeSession())
 			return;
 		
-		if (activeChar.isTeleporting())
-			activeChar.onTeleported();
-		
-		sendPacket(new UserInfo(activeChar));
-		sendAF();
+		TeleportCompletion.complete(activeChar);
 	}
 	
 	@Override

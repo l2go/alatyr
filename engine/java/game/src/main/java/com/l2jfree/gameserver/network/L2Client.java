@@ -14,12 +14,14 @@
  */
 package com.l2jfree.gameserver.network;
 
+import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.util.ArrayDeque;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +38,8 @@ import com.l2jfree.gameserver.datatables.ClanTable;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.model.CharSelectInfoPackage;
 import com.l2jfree.gameserver.model.clan.L2Clan;
+import com.l2jfree.gameserver.network.bridge.BridgeFailure;
+import com.l2jfree.gameserver.network.bridge.ClientSink;
 import com.l2jfree.gameserver.network.packets.L2ClientPacket;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 import com.l2jfree.gameserver.network.packets.server.LeaveWorld;
@@ -73,12 +77,100 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	private int[] _charSlotMapping;
 	private GameCrypt _crypt;
 	private volatile boolean _disconnected;
+	private final AtomicBoolean _bridgeDisconnectRequested = new AtomicBoolean();
+	private final ClientSink _sink;
+	private L2Player _bridgeOpeningPlayer;
+	private boolean _bridgeOpeningNoted;
+	private L2Player _capturedBridgePlayer;
+	private String _capturedBridgeAccount;
 	private String _hostAddress;
 	private boolean _protocol;
 	
 	public L2Client(NetworkServer<L2Client, L2ClientPacket, L2ServerPacket> networkServer, Channel channel)
 	{
 		super(networkServer, channel);
+		_sink = new OrdinarySink();
+	}
+	
+	private L2Client(NetworkServer<L2Client, L2ClientPacket, L2ServerPacket> networkServer, Channel channel,
+			InetAddress address, ClientSink sink)
+	{
+		super(networkServer, channel, address);
+		_sink = sink;
+	}
+	
+	/**
+	 * A bridge client in the connected state. It uses {@code sink} instead of the connection's packet writer.
+	 */
+	public static L2Client forBridge(NetworkServer<L2Client, L2ClientPacket, L2ServerPacket> networkServer,
+			Channel channel, InetAddress address, ClientSink sink)
+	{
+		if (networkServer == null || channel == null || address == null || sink == null || !sink.isBridge())
+			throw new IllegalArgumentException("bridge client");
+		
+		return new L2Client(networkServer, channel, address, sink);
+	}
+	
+	public boolean isBridge()
+	{
+		return _sink.isBridge();
+	}
+	
+	public void submit(Runnable task)
+	{
+		if (task == null)
+			throw new IllegalArgumentException("task");
+		
+		getPacketQueue().execute(task);
+	}
+	
+	/** Notes the character loaded for a bridge opening, once, before it is published. */
+	public void noteBridgeOpeningPlayer(L2Player player)
+	{
+		if (!isBridge())
+			throw new IllegalStateException("not a bridge client");
+		if (player == null)
+			throw new IllegalArgumentException("player");
+		if (_bridgeOpeningNoted)
+			throw new IllegalStateException("opening player already noted");
+		
+		_bridgeOpeningNoted = true;
+		_bridgeOpeningPlayer = player;
+		player.markBridgeSession();
+	}
+	
+	/** Drops the opening reference after the character has become the active one. */
+	public void finishBridgeOpening()
+	{
+		_bridgeOpeningPlayer = null;
+	}
+	
+	/** Drops the opening reference when this character is detached. */
+	public void discardOpeningPlayer(L2Player player)
+	{
+		if (_bridgeOpeningPlayer == player)
+			_bridgeOpeningPlayer = null;
+	}
+	
+	public L2Player bridgePlayerForCleanup()
+	{
+		L2Player active = _activeChar;
+		return active != null ? active : _bridgeOpeningPlayer;
+	}
+	
+	public boolean isBridgeDisconnectRequested()
+	{
+		return _bridgeDisconnectRequested.get();
+	}
+	
+	public void requestBridgeDisconnect()
+	{
+		DisconnectionExecutor.request(this);
+	}
+	
+	public void publishOwnTeleport(long generation)
+	{
+		_sink.ownTeleported(generation);
 	}
 	
 	private GameCrypt getCrypt()
@@ -91,6 +183,9 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	
 	public byte[] enableCrypt()
 	{
+		if (isBridge())
+			throw new IllegalStateException("A bridge client has no cipher");
+		
 		byte[] key = BlowFishKeygen.getRandomKey();
 		getCrypt().setKey(key);
 		return key;
@@ -109,6 +204,9 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	@Override
 	public boolean decrypt(ByteBuffer buf, int size)
 	{
+		if (isBridge())
+			throw new IllegalStateException("A bridge client has no cipher");
+		
 		getCrypt().decrypt(buf.array(), buf.position(), size);
 		return true;
 	}
@@ -116,6 +214,9 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	@Override
 	public boolean encrypt(final ByteBuffer buf, final int size)
 	{
+		if (isBridge())
+			throw new IllegalStateException("A bridge client has no cipher");
+		
 		getCrypt().encrypt(buf.array(), buf.position(), size);
 		buf.position(buf.position() + size);
 		return true;
@@ -388,6 +489,12 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	
 	void setDisconnected()
 	{
+		if (isBridge())
+		{
+			DisconnectionExecutor.request(this);
+			return;
+		}
+		
 		LoginLink.getInstance().sendLogout(getAccountName(), this);
 		
 		_disconnected = true;
@@ -482,6 +589,9 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	
 	public void initServerPacketQueue()
 	{
+		if (isBridge())
+			return;
+		
 		if (!Config.ENTERWORLD_QUEUING)
 			return;
 		
@@ -508,7 +618,7 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 		
 		try
 		{
-			if (isDisconnected())
+			if (isDisconnected() || isBridgeDisconnectRequested())
 				return;
 			
 			if (!sp.canBeSentTo(this, activeChar))
@@ -516,7 +626,7 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 			
 			sp.prepareToSend(this, activeChar);
 			
-			super.sendPacket(sp);
+			_sink.deliver(sp, activeChar);
 			
 			sp.packetSent(this, activeChar);
 		}
@@ -528,6 +638,12 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	
 	void close(boolean toLoginScreen)
 	{
+		if (isBridge())
+		{
+			DisconnectionExecutor.request(this);
+			return;
+		}
+		
 		super.close(toLoginScreen ? ServerClose.STATIC_PACKET : LeaveWorld.STATIC_PACKET);
 		
 		setDisconnected();
@@ -548,6 +664,9 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	@Override
 	protected L2ServerPacket getDefaultClosePacket()
 	{
+		if (isBridge())
+			throw new IllegalStateException("A bridge client has no closing packet");
+		
 		return LeaveWorld.STATIC_PACKET;
 	}
 	
@@ -570,5 +689,72 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	protected String getUID()
 	{
 		return getAccountName();
+	}
+	
+	boolean beginBridgeDisconnect()
+	{
+		if (!isBridge())
+			return false;
+		if (!_bridgeDisconnectRequested.compareAndSet(false, true))
+			return false;
+		
+		_capturedBridgePlayer = bridgePlayerForCleanup();
+		_capturedBridgeAccount = _accountName;
+		return true;
+	}
+	
+	L2Player capturedBridgePlayer()
+	{
+		return _capturedBridgePlayer;
+	}
+	
+	String capturedBridgeAccount()
+	{
+		return _capturedBridgeAccount;
+	}
+	
+	ClientSink sink()
+	{
+		return _sink;
+	}
+	
+	void closeBridgeTransport()
+	{
+		closeTransport();
+	}
+	
+	void markBridgeDisconnected()
+	{
+		_disconnected = true;
+	}
+	
+	private void writeToConnection(L2ServerPacket packet)
+	{
+		super.sendPacket(packet);
+	}
+	
+	private final class OrdinarySink implements ClientSink
+	{
+		@Override
+		public boolean isBridge()
+		{
+			return false;
+		}
+		
+		@Override
+		public void deliver(L2ServerPacket packet, L2Player player)
+		{
+			writeToConnection(packet);
+		}
+		
+		@Override
+		public void disconnect(BridgeFailure failure)
+		{
+		}
+		
+		@Override
+		public void ownTeleported(long generation)
+		{
+		}
 	}
 }

@@ -220,6 +220,8 @@ import com.l2jfree.gameserver.model.zone.L2JailZone;
 import com.l2jfree.gameserver.model.zone.L2Zone;
 import com.l2jfree.gameserver.network.Disconnection;
 import com.l2jfree.gameserver.network.L2Client;
+import com.l2jfree.gameserver.network.bridge.EffectLedger;
+import com.l2jfree.gameserver.network.bridge.TeleportCompletion;
 import com.l2jfree.gameserver.network.SystemChatChannelId;
 import com.l2jfree.gameserver.network.SystemMessageId;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
@@ -422,6 +424,12 @@ public final class L2Player extends L2Playable
 	}
 	
 	private L2Client _client;
+	
+	/** Stays set after the client is detached, so the delete still takes the teleport lock. */
+	private boolean _bridgeSession;
+	
+	/** Set under the teleport lock when the one bridge disconnect starts. */
+	private boolean _bridgeClosing;
 	
 	private final PlayerAppearance _appearance;
 	
@@ -3584,6 +3592,87 @@ public final class L2Player extends L2Playable
 	public void setClient(L2Client client)
 	{
 		_client = client;
+		if (client != null && client.isBridge())
+			_bridgeSession = true;
+	}
+	
+	public boolean isBridgeSession()
+	{
+		return _bridgeSession;
+	}
+	
+	public void markBridgeSession()
+	{
+		_bridgeSession = true;
+	}
+	
+	public boolean isBridgeClosing()
+	{
+		return _bridgeClosing;
+	}
+	
+	/** Under the teleport lock, marks the character closing and detaches it from the client. */
+	public void detachBridge(L2Client client)
+	{
+		_teleportLock.lock();
+		try
+		{
+			_bridgeClosing = true;
+			if (getClient() == client)
+				setClient(null);
+			if (client != null && client.getActiveChar() == this)
+				client.setActiveChar(null);
+			if (client != null)
+				client.discardOpeningPlayer(this);
+		}
+		finally
+		{
+			_teleportLock.unlock();
+		}
+	}
+	
+	/**
+	 * Finishes generation {@code generation} if it is still the current teleport. The check and the completion hold
+	 * the teleport lock, so another teleport cannot start between them. A second call after the flag drops does nothing.
+	 */
+	public void completeBridgeTeleport(long generation)
+	{
+		if (!_bridgeSession)
+			return;
+		
+		_teleportLock.lock();
+		try
+		{
+			EffectLedger.close();
+			if (_bridgeCompleting || !acceptsBridgeCompletion(generation))
+				return;
+			
+			_bridgeCompleting = true;
+			try
+			{
+				TeleportCompletion.complete(this);
+			}
+			finally
+			{
+				_bridgeCompleting = false;
+				EffectLedger.close();
+			}
+		}
+		finally
+		{
+			_teleportLock.unlock();
+		}
+	}
+	
+	private boolean acceptsBridgeCompletion(long generation)
+	{
+		if (_bridgeClosing || _teleportGeneration != generation || !isTeleporting())
+			return false;
+		if (getOnlineState() == ONLINE_STATE_DELETED)
+			return false;
+		
+		L2Client client = getClient();
+		return client != null && client.isBridge() && !client.isBridgeDisconnectRequested();
 	}
 	
 	public Point3D getCurrentSkillWorldPosition()
@@ -3960,7 +4049,11 @@ public final class L2Player extends L2Playable
 	
 	public void queryGameGuard()
 	{
-		getClient().setGameGuardOk(false);
+		L2Client client = getClient();
+		if (client.isBridge())
+			return;
+		
+		client.setGameGuardOk(false);
 		sendPacket(GameGuardQuery.STATIC_PACKET);
 		if (Config.GAMEGUARD_ENFORCE)
 		{
@@ -3978,6 +4071,8 @@ public final class L2Player extends L2Playable
 		public void run()
 		{
 			L2Client client = getClient();
+			if (client != null && client.isBridge())
+				return;
 			if (client != null && !client.isAuthedGG() && isOnline() == 1)
 			{
 				//GmListTable.broadcastMessageToGMs("Client "+client+" failed to reply GameGuard query and is being kicked!");
@@ -10426,6 +10521,9 @@ public final class L2Player extends L2Playable
 	public void setIsTeleporting(boolean teleport)
 	{
 		super.setIsTeleporting(teleport);
+		if (_bridgeSession)
+			return;
+		
 		if (teleport)
 		{
 			if (Config.TELEPORT_WATCHDOG_TIMEOUT > 0 && _teleportWatchdog == null)
@@ -10721,6 +10819,29 @@ public final class L2Player extends L2Playable
 	}
 	
 	/**
+	 * Publishes the deleted flag once, before the rest of {@link #deleteMe()}.
+	 *
+	 * @return false when this character was already deleted
+	 */
+	private boolean publishDeleted()
+	{
+		if (getOnlineState() == ONLINE_STATE_DELETED || !_deleteStarted.compareAndSet(false, true))
+			return false;
+		
+		// Publish the flag before the rest of the work, so a second deleteMe on this instance returns.
+		try
+		{
+			setOnlineStatus(false);
+		}
+		catch (Exception e)
+		{
+			_log.error(e.getMessage(), e);
+		}
+		
+		return true;
+	}
+	
+	/**
 	 * Manage the delete task of a L2Player (Leave Party, Unsummon pet, Save its inventory in the database, Remove it from the world...).<BR><BR>
 	 *
 	 * <B><U> Actions</U> :</B><BR><BR>
@@ -10739,18 +10860,21 @@ public final class L2Player extends L2Playable
 	{
 		final HashSet<L2Zone> before = getZonesPlayerIn();
 		
-		if (getOnlineState() == ONLINE_STATE_DELETED || !_deleteStarted.compareAndSet(false, true))
+		if (_bridgeSession)
+		{
+			_teleportLock.lock();
+			try
+			{
+				if (!publishDeleted())
+					return;
+			}
+			finally
+			{
+				_teleportLock.unlock();
+			}
+		}
+		else if (!publishDeleted())
 			return;
-		
-		// Publish the flag before the rest of the work, so a second deleteMe on this instance returns.
-		try
-		{
-			setOnlineStatus(false);
-		}
-		catch (Exception e)
-		{
-			_log.error(e.getMessage(), e);
-		}
 		
 		// Pause restrictions
 		ObjectRestrictions.getInstance().pauseTasks(getObjectId());

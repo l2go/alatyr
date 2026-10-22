@@ -58,8 +58,21 @@ public final class PlaySessions<C>
 	private final LoginPort _login;
 	private final Clients<C> _clients;
 	private final Object _accountLock = new Object();
-	private final Map<String, C> _waitingClients = new HashMap<String, C>();
-	private final Map<String, C> _accountsInWorld = new HashMap<String, C>();
+	private final Map<String, Seat<C>> _waitingClients = new HashMap<String, Seat<C>>();
+	private final Map<String, Seat<C>> _accountsInWorld = new HashMap<String, Seat<C>>();
+	
+	/** A client occupying an account, and whether the bridge admitted it without the login module. */
+	private static final class Seat<C>
+	{
+		final C client;
+		final boolean trusted;
+		
+		Seat(C client, boolean trusted)
+		{
+			this.client = client;
+			this.trusted = trusted;
+		}
+	}
 	
 	public PlaySessions(LoginPort login, Clients<C> clients)
 	{
@@ -81,7 +94,7 @@ public final class PlaySessions<C>
 				return false;
 			
 			_clients.claim(client, account);
-			_waitingClients.put(account, client);
+			_waitingClients.put(account, new Seat<C>(client, false));
 		}
 		
 		AdmissionResult result;
@@ -100,7 +113,10 @@ public final class PlaySessions<C>
 			final boolean stillWaiting;
 			synchronized (_accountLock)
 			{
-				stillWaiting = _waitingClients.remove(account, client);
+				Seat<C> waiting = _waitingClients.get(account);
+				stillWaiting = waiting != null && waiting.client == client;
+				if (stillWaiting)
+					_waitingClients.remove(account);
 			}
 			
 			if (stillWaiting)
@@ -115,9 +131,14 @@ public final class PlaySessions<C>
 		C previous = null;
 		synchronized (_accountLock)
 		{
-			loggedOutMeanwhile = !_waitingClients.remove(account, client);
+			Seat<C> waiting = _waitingClients.get(account);
+			loggedOutMeanwhile = waiting == null || waiting.client != client;
 			if (!loggedOutMeanwhile)
-				previous = _accountsInWorld.put(account, client);
+			{
+				_waitingClients.remove(account);
+				Seat<C> previousSeat = _accountsInWorld.put(account, new Seat<C>(client, false));
+				previous = previousSeat == null ? null : previousSeat.client;
+			}
 		}
 		
 		if (loggedOutMeanwhile)
@@ -144,21 +165,62 @@ public final class PlaySessions<C>
 		if (account == null || account.isEmpty())
 			return;
 		
-		boolean wasInWorld = false;
+		boolean tellLogin = false;
 		synchronized (_accountLock)
 		{
-			if (_waitingClients.get(account) == client)
+			Seat<C> waiting = _waitingClients.get(account);
+			if (waiting != null && waiting.client == client)
 				_waitingClients.remove(account);
 			
-			if (_accountsInWorld.get(account) == client)
+			Seat<C> inWorld = _accountsInWorld.get(account);
+			if (inWorld != null && inWorld.client == client)
 			{
 				_accountsInWorld.remove(account);
-				wasInWorld = true;
+				// A trusted entry is dropped here without telling the login module.
+				tellLogin = !inWorld.trusted;
 			}
 		}
 		
-		if (wasInWorld)
+		if (tellLogin)
 			leave(account);
+	}
+	
+	/**
+	 * Reserves the account for a bridge client when nobody is waiting or in the world. The login module is not asked.
+	 * {@code bindAccount} runs under the same lock as the insertion, and only when the reserve succeeds.
+	 * 
+	 * @return false when the account is already taken
+	 */
+	public boolean admitTrusted(String account, C client, Runnable bindAccount)
+	{
+		if (account == null || account.isEmpty() || client == null)
+			return false;
+		
+		synchronized (_accountLock)
+		{
+			if (_waitingClients.containsKey(account) || _accountsInWorld.containsKey(account))
+				return false;
+			
+			if (bindAccount != null)
+				bindAccount.run();
+			
+			_accountsInWorld.put(account, new Seat<C>(client, true));
+			return true;
+		}
+	}
+	
+	/** Drops a trusted reserve of this same client. An ordinary reserve is left in place, and the login is not told. */
+	public void leaveTrusted(String account, C client)
+	{
+		if (account == null || account.isEmpty() || client == null)
+			return;
+		
+		synchronized (_accountLock)
+		{
+			Seat<C> seat = _accountsInWorld.get(account);
+			if (seat != null && seat.client == client && seat.trusted)
+				_accountsInWorld.remove(account);
+		}
 	}
 	
 	/** Disconnects the clients of the account: it logged in again, or the login asks for it. */
@@ -168,8 +230,10 @@ public final class PlaySessions<C>
 		final C waiting;
 		synchronized (_accountLock)
 		{
-			inWorld = _accountsInWorld.get(account);
-			waiting = _waitingClients.get(account);
+			Seat<C> worldSeat = _accountsInWorld.get(account);
+			Seat<C> waitingSeat = _waitingClients.get(account);
+			inWorld = worldSeat == null ? null : worldSeat.client;
+			waiting = waitingSeat == null ? null : waitingSeat.client;
 		}
 		
 		if (inWorld != null)

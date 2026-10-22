@@ -97,14 +97,31 @@ public abstract class Connection<T extends Connection<T, RP, SP>, RP extends Rec
 	 */
 	protected Connection(NetworkServer<T, RP, SP> networkServer, Channel channel)
 	{
+		this(networkServer, channel, remoteAddress(channel));
+	}
+	
+	/**
+	 * @param networkServer the server this connection belongs to
+	 * @param channel the channel that carries the connection
+	 * @param address the address reported for the connection, when the channel has no socket
+	 */
+	protected Connection(NetworkServer<T, RP, SP> networkServer, Channel channel, InetAddress address)
+	{
+		if (address == null)
+			throw new IllegalArgumentException("The connection has no address");
+		
 		_networkServer = networkServer;
 		_channel = channel;
-		
+		_inetAddress = address;
+	}
+	
+	private static InetAddress remoteAddress(Channel channel)
+	{
 		final SocketAddress remote = channel.remoteAddress();
 		if (!(remote instanceof InetSocketAddress))
 			throw new IllegalArgumentException("The channel has no inet remote address: " + remote);
 		
-		_inetAddress = ((InetSocketAddress)remote).getAddress();
+		return ((InetSocketAddress)remote).getAddress();
 	}
 	
 	/**
@@ -195,6 +212,27 @@ public abstract class Connection<T extends Connection<T, RP, SP>, RP extends Rec
 			return;
 		
 		closeAfter(sp, CLOSE_TIMEOUT_MILLIS);
+	}
+	
+	/**
+	 * Closes the channel without queueing a last packet. A later inactive notification still ends the connection once.
+	 */
+	protected final void closeTransport()
+	{
+		synchronized (_lock)
+		{
+			_closing = true;
+			_sendQueue.clear();
+		}
+		
+		try
+		{
+			_channel.close();
+		}
+		catch (RuntimeException e)
+		{
+			// the channel may already be closed
+		}
 	}
 	
 	private void closeAfter(SP sp, final long timeoutMillis)

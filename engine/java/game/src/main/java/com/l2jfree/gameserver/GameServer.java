@@ -477,6 +477,7 @@ public final class GameServer extends L2AutoInitialization
 		_log.info("Server loaded in " + ((System.currentTimeMillis() - serverLoadStart) / 1000) + " seconds.");
 		
 		StartupManager.onStartup();
+		GameServerExtensions.start();
 		
 		Util.printSection("GameServerLog");
 		if (Config.ENABLE_JYTHON_SHELL)
