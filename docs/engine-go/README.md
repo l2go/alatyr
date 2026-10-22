@@ -9,6 +9,7 @@ features to move to Go incrementally behind a stable participant interface.
 | [protocol](../../engine/go/protocol/README.md) | Active transport and session core; a client SDK is planned separately | [Apache-2.0](../../engine/go/protocol/LICENSE) |
 | [gateway](../../engine/go/gateway/README.md) | Documentation-only scaffold for participant connections, projections, and world access | [AGPL-3.0-or-later](../../engine/go/gateway/LICENSE) |
 | [bridge](../../engine/go/bridge/README.md) | Bounded world client, profile validation, recovery, and raw receipts; joint endpoint scenarios follow separately | [AGPL-3.0-or-later](../../engine/go/bridge/LICENSE) |
+| [world](../../engine/go/world/README.md) | Ready-character entry, movement, persistence and authored stat content | [AGPL-3.0-or-later](../../engine/go/world/LICENSE) |
 
 The protocol module contains the `wire` and `proto` packages and the shared
 [historical conformance inputs](../../engine/go/protocol/testdata/vectors.json).

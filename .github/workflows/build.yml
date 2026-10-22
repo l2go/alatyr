@@ -57,7 +57,7 @@ jobs:
           go work sync
           git diff --exit-code -- go.work go.work.sum tools/world/go.mod tools/world/go.sum engine/go
           test ! -e go.work.sum
-          for module in tools/world engine/go/protocol engine/go/gateway; do
+          for module in tools/world engine/go/protocol engine/go/gateway engine/go/world; do
             test ! -e "$module/go.sum"
           done
           printf '%s\n' \
@@ -84,14 +84,14 @@ jobs:
           GOWORK: "off"
         run: |
           set -euo pipefail
-          for module in protocol gateway bridge; do
+          for module in protocol gateway bridge world; do
             (cd "engine/go/$module" && go vet ./... && go test -race -count=1 -timeout=2m ./...)
           done
 
       - name: Check each module in the workspace
         run: |
           set -euo pipefail
-          for module in protocol gateway bridge; do
+          for module in protocol gateway bridge world; do
             (cd "engine/go/$module" && go test -count=1 -timeout=2m ./...)
           done
 
@@ -116,7 +116,7 @@ jobs:
           GOWORK: "off"
         run: |
           set -euo pipefail
-          for module in protocol gateway bridge; do
+          for module in protocol gateway bridge world; do
             (cd "engine/go/$module" && govulncheck -test ./...)
           done
 
@@ -142,7 +142,7 @@ jobs:
           set -euo pipefail
           git diff --exit-code
           test ! -e go.work.sum
-          for module in tools/world engine/go/protocol engine/go/gateway; do
+          for module in tools/world engine/go/protocol engine/go/gateway engine/go/world; do
             test ! -e "$module/go.sum"
           done
           printf '%s\n' \
