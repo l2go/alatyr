@@ -143,6 +143,6 @@ Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporat
 |---|---|
 | `engine/java/`, `deploy/`, `tools/ci/`, everything not listed below | [GPL-3.0-or-later](LICENSE) |
 | `engine/go/protocol/` | [Apache-2.0](engine/go/protocol/LICENSE) |
-| `engine/go/gateway/`, `engine/go/bridge/` | [AGPL-3.0-or-later](engine/go/gateway/LICENSE); each module carries its own license file |
+| `engine/go/gateway/`, `engine/go/bridge/`, `engine/go/world/` | [AGPL-3.0-or-later](engine/go/gateway/LICENSE); each module carries its own license file |
 | `tools/world/` | [AGPL-3.0-or-later](tools/world/LICENSE) |
 | `world/` | [CC BY-SA 4.0](world/LICENSE); its format definitions in `world/src/data/templates/` stay under GPL-3.0-or-later |

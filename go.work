@@ -6,5 +6,6 @@ use (
 	./engine/go/bridge
 	./engine/go/gateway
 	./engine/go/protocol
+	./engine/go/world
 	./tools/world
 )
