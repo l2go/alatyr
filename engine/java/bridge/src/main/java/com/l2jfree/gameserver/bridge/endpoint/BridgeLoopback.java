@@ -172,9 +172,17 @@ final class BridgeLoopback implements Runnable
 		transport.pending.write(got);
 		try
 		{
-			List<Envelope> records = takeFrame(transport);
-			if (records != null)
-				acceptFrame(key, transport, records);
+			while (true)
+			{
+				List<Envelope> records = takeFrame(transport);
+				if (records == null)
+				{
+					if (transport.pending.size() > FRAME_CAP + 10)
+						throw WireException.frame();
+					break;
+				}
+				acceptFrame(transport, records);
+			}
 		}
 		catch (WireException e)
 		{
@@ -185,7 +193,7 @@ final class BridgeLoopback implements Runnable
 		flushKey(key);
 	}
 	
-	private void acceptFrame(SelectionKey key, Transport transport, List<Envelope> records) throws IOException
+	private void acceptFrame(Transport transport, List<Envelope> records) throws IOException
 	{
 		BridgeReply reply = transport.dialogue.accept(records);
 		if (reply.admit)
