@@ -283,6 +283,13 @@ final class BridgeLoopback implements Runnable
 	 */
 	private void admit(Transport transport, BridgeReply reply) throws IOException
 	{
+		if (!admitting)
+		{
+			offer(transport, frame(List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_CLOSED))));
+			armClose(transport);
+			selector.wakeup();
+			return;
+		}
 		if (transport.client != null)
 			throw new IllegalStateException("already admitted");
 		
