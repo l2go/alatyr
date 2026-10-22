@@ -12,7 +12,7 @@ import (
 	"math"
 	"slices"
 
-	"github.com/l2go/l2jfree/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
 
 var ErrState = errors.New("invalid state transition")

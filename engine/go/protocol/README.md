@@ -5,8 +5,8 @@ It depends only on its own packages and the Go standard library.
 
 | Package | Responsibility |
 |---|---|
-| `github.com/l2go/l2jfree/engine/go/protocol/wire` | Bounded binary frames, typed fields, core envelopes, and configurable extension schemas |
-| `github.com/l2go/l2jfree/engine/go/protocol/proto` | Version negotiation, connection state, control and projection epochs, and attempt outcomes |
+| `github.com/l2go/alatyr/engine/go/protocol/wire` | Bounded binary frames, typed fields, core envelopes, and configurable extension schemas |
+| `github.com/l2go/alatyr/engine/go/protocol/proto` | Version negotiation, connection state, control and projection epochs, and attempt outcomes |
 
 Callers supply limits, supported versions, profile identifiers, and extension
 schemas. Session operations must be serialized by the caller. These packages do

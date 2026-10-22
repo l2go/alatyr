@@ -7,7 +7,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/l2go/l2jfree/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
 
 func fixture(t *testing.T) *Session {

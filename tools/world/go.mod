@@ -1,4 +1,4 @@
-module github.com/l2go/l2jfree/tools/world
+module github.com/l2go/alatyr/tools/world
 
 go 1.27.1
 
