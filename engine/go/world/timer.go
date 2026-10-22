@@ -33,8 +33,15 @@ func (q *tasks) Pop() any {
 }
 
 func (s *state) after(d time.Duration, f func(*state)) {
+	s.afterRule(d, RuleTimer, f)
+}
+func (s *state) afterRule(d time.Duration, rule Rule, f func(*state)) {
+	if s.seq == ^uint64(0) {
+		s.err = ErrExhausted
+		return
+	}
 	s.seq++
-	heap.Push(&s.timers, task{at: time.Now().Add(d), seq: s.seq, run: f})
+	heap.Push(&s.timers, task{at: time.Now().Add(d), seq: s.seq, run: func(s *state) { s.rule(rule, func() { f(s) }) }})
 }
 
 func (s *state) runDue() (time.Duration, bool) {
@@ -45,6 +52,9 @@ func (s *state) runDue() (time.Duration, bool) {
 		}
 		heap.Pop(&s.timers)
 		next.run(s)
+		if s.err != nil {
+			return 0, false
+		}
 	}
 	return 0, false
 }

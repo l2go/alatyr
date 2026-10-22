@@ -4,9 +4,10 @@
 package world
 
 import (
-	"github.com/l2go/alatyr/engine/go/world/catalog"
 	"math"
 	"time"
+
+	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
 
 const (
@@ -30,17 +31,20 @@ func (w *World) die(s *state, a, killer actor) {
 	w.startDying(s, a)
 	w.setHP(s, a, 0)
 	c.dead = true
+	s.change(c.ref(), PropertyDead, Value{}, boolValue(true))
 	if p, ok := a.(*player); ok {
 		w.setTarget(s, p, 0)
 		p.castSeq++
+		s.change(p.ref(), PropertyCasting, boolValue(p.casting), IntValue(0))
 		p.casting = false
 	}
+	s.change(c.ref(), PropertyTarget, RefValue(s.ref(c.target)), RefValue(Ref{}))
 	c.target = 0
 	w.stopMove(s, a)
 	c.regenOn = false
 	c.ai.next = nil
 	if n, ok := a.(*npc); ok && n.mob() {
-		w.calculateRewards(s, n, killer)
+		s.rule(RuleReward, func() { w.calculateRewards(s, n, killer) })
 	}
 	w.markBroadcast(s, a, broadcastStatus|broadcastFullInfo)
 	w.notifyDead(s, a)
@@ -109,10 +113,15 @@ func (w *World) addExpAndSP(s *state, p *player, exp int64, sp int32, vitality b
 	}
 	exp = max(min(exp, math.MaxInt64-p.char.Exp), 0)
 	sp = max(min(sp, math.MaxInt32-p.char.SP), 0)
+	oldXP, oldSP := p.char.Exp, p.char.SP
 	w.addExp(s, p, exp)
 	p.char.SP += sp
-	p.send(Rewarded{ObjectID: p.id, Exp: exp, SP: sp})
-	p.send(SelfInfo{})
+	s.group([]Effect{
+		ResourceTransferred{Resource: Resource{Kind: "xp"}, From: ResourceLocation{Place: "reward"}, To: ResourceLocation{Entity: p.ref(), Place: "character"}, Quantity: exp, ToQuantityBefore: oldXP, ToQuantityAfter: p.char.Exp},
+		ResourceTransferred{Resource: Resource{Kind: "sp"}, From: ResourceLocation{Place: "reward"}, To: ResourceLocation{Entity: p.ref(), Place: "character"}, Quantity: int64(sp), ToQuantityBefore: int64(oldSP), ToQuantityAfter: int64(p.char.SP)},
+	})
+	p.send(Rewarded{ObjectID: p.id, XP: exp, SP: sp})
+	p.send(SelfChanged{})
 }
 func (w *World) addExp(s *state, p *player, value int64) {
 	p.char.Exp += value
@@ -131,6 +140,7 @@ func (w *World) addExp(s *state, p *player, value int64) {
 func (w *World) addLevel(s *state, p *player, level int32) {
 	before := p.level()
 	p.char.Level = level
+	s.change(p.ref(), PropertyLevel, IntValue(int64(before)), IntValue(int64(level)))
 	p.stats.Level = level
 	if level > before {
 		w.setHP(s, p, float64(p.maxHP()))
@@ -208,7 +218,7 @@ func (w *World) tickDecay(s *state) {
 		w.decay(s, n)
 	}
 	s.decay = kept
-	s.after(decayPeriod, w.tickDecay)
+	s.afterRule(decayPeriod, RuleDecay, w.tickDecay)
 }
 
 func (w *World) decay(s *state, n *npc) {
@@ -220,6 +230,7 @@ func (w *World) decay(s *state, n *npc) {
 			w.setTarget(s, p, 0)
 		}
 		delete(p.known, n.id)
+		s.change(p.ref(), PropertyKnownObject, RefValue(n.ref()), RefValue(Ref{}))
 		p.send(ObjectGone{ObjectID: n.id})
 		w.notifyForget(s, p, n.id)
 	}
@@ -230,10 +241,11 @@ func (w *World) decay(s *state, n *npc) {
 			break
 		}
 	}
+	s.group([]Effect{ExistenceChanged{Entity: n.ref(), Before: true}})
 	delete(s.npcs, n.id)
 	delay := max(time.Duration(n.spawn.RespawnDelay)*time.Second, minRespawn)
 	sp, t := n.spawn, n.tmpl
-	s.after(delay, func(s *state) { w.respawn(s, sp, t) })
+	s.afterRule(delay, RuleRespawn, func(s *state) { w.respawn(s, sp, t) })
 }
 
 func (w *World) respawn(s *state, sp catalog.Spawn, t catalog.NPCTemplate) {
@@ -258,6 +270,7 @@ func (w *World) respawn(s *state, sp catalog.Spawn, t catalog.NPCTemplate) {
 		}
 		if !p.known[n.id] {
 			p.known[n.id] = true
+			s.change(p.ref(), PropertyKnownObject, RefValue(Ref{}), RefValue(n.ref()))
 			p.send(NPCSeen{NPC: n.view(now)})
 		}
 		w.learnPlayer(s, n, p)

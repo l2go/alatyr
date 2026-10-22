@@ -27,32 +27,40 @@ func (w *World) decayPlayer(s *state, p *player) {
 	}
 	w.setTarget(s, p, 0)
 	w.stopFollow(s, p)
+	s.change(p.ref(), PropertyCombat, boolValue(p.ai.autoAttacking), IntValue(0))
 	p.ai = ai{}
 	p.lastFolk = 0
+	s.change(p.ref(), PropertyDialogue, LabelValue(p.dialogue), LabelValue(""))
+	p.dialogue = ""
 	p.bypass = nil
 	p.bypassPrefix = nil
+	s.change(p.ref(), PropertyLearning, boolValue(p.learning), IntValue(0))
 	p.learning = false
 }
 
+// Appear completes a pending teleport using the current legacy incarnation.
+// A generation-fenced command surface is separate from this legacy call.
 func (w *World) Appear(ctx context.Context, id int32) error {
-	return w.act(ctx, id, func(s *state, p *player) {
+	return w.act(ctx, id, VerbAppear, func(s *state, p *player) {
 		if p.teleporting {
 			p.teleporting = false
+			s.change(p.ref(), PropertyTeleporting, boolValue(true), Value{})
 			w.place(s, p)
 			w.revalidateZone(s, p)
 			if p.pendingRevive {
 				w.revive(s, p)
 			}
-			p.send(SelfInfo{})
+			p.send(SelfChanged{})
 		}
-		p.send(SelfInfo{})
-		p.send(RequestIgnored{})
+		p.send(SelfChanged{})
+		p.send(ActionIgnored{})
 	})
 }
 
 func (w *World) revive(s *state, p *player) {
 	p.pendingRevive = false
 	p.dead = false
+	s.change(p.ref(), PropertyDead, boolValue(true), Value{})
 	w.setHP(s, p, float64(p.maxHP())*respawnRestoreHP)
 	w.broadcastToKnown(s, p, Revived{ObjectID: p.id})
 }

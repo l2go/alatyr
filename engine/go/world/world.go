@@ -15,7 +15,12 @@ import (
 	"github.com/l2go/alatyr/engine/go/world/itemlog"
 )
 
+// Run owns mutable gameplay until cancellation or identity exhaustion.
+// Shutdown closes notifications but does not save characters implicitly.
 func (w *World) Run(ctx context.Context) error {
+	if w.s == nil {
+		return ErrUninitialized
+	}
 	if !w.running.CompareAndSwap(false, true) {
 		return ErrRunning
 	}
@@ -29,7 +34,13 @@ func (w *World) Run(ctx context.Context) error {
 	timer := time.NewTimer(time.Hour)
 	defer timer.Stop()
 	for {
+		if s.err != nil {
+			return s.err
+		}
 		wait, pending := s.runDue()
+		if s.err != nil {
+			return s.err
+		}
 		w.flush(s)
 		if !pending {
 			wait = time.Hour
@@ -47,9 +58,18 @@ func (w *World) Run(ctx context.Context) error {
 }
 
 func (w *World) do(ctx context.Context, f func(*state)) error {
+	if w.s == nil {
+		return ErrUninitialized
+	}
 	done := make(chan struct{})
+	var result error
 	select {
-	case w.cmds <- func(s *state) { f(s); w.flush(s); close(done) }:
+	case w.cmds <- func(s *state) {
+		s.rule(RuleHost, func() { f(s) })
+		result = s.err
+		w.flush(s)
+		close(done)
+	}:
 	case <-w.stopped:
 		return ErrStopped
 	case <-ctx.Done():
@@ -57,22 +77,41 @@ func (w *World) do(ctx context.Context, f func(*state)) error {
 	}
 	// Once accepted, the bounded command completes even if its caller cancels.
 	<-done
-	return nil
+	return result
+}
+
+func (w *World) doCommand(ctx context.Context, id int32, verb Verb, f func(*state)) error {
+	return w.do(ctx, func(s *state) { s.command(s.ref(id), verb, func() { f(s) }) })
 }
 
 var (
-	ErrStopped    = errors.New("world: stopped")
-	ErrRunning    = errors.New("world: Run already called")
+	// ErrStopped reports a command submitted after Run ended.
+	ErrStopped = errors.New("world: stopped")
+	// ErrRunning reports a second call to Run.
+	ErrRunning = errors.New("world: run already called")
+	// ErrNotPresent reports a missing live character.
 	ErrNotPresent = errors.New("world: character not present")
-	ErrPresent    = errors.New("world: character already present or awaiting persistence")
-	ErrMove       = errors.New("world: invalid movement")
-	ErrSaving     = errors.New("world: save already in progress")
-	ErrCombat     = errors.New("world: combat prevents logout")
+	// ErrPresent reports an identity in use or awaiting persistence.
+	ErrPresent = errors.New("world: character already present or awaiting persistence")
+	// ErrMove reports movement rejected before execution.
+	ErrMove = errors.New("world: invalid movement")
+	// ErrSaving reports an overlapping persistence operation.
+	ErrSaving = errors.New("world: save already in progress")
+	// ErrCombat reports voluntary logout during combat stance.
+	ErrCombat = errors.New("world: combat prevents logout")
+	// ErrExhausted reports exhaustion of a monotonic identity or sequence.
+	ErrExhausted = errors.New("world: identity exhausted")
+	// ErrUninitialized reports use of a World not constructed by New.
+	ErrUninitialized = errors.New("world: uninitialized")
 )
 
+// Store persists detached characters. The host owns retries and transactions.
 type Store interface {
 	PutCharacter(context.Context, Character) error
 }
+
+// World is a single-owner gameplay simulation. Construct it with New.
+// The zero value returns ErrUninitialized instead of starting a loop.
 type World struct {
 	cat           *catalog.Catalog
 	store         Store
@@ -85,6 +124,7 @@ type World struct {
 	experience    []int64
 	announcements []string
 	ground        Ground
+	durability    func(Durability)
 }
 type state struct {
 	players                                                         map[int32]*player
@@ -103,6 +143,12 @@ type state struct {
 	rng                                                             *rand.Rand
 	ids                                                             *ids
 	reserved                                                        map[int32]bool
+	started                                                         time.Time
+	generation                                                      uint64
+	err                                                             error
+	commandSeq, commitSeq                                           uint64
+	batch                                                           *commitBatch
+	observe                                                         func(Commit)
 }
 
 type pendingSave struct {
@@ -110,13 +156,17 @@ type pendingSave struct {
 	saving bool
 }
 
+// New constructs a world and applies options before spawning. It starts no
+// goroutines; the host calls Run and owns its cancellation.
 func New(cat *catalog.Catalog, store Store, options ...Option) *World {
 	w := &World{cat: cat, store: store, cmds: make(chan func(*state)), stopped: make(chan struct{}), s: &state{players: map[int32]*player{}, pending: map[int32]*pendingSave{}}}
 	w.started = time.Now()
+	w.s.started = w.started
 	w.items = itemlog.Discard
 	w.ground = NoGround{}
 	var seed [32]byte
-	crand.Read(seed[:])
+	// crypto/rand.Read fills the slice or terminates the process in modern Go.
+	_, _ = crand.Read(seed[:])
 	w.s.rng = rand.New(rand.NewChaCha8(seed))
 	w.s.npcs = map[int32]*npc{}
 	w.s.ground = map[int32]*groundItem{}
@@ -132,18 +182,18 @@ func New(cat *catalog.Catalog, store Store, options ...Option) *World {
 	}
 	w.s.ids = newIDs(used)
 	if cat != nil {
-		w.spawnAll(w.s)
+		w.s.rule(RuleSpawn, func() { w.spawnAll(w.s) })
 	}
 	w.startManagers(w.s)
 	w.startGameClock(w.s)
-	w.s.after(decayPeriod, w.tickDecay)
+	w.s.afterRule(decayPeriod, RuleDecay, w.tickDecay)
 	return w
 }
 func (w *World) flush(s *state) {
 	for _, p := range s.players {
 		for _, e := range p.outbox {
-			if _, ok := e.(SelfInfo); ok {
-				e = SelfInfo{Self: w.selfOf(p)}
+			if _, ok := e.(SelfChanged); ok {
+				e = SelfChanged{Self: w.selfOf(p)}
 			}
 			p.deliver(e)
 		}

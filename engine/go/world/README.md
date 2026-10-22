@@ -57,6 +57,23 @@ notifications, not a wire format, command receipt or effect ledger. The host
 must drain events; a slow consumer has its channel closed without blocking the
 loop. Channel closure does not automatically remove or save the character.
 
+`WithCommits` installs a bounded synchronous observer of source-authored
+transitions. A `Commit` fixes an `Outcome` with ordered atomic `EffectGroup`
+values. Each group names its cause: an intent or a world rule. References use
+`Ref{ID, Gen}` for incarnations, and timestamps use monotonic world `Time`.
+The observer receives detached values, must not call back into the world, and
+must filter knowledge before external delivery. There is no retained log.
+An absent `Outcome.Intent` means no intent outcome, not a successful command.
+Legacy command handoff remains unknown unless its promised transition is proven.
+
+Learning fixes one group containing the SP transfer and skill capability.
+`WithDurability` reports the subsequent external skill write separately; an
+error does not rewrite the in-memory outcome or claim rollback. `Fact` values
+are closed values with typed accessors, not arbitrary payloads. `Affordance`
+and deadline-bearing `Intent` are neutral forms, not yet a new command surface.
+`WithRandomSource` supplies an exclusively owned random source before spawn;
+the default remains crypto-seeded ChaCha8, without a bit-exact replay promise.
+
 `Leave` closes events and saves a detached snapshot outside the loop.
 A failed save can be retried; re-entry is blocked until it succeeds.
 `Logout` also checks combat stance atomically with departure.
@@ -68,4 +85,4 @@ Verify this module with `go vet ./...` and
 Tests use virtual time and synthetic fixtures; authored catalog tests read the
 repository's CC-BY-SA-4.0 world directly, without copying its data.
 
-not yet: shops; healing items and HEAL_STATIC; hunt-reward parity (#263); automatic return without restart0; character creation and authored start points; pgstore.
+not yet: deadline admission and general affordances; full scene capture, reasoned subscription closure and relocation fences; shops; healing items and HEAL_STATIC; hunt-reward parity (#263); automatic return without restart0; character creation and authored start points; pgstore.

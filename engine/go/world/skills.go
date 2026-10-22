@@ -5,9 +5,10 @@ package world
 
 import (
 	"cmp"
-	"github.com/l2go/alatyr/engine/go/world/catalog"
 	"slices"
 	"strings"
+
+	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
 
 func (p *player) skillLevel(id int32) int32 {
@@ -33,6 +34,13 @@ func (p *player) shownSkills() []Skill {
 }
 
 func (w *World) addSkill(s *state, p *player, k Skill) {
+	old := p.skillLevel(k.ID)
+	w.putSkill(s, p, k)
+	if old != k.Level {
+		s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: "skill", ID: k.ID, Before: max(old, 0), After: k.Level}})
+	}
+}
+func (w *World) putSkill(s *state, p *player, k Skill) {
 	old := p.skillLevel(k.ID)
 	p.memSkills = slices.DeleteFunc(p.memSkills, func(o Skill) bool { return o.ID == k.ID })
 	if i := slices.IndexFunc(p.char.Skills, func(o Skill) bool { return o.ID == k.ID }); i >= 0 {
@@ -83,10 +91,12 @@ func weaponAllowed(sk catalog.Skill, worn map[int32]catalog.ItemTemplate) bool {
 	return false
 }
 func (w *World) removeSkill(s *state, p *player, id int32) bool {
-	had := p.skillLevel(id) >= 1
+	old := p.skillLevel(id)
+	had := old >= 1
 	p.char.Skills = slices.DeleteFunc(p.char.Skills, func(k Skill) bool { return k.ID == id })
 	p.memSkills = slices.DeleteFunc(p.memSkills, func(k Skill) bool { return k.ID == id })
 	if had {
+		s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: "skill", ID: id, Before: old}})
 		w.refreshSkillFuncs(p)
 		w.markBroadcast(s, p, broadcastFullInfo|broadcastSkillList)
 	}

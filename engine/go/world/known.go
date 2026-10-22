@@ -11,7 +11,7 @@ import (
 func (w *World) fullInfo(s *state, a actor) {
 	switch v := a.(type) {
 	case *player:
-		v.send(SelfInfo{Self: w.selfOf(v)})
+		v.send(SelfChanged{Self: w.selfOf(v)})
 		var seen *PlayerSeen
 		for _, q := range s.players {
 			if q != v && q.known[v.id] {
@@ -47,15 +47,17 @@ func (w *World) tickRevalidate(s *state) {
 		w.updateKnown(s, a)
 		w.revalidateZone(s, a)
 	}
-	s.after(revalidatePeriod, w.tickRevalidate)
+	s.afterRule(revalidatePeriod, RuleVisibility, w.tickRevalidate)
 }
 
 func (w *World) addStance(s *state, a actor) {
 	c := a.base()
+	old := s.stance[c.id]
 	if s.stance[c.id].IsZero() {
 		s.stanceOrder = append(s.stanceOrder, c.id)
 	}
 	s.stance[c.id] = time.Now().Add(combatTime)
+	s.change(c.ref(), PropertyCombatUntil, TimeValue(s.at(old)), TimeValue(s.at(s.stance[c.id])))
 }
 
 func (w *World) tickStance(s *state) {
@@ -70,12 +72,14 @@ func (w *World) tickStance(s *state) {
 		}
 		delete(s.stance, id)
 		if a, ok := s.actor(id); ok {
+			s.change(a.base().ref(), PropertyCombatUntil, TimeValue(s.at(until)), TimeValue(0))
 			w.broadcastToKnown(s, a, CombatStance{ObjectID: id})
+			s.change(a.base().ref(), PropertyCombat, boolValue(a.base().ai.autoAttacking), IntValue(0))
 			a.base().ai.autoAttacking = false
 		}
 		return true
 	})
-	s.after(stancePeriod, w.tickStance)
+	s.afterRule(stancePeriod, RuleCombatStance, w.tickStance)
 }
 
 func (w *World) broadcastToKnown(s *state, a actor, e Event) {
@@ -154,6 +158,9 @@ func (w *World) playerForget(s *state, p *player) {
 }
 
 func (w *World) playerForgetObject(s *state, p *player, id int32) {
+	if p.known[id] {
+		s.change(p.ref(), PropertyKnownObject, RefValue(s.ref(id)), RefValue(Ref{}))
+	}
 	delete(p.known, id)
 	if n, ok := s.npcs[id]; ok {
 		delete(n.base().listeners, p.id)
@@ -190,6 +197,7 @@ func (w *World) playerLearn(s *state, p *player, now time.Time) {
 			w.learnPlayer(s, n, p)
 			if distance3D(n.pos, p.pos) <= playerWatch(len(p.known)) && !p.known[id] {
 				p.known[id] = true
+				s.change(p.ref(), PropertyKnownObject, RefValue(Ref{}), RefValue(n.ref()))
 				p.send(NPCSeen{NPC: n.view(now)})
 				w.describeState(s, n, p)
 			}
@@ -199,6 +207,7 @@ func (w *World) playerLearn(s *state, p *player, now time.Time) {
 		if !p.known[g.id] && distance3D(p.pos, g.pos) <= playerWatch(len(p.known)) {
 			t, _ := w.cat.Item(g.templateID)
 			p.known[g.id] = true
+			s.change(p.ref(), PropertyKnownObject, RefValue(Ref{}), RefValue(g.ref()))
 			p.send(ItemDropped{ObjectID: g.id, TemplateID: g.templateID, Count: g.count, Pos: g.pos, Stackable: t.Stackable()})
 		}
 	}
@@ -209,6 +218,7 @@ func (w *World) playerKnow(s *state, p, q *player) {
 		return
 	}
 	p.known[q.id] = true
+	s.change(p.ref(), PropertyKnownObject, RefValue(Ref{}), RefValue(q.ref()))
 	p.send(PlayerSeen{Player: w.selfOf(q)})
 	w.describeState(s, q, p)
 }
@@ -287,7 +297,11 @@ func (w *World) revalidateZone(s *state, a actor) {
 	if p, ok := a.(*player); ok && !p.teleporting {
 		zone := w.cat.ZoneAt(p.pos.X, p.pos.Y, p.pos.Z)
 		if zone != p.zone {
+			old := p.zone
 			p.zone = zone
+			s.group(nil,
+				Fact{Subject: p.ref(), Property: PropertyPeaceZone, Before: boolValue(old.Peace), After: boolValue(zone.Peace)},
+				Fact{Subject: p.ref(), Property: PropertyPvPZone, Before: boolValue(old.PvP), After: boolValue(zone.PvP)})
 			p.send(ZoneChanged{ObjectID: p.id, Zone: zone})
 		}
 	}
@@ -311,16 +325,17 @@ const (
 )
 
 func (w *World) startManagers(s *state) {
-	s.after(tickPeriod, w.tickMovement)
+	s.afterRule(tickPeriod, RuleMovement, w.tickMovement)
 	for _, m := range []struct {
 		period time.Duration
 		run    func(*state)
+		rule   Rule
 	}{
-		{broadcastPeriod, w.tickBroadcast}, {revalidatePeriod, w.tickRevalidate},
-		{attackFollowPeriod, w.tickFollow}, {stancePeriod, w.tickStance}, {regenPeriod, w.tickRegen},
-		{aiPeriod, w.tickAI}, {aiPeriod, w.tickAnimation},
+		{broadcastPeriod, w.tickBroadcast, RuleRefresh}, {revalidatePeriod, w.tickRevalidate, RuleVisibility},
+		{attackFollowPeriod, w.tickFollow, RuleFollow}, {stancePeriod, w.tickStance, RuleCombatStance}, {regenPeriod, w.tickRegen, RuleRegeneration},
+		{aiPeriod, w.tickAI, RuleAI}, {aiPeriod, w.tickAnimation, RuleAnimation},
 	} {
-		s.after(m.period, m.run)
+		s.afterRule(m.period, m.rule, m.run)
 	}
 }
 func (w *World) markBroadcast(s *state, a actor, m broadcastMask) {
@@ -359,7 +374,7 @@ func (w *World) tickBroadcast(s *state) {
 			}
 		}
 	}
-	s.after(broadcastPeriod, w.tickBroadcast)
+	s.afterRule(broadcastPeriod, RuleRefresh, w.tickBroadcast)
 }
 func (w *World) vitals(a actor) Vitals {
 	c := a.base()

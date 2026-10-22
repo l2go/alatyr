@@ -8,12 +8,13 @@ import (
 	"time"
 )
 
-func (w *World) act(ctx context.Context, id int32, f func(s *state, p *player)) error {
+func (w *World) act(ctx context.Context, id int32, verb Verb, f func(s *state, p *player)) error {
 	var err error
-	if derr := w.do(ctx, func(s *state) {
+	if derr := w.doCommand(ctx, id, verb, func(s *state) {
 		p, ok := s.players[id]
 		if !ok {
 			err = ErrNotPresent
+			s.finish(Refused)
 			return
 		}
 		f(s, p)
@@ -28,8 +29,8 @@ func (w *World) playerOnAction(s *state, p, q *player) {
 		w.setTarget(s, p, q.id)
 		return
 	}
-	p.send(PositionSync{ObjectID: q.id, Pos: q.pos, Heading: q.heading})
-	p.send(RequestIgnored{})
+	p.send(PositionObserved{ObjectID: q.id, Pos: q.pos, Heading: q.heading})
+	p.send(ActionIgnored{})
 }
 
 func (w *World) sitDown(s *state, p *player) {
@@ -38,8 +39,9 @@ func (w *World) sitDown(s *state, p *player) {
 		return
 	}
 	p.sitting = true
+	s.change(p.ref(), PropertyPosture, Value{}, boolValue(true))
 	w.setIntention(s, p, order{intent: intentRest})
-	w.broadcastToKnown(s, p, WaitType{ObjectID: p.id, Sitting: true, Pos: p.pos})
+	w.broadcastToKnown(s, p, PostureChanged{ObjectID: p.id, Sitting: true, Pos: p.pos})
 	p.lastSitStand = now
 }
 
@@ -49,8 +51,9 @@ func (w *World) standUp(s *state, p *player, force bool) {
 		return
 	}
 	p.sitting = false
+	s.change(p.ref(), PropertyPosture, boolValue(true), Value{})
 	w.setIntention(s, p, order{intent: intentIdle})
-	w.broadcastToKnown(s, p, WaitType{ObjectID: p.id, Pos: p.pos})
+	w.broadcastToKnown(s, p, PostureChanged{ObjectID: p.id, Pos: p.pos})
 	p.lastSitStand = now
 }
 
@@ -63,6 +66,7 @@ func (w *World) setCP(s *state, p *player, cp float64) {
 	regen := cp < maxCP
 	p.cp = min(max(cp, 0), maxCP)
 	if old != p.cp {
+		s.resourceChange(p.ref(), "cp", old, p.cp)
 		w.markBroadcast(s, p, broadcastStatus)
 	}
 	if regen {

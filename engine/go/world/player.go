@@ -5,6 +5,7 @@ package world
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -32,11 +33,17 @@ type player struct {
 	teleporting, pendingRevive bool
 	lastFolk                   int32
 	bypass, bypassPrefix       []string
+	dialogue                   string
+	itemRefs                   map[int32]Ref
 	reuse                      map[int32]reuseStamp
 	learning                   bool
 	learningWrite              bool
 }
+
+// Event is a state notification, not an applied-effect receipt.
 type Event interface{ event() }
+
+// Moving announces an authoritative movement destination.
 type Moving struct {
 	ObjectID int32
 	From, To Point
@@ -44,6 +51,7 @@ type Moving struct {
 
 func (Moving) event() {}
 
+// Stopped announces the end of movement at an authoritative position.
 type Stopped struct {
 	ObjectID int32
 	Pos      Point
@@ -52,17 +60,22 @@ type Stopped struct {
 
 func (Stopped) event() {}
 
+// LeftWorld announces departure before the character is saved.
 type LeftWorld struct{ ObjectID int32 }
 
 func (LeftWorld) event() {}
 
+// Self is a detached view of a player's current state.
 type Self struct {
+	Entity                              Ref
 	Char                                Character
 	RunSpeed, WalkSpeed                 int32
 	Dead, Running, Sitting, Teleporting bool
 	PAtk, PDef                          int32
 	PDefKnown                           bool
 }
+
+// Entry supplies a ready character's initial self view and live notifications.
 type Entry struct {
 	Self   Self
 	Events <-chan Event
@@ -120,6 +133,9 @@ func (p *player) deliver(e Event) {
 	}
 }
 func (w *World) statsOf(c Character) (*stat.Player, error) {
+	if w.s == nil {
+		return nil, ErrUninitialized
+	}
 	if w.cat == nil {
 		return nil, fmt.Errorf("world: missing catalog")
 	}
@@ -146,7 +162,7 @@ func (w *World) selfOf(p *player) Self {
 	c.X, c.Y, c.Z, c.Heading = p.pos.X, p.pos.Y, p.pos.Z, p.heading
 	c.MaxHP, c.MaxMP, c.MaxCP = float64(p.stats.MaxHP()), float64(p.stats.MaxMP()), float64(p.stats.MaxCP())
 	c.CurHP, c.CurMP, c.CurCP = p.hp, p.mp, p.cp
-	return Self{Char: c, RunSpeed: p.stats.RunSpeed(), WalkSpeed: p.stats.WalkSpeed(), Dead: p.dead, Running: p.running, Sitting: p.sitting, Teleporting: p.teleporting, PAtk: p.stats.PAtk(), PDef: p.stats.PDef(), PDefKnown: p.stats.PDefKnown()}
+	return Self{Entity: p.ref(), Char: c, RunSpeed: p.stats.RunSpeed(), WalkSpeed: p.stats.WalkSpeed(), Dead: p.dead, Running: p.running, Sitting: p.sitting, Teleporting: p.teleporting, PAtk: p.stats.PAtk(), PDef: p.stats.PDef(), PDefKnown: p.stats.PDefKnown()}
 }
 
 // Enter loads a ready character at its stored position. It grants no items,
@@ -173,75 +189,38 @@ func (w *World) Enter(ctx context.Context, c Character) (Entry, error) {
 	}
 	var entry Entry
 	var result error
-	err = w.do(ctx, func(s *state) {
-		if _, ok := s.players[c.ObjectID]; ok {
-			result = ErrPresent
+	err = w.doCommand(ctx, c.ObjectID, VerbEnter, func(s *state) {
+		seen, validationErr := s.entryIDs(c)
+		if validationErr != nil {
+			result = validationErr
+			s.finish(Refused)
 			return
-		}
-		if _, ok := s.pending[c.ObjectID]; ok {
-			result = ErrPresent
-			return
-		}
-		if _, ok := s.actor(c.ObjectID); ok {
-			result = ErrPresent
-			return
-		}
-		seen := map[int32]bool{c.ObjectID: true}
-		for _, it := range c.Items {
-			if it.ObjectID <= 0 || it.Count <= 0 || seen[it.ObjectID] {
-				result = ErrPresent
-				return
-			}
-			if _, ok := s.actor(it.ObjectID); ok {
-				result = ErrPresent
-				return
-			}
-			if _, ok := s.ground[it.ObjectID]; ok {
-				result = ErrPresent
-				return
-			}
-			for _, other := range s.players {
-				for _, held := range other.char.Items {
-					if held.ObjectID == it.ObjectID {
-						result = ErrPresent
-						return
-					}
-				}
-			}
-			seen[it.ObjectID] = true
-		}
-		for _, pending := range s.pending {
-			if seen[pending.char.ObjectID] {
-				result = ErrPresent
-				return
-			}
-			for _, it := range pending.char.Items {
-				if seen[it.ObjectID] {
-					result = ErrPresent
-					return
-				}
-			}
-		}
-		if _, ok := s.ground[c.ObjectID]; ok {
-			result = ErrPresent
-			return
-		}
-		for _, other := range s.players {
-			for _, held := range other.char.Items {
-				if held.ObjectID == c.ObjectID {
-					result = ErrPresent
-					return
-				}
-			}
 		}
 		for id := range seen {
 			s.reserved[id] = true
 			s.ids.reserve(id)
 		}
-		p := &player{creature: creature{id: c.ObjectID, pos: Point{c.X, c.Y, c.Z}, heading: c.Heading,
+		generation := s.incarnation()
+		if generation == 0 {
+			result = ErrExhausted
+			return
+		}
+		p := &player{creature: creature{id: c.ObjectID, generation: generation, pos: Point{c.X, c.Y, c.Z}, heading: c.Heading,
 			running: true, hp: min(c.CurHP, float64(st.MaxHP())), mp: min(c.CurMP, float64(st.MaxMP())), dead: c.CurHP <= 0,
 			listeners: map[int32]bool{}, regen: time.Now()}, char: c, stats: st, out: make(chan Event, 64), known: map[int32]bool{}, cp: min(c.CurCP, float64(st.MaxCP()))}
+		p.itemRefs = make(map[int32]Ref, len(c.Items))
+		for _, it := range c.Items {
+			gen := s.incarnation()
+			if gen == 0 {
+				result = ErrExhausted
+				return
+			}
+			p.itemRefs[it.ObjectID] = Ref{ID: it.ObjectID, Gen: gen}
+		}
 		s.players[c.ObjectID] = p
+		s.batch.cause.Intent.Owner = p.ref()
+		s.group([]Effect{ExistenceChanged{Entity: p.ref(), After: true}})
+		s.finish(Done)
 		for _, message := range w.announcements {
 			p.send(Announcement{Text: message})
 		}
@@ -257,6 +236,61 @@ func (w *World) Enter(ctx context.Context, c Character) (Entry, error) {
 	}
 	return entry, result
 }
+
+func (s *state) entryIDs(c Character) (map[int32]bool, error) {
+	if _, ok := s.players[c.ObjectID]; ok {
+		return nil, ErrPresent
+	}
+	if _, ok := s.pending[c.ObjectID]; ok {
+		return nil, ErrPresent
+	}
+	if _, ok := s.actor(c.ObjectID); ok {
+		return nil, ErrPresent
+	}
+	seen := map[int32]bool{c.ObjectID: true}
+	for _, it := range c.Items {
+		if it.ObjectID <= 0 || it.Count <= 0 || seen[it.ObjectID] {
+			return nil, fmt.Errorf("world: invalid ready item %d", it.ObjectID)
+		}
+		if _, ok := s.actor(it.ObjectID); ok {
+			return nil, ErrPresent
+		}
+		if _, ok := s.ground[it.ObjectID]; ok {
+			return nil, ErrPresent
+		}
+		for _, other := range s.players {
+			for _, held := range other.char.Items {
+				if held.ObjectID == it.ObjectID {
+					return nil, ErrPresent
+				}
+			}
+		}
+		seen[it.ObjectID] = true
+	}
+	for _, pending := range s.pending {
+		if seen[pending.char.ObjectID] {
+			return nil, ErrPresent
+		}
+		for _, it := range pending.char.Items {
+			if seen[it.ObjectID] {
+				return nil, ErrPresent
+			}
+		}
+	}
+	if _, ok := s.ground[c.ObjectID]; ok {
+		return nil, ErrPresent
+	}
+	for _, other := range s.players {
+		for _, held := range other.char.Items {
+			if held.ObjectID == c.ObjectID {
+				return nil, ErrPresent
+			}
+		}
+	}
+	return seen, nil
+}
+
+// Snapshot returns detached self state without replaying effects.
 func (w *World) Snapshot(ctx context.Context, id int32) (Self, error) {
 	var self Self
 	var result error
@@ -278,15 +312,17 @@ func (w *World) Snapshot(ctx context.Context, id int32) (Self, error) {
 // The destination is a world position, not a client click or a ground height.
 func (w *World) MoveTo(ctx context.Context, id int32, to Point) error {
 	var result error
-	err := w.do(ctx, func(s *state) {
+	err := w.doCommand(ctx, id, VerbMove, func(s *state) {
 		p, ok := s.players[id]
 		if !ok {
 			result = ErrNotPresent
+			s.finish(Refused)
 			return
 		}
 		dx, dy := float64(to.X)-float64(p.pos.X), float64(to.Y)-float64(p.pos.Y)
 		if math.Hypot(dx, dy) > 9900 || p.dead || p.teleporting || p.sitting || p.moveSpeed() <= 0 {
 			result = ErrMove
+			s.finish(Refused)
 			return
 		}
 		if w.ground != nil {
@@ -309,19 +345,24 @@ func (w *World) leave(ctx context.Context, id int32, voluntary bool) error {
 	var c Character
 	var pending *pendingSave
 	var result error
-	err := w.do(ctx, func(s *state) {
+	err := w.doCommand(ctx, id, VerbLeave, func(s *state) {
 		if p, ok := s.players[id]; ok {
 			if voluntary && time.Now().Before(s.stance[id]) {
 				result = ErrCombat
+				s.finish(Refused)
 				return
 			}
 			if p.learningWrite {
 				result = ErrSaving
+				s.finish(Refused)
 				return
 			}
 			c = w.selfOf(p).Char
 			p.attackSeq++
 			p.castSeq++
+			s.change(p.ref(), PropertyAttacking, boolValue(p.attacking != 0), IntValue(0))
+			s.change(p.ref(), PropertyCasting, boolValue(p.casting), IntValue(0))
+			s.change(p.ref(), PropertyMovement, boolValue(p.move != nil), IntValue(0))
 			p.attacking = 0
 			p.casting = false
 			p.move = nil
@@ -330,6 +371,7 @@ func (w *World) leave(ctx context.Context, id int32, voluntary bool) error {
 				w.decayPlayer(s, p)
 			}
 			p.teleporting = true
+			s.change(p.ref(), PropertyCombatUntil, TimeValue(s.at(s.stance[id])), TimeValue(0))
 			delete(s.stance, id)
 			c.LastAccess = time.Now().UnixMilli()
 			for _, e := range p.outbox {
@@ -338,6 +380,8 @@ func (w *World) leave(ctx context.Context, id int32, voluntary bool) error {
 			p.outbox = nil
 			p.deliver(LeftWorld{ObjectID: id})
 			p.close()
+			s.group([]Effect{ExistenceChanged{Entity: p.ref(), Before: true}})
+			s.finish(Done)
 			delete(s.players, id)
 			s.moving = slices.DeleteFunc(s.moving, func(moving int32) bool { return moving == id })
 			s.pending[id] = &pendingSave{char: c.Clone()}
@@ -348,6 +392,7 @@ func (w *World) leave(ctx context.Context, id int32, voluntary bool) error {
 		}
 		if pending.saving {
 			result = ErrSaving
+			s.finish(Refused)
 			return
 		}
 		pending.saving = true
@@ -364,8 +409,8 @@ func (w *World) leave(ctx context.Context, id int32, voluntary bool) error {
 	}
 	if err = w.store.PutCharacter(ctx, c); err != nil {
 		// Restore retryability even when the store observed caller cancellation.
-		_ = w.do(context.Background(), func(s *state) { pending.saving = false })
-		return fmt.Errorf("world: save character: %w", err)
+		clearErr := w.do(context.Background(), func(s *state) { pending.saving = false })
+		return fmt.Errorf("world: save character: %w", errors.Join(err, clearErr))
 	}
 	return w.do(context.Background(), func(s *state) {
 		if s.pending[id] == pending {

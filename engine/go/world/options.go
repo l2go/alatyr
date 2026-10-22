@@ -5,12 +5,40 @@ package world
 
 import (
 	"errors"
-	"github.com/l2go/alatyr/engine/go/world/itemlog"
+	"math/rand/v2"
 	"slices"
+
+	"github.com/l2go/alatyr/engine/go/world/itemlog"
 )
 
 // Option configures a world before its loop owns the state.
 type Option func(*World)
+
+// WithRandomSource supplies the single-loop random source before spawning.
+// The default remains a crypto-seeded ChaCha8 source. A supplied source must
+// belong exclusively to this world; this option does not promise bit-exact replay.
+func WithRandomSource(source rand.Source) Option {
+	return func(w *World) {
+		if source != nil {
+			w.s.rng = rand.New(source)
+		}
+	}
+}
+
+// WithCommits installs a trusted host observer. It receives detached
+// in-memory commitments from New (initial spawn) and the owning loop. It must
+// be bounded, must not call the world, and must project knowledge before any
+// external delivery. There is no retained history or automatic retry here.
+func WithCommits(observe func(Commit)) Option {
+	return func(w *World) { w.s.observe = observe }
+}
+
+// WithDurability observes completion of external skill writes separately from
+// gameplay commitments. It runs on the caller, may run concurrently, and must
+// be bounded. An error never rewrites the corresponding in-memory transition.
+func WithDurability(observe func(Durability)) Option {
+	return func(w *World) { w.durability = observe }
+}
 
 // Ground is a host-supplied geometry adapter. This module includes no terrain
 // data. Implementations must be safe for the world's single owning loop.
@@ -18,10 +46,17 @@ type Ground interface {
 	Height(x, y, z int32) (int32, bool)
 	Walk(fx, fy, fz, tx, ty, tz int32) (int32, int32, int32)
 }
+
+// NoGround preserves positions without claiming a known terrain height.
 type NoGround struct{}
 
-func (NoGround) Height(_, _, z int32) (int32, bool)                { return z, false }
+// Height preserves Z and reports that no terrain height is known.
+func (NoGround) Height(_, _, z int32) (int32, bool) { return z, false }
+
+// Walk preserves the requested destination without terrain constraints.
 func (NoGround) Walk(_, _, _, x, y, z int32) (int32, int32, int32) { return x, y, z }
+
+// WithGround supplies geometry constraints; nil preserves the default.
 func WithGround(ground Ground) Option {
 	return func(w *World) {
 		if ground != nil {

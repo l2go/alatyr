@@ -138,7 +138,9 @@ func (w *World) spawnAll(s *state) {
 	}
 }
 
+// NPCView is a detached authored template and current NPC state.
 type NPCView struct {
+	Entity          Ref
 	ObjectID        int32
 	Template        catalog.NPCTemplate
 	Pos             Point
@@ -155,7 +157,7 @@ type NPCView struct {
 
 func (n *npc) view(time.Time) NPCView {
 	return NPCView{
-		ObjectID: n.id, Template: n.tmpl, Pos: n.pos, Heading: n.heading,
+		Entity: n.ref(), ObjectID: n.id, Template: n.tmpl, Pos: n.pos, Heading: n.heading,
 		Attackable: n.mob(), Running: n.running, InCombat: n.ai.autoAttacking, Dead: n.dead,
 		MoveMul:         1,
 		AtkSpdMul:       float32(1.1 * n.tmpl.PAtkSpd / n.tmpl.PAtkSpd),
@@ -228,7 +230,9 @@ func (w *World) thinkAttackMob(s *state, n *npc) {
 	if n.attackingNow(time.Now()) {
 		return
 	}
+	oldTarget := s.ref(n.target)
 	n.target = t.base().id
+	s.change(n.ref(), PropertyTarget, RefValue(oldTarget), RefValue(t.base().ref()))
 	dx, dy := (float64(n.pos.X) - float64(t.base().pos.X)), (float64(n.pos.Y) - float64(t.base().pos.Y))
 	dist2 := dx*dx + dy*dy
 	rng := float64(n.attackRange() + n.collision() + t.collision())
@@ -264,7 +268,7 @@ func (w *World) tickAI(s *state) {
 		kept = append(kept, id)
 	}
 	s.thinkers = kept
-	s.after(aiPeriod, w.tickAI)
+	s.afterRule(aiPeriod, RuleAI, w.tickAI)
 }
 func (w *World) tickAnimation(s *state) {
 	kept := s.animators[:0]
@@ -280,7 +284,7 @@ func (w *World) tickAnimation(s *state) {
 		kept = append(kept, id)
 	}
 	s.animators = kept
-	s.after(aiPeriod, w.tickAnimation)
+	s.afterRule(aiPeriod, RuleAnimation, w.tickAnimation)
 }
 func (w *World) activate(s *state, k regionKey) {
 	r := s.region(k)
@@ -300,7 +304,8 @@ func (w *World) setRunning(s *state, a actor, running bool) {
 		return
 	}
 	c.running = running
-	w.broadcastToKnown(s, a, MoveType{ObjectID: c.id, Running: running})
+	s.change(c.ref(), PropertyGait, boolValue(!running), boolValue(running))
+	w.broadcastToKnown(s, a, GaitChanged{ObjectID: c.id, Running: running})
 	w.markBroadcast(s, a, broadcastFullInfo)
 }
 
@@ -313,12 +318,17 @@ func (w *World) spawnNPC(s *state, sp catalog.Spawn, t catalog.NPCTemplate) *npc
 	if n.id == 0 {
 		return nil
 	}
+	n.generation = s.incarnation()
+	if n.generation == 0 {
+		return nil
+	}
 	if n.heading == -1 {
 		n.heading = int32(s.rng.IntN(65536))
 	}
 	n.region = regionOf(n.pos)
 	s.region(n.region).objects = append(s.region(n.region).objects, n.id)
 	s.npcs[n.id] = n
+	s.group([]Effect{ExistenceChanged{Entity: n.ref(), After: true}}, Fact{Subject: n.ref(), Property: PropertyPosition, After: PointValue(n.pos)})
 	return n
 }
 func (w *World) tryAnimation(s *state, n *npc, force, init bool) bool {
@@ -332,6 +342,7 @@ func (w *World) tryAnimation(s *state, n *npc, force, init bool) bool {
 			s.rng.IntN(8)
 		}
 		w.broadcastToKnown(s, n, Animation{ObjectID: n.id, Forced: force})
+		s.group(nil, Fact{Subject: n.ref(), Property: PropertyAnimation, After: boolValue(force)})
 		lo, hi := minNPCAnim, maxNPCAnim
 		if n.mob() {
 			lo, hi = minMonsterAnim, maxMonsterAnim

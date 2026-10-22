@@ -34,7 +34,7 @@ func (w *World) tickRegen(s *state) {
 		}
 	}
 	s.regenOrder = kept
-	s.after(regenPeriod, w.tickRegen)
+	s.afterRule(regenPeriod, RuleRegeneration, w.tickRegen)
 }
 func (w *World) regenTask(s *state, a actor, now time.Time) bool {
 	c := a.base()
@@ -47,18 +47,24 @@ func (w *World) regenTask(s *state, a actor, now time.Time) bool {
 	c.regen = now
 	need := false
 	if maxHP := float64(a.maxHP()); c.hp < maxHP {
+		old := c.hp
 		c.hp = min(c.hp+w.hpRegen(a), maxHP)
+		s.resourceChange(c.ref(), "hp", old, c.hp)
 		need = need || c.hp < maxHP
 		w.markBroadcast(s, a, broadcastStatus)
 	}
 	if maxMP := float64(a.maxMP()); c.mp < maxMP {
+		old := c.mp
 		c.mp = min(c.mp+w.mpRegen(a), maxMP)
+		s.resourceChange(c.ref(), "mp", old, c.mp)
 		need = need || c.mp < maxMP
 		w.markBroadcast(s, a, broadcastStatus)
 	}
 	if p, ok := a.(*player); ok {
 		if maxCP := float64(p.stats.MaxCP()); p.cp < maxCP {
+			old := p.cp
 			p.cp = min(p.cp+w.cpRegen(p), maxCP)
+			s.resourceChange(p.ref(), "cp", old, p.cp)
 			need = need || p.cp < maxCP
 			w.markBroadcast(s, a, broadcastStatus)
 		}
