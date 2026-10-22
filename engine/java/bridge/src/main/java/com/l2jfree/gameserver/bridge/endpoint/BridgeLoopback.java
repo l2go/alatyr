@@ -136,12 +136,7 @@ final class BridgeLoopback implements Runnable
 				{
 					SelectionKey key = keys.next();
 					keys.remove();
-					if (!key.isValid())
-						continue;
-					if (key.isAcceptable())
-						accept();
-					else if (key.isReadable())
-						read(key);
+					serve(key);
 				}
 			}
 			catch (IOException e)
@@ -150,6 +145,41 @@ final class BridgeLoopback implements Runnable
 					stopping = true;
 			}
 		}
+	}
+	
+	/** One key. A failure of this transport does not stop the listener. */
+	void serve(SelectionKey key)
+	{
+		try
+		{
+			if (key == null || !key.isValid())
+				return;
+			if (key.isAcceptable())
+				accept();
+			else if (key.isReadable())
+				read(key);
+			else
+				flushKey(key);
+		}
+		catch (IOException e)
+		{
+			drop(key);
+		}
+	}
+	
+	void account()
+	{
+		transports++;
+	}
+	
+	int transports()
+	{
+		return transports;
+	}
+	
+	boolean alive()
+	{
+		return thread.isAlive() && !stopping;
 	}
 	
 	private void accept() throws IOException
@@ -315,7 +345,21 @@ final class BridgeLoopback implements Runnable
 		}
 	}
 	
-	private void flushKey(SelectionKey key) throws IOException
+	private void flushKey(SelectionKey key)
+	{
+		if (!key.isValid() || !(key.channel() instanceof SocketChannel))
+			return;
+		try
+		{
+			flushKeyThrows(key);
+		}
+		catch (IOException e)
+		{
+			drop(key);
+		}
+	}
+	
+	private void flushKeyThrows(SelectionKey key) throws IOException
 	{
 		if (!key.isValid() || !(key.channel() instanceof SocketChannel))
 			return;
@@ -373,10 +417,18 @@ final class BridgeLoopback implements Runnable
 		}
 	}
 	
-	private void drop(SelectionKey key) throws IOException
+	private void drop(SelectionKey key)
 	{
-		key.cancel();
-		key.channel().close();
+		try
+		{
+			key.cancel();
+			if (key.channel() != null)
+				key.channel().close();
+		}
+		catch (IOException e)
+		{
+			key.cancel();
+		}
 		if (transports > 0)
 			transports--;
 	}
