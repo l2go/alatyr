@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"github.com/l2go/alatyr/engine/go/bridge/internal/fixtures"
-	"github.com/l2go/l2jfree/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"math"
 	"reflect"
 	"testing"

@@ -18,7 +18,7 @@ type Vector struct{ ID, Transport, Hex, Expected string }
 
 func Load(t testing.TB, profile bool) []Vector {
 	t.Helper()
-	output, e := exec.Command("go", "list", "-m", "-json", "github.com/l2go/l2jfree/engine/go/protocol").Output()
+	output, e := exec.Command("go", "list", "-m", "-json", "github.com/l2go/alatyr/engine/go/protocol").Output()
 	if e != nil {
 		t.Fatal(e)
 	}
