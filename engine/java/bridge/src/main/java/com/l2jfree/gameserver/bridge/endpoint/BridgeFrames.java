@@ -29,6 +29,7 @@ final class BridgeFrames
 	static final long BYE_NORMAL = 0;
 	static final long BYE_UNSUPPORTED = 1;
 	static final long BYE_FRAME = 2;
+	static final long BYE_SLOW = 3;
 	static final long BYE_FULL = 4;
 	static final long BYE_AUTH = 5;
 	static final long BYE_INTERNAL = 7;

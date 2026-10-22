@@ -24,9 +24,9 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.ArrayDeque;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
@@ -48,6 +48,8 @@ final class BridgeLoopback implements Runnable
 {
 	static final int TRANSPORT_CAP = 64;
 	static final int FRAME_CAP = 65536;
+	static final int OUT_QUEUE_BYTES = 262144;
+	static final long BYE_CLOSE_NS = 100_000_000L;
 	
 	private final BridgeSettings settings;
 	private final ServerSocketChannel server;
@@ -112,7 +114,7 @@ final class BridgeLoopback implements Runnable
 			try
 			{
 				selector.select(1000);
-				drain();
+				flushAll();
 				Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
 				while (keys.hasNext())
 				{
@@ -143,6 +145,7 @@ final class BridgeLoopback implements Runnable
 		socket.configureBlocking(false);
 		if (transports >= TRANSPORT_CAP)
 		{
+			socket.configureBlocking(true);
 			writeAll(socket, fullBye);
 			socket.close();
 			return;
@@ -170,34 +173,38 @@ final class BridgeLoopback implements Runnable
 		try
 		{
 			List<Envelope> records = takeFrame(transport);
-			if (records == null)
-				return;
-			
-			BridgeReply reply = transport.dialogue.accept(records);
-			if (reply.admit)
-			{
-				try
-				{
-					admit(transport, reply);
-				}
-				catch (RuntimeException e)
-				{
-					writeAll(socket, frame(List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL))));
-					drop(key);
-				}
-				return;
-			}
-			if (!reply.records.isEmpty())
-				writeAll(socket, frame(reply.records));
-			if (reply.close)
-				drop(key);
+			if (records != null)
+				acceptFrame(key, transport, records);
 		}
 		catch (WireException e)
 		{
 			long reason = e.kind() == WireException.Kind.UNSUPPORTED ? BridgeFrames.BYE_UNSUPPORTED : BridgeFrames.BYE_FRAME;
-			writeAll(socket, frame(List.of(BridgeFrames.bye(reason))));
-			drop(key);
+			offer(transport, frame(List.of(BridgeFrames.bye(reason))));
+			armClose(transport);
 		}
+		flushKey(key);
+	}
+	
+	private void acceptFrame(SelectionKey key, Transport transport, List<Envelope> records) throws IOException
+	{
+		BridgeReply reply = transport.dialogue.accept(records);
+		if (reply.admit)
+		{
+			try
+			{
+				admit(transport, reply);
+			}
+			catch (RuntimeException e)
+			{
+				offer(transport, frame(List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL))));
+				armClose(transport);
+			}
+			return;
+		}
+		if (!reply.records.isEmpty())
+			offer(transport, frame(reply.records));
+		if (reply.close)
+			armClose(transport);
 	}
 	
 	/**
@@ -225,24 +232,120 @@ final class BridgeLoopback implements Runnable
 		if (records == null || records.isEmpty())
 			return;
 		
-		transport.outbound.add(frame(records));
+		offer(transport, frame(records));
 		selector.wakeup();
 	}
 	
-	private void drain() throws IOException
+	/**
+	 * Queues one whole frame. A frame that would pass {@link #OUT_QUEUE_BYTES} is not stored: the transport is closed
+	 * for a slow consumer instead, and bytes already queued stay whole.
+	 */
+	static void offer(Transport transport, byte[] bytes)
+	{
+		if (bytes == null || bytes.length == 0)
+			return;
+		
+		synchronized (transport)
+		{
+			if (transport.closing)
+				return;
+			if (transport.held + bytes.length > OUT_QUEUE_BYTES)
+			{
+				failSlow(transport);
+				return;
+			}
+			transport.queued.add(bytes);
+			transport.held += bytes.length;
+		}
+	}
+	
+	private static void failSlow(Transport transport)
+	{
+		byte[] bye = frame(List.of(BridgeFrames.bye(BridgeFrames.BYE_SLOW)));
+		if (transport.held + bye.length <= OUT_QUEUE_BYTES)
+		{
+			transport.queued.add(bye);
+			transport.held += bye.length;
+		}
+		armClose(transport);
+	}
+	
+	/** After a bye, the socket closes once the queue has been written, and in any case within 100 ms. */
+	static void armClose(Transport transport)
+	{
+		synchronized (transport)
+		{
+			transport.closing = true;
+			if (transport.closeDeadline == 0)
+				transport.closeDeadline = System.nanoTime() + BYE_CLOSE_NS;
+		}
+	}
+	
+	private void flushAll() throws IOException
 	{
 		for (SelectionKey key : selector.keys())
 		{
-			if (!key.isValid() || !(key.channel() instanceof SocketChannel))
+			if (!key.isValid() || !(key.attachment() instanceof Transport))
 				continue;
-			if (!(key.attachment() instanceof Transport))
-				continue;
-			
-			SocketChannel socket = (SocketChannel) key.channel();
-			Transport transport = (Transport) key.attachment();
-			byte[] bytes;
-			while ((bytes = transport.outbound.poll()) != null)
-				writeAll(socket, bytes);
+			flushKey(key);
+		}
+	}
+	
+	private void flushKey(SelectionKey key) throws IOException
+	{
+		if (!key.isValid() || !(key.channel() instanceof SocketChannel))
+			return;
+		
+		Transport transport = (Transport) key.attachment();
+		flush(transport, (SocketChannel) key.channel());
+		boolean close;
+		synchronized (transport)
+		{
+			boolean drained = transport.writing == null && transport.queued.isEmpty();
+			close = transport.closing && (drained || System.nanoTime() >= transport.closeDeadline);
+			if (key.isValid())
+				key.interestOps(drained ? SelectionKey.OP_READ : SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+		}
+		if (close)
+			drop(key);
+	}
+	
+	/**
+	 * Writes what the socket will take. A zero write keeps the unread tail queued.
+	 *
+	 * @return how many bytes were written
+	 */
+	static int flush(Transport transport, SocketChannel socket) throws IOException
+	{
+		int written = 0;
+		while (true)
+		{
+			ByteBuffer slice;
+			synchronized (transport)
+			{
+				if (transport.writing == null)
+				{
+					transport.writing = transport.queued.poll();
+					transport.writingAt = 0;
+				}
+				if (transport.writing == null)
+					return written;
+				slice = ByteBuffer.wrap(transport.writing, transport.writingAt,
+						transport.writing.length - transport.writingAt);
+			}
+			int n = socket.write(slice);
+			synchronized (transport)
+			{
+				if (n > 0)
+				{
+					transport.writingAt += n;
+					transport.held -= n;
+					written += n;
+				}
+				if (n <= 0 || transport.writingAt < transport.writing.length)
+					return written;
+				transport.writing = null;
+			}
 		}
 	}
 	
@@ -280,14 +383,12 @@ final class BridgeLoopback implements Runnable
 		}
 	}
 	
+	/** Blocking write used only for the one-frame refusal of a socket that is about to be closed. */
 	private static void writeAll(SocketChannel socket, byte[] bytes) throws IOException
 	{
 		ByteBuffer buffer = ByteBuffer.wrap(bytes);
 		while (buffer.hasRemaining())
-		{
-			if (socket.write(buffer) == 0)
-				break;
-		}
+			socket.write(buffer);
 	}
 	
 	private static byte[] frame(List<Envelope> records)
@@ -340,7 +441,12 @@ final class BridgeLoopback implements Runnable
 		final BridgeDialogue dialogue;
 		final ByteBuffer input = ByteBuffer.allocate(FRAME_CAP + 10);
 		final ByteArrayOutputStream pending = new ByteArrayOutputStream();
-		final ConcurrentLinkedQueue<byte[]> outbound = new ConcurrentLinkedQueue<>();
+		final ArrayDeque<byte[]> queued = new ArrayDeque<>();
+		byte[] writing;
+		int writingAt;
+		int held;
+		boolean closing;
+		long closeDeadline;
 		L2Client client;
 		
 		Transport(byte[] secret)
