@@ -377,3 +377,35 @@ func TestProcessSessionCapBeforeDial(t *testing.T) {
 		t.Fatal("session cap after allocation", e)
 	}
 }
+
+func TestNewGenerationInvalidatesOlderCheckpoint(t *testing.T) {
+	o := &owner{c: &Client{cfg: Config{Now: time.Now}}, phase: 1, epoch: 1, self: 7, g: 4, ready: true, entries: map[uint64]*entry{}}
+	apply := func(rs ...wire.Record) {
+		t.Helper()
+		if e := o.validateFrame(rs); e != nil {
+			t.Fatal(e)
+		}
+		if e := o.apply(event{records: rs, at: time.Now()}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	apply(cp(1, 1, 0))
+	apply(rawFact(1, 1, 4, wire.S(64, true, 7), wire.U(66, true, 5), wire.U(67, true, 1)))
+	apply(cp(2, 1, 1))
+	if o.ready || o.g != 5 || o.epoch != 1 {
+		t.Fatal("stale checkpoint admitted actions or changed transport epoch")
+	}
+	size := len(o.queue)
+	apply(rawFact(2, 1, 4, wire.S(64, true, 7), wire.U(66, true, 5), wire.U(67, true, 1)))
+	if len(o.queue) != size {
+		t.Fatal("duplicate generation applied twice")
+	}
+	apply(rawFact(3, 1, 4, wire.S(64, true, 7), wire.U(66, true, 4), wire.U(67, true, 1)))
+	if o.g != 5 {
+		t.Fatal("generation went backwards")
+	}
+	apply(cp(1, 1, 0), cp(2, 1, 1))
+	if !o.ready {
+		t.Fatal("fresh checkpoint did not restore admission")
+	}
+}

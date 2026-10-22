@@ -90,6 +90,7 @@ type owner struct {
 	snap                                  Snapshot
 	inCheckpoint, ended, confirmed        bool
 	checkpointBytes                       int
+	checkpointGeneration                  uint64
 	protocolKind                          wire.CloseReason
 	replay                                []Receipt
 	entries                               map[uint64]*entry
@@ -525,6 +526,12 @@ func (o *owner) run(first operation, id Identity) {
 				}
 				continue
 			}
+			if o.phase == 2 {
+				if ev.conn != nil {
+					ev.conn.Close()
+				}
+				continue
+			}
 			if ev.conn != nil {
 				if o.handshake == nil {
 					ev.conn.Close()
@@ -776,6 +783,9 @@ func (o *owner) validateFrame(rs []wire.Record) error {
 			if phase != 0 && phase != 3 {
 				return wire.ErrFrame
 			}
+			if profile.U(r, 1) == 2 && len(rs) != 1 {
+				return wire.ErrFrame
+			}
 			if profile.U(r, 1) == 1 && (!ended || inCheckpoint || profile.U(r, 2) == 0 || profile.U(r, 4) != o.epoch || o.session != 0 && profile.U(r, 2) != o.session) {
 				return wire.ErrFrame
 			}
@@ -955,6 +965,7 @@ func (o *owner) apply(ev event) error {
 			if profile.U(r, 1) == wire.Begin {
 				o.inCheckpoint = true
 				o.checkpointBytes = 0
+				o.checkpointGeneration = o.g
 				o.ready = false
 				o.checkpoint = o.c.cfg.Now().Add(10 * time.Second)
 				if o.phase == 3 {
@@ -964,7 +975,7 @@ func (o *owner) apply(ev event) error {
 			} else {
 				o.inCheckpoint = false
 				o.ended = true
-				o.ready = profile.U(r, 3) == 1
+				o.ready = profile.U(r, 3) == 1 && o.checkpointGeneration == o.g
 				o.checkpoint = time.Time{}
 				inc, _ := wire.Find(r.Fields, 4)
 				o.snap.Incomplete = nil
