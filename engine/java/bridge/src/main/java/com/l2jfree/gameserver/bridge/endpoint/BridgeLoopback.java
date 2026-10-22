@@ -59,6 +59,7 @@ final class BridgeLoopback implements Runnable
 	private final DefaultEventLoopGroup virtualChannels;
 	private final List<L2Client> clients = new CopyOnWriteArrayList<>();
 	private final byte[] fullBye;
+	private volatile boolean admitting = true;
 	private int transports;
 	private volatile boolean stopping;
 	
@@ -98,6 +99,11 @@ final class BridgeLoopback implements Runnable
 	{
 		if (client != null)
 			clients.add(client);
+	}
+	
+	int clientCount()
+	{
+		return clients.size();
 	}
 	
 	private boolean disconnectsFinished()
@@ -189,6 +195,11 @@ final class BridgeLoopback implements Runnable
 			return;
 		
 		socket.configureBlocking(false);
+		if (!admitting)
+		{
+			socket.close();
+			return;
+		}
 		if (transports >= TRANSPORT_CAP)
 		{
 			socket.configureBlocking(true);
@@ -455,6 +466,8 @@ final class BridgeLoopback implements Runnable
 	 */
 	void close(long budgetMs)
 	{
+		admitting = false;
+		selector.wakeup();
 		for (L2Client client : clients)
 			client.requestBridgeDisconnect();
 		long end = System.nanoTime() + budgetMs * 1_000_000L;

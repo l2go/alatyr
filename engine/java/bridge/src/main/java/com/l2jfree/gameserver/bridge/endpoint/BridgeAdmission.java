@@ -55,6 +55,9 @@ public final class BridgeAdmission
 		boolean published = false;
 		try
 		{
+			if (client.isBridgeDisconnectRequested())
+				return List.of();
+			
 			if (!login.admitTrusted(account, client))
 				return List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_ALREADY_ONLINE));
 			
@@ -62,6 +65,12 @@ public final class BridgeAdmission
 			client.setState(GameClientState.AUTHED);
 			client.setProtocolOk(true);
 			client.setGameGuardOk(true);
+			
+			if (client.isBridgeDisconnectRequested())
+			{
+				login.leaveTrusted(account, client);
+				return List.of();
+			}
 			
 			int slot = slot(client, character);
 			if (slot < 0)
