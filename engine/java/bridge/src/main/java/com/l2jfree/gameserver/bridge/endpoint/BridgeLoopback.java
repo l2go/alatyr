@@ -293,14 +293,7 @@ final class BridgeLoopback implements Runnable
 	private static byte[] frame(List<Envelope> records)
 	{
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		try
-		{
-			Codec.bridge().write(out, records);
-		}
-		catch (IOException e)
-		{
-			throw new UncheckedIOException(e);
-		}
+		Codec.bridge().write(out, records);
 		return out.toByteArray();
 	}
 	
