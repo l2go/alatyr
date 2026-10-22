@@ -4,11 +4,11 @@ No version is supported. A report may get no reply and no fix.
 
 ## Report a vulnerability
 
-Open a [private security advisory](https://github.com/l2go/l2jfree/security/advisories/new), not a public issue. Say which component is affected, what a running server does wrong, and how to reproduce it. Leave out credentials and session keys; redact account names, addresses, and file paths.
+Open a [private security advisory](https://github.com/l2go/alatyr/security/advisories/new), not a public issue. Say which component is affected, what a running server does wrong, and how to reproduce it. Leave out credentials and session keys; redact account names, addresses, and file paths.
 
 ## Verify a release
 
-Set `VERSION` to the release number without the leading `v`, for example `3.2.0`, from the [releases page](https://github.com/l2go/l2jfree/releases). The image is signed with cosign and carries an SBOM and build provenance:
+Set `VERSION` to the release number without the leading `v`, for example `3.2.0`, from the [releases page](https://github.com/l2go/alatyr/releases). The image is signed with cosign and carries an SBOM and build provenance:
 
 ```sh
 VERSION=3.2.0
