@@ -65,16 +65,16 @@ class BridgeWriteTest
 	@Test
 	void aFramePastTheOutboundCapClosesForASlowConsumer()
 	{
+		ByteArrayOutputStream expected = new ByteArrayOutputStream();
+		Codec.bridge().write(expected, List.of(BridgeFrames.bye(BridgeFrames.BYE_SLOW)));
+		byte[] bye = expected.toByteArray();
 		Transport transport = new Transport(SECRET);
-		BridgeLoopback.offer(transport, new byte[BridgeLoopback.OUT_QUEUE_BYTES - 4]);
+		BridgeLoopback.offer(transport, new byte[BridgeLoopback.OUT_QUEUE_BYTES - bye.length - 1]);
 		BridgeLoopback.offer(transport, new byte[8]);
 		
 		assertThat(transport.closing).isTrue();
 		assertThat(transport.queued).hasSize(2);
-		byte[] bye = transport.queued.peekLast();
-		ByteArrayOutputStream expected = new ByteArrayOutputStream();
-		Codec.bridge().write(expected, List.of(BridgeFrames.bye(BridgeFrames.BYE_SLOW)));
-		assertThat(bye).isEqualTo(expected.toByteArray());
-		assertThat(transport.held).isEqualTo(BridgeLoopback.OUT_QUEUE_BYTES - 4 + bye.length);
+		assertThat(transport.queued.peekLast()).isEqualTo(bye);
+		assertThat(transport.held).isEqualTo(BridgeLoopback.OUT_QUEUE_BYTES - 1);
 	}
 }
