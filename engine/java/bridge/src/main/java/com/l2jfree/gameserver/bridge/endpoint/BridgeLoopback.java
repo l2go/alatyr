@@ -194,22 +194,44 @@ final class BridgeLoopback implements Runnable
 		if (socket == null)
 			return;
 		
-		socket.configureBlocking(false);
-		if (!admitting)
+		receive(socket);
+	}
+	
+	/**
+	 * Configures one accepted socket. A failure here closes that socket only. The listener socket stays open, and a
+	 * slot is counted only after the socket is registered.
+	 */
+	void receive(SocketChannel socket)
+	{
+		try
 		{
-			socket.close();
-			return;
+			socket.configureBlocking(false);
+			if (!admitting)
+			{
+				socket.close();
+				return;
+			}
+			if (transports >= TRANSPORT_CAP)
+			{
+				socket.configureBlocking(true);
+				writeAll(socket, fullBye);
+				socket.close();
+				return;
+			}
+			socket.register(selector, SelectionKey.OP_READ, new Transport(settings.secret()));
+			transports++;
 		}
-		if (transports >= TRANSPORT_CAP)
+		catch (IOException e)
 		{
-			socket.configureBlocking(true);
-			writeAll(socket, fullBye);
-			socket.close();
-			return;
+			try
+			{
+				socket.close();
+			}
+			catch (IOException ignored)
+			{
+				// The new socket is already unusable. The listener keeps accepting.
+			}
 		}
-		
-		transports++;
-		socket.register(selector, SelectionKey.OP_READ, new Transport(settings.secret()));
 	}
 	
 	private void read(SelectionKey key) throws IOException
