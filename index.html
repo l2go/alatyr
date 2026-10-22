@@ -17,8 +17,8 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="L2JFree — a Lineage II server, revived">
 <meta property="og:description" content="One process. Two ports. One command. Every merge rehearsed as a release.">
-<meta property="og:url" content="https://l2go.github.io/l2jfree/">
-<meta property="og:image" content="https://l2go.github.io/l2jfree/assets/img/og.jpg">
+<meta property="og:url" content="https://l2go.github.io/alatyr/">
+<meta property="og:image" content="https://l2go.github.io/alatyr/assets/img/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="/l2jfree/assets/img/favicon.svg" type="image/svg+xml">
 <link rel="author" href="/l2jfree/humans.txt">
@@ -36,7 +36,7 @@
     <a class="opt" href="#engineering">Engineering</a>
     <a class="opt" href="#chronicle">Chronicle</a>
     <a href="#notes">Notes</a>
-    <a href="https://github.com/l2go/l2jfree">GitHub</a>
+    <a href="https://github.com/l2go/alatyr">GitHub</a>
   </nav>
 </header>
 
@@ -129,11 +129,11 @@
       <p class="kicker">Start</p>
       <h2 id="start-title">Raise the citadel</h2>
       <p class="intro">From a checkout, with Docker Compose. The first start creates the database passwords, migrates the schemas, and loads the game world; it takes a few minutes. The first login creates the account.</p>
-      <p><a href="https://github.com/l2go/l2jfree/blob/main/deploy/README.md">Deploy guide</a> · <a href="https://github.com/l2go/l2jfree/releases">Releases with a compose bundle</a></p>
+      <p><a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">Deploy guide</a> · <a href="https://github.com/l2go/alatyr/releases">Releases with a compose bundle</a></p>
     </div>
     <div class="plaque reveal">
       <div class="plaque__label">Terminal</div>
-<pre><code><span class="p">$ </span>git clone https://github.com/l2go/l2jfree
+<pre><code><span class="p">$ </span>git clone https://github.com/l2go/alatyr
 <span class="p">$ </span>cd l2jfree/deploy
 <span class="p">$ </span>docker compose up -d --wait</code></pre>
       <div class="ports"><span><b>2106</b>login</span><span><b>7777</b>world</span><span><b>edge</b>default image</span></div>
@@ -153,37 +153,37 @@
         <div class="card__num">I</div>
         <h3>One process, hard boundaries</h3>
         <p>Login and world share a JVM, not code. They meet only through a typed contract, and architecture rules fail the build on any other dependency. Each module has its own database role.</p>
-        <div class="card__proof">Enforced by <a href="https://github.com/l2go/l2jfree/blob/v3.1.1/l2jfree-platform/src/test/java/com/l2jfree/platform/ArchitectureTest.java">ArchitectureTest</a>, <a href="https://github.com/l2go/l2jfree/blob/v3.1.1/deploy/probe/check-roles.sh">check-roles.sh</a></div>
+        <div class="card__proof">Enforced by <a href="https://github.com/l2go/alatyr/blob/v3.1.1/l2jfree-platform/src/test/java/com/l2jfree/platform/ArchitectureTest.java">ArchitectureTest</a>, <a href="https://github.com/l2go/alatyr/blob/v3.1.1/deploy/probe/check-roles.sh">check-roles.sh</a></div>
       </article>
       <article class="card reveal">
         <div class="card__num">II</div>
         <h3>SQL checked against the schema</h3>
         <p>Every SQL statement in the compiled server is prepared against the migrated PostgreSQL schema, and every JDBC type is compared with its column. A ratchet keeps direct database access from spreading.</p>
-        <div class="card__proof">Enforced by <a href="https://github.com/l2go/l2jfree/blob/v3.1.1/l2jfree-core/src/test/java/com/l2jfree/gameserver/persistence/GameServerStatementsPostgresTest.java">GameServerStatementsPostgresTest</a>, <a href="https://github.com/l2go/l2jfree/blob/v3.1.1/l2jfree-platform/src/test/java/com/l2jfree/platform/DirectDatabaseAccessRatchetTest.java">the ratchet</a></div>
+        <div class="card__proof">Enforced by <a href="https://github.com/l2go/alatyr/blob/v3.1.1/l2jfree-core/src/test/java/com/l2jfree/gameserver/persistence/GameServerStatementsPostgresTest.java">GameServerStatementsPostgresTest</a>, <a href="https://github.com/l2go/alatyr/blob/v3.1.1/l2jfree-platform/src/test/java/com/l2jfree/platform/DirectDatabaseAccessRatchetTest.java">the ratchet</a></div>
       </article>
       <article class="card reveal">
         <div class="card__num">III</div>
         <h3>Every merge is a release rehearsal</h3>
         <p>The image starts, and 24 clients log in, create a character, enter the world, and log out. The server restarts, a backup is restored into a clean stack, and the published image is upgraded in place. The characters survive each step.</p>
-        <div class="card__proof">Enforced by <a href="https://github.com/l2go/l2jfree/blob/v3.1.1/.github/workflows/build.yml">build.yml</a>, job image</div>
+        <div class="card__proof">Enforced by <a href="https://github.com/l2go/alatyr/blob/v3.1.1/.github/workflows/build.yml">build.yml</a>, job image</div>
       </article>
       <article class="card reveal">
         <div class="card__num">IV</div>
         <h3>Releases promote, never rebuild</h3>
         <p>A release gives a version to the image digest that main built and tested, after the maintainer approves. The image carries a cosign signature, an SBOM, and provenance; the compose archive carries its own signature.</p>
-        <div class="card__proof">Enforced by <a href="https://github.com/l2go/l2jfree/blob/v3.1.1/.github/workflows/release.yml">release.yml</a></div>
+        <div class="card__proof">Enforced by <a href="https://github.com/l2go/alatyr/blob/v3.1.1/.github/workflows/release.yml">release.yml</a></div>
       </article>
       <article class="card reveal">
         <div class="card__num">V</div>
         <h3>Hardened supply chain and runtime</h3>
         <p>Actions are pinned by commit, and Trivy blocks a release on a critical or high finding that has a fix. The container runs as user 10001 with a read-only root, no capabilities, and a 4 GB memory limit.</p>
-        <div class="card__proof">Enforced by <a href="https://github.com/l2go/l2jfree/blob/v3.1.1/deploy/compose.yaml">compose.yaml</a>, <a href="https://github.com/l2go/l2jfree/blob/main/SECURITY.md">SECURITY.md</a></div>
+        <div class="card__proof">Enforced by <a href="https://github.com/l2go/alatyr/blob/v3.1.1/deploy/compose.yaml">compose.yaml</a>, <a href="https://github.com/l2go/alatyr/blob/main/SECURITY.md">SECURITY.md</a></div>
       </article>
       <article class="card reveal">
         <div class="card__num">VI</div>
         <h3>Diagnosable in production</h3>
         <p>Java Flight Recorder keeps the last 12 hours. PostgreSQL counts every statement and logs the plan of any that runs over 500 ms. A health endpoint gates readiness, and a stop refuses new connections first.</p>
-        <div class="card__proof">Enforced by <a href="https://github.com/l2go/l2jfree/blob/v3.1.1/deploy/image/bin/entrypoint">entrypoint</a>, <a href="https://github.com/l2go/l2jfree/blob/v3.1.1/deploy/compose.yaml">compose.yaml</a></div>
+        <div class="card__proof">Enforced by <a href="https://github.com/l2go/alatyr/blob/v3.1.1/deploy/image/bin/entrypoint">entrypoint</a>, <a href="https://github.com/l2go/alatyr/blob/v3.1.1/deploy/compose.yaml">compose.yaml</a></div>
       </article>
     </div>
   </div>
@@ -339,10 +339,10 @@ gh attestation verify l2jfree-$VERSION-compose.tar.gz --repo l2go/l2jfree \
     <div class="foot__top">
       <span class="foot__mark" title="L2JFREE = SIGNED = 58">L2JFREE</span>
       <nav aria-label="Project">
-        <a href="https://github.com/l2go/l2jfree">Repository</a>
-        <a href="https://github.com/l2go/l2jfree/releases">Releases</a>
-        <a href="https://github.com/l2go/l2jfree/blob/main/deploy/README.md">Deploy guide</a>
-        <a href="https://github.com/l2go/l2jfree/blob/main/SECURITY.md">Security</a>
+        <a href="https://github.com/l2go/alatyr">Repository</a>
+        <a href="https://github.com/l2go/alatyr/releases">Releases</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">Deploy guide</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/SECURITY.md">Security</a>
       </nav>
     </div>
     <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server. Since 3.2 it ships no data inherited from the fork; its world, Okolitsa, is original content. It does not modify, patch, or distribute the game client.</p>

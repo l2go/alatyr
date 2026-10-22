@@ -1,6 +1,6 @@
 # L2JFree project site
 
-This branch holds the static site published with GitHub Pages at <https://l2go.github.io/l2jfree/>. It shares no history with `main`, and nothing in it is built: the pages are plain HTML, CSS, and a small script, served as they are.
+This branch holds the static site published with GitHub Pages at <https://l2go.github.io/alatyr/>. It shares no history with `main`, and nothing in it is built: the pages are plain HTML, CSS, and a small script, served as they are.
 
 - `index.html`: the project page.
 - `notes/<slug>/index.html`: the engineering notes of the series "Reviving L2JFree".

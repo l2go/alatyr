@@ -18,7 +18,7 @@ document.documentElement.classList.add("js");
   console.log("%cL2JFREE — a Lineage II server, revived.\n" +
     "24 people built it. 24 days rebuilt it. 24 clients play it on every merge.\n" +
     "Curious? Type 42 on the page, or read /l2jfree/numbers/\n" +
-    "Source: https://github.com/l2go/l2jfree", soft);
+    "Source: https://github.com/l2go/alatyr", soft);
 })();
 
 document.addEventListener("DOMContentLoaded", () => {
