@@ -59,6 +59,7 @@ public final class Disconnection
 	
 	private final L2Client _client;
 	private final L2Player _activeChar;
+	private final boolean _bridge;
 	
 	public Disconnection(L2Client client)
 	{
@@ -74,6 +75,14 @@ public final class Disconnection
 	{
 		_client = getClient(client, activeChar);
 		_activeChar = getActiveChar(client, activeChar);
+		_bridge = _client != null && _client.isBridge();
+		
+		// A bridge client is detached by the one queued disconnect, not by this constructor.
+		if (_bridge)
+		{
+			DisconnectionExecutor.request(_client);
+			return;
+		}
 		
 		if (_client != null)
 			_client.setActiveChar(null);
@@ -84,6 +93,9 @@ public final class Disconnection
 	
 	public Disconnection store()
 	{
+		if (_bridge)
+			return this;
+		
 		try
 		{
 			// a rolled-back save loses everything since the last one, and nothing saves this player afterwards
@@ -113,6 +125,9 @@ public final class Disconnection
 	
 	public Disconnection deleteMe()
 	{
+		if (_bridge)
+			return this;
+		
 		try
 		{
 			if (_activeChar != null)
@@ -128,6 +143,9 @@ public final class Disconnection
 	
 	public Disconnection close(boolean toLoginScreen)
 	{
+		if (_bridge)
+			return this;
+		
 		if (_client != null)
 			_client.close(toLoginScreen);
 		
@@ -136,6 +154,9 @@ public final class Disconnection
 	
 	public void defaultSequence(boolean toLoginScreen)
 	{
+		if (_bridge)
+			return;
+		
 		store();
 		deleteMe();
 		close(toLoginScreen);
@@ -155,6 +176,9 @@ public final class Disconnection
 	
 	public void onDisconnection()
 	{
+		if (_bridge)
+			return;
+		
 		if (_activeChar != null)
 		{
 			// The save and the delete run behind the packets that the client sent before it went away, so that they

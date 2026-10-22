@@ -14,11 +14,8 @@
  */
 package com.l2jfree.gameserver.network.packets.client;
 
-import com.l2jfree.Config;
 import com.l2jfree.gameserver.gameobjects.L2Player;
-import com.l2jfree.gameserver.model.world.L2World;
-import com.l2jfree.gameserver.network.Disconnection;
-import com.l2jfree.gameserver.network.L2Client.GameClientState;
+import com.l2jfree.gameserver.network.bridge.CharacterSelection;
 import com.l2jfree.gameserver.network.packets.L2ClientPacket;
 import com.l2jfree.gameserver.network.packets.server.ActionFailed;
 import com.l2jfree.gameserver.network.packets.server.CharSelected;
@@ -47,42 +44,14 @@ public final class CharacterSelected extends L2ClientPacket
 	@Override
 	protected void runImpl()
 	{
-		// should always be null
-		// but if not then this is repeated packet and nothing should be done here
-		if (getClient().getActiveChar() != null)
+		if (!CharacterSelection.enter(getClient(), _charSlot))
 			return;
 		
-		final L2Player cha = getClient().loadCharFromDisk(_charSlot);
-		
-		if (cha == null)
-		{
-			_log.error(getClient() + ": character couldn't be loaded (slot:" + _charSlot + ")");
-			sendPacket(ActionFailed.STATIC_PACKET);
+		// A bridge opening does not mint a login session key, so it does not send this packet's tail.
+		if (getClient().isBridge())
 			return;
-		}
 		
-		if ((cha.getAccessLevel() < 0) || (Config.SERVER_GMONLY && cha.getAccessLevel() <= 0))
-		{
-			new Disconnection(getClient(), cha).defaultSequence(false);
-			return;
-		}
-		
-		// preinitialize some values for each login
-		cha.setRunning(); // running is default
-		cha.standUp(); // standing is default
-		
-		// the char & skills are fully loaded, so update
-		cha.refreshOverloaded();
-		// refresh expertise already done when loading character (after loading inv)
-		cha.setOnlineStatus(true);
-		
-		L2World.getInstance().storeObject(cha);
-		L2World.getInstance().addOnlinePlayer(cha);
-		
-		cha.setClient(getClient());
-		getClient().setActiveChar(cha);
-		
-		getClient().setState(GameClientState.IN_GAME);
+		L2Player cha = getClient().getActiveChar();
 		sendPacket(new CharSelected(cha, getClient().getSessionId().playOk1()));
 		sendPacket(ActionFailed.STATIC_PACKET);
 	}

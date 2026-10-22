@@ -168,6 +168,32 @@ public final class LoginLink implements WorldPort
 	{
 		sessions().logout(account, client);
 	}
+	
+	/**
+	 * Reserves the account for a bridge client without asking the login module. The account name is set on the client
+	 * only together with that reserve.
+	 * 
+	 * @return false when the account is already waiting or in the world
+	 */
+	public boolean admitTrusted(String account, L2Client client)
+	{
+		if (client == null)
+			return false;
+		
+		return sessions().admitTrusted(account, client, new Runnable() {
+			@Override
+			public void run()
+			{
+				client.setAccountName(account);
+			}
+		});
+	}
+	
+	/** Drops the trusted reserve of this same client. The login module is not told. */
+	public void leaveTrusted(String account, L2Client client)
+	{
+		sessions().leaveTrusted(account, client);
+	}
 
 	public void sendAccessLevel(String account, int level)
 	{

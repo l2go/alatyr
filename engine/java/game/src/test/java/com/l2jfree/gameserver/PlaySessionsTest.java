@@ -15,6 +15,7 @@
 package com.l2jfree.gameserver;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -211,5 +212,138 @@ class PlaySessionsTest
 		_sessions.kick("anna");
 		
 		assertThat(_clients.events).containsExactly("close client-1");
+	}
+	
+	@Test
+	void aFreeAccountCanBeReservedWithoutAskingTheLogin()
+	{
+		assertThat(_sessions.admitTrusted("anna", "bridge", () -> _clients.events.add("bind anna"))).isTrue();
+		
+		assertThat(_clients.events).containsExactly("bind anna");
+		assertThat(_sessions.isInWorld("anna")).isTrue();
+		assertThat(_sessions.isWaiting("anna")).isFalse();
+		assertThat(_login.admitted).isEmpty();
+		assertThat(_login.left).isEmpty();
+	}
+	
+	@Test
+	void anEmptyAccountOrClientIsNotReserved()
+	{
+		assertThat(_sessions.admitTrusted(null, "bridge", () -> _clients.events.add("bind"))).isFalse();
+		assertThat(_sessions.admitTrusted("", "bridge", () -> _clients.events.add("bind"))).isFalse();
+		assertThat(_sessions.admitTrusted("anna", null, () -> _clients.events.add("bind"))).isFalse();
+		
+		assertThat(_clients.events).isEmpty();
+		assertThat(_sessions.inWorldCount()).isEqualTo(0);
+	}
+	
+	@Test
+	void aReserveThatFailsToBindDoesNotOccupyTheAccount()
+	{
+		assertThatThrownBy(() -> _sessions.admitTrusted("anna", "bridge", () -> {
+			throw new IllegalStateException("bind failed");
+		})).isInstanceOf(IllegalStateException.class);
+		
+		assertThat(_sessions.isInWorld("anna")).isFalse();
+	}
+	
+	@Test
+	void logoutOfAReservedClientDoesNotTellTheLogin()
+	{
+		_sessions.admitTrusted("anna", "bridge", () -> {
+		});
+		
+		_sessions.logout("anna", "bridge");
+		_sessions.logout("anna", "bridge");
+		
+		assertThat(_sessions.isInWorld("anna")).isFalse();
+		assertThat(_login.left).isEmpty();
+		assertThat(_login.admitted).isEmpty();
+	}
+	
+	@Test
+	void leaveTrustedDropsOnlyTheSameReservedClient()
+	{
+		_sessions.admitTrusted("anna", "bridge", () -> {
+		});
+		
+		_sessions.leaveTrusted("anna", "other");
+		assertThat(_sessions.isInWorld("anna")).isTrue();
+		
+		_sessions.leaveTrusted("anna", "bridge");
+		assertThat(_sessions.isInWorld("anna")).isFalse();
+		assertThat(_login.left).isEmpty();
+	}
+	
+	@Test
+	void leaveTrustedLeavesAnOrdinaryClientInTheWorld()
+	{
+		_sessions.authenticate("anna", "client-1", KEY);
+		
+		_sessions.leaveTrusted("anna", "client-1");
+		
+		assertThat(_sessions.isInWorld("anna")).isTrue();
+		_sessions.logout("anna", "client-1");
+		assertThat(_login.left).containsExactly("anna");
+	}
+	
+	@Test
+	void aWaitingAccountCannotBeReservedAndTheLoginIsAskedOnce()
+	{
+		_login.whileDeciding = account -> assertThat(
+				_sessions.admitTrusted(account, "bridge", () -> _clients.events.add("bind"))).isFalse();
+		
+		_sessions.authenticate("anna", "client-1", KEY);
+		
+		assertThat(_login.admitted).containsExactly("anna");
+		assertThat(_clients.events).containsExactly("claim client-1 anna", "admit client-1 203.0.113.9");
+		assertThat(_sessions.isInWorld("anna")).isTrue();
+	}
+	
+	@Test
+	void anAccountInTheWorldCannotBeReserved()
+	{
+		_sessions.authenticate("anna", "client-1", KEY);
+		
+		assertThat(_sessions.admitTrusted("anna", "bridge", () -> _clients.events.add("bind"))).isFalse();
+		
+		assertThat(_login.admitted).containsExactly("anna");
+		assertThat(_clients.events).doesNotContain("bind");
+		assertThat(_sessions.isInWorld("anna")).isTrue();
+	}
+	
+	@Test
+	void aReservedAccountCannotBeClaimedAndTheLoginIsNotAsked()
+	{
+		_sessions.admitTrusted("anna", "bridge", () -> {
+		});
+		
+		assertThat(_sessions.authenticate("anna", "client-1", KEY)).isFalse();
+		
+		assertThat(_login.admitted).isEmpty();
+		assertThat(_sessions.isInWorld("anna")).isTrue();
+	}
+	
+	@Test
+	void aLateLogoutOfAnotherClientDoesNotDropTheReserve()
+	{
+		_sessions.admitTrusted("anna", "bridge", () -> {
+		});
+		
+		_sessions.logout("anna", "client-1");
+		
+		assertThat(_sessions.isInWorld("anna")).isTrue();
+		assertThat(_login.left).isEmpty();
+	}
+	
+	@Test
+	void kickClosesAReservedClient()
+	{
+		_sessions.admitTrusted("anna", "bridge", () -> {
+		});
+		
+		_sessions.kick("anna");
+		
+		assertThat(_clients.events).containsExactly("close bridge");
 	}
 }

@@ -169,6 +169,15 @@ public final class Shutdown extends Thread
 		
 		OfflineTradeManager.getInstance().store();
 		
+		try
+		{
+			GameServerExtensions.close();
+		}
+		catch (Throwable t)
+		{
+			t.printStackTrace();
+		}
+		
 		for (L2Player player : L2World.getInstance().getAllPlayers())
 		{
 			try
