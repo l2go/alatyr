@@ -52,7 +52,10 @@ final class BridgeDialogue
 		if (first.type() == Schemas.PING && records.size() == 1)
 			return BridgeReply.of(List.of(BridgeFrames.pong(first.field(1).value().u())), false);
 		if (first.type() == Schemas.CLOSE && records.size() == 1)
-			return fail(BridgeFrames.BYE_NORMAL);
+		{
+			closed = true;
+			return BridgeReply.closeSession();
+		}
 		
 		return fail(BridgeFrames.BYE_FRAME);
 	}

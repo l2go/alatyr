@@ -309,20 +309,23 @@ final class BridgeLoopback implements Runnable
 			}
 			return;
 		}
-		if (reply.close && transport.client != null)
+		if (reply.close)
 		{
-			armResultWait(transport);
-			disconnectBound(transport);
+			if (reply.waitForDisconnect && transport.client != null)
+			{
+				armResultWait(transport);
+				disconnectBound(transport);
+			}
+			else if (!reply.records.isEmpty())
+			{
+				finishTerminal(transport, reply.records);
+				disconnectBound(transport);
+			}
 			selector.wakeup();
 			return;
 		}
 		if (!reply.records.isEmpty())
 			offer(transport, frame(reply.records));
-		if (reply.close)
-		{
-			armClose(transport);
-			selector.wakeup();
-		}
 	}
 	
 	/**
@@ -363,11 +366,7 @@ final class BridgeLoopback implements Runnable
 	/** The disconnect save owns the terminal bye. A late bye is dropped once that bye is claimed. */
 	void fromSink(Transport transport, List<Envelope> records)
 	{
-		if (!claimTerminal(transport))
-			return;
-		
-		offer(transport, frame(records));
-		armClose(transport);
+		finishTerminal(transport, records);
 		selector.wakeup();
 	}
 	
@@ -382,11 +381,10 @@ final class BridgeLoopback implements Runnable
 			due = transport.awaitingResult && !transport.closing && !transport.terminal && transport.resultDeadline != 0
 					&& System.nanoTime() >= transport.resultDeadline;
 		}
-		if (!due || !claimTerminal(transport))
+		if (!due)
 			return;
 		
-		offer(transport, frame(List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL))));
-		armClose(transport);
+		finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)));
 	}
 	
 	private static void armResultWait(Transport transport)
@@ -401,16 +399,17 @@ final class BridgeLoopback implements Runnable
 		}
 	}
 	
-	private static boolean claimTerminal(Transport transport)
+	private static void finishTerminal(Transport transport, List<Envelope> records)
 	{
 		synchronized (transport)
 		{
 			if (transport.terminal || transport.closing)
-				return false;
+				return;
 			
 			transport.terminal = true;
 			transport.awaitingResult = false;
-			return true;
+			offer(transport, frame(records));
+			armClose(transport);
 		}
 	}
 	

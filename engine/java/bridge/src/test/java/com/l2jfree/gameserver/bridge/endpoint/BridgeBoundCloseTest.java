@@ -68,6 +68,50 @@ class BridgeBoundCloseTest
 	{
 		assertBye(new RuntimeException("disk"), BridgeFrames.BYE_INTERNAL);
 	}
+
+	@Test
+	void aRepeatedOpenKeepsItsFrameErrorAfterASuccessfulSave() throws Exception
+	{
+		assertProtocolBye(true);
+	}
+
+	@Test
+	void aRepeatedOpenKeepsItsFrameErrorAfterAFailedSave() throws Exception
+	{
+		assertProtocolBye(false);
+	}
+
+	private static void assertProtocolBye(boolean saved) throws Exception
+	{
+		CountDownLatch inStore = new CountDownLatch(1);
+		CountDownLatch release = new CountDownLatch(1);
+		try (InlinePool pool = InlinePool.open(); Bound bound = Bound.open(invocation ->
+		{
+			inStore.countDown();
+			assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
+			return saved;
+		}))
+		{
+			try
+			{
+				Envelope repeatedOpen = openFrame(new byte[32]);
+				bound.loop.acceptFrame(bound.transport, List.of(repeatedOpen));
+				assertThat(inStore.await(5, TimeUnit.SECONDS)).isTrue();
+				assertThat(bound.transport.queued).hasSize(1);
+				assertThat(reason(bound.transport)).isEqualTo(BridgeFrames.BYE_FRAME);
+				bound.loop.acceptFrame(bound.transport, List.of(repeatedOpen));
+			}
+			finally
+			{
+				release.countDown();
+			}
+			bound.awaitDisconnect();
+			assertThat(bound.transport.queued).hasSize(1);
+			assertThat(reason(bound.transport)).isEqualTo(BridgeFrames.BYE_FRAME);
+			verify(bound.player, times(1)).store(true, true);
+			verify(bound.player, times(1)).deleteMe();
+		}
+	}
 	
 	@Test
 	void aMissedSaveDeadlineClosesInternally() throws Exception
@@ -181,6 +225,14 @@ class BridgeBoundCloseTest
 			loop.acceptFrame(transport, List.of(close));
 		}
 		
+		void awaitDisconnect() throws Exception
+		{
+			long end = System.nanoTime() + 5_000_000_000L;
+			while (!client.isBridgeDisconnectFinished() && System.nanoTime() < end)
+				Thread.sleep(10);
+			assertThat(client.isBridgeDisconnectFinished()).isTrue();
+		}
+
 		@Override
 		public void close()
 		{

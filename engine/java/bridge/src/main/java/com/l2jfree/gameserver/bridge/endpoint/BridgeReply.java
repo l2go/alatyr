@@ -26,25 +26,33 @@ final class BridgeReply
 	final List<Envelope> records;
 	final boolean close;
 	final boolean admit;
+	final boolean waitForDisconnect;
 	final String account;
 	final String character;
 	
-	private BridgeReply(List<Envelope> records, boolean close, boolean admit, String account, String character)
+	private BridgeReply(List<Envelope> records, boolean close, boolean admit, boolean waitForDisconnect, String account,
+			String character)
 	{
 		this.records = records;
 		this.close = close;
 		this.admit = admit;
+		this.waitForDisconnect = waitForDisconnect;
 		this.account = account;
 		this.character = character;
 	}
 	
 	static BridgeReply of(List<Envelope> records, boolean close)
 	{
-		return new BridgeReply(records, close, false, null, null);
+		return new BridgeReply(records, close, false, false, null, null);
+	}
+
+	static BridgeReply closeSession()
+	{
+		return new BridgeReply(List.of(BridgeFrames.bye(BridgeFrames.BYE_NORMAL)), true, false, true, null, null);
 	}
 	
 	static BridgeReply admission(String account, String character)
 	{
-		return new BridgeReply(List.of(), false, true, account, character);
+		return new BridgeReply(List.of(), false, true, false, account, character);
 	}
 }
