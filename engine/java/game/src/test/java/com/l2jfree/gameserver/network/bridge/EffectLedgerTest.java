@@ -16,16 +16,17 @@ package com.l2jfree.gameserver.network.bridge;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import com.l2jfree.gameserver.gameobjects.HuntTestPlayers;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 
 /**
  * The ledger records only while an attempt is open on this thread. An inactive call returns without a receipt.
+ * Players come from {@link HuntTestPlayers}, so this class does not depend on which test initializes the player class first.
  */
 class EffectLedgerTest
 {
@@ -38,7 +39,7 @@ class EffectLedgerTest
 	@Test
 	void anInactiveLedgerReturns()
 	{
-		L2Player player = mock(L2Player.class);
+		L2Player player = HuntTestPlayers.mockPlayer();
 		
 		EffectLedger.record(player, BridgeEffect.coin(1));
 		EffectLedger.expectLearningCost(player, 0, 1, 0, 0);
@@ -54,7 +55,7 @@ class EffectLedgerTest
 	@Test
 	void aCoinIsRecordedForTheOpenPlayer()
 	{
-		L2Player player = mock(L2Player.class);
+		L2Player player = HuntTestPlayers.mockPlayer();
 		Attempt attempt = open(player);
 		
 		EffectLedger.record(player, BridgeEffect.coin(1));
@@ -66,8 +67,8 @@ class EffectLedgerTest
 	@Test
 	void anotherPlayersChangeIsIgnored()
 	{
-		L2Player player = mock(L2Player.class);
-		L2Player other = mock(L2Player.class);
+		L2Player player = HuntTestPlayers.mockPlayer();
+		L2Player other = HuntTestPlayers.mockPlayer();
 		Attempt attempt = open(player);
 		
 		EffectLedger.record(other, BridgeEffect.coin(1));
@@ -79,7 +80,7 @@ class EffectLedgerTest
 	@Test
 	void aMissingOwnerOrEffectMarksTheLedgerIncomplete()
 	{
-		L2Player player = mock(L2Player.class);
+		L2Player player = HuntTestPlayers.mockPlayer();
 		Attempt attempt = open(player);
 		
 		EffectLedger.record(null, BridgeEffect.coin(1));
@@ -91,7 +92,7 @@ class EffectLedgerTest
 	@Test
 	void theSixtyFifthEffectIsNotStored()
 	{
-		L2Player player = mock(L2Player.class);
+		L2Player player = HuntTestPlayers.mockPlayer();
 		Attempt attempt = open(player);
 		
 		for (int i = 1; i <= Attempt.MAX_EFFECTS; i++)
@@ -109,7 +110,7 @@ class EffectLedgerTest
 	@Test
 	void theSameLearningCostIsNotASecondReceipt()
 	{
-		L2Player player = mock(L2Player.class);
+		L2Player player = HuntTestPlayers.mockPlayer();
 		Attempt attempt = open(player);
 		
 		EffectLedger.expectLearningCost(player, 0, 10, 0, 0);
@@ -122,7 +123,7 @@ class EffectLedgerTest
 	@Test
 	void aDifferentLearningCostMarksTheLedgerIncomplete()
 	{
-		L2Player player = mock(L2Player.class);
+		L2Player player = HuntTestPlayers.mockPlayer();
 		Attempt attempt = open(player);
 		
 		EffectLedger.expectLearningCost(player, 0, 10, 0, 0);
@@ -134,13 +135,13 @@ class EffectLedgerTest
 	@Test
 	void anUnsupportedBranchOrAChangedClassMarksTheLedgerIncomplete()
 	{
-		L2Player clan = mock(L2Player.class);
+		L2Player clan = HuntTestPlayers.mockPlayer();
 		Attempt clanAttempt = open(clan);
 		EffectLedger.expectLearningCost(clan, 5, 1, 57, 1);
 		assertThat(clanAttempt.isLedgerIncomplete()).isTrue();
 		EffectLedger.close();
 		
-		L2Player changed = mock(L2Player.class);
+		L2Player changed = HuntTestPlayers.mockPlayer();
 		when(changed.getClassIndex()).thenReturn(0, 1);
 		Attempt changedAttempt = new Attempt(changed);
 		EffectLedger.open(changedAttempt);
@@ -151,7 +152,7 @@ class EffectLedgerTest
 	@Test
 	void openingTwiceIsRejectedAndAClosedLedgerRecordsNothing()
 	{
-		L2Player player = mock(L2Player.class);
+		L2Player player = HuntTestPlayers.mockPlayer();
 		Attempt attempt = open(player);
 		
 		assertThatThrownBy(() -> EffectLedger.open(new Attempt(player))).isInstanceOf(IllegalStateException.class);
