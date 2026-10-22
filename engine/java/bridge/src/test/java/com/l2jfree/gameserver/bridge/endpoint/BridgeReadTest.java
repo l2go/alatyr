@@ -64,7 +64,7 @@ class BridgeReadTest
 	}
 	
 	@Test
-	void pendingBytesPastOneFrameAreAFrameError()
+	void pendingBytesPastOneFrameAreAFrameError() throws Exception
 	{
 		Transport transport = new Transport(new byte[32]);
 		transport.pending.write(new byte[BridgeLoopback.FRAME_CAP + 11]);
