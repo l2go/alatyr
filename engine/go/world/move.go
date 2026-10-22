@@ -6,7 +6,6 @@ package world
 import (
 	"math"
 	"slices"
-	"time"
 )
 
 const ticksPerSecond = 10
@@ -20,6 +19,7 @@ type moveData struct {
 
 func (w *World) moveTo(s *state, a actor, to Point, offset int32) {
 	c := a.base()
+	to = w.onGround(to)
 
 	speed := a.moveSpeed()
 	if speed <= 0 {
@@ -95,35 +95,70 @@ func headingOf(dx, dy float64) int32 {
 }
 
 type Point struct{ X, Y, Z int32 }
-type creature struct {
-	id      int32
-	pos     Point
-	heading int32
-	move    *moveData
-}
-type actor interface {
-	base() *creature
-	moveSpeed() float64
-}
 
-func (w *World) setPos(_ *state, a actor, p Point) { a.base().pos = p }
-func (w *World) notifyArrived(_ *state, a actor) {
-	p := a.(*player)
-	p.move = nil
-	p.send(Stopped{ObjectID: p.id, Pos: p.pos, Heading: p.heading})
+func (w *World) setPos(s *state, a actor, pos Point) {
+	c := a.base()
+	old := c.region
+	c.pos = pos
+	c.region = regionOf(pos)
+	if old != c.region {
+		r := s.region(old)
+		r.objects = slices.DeleteFunc(r.objects, func(id int32) bool { return id == c.id })
+		s.region(c.region).objects = append(s.region(c.region).objects, c.id)
+		if p, ok := a.(*player); ok && !p.teleporting {
+			r.players--
+			s.region(c.region).players++
+			w.activate(s, c.region)
+		}
+	}
+	w.queueRevalidate(s, a)
+}
+func (w *World) stopMove(s *state, a actor) {
+	c := a.base()
+	if c.move != nil {
+		w.updatePosition(s, a, s.ticks)
+		c.move = nil
+	}
+	w.broadcastToKnown(s, a, Stopped{ObjectID: c.id, Pos: c.pos, Heading: c.heading})
 }
 func (w *World) tickMovement(s *state) {
 	s.ticks++
-	s.moving = slices.DeleteFunc(s.moving, func(id int32) bool {
-		p, ok := s.players[id]
-		if !ok {
-			return true
+	var arrived, followers []actor
+	for _, id := range s.moving {
+		a, ok := s.actor(id)
+		if !ok || a.base().move == nil {
+			continue
 		}
-		if w.updatePosition(s, p, s.ticks) {
-			w.notifyArrived(s, p)
+		done := w.updatePosition(s, a, s.ticks)
+		if a.base().ai.follow == 0 {
+			if done {
+				arrived = append(arrived, a)
+			}
+		} else {
+			followers = append(followers, a)
+		}
+	}
+	followers = slices.DeleteFunc(followers, func(a actor) bool {
+		if w.insideActingRadius(s, a) {
+			arrived = append(arrived, a)
 			return true
 		}
 		return false
 	})
-	s.after(time.Second/ticksPerSecond, w.tickMovement)
+	s.moving = slices.DeleteFunc(s.moving, func(id int32) bool {
+		a, ok := s.actor(id)
+		return !ok || a.base().move == nil || slices.Contains(arrived, a)
+	})
+	for _, a := range arrived {
+		w.updateKnown(s, a)
+		w.notifyArrived(s, a)
+	}
+	for _, a := range followers {
+		w.notifyArrivedRevalidate(s, a)
+	}
+	s.after(tickPeriod, w.tickMovement)
+}
+
+func distance2D(a, b Point) float64 {
+	return math.Hypot(float64(a.X)-float64(b.X), float64(a.Y)-float64(b.Y))
 }

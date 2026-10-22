@@ -194,6 +194,9 @@ func (c *Catalog) addItem(t ItemTemplate, err error) error {
 	if err != nil {
 		return err
 	}
+	if t.ID <= 0 || t.Weight < 0 || t.RandomDamage < 0 || t.RandomDamage > 100 {
+		return fmt.Errorf("invalid item %d", t.ID)
+	}
 	if _, dup := c.items[t.ID]; dup {
 		return fmt.Errorf("item %d twice", t.ID)
 	}
@@ -202,10 +205,20 @@ func (c *Catalog) addItem(t ItemTemplate, err error) error {
 }
 
 type Catalog struct {
-	players   map[int32]PlayerTemplate
-	items     map[int32]ItemTemplate
-	itemFuncs map[int32][]ItemFunc
-	passive   map[[2]int32][]ItemFunc
+	players    map[int32]PlayerTemplate
+	items      map[int32]ItemTemplate
+	itemFuncs  map[int32][]ItemFunc
+	passive    map[[2]int32][]ItemFunc
+	npcs       map[int32]NPCTemplate
+	spawns     []Spawn
+	drops      map[int32][]*DropCategory
+	skillTree  map[int32][]SkillLearn
+	teach      map[int32]map[int32]bool
+	skills     map[int32]skillLevels
+	html       map[string]string
+	zones      []zone
+	restarts   map[int32]Restart
+	mapRegions []mapRegion
 }
 
 func (c *Catalog) Player(id int32) (PlayerTemplate, bool) { t, ok := c.players[id]; return t, ok }
@@ -215,10 +228,15 @@ func (c *Catalog) PassiveFuncs(id, level int32) []ItemFunc {
 }
 
 // Load reads the rendered world root. Source authoring files are never opened.
-// This base reads player templates, level gains, item templates and stat XML;
-// other catalog consumers are introduced with their gameplay.
+// Templates, spawns, learning, drops and geometry come from the same root.
 func Load(root string) (*Catalog, error) {
 	c := &Catalog{players: map[int32]PlayerTemplate{}, items: map[int32]ItemTemplate{}, itemFuncs: map[int32][]ItemFunc{}, passive: map[[2]int32][]ItemFunc{}}
+	c.npcs = map[int32]NPCTemplate{}
+	c.drops = map[int32][]*DropCategory{}
+	c.skillTree = map[int32][]SkillLearn{}
+	c.teach = map[int32]map[int32]bool{}
+	c.skills = map[int32]skillLevels{}
+	c.html = map[string]string{}
 	for _, s := range []struct {
 		file string
 		row  func(row) error
@@ -234,6 +252,9 @@ func Load(root string) (*Catalog, error) {
 		if err := c.loadStatXML(filepath.Join(root, "data", "stats", kind), kind); err != nil {
 			return nil, fmt.Errorf("catalog: %s XML: %w", kind, err)
 		}
+	}
+	if err := c.loadGameplay(root); err != nil {
+		return nil, err
 	}
 	return c, nil
 }

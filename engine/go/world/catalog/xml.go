@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -73,11 +72,11 @@ func (c *Catalog) loadStatXML(dir, kind string) error {
 				continue
 			}
 			idText, _ := n.attr("id")
-			id64, err := strconv.ParseInt(idText, 10, 32)
+			id32, err := javaDecode(idText)
 			if err != nil {
 				return err
 			}
-			id := int32(id64)
+			id := id32
 			if kind != "skills" {
 				t, ok := c.items[id]
 				if !ok {
@@ -93,41 +92,18 @@ func (c *Catalog) loadStatXML(dir, kind string) error {
 				c.itemFuncs[id] = skillFuncs(n, func(v string) (string, error) { return v, nil })
 				continue
 			}
-			// Active skill effects are not executed by this base.
-			if n.set("operateType") != "OP_PASSIVE" {
-				continue
+			id, levels, err := parseSkill(n)
+			if err != nil {
+				return err
 			}
-			levelsText, _ := n.attr("levels")
-			levels, err := strconv.ParseInt(levelsText, 10, 32)
-			if err != nil || levels < 1 || levels > 1000 {
-				return errors.New("invalid passive levels")
+			if _, dup := c.skills[id]; dup {
+				return errors.New("duplicate skill XML")
 			}
-			tables := map[string][]string{}
-			for _, ch := range n.Children {
-				if ch.XMLName.Local == "table" {
-					name, _ := ch.attr("name")
-					if _, ok := tables[name]; ok {
-						return errors.New("duplicate stat table")
-					}
-					tables[name] = strings.Fields(ch.Text)
+			c.skills[id] = levels
+			for level, sk := range levels.levels {
+				if sk.Passive {
+					c.passive[[2]int32{id, level}] = cloneFuncs(sk.Funcs)
 				}
-			}
-			for level := int32(1); level <= int32(levels); level++ {
-				key := [2]int32{id, level}
-				if _, ok := c.passive[key]; ok {
-					return errors.New("duplicate passive skill")
-				}
-				value := func(v string) (string, error) {
-					if !strings.HasPrefix(v, "#") {
-						return v, nil
-					}
-					t, ok := tables[v]
-					if !ok || int(level) > len(t) {
-						return "", errors.New("missing table level")
-					}
-					return t[level-1], nil
-				}
-				c.passive[key] = skillFuncs(n, value)
 			}
 		}
 		return nil
