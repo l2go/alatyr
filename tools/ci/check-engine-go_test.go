@@ -52,7 +52,10 @@ func fixture(t *testing.T) (string, policy) {
 	}
 	files := []string{"go.work", "tools/world/go.mod", "tools/world/LICENSE", "docs/engine-go/README.md"}
 	for _, name := range moduleNames {
-		for _, file := range []string{"go.mod", "doc.go", "README.md", "LICENSE"} {
+		// This fixture models scaffolds even when the real module has become active.
+		// Do not inherit production dependency directives into the synthetic tree.
+		writeFixture(t, root, "engine/go/"+name+"/go.mod", "module "+modulePrefix+name+"\n\ngo "+goVersion+"\n")
+		for _, file := range []string{"doc.go", "README.md", "LICENSE"} {
 			files = append(files, "engine/go/"+name+"/"+file)
 		}
 	}
@@ -331,4 +334,14 @@ func TestRunAndPolicyPath(t *testing.T) {
 		t.Fatal("missing success output")
 	}
 	expectRule(t, run(root, "../outside.json", false, &out), "policy:")
+}
+
+func TestScaffoldDependencyStillRejected(t *testing.T) {
+	for _, name := range moduleNames {
+		t.Run(name, func(t *testing.T) {
+			root, p := fixture(t)
+			writeFixture(t, root, "engine/go/"+name+"/go.mod", "module "+modulePrefix+name+"\n\ngo "+goVersion+"\nrequire example.org/foreign v1.0.0\n")
+			expectRule(t, checkTree(root, p), "I-3")
+		})
+	}
 }
