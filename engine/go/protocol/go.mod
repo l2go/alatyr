@@ -1,3 +1,3 @@
-module github.com/l2go/l2jfree/engine/go/protocol
+module github.com/l2go/alatyr/engine/go/protocol
 
 go 1.27.1

@@ -9,7 +9,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/l2go/l2jfree/tools/world/internal/world"
+	"github.com/l2go/alatyr/tools/world/internal/world"
 )
 
 const usage = `world renders catalog and data from keyed sources.
