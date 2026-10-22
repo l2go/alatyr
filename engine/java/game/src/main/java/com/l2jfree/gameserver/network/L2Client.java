@@ -145,7 +145,8 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 		_bridgeOpeningPlayer = null;
 	}
 	
-	void discardOpeningPlayer(L2Player player)
+	/** Drops the opening reference when this character is detached. */
+	public void discardOpeningPlayer(L2Player player)
 	{
 		if (_bridgeOpeningPlayer == player)
 			_bridgeOpeningPlayer = null;
