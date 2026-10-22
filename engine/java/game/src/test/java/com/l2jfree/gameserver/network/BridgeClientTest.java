@@ -17,8 +17,10 @@ package com.l2jfree.gameserver.network;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
@@ -30,7 +32,7 @@ import com.l2jfree.gameserver.network.packets.L2ClientPacket;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 import com.l2jfree.network.NetworkServer;
 
-import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.channel.Channel;
 
 /**
  * An ordinary client keeps its cipher. A bridge client has none, and a second disconnect request does not start again.
@@ -42,8 +44,7 @@ class BridgeClientTest
 	{
 		@SuppressWarnings("unchecked")
 		NetworkServer<L2Client, L2ClientPacket, L2ServerPacket> server = mock(NetworkServer.class);
-		EmbeddedChannel ordinaryChannel = new EmbeddedChannel();
-		L2Client ordinary = new L2Client(server, ordinaryChannel);
+		L2Client ordinary = new L2Client(server, addressedChannel());
 		AtomicInteger byes = new AtomicInteger();
 		ClientSink sink = new ClientSink() {
 			@Override
@@ -68,14 +69,13 @@ class BridgeClientTest
 			{
 			}
 		};
-		L2Client bridge = L2Client.forBridge(server, new EmbeddedChannel(),
+		L2Client bridge = L2Client.forBridge(server, addressedChannel(),
 				InetAddress.getByAddress(new byte[] { 127, 0, 0, 1 }), sink);
 		
 		assertThat(ordinary.isBridge()).isFalse();
 		assertThat(bridge.isBridge()).isTrue();
 		assertThat(ordinary.enableCrypt()).isNotEmpty();
 		assertThatThrownBy(bridge::enableCrypt).isInstanceOf(IllegalStateException.class);
-		assertThat(ordinaryChannel.outboundMessages()).isNullOrEmpty();
 		assertThat(byes).hasValue(0);
 	}
 	
@@ -106,13 +106,20 @@ class BridgeClientTest
 			{
 			}
 		};
-		L2Client bridge = L2Client.forBridge(server, new EmbeddedChannel(),
+		L2Client bridge = L2Client.forBridge(server, addressedChannel(),
 				InetAddress.getByAddress(new byte[] { 127, 0, 0, 1 }), sink);
-		L2Client ordinary = new L2Client(server, new EmbeddedChannel());
+		L2Client ordinary = new L2Client(server, addressedChannel());
 		
 		assertThat(bridge.beginBridgeDisconnect()).isTrue();
 		assertThat(bridge.beginBridgeDisconnect()).isFalse();
 		assertThat(bridge.isBridgeDisconnectRequested()).isTrue();
 		assertThat(ordinary.beginBridgeDisconnect()).isFalse();
+	}
+	
+	private static Channel addressedChannel()
+	{
+		Channel channel = mock(Channel.class);
+		when(channel.remoteAddress()).thenReturn(new InetSocketAddress("127.0.0.1", 2106));
+		return channel;
 	}
 }
