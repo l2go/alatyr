@@ -15,23 +15,20 @@
 package com.l2jfree.gameserver.bridge.endpoint;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import java.io.ByteArrayOutputStream;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 
+import com.l2jfree.gameserver.bridge.endpoint.BridgeLoopback.Transport;
 import com.l2jfree.gameserver.bridge.wire.Codec;
 import com.l2jfree.gameserver.bridge.wire.Envelope;
 import com.l2jfree.gameserver.bridge.wire.Field;
@@ -43,13 +40,16 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 import com.l2jfree.network.NetworkServer;
 
 /**
- * A client built after shutdown has taken its list still receives one disconnect and is not admitted.
+ * Shutdown can take its client list after a client has been built and before that client is published. The client is
+ * then disconnected and not admitted.
  */
 class BridgeShutdownRaceTest
 {
 	@Test
 	void aClientBuiltDuringShutdownIsDisconnectedWithoutAdmission() throws Exception
 	{
+		String previousDirectory = System.getProperty("user.dir");
+		System.setProperty("user.dir", Path.of("..", "game").toAbsolutePath().normalize().toString());
 		byte[] secret = new byte[32];
 		for (int i = 0; i < secret.length; i++)
 			secret[i] = 0x3c;
@@ -58,55 +58,55 @@ class BridgeShutdownRaceTest
 		GameServerContext context = mock(GameServerContext.class);
 		when(context.getNetworkServer()).thenReturn(network);
 		BridgeLoopback loop = listener(secret, context);
-		AtomicBoolean finished = new AtomicBoolean();
-		L2Client slow = mock(L2Client.class);
-		doAnswer(invocation -> null).when(slow).requestBridgeDisconnect();
-		when(slow.isBridgeDisconnectFinished()).thenAnswer(invocation -> finished.get());
-		loop.watch(slow);
-		CountDownLatch atGate = new CountDownLatch(1);
-		CountDownLatch release = new CountDownLatch(1);
-		AtomicReference<L2Client> admitted = new AtomicReference<>();
-		loop.holdBeforeWatch(client ->
+		try
 		{
-			admitted.set(client);
-			atGate.countDown();
-			try
+			Transport transport = new Transport(secret);
+			CountDownLatch atGate = new CountDownLatch(1);
+			CountDownLatch release = new CountDownLatch(1);
+			AtomicReference<L2Client> admitted = new AtomicReference<>();
+			loop.holdBeforeWatch(client ->
 			{
-				assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
-			}
-			catch (InterruptedException e)
+				admitted.set(client);
+				atGate.countDown();
+				try
+				{
+					assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
+				}
+				catch (InterruptedException e)
+				{
+					Thread.currentThread().interrupt();
+				}
+			});
+			AtomicReference<Throwable> failure = new AtomicReference<>();
+			Thread opener = new Thread(() ->
 			{
-				Thread.currentThread().interrupt();
-			}
-		});
-		try (InlinePool pool = InlinePool.open(); Socket socket = new Socket())
-		{
-			socket.connect(new InetSocketAddress("127.0.0.1", loop.port()), 1000);
-			socket.getOutputStream().write(frame(open(secret)));
-			socket.getOutputStream().flush();
+				try
+				{
+					loop.acceptFrame(transport, List.of(open(secret)));
+				}
+				catch (Throwable e)
+				{
+					failure.set(e);
+				}
+			});
+			opener.start();
 			assertThat(atGate.await(5, TimeUnit.SECONDS)).isTrue();
-			Thread closer = new Thread(() -> loop.close(4_000));
-			closer.start();
-			long end = System.nanoTime() + 2_000_000_000L;
-			while (loop.admitting() && System.nanoTime() < end)
-				Thread.sleep(5);
+			loop.stopAdmitting();
 			assertThat(loop.admitting()).isFalse();
+			assertThat(loop.clientCount()).isZero();
 			release.countDown();
-			long seen = System.nanoTime() + 3_000_000_000L;
-			while (loop.clientCount() < 2 && System.nanoTime() < seen)
-				Thread.sleep(5);
+			opener.join(5_000);
+			assertThat(failure.get()).isNull();
 			assertThat(admitted.get()).isNotNull();
 			assertThat(admitted.get().isBridgeDisconnectRequested()).isTrue();
-			assertThat(loop.clientCount()).isEqualTo(2);
-			finished.set(true);
-			closer.join(5_000);
+			assertThat(loop.clientCount()).isEqualTo(1);
 			assertThat(admitted.get().getState()).isEqualTo(L2Client.GameClientState.CONNECTED);
 		}
 		finally
 		{
 			loop.holdBeforeWatch(null);
-			release.countDown();
-			finished.set(true);
+			loop.close(1_000);
+			System.setProperty("user.dir", previousDirectory);
 		}
 	}
 	
@@ -116,13 +116,6 @@ class BridgeShutdownRaceTest
 				Field.data(3, true, Codec.profileName()), Field.data(4, true, secret),
 				Field.data(5, true, "guest".getBytes(StandardCharsets.UTF_8)),
 				Field.data(6, true, "Guest".getBytes(StandardCharsets.UTF_8)), Field.u(7, true, 1)));
-	}
-	
-	private static byte[] frame(Envelope record) throws Exception
-	{
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		Codec.bridge().write(out, List.of(record));
-		return out.toByteArray();
 	}
 	
 	private static BridgeLoopback listener(byte[] secret, GameServerContext context)

@@ -619,15 +619,24 @@ final class BridgeLoopback implements Runnable
 	}
 	
 	/**
-	 * Asks each session for its one full disconnect, keeps writing while those saves run, and waits until they finish
-	 * or {@code budgetMs} has passed. The selector thread is stopped after that wait.
+	 * Refuses new clients, then asks every client already on the list to disconnect. A client published after this
+	 * list is copied has to notice {@link #admitting} itself.
 	 */
-	void close(long budgetMs)
+	void stopAdmitting()
 	{
 		admitting = false;
 		selector.wakeup();
 		for (L2Client client : clients)
 			client.requestBridgeDisconnect();
+	}
+	
+	/**
+	 * Asks each session for its one full disconnect, keeps writing while those saves run, and waits until they finish
+	 * or {@code budgetMs} has passed. The selector thread is stopped after that wait.
+	 */
+	void close(long budgetMs)
+	{
+		stopAdmitting();
 		long end = System.nanoTime() + budgetMs * 1_000_000L;
 		while (System.nanoTime() < end && !disconnectsFinished())
 		{
