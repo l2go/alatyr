@@ -4,7 +4,7 @@
 package bridge
 
 import (
-	"github.com/l2go/l2jfree/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
 
 // measured bounds a caller-owned tree before encoding or copying it. It also

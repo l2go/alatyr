@@ -20,7 +20,7 @@ import (
 
 	"github.com/l2go/alatyr/engine/go/bridge/internal/transport"
 	"github.com/l2go/alatyr/engine/go/bridge/profile"
-	"github.com/l2go/l2jfree/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
 
 var sessions atomic.Int32

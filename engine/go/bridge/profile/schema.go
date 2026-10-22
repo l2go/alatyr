@@ -4,7 +4,7 @@
 // Package profile defines the bridge/1 registry over the shared wire codec.
 package profile
 
-import "github.com/l2go/l2jfree/engine/go/protocol/wire"
+import "github.com/l2go/alatyr/engine/go/protocol/wire"
 
 const (
 	Open        uint64 = 256
