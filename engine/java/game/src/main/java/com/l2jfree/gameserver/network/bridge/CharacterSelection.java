@@ -76,15 +76,29 @@ public final class CharacterSelection
 		cha.refreshOverloaded();
 		cha.setOnlineStatus(true);
 		
-		L2World.getInstance().storeObject(cha);
-		L2World.getInstance().addOnlinePlayer(cha);
-		
-		cha.setClient(client);
-		client.setActiveChar(cha);
-		if (client.isBridge())
-			client.finishBridgeOpening();
-		
-		client.setState(GameClientState.IN_GAME);
+		boolean published = client.bridgePublish(() ->
+		{
+			L2World.getInstance().storeObject(cha);
+			L2World.getInstance().addOnlinePlayer(cha);
+			cha.setClient(client);
+			client.setActiveChar(cha);
+			if (client.isBridge())
+				client.finishBridgeOpening();
+			client.setState(GameClientState.IN_GAME);
+		});
+		if (!published)
+		{
+			client.discardOpeningPlayer(cha);
+			try
+			{
+				cha.deleteMe();
+			}
+			catch (RuntimeException ignored)
+			{
+				// The opening lost the race with shutdown. The loaded character must not stay in the world.
+			}
+			return false;
+		}
 		return true;
 	}
 }

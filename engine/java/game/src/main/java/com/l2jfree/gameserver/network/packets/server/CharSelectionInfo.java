@@ -43,11 +43,17 @@ public class CharSelectionInfo extends L2ServerPacket
 	
 	public CharSelectionInfo(L2Client client)
 	{
-		_sessionId = client.getSessionId().playOk1();
+		_sessionId = client.getSessionId() == null ? 0 : client.getSessionId().playOk1();
 		_loginName = client.getAccountName();
 		_characterPackages = loadCharacterSelectInfo();
 		
 		client.setCharSelection(_characterPackages);
+	}
+	
+	/** The packages just loaded, in slot order. */
+	public CharSelectInfoPackage[] packages()
+	{
+		return _characterPackages;
 	}
 	
 	@Override

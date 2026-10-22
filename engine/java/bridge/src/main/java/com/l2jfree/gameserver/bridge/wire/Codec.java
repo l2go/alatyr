@@ -38,8 +38,8 @@ import java.util.Map;
  * Bounded frames for the frozen core registry and, when asked, the bridge/1 profile.
  * <p>
  * Decoding is pure: a failure discards every record from the frame. Encoding sorts fields and then decodes
- * its own output, so a value that cannot be read is not written. The bridge profile check runs inside
- * decoding, which means encoding rejects the same profile failures.
+ * its own output, so a value that cannot be read is not written. The profile check runs after the structural
+ * walk of the whole frame, so encoding rejects the same profile failures.
  */
 public final class Codec
 {
@@ -128,6 +128,34 @@ public final class Codec
 	}
 	
 	/**
+	 * @return a copy of the profile name the bridge codec already requires
+	 */
+	public static byte[] profileName()
+	{
+		return BRIDGE_PROFILE.clone();
+	}
+	
+	/**
+	 * @return a copy of the namespace carried with an internal bridge reason
+	 */
+	public static byte[] reasonNamespace()
+	{
+		return BRIDGE_NAMESPACE.clone();
+	}
+	
+	/**
+	 * @return the limits object an accepted opening must carry
+	 */
+	public static Field openedLimits()
+	{
+		List<Field> fields = new ArrayList<>();
+		for (int[] limit : OPENED_LIMITS)
+			fields.add(Field.u(limit[0], true, limit[1]));
+		
+		return Field.obj(6, true, fields);
+	}
+	
+	/**
 	 * @return the bridge registry without the profile check. Tests use it to build a frame the neutral registry
 	 *         cannot emit, because an essential field outside that registry is unsupported there.
 	 */
@@ -135,6 +163,18 @@ public final class Codec
 	{
 		Limits limits = Limits.profile();
 		return new Codec(limits, Schemas.bridge(limits), false);
+	}
+	
+	/**
+	 * Appends an empty record. Tests use a type the registry does not know.
+	 */
+	static byte[] withTrailingRecord(byte[] frame, long type)
+	{
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		out.writeBytes(frame);
+		appendU(out, type);
+		appendU(out, 0);
+		return out.toByteArray();
 	}
 	
 	/**
@@ -197,10 +237,12 @@ public final class Codec
 			
 			Envelope envelope = new Envelope(type.value(), List.copyOf(parsed.fields), parsed.unsupported, pos - start, hash);
 			validateEnvelope(envelope);
-			if (bridgeProfile)
-				checkBridge(envelope);
-			
 			records.add(envelope);
+		}
+		if (bridgeProfile)
+		{
+			for (Envelope envelope : records)
+				checkBridge(envelope);
 		}
 		return List.copyOf(records);
 	}
@@ -268,6 +310,56 @@ public final class Codec
 			throw frameError();
 		}
 		return decode(body);
+	}
+	
+	/**
+	 * The same length-prefix check as {@link #read(InputStream)}. Null means the prefix is not complete yet. An illegal
+	 * prefix is a frame error before any body is allocated.
+	 */
+	public FramePrefix framePrefix(byte[] data)
+	{
+		if (data == null || data.length == 0)
+			return null;
+		
+		int size = 0;
+		while (size < data.length && (data[size] & 0xff) >= 128)
+		{
+			size++;
+			if (size == 10)
+				throw frameError();
+		}
+		if (size == data.length)
+			return null;
+		
+		size++;
+		UOut length = readU(Arrays.copyOf(data, size), 0);
+		if (length.error() || length.pos() != size || length.value() == 0
+				|| Long.compareUnsigned(length.value(), limits.frameBytes) > 0)
+			throw frameError();
+		return new FramePrefix(size, length.value());
+	}
+	
+	/** A length prefix that {@link #readU} accepted. */
+	public static final class FramePrefix
+	{
+		private final int _size;
+		private final long _length;
+		
+		FramePrefix(int size, long length)
+		{
+			_size = size;
+			_length = length;
+		}
+		
+		public int size()
+		{
+			return _size;
+		}
+		
+		public long length()
+		{
+			return _length;
+		}
 	}
 	
 	/**
