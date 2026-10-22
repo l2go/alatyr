@@ -78,6 +78,7 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	private GameCrypt _crypt;
 	private volatile boolean _disconnected;
 	private final AtomicBoolean _bridgeDisconnectRequested = new AtomicBoolean();
+	private final Object _bridgeLife = new Object();
 	private final ClientSink _sink;
 	private L2Player _bridgeOpeningPlayer;
 	private boolean _bridgeOpeningNoted;
@@ -161,6 +162,12 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	public boolean isBridgeDisconnectRequested()
 	{
 		return _bridgeDisconnectRequested.get();
+	}
+	
+	/** True after the one full disconnect has finished, including its save. */
+	public boolean isBridgeDisconnectFinished()
+	{
+		return isBridge() && _disconnected;
 	}
 	
 	public void requestBridgeDisconnect()
@@ -693,14 +700,34 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	
 	boolean beginBridgeDisconnect()
 	{
-		if (!isBridge())
-			return false;
-		if (!_bridgeDisconnectRequested.compareAndSet(false, true))
-			return false;
-		
-		_capturedBridgePlayer = bridgePlayerForCleanup();
-		_capturedBridgeAccount = _accountName;
-		return true;
+		synchronized (_bridgeLife)
+		{
+			if (!isBridge())
+				return false;
+			if (!_bridgeDisconnectRequested.compareAndSet(false, true))
+				return false;
+			
+			_capturedBridgePlayer = bridgePlayerForCleanup();
+			_capturedBridgeAccount = _accountName;
+			return true;
+		}
+	}
+	
+	/**
+	 * Publishes a bridge character only when disconnect has not started. The same lock covers the capture, so a late
+	 * opening cannot appear after a null capture.
+	 */
+	public boolean bridgePublish(Runnable publish)
+	{
+		if (publish == null)
+			throw new IllegalArgumentException("publish");
+		synchronized (_bridgeLife)
+		{
+			if (isBridge() && _bridgeDisconnectRequested.get())
+				return false;
+			publish.run();
+			return true;
+		}
 	}
 	
 	L2Player capturedBridgePlayer()

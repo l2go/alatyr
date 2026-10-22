@@ -41,6 +41,14 @@ public final class WireException extends RuntimeException
 	}
 	
 	/**
+	 * @return a frame rejection
+	 */
+	public static WireException frame()
+	{
+		return new WireException(Kind.FRAME);
+	}
+	
+	/**
 	 * @return the rejection class
 	 */
 	public Kind kind()

@@ -38,6 +38,21 @@ public final class Envelope
 	}
 	
 	/**
+	 * A record to encode. The codec checks the registry and the profile when it writes the record.
+	 * 
+	 * @param type the envelope type
+	 * @param fields the fields, in number order
+	 * @return the envelope
+	 */
+	public static Envelope of(long type, List<Field> fields)
+	{
+		if (fields == null)
+			throw new IllegalArgumentException("fields");
+		
+		return new Envelope(type, List.copyOf(fields), false, 0, null);
+	}
+	
+	/**
 	 * @return the envelope type
 	 */
 	public long type()

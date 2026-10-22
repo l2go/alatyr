@@ -205,6 +205,22 @@ class ConformanceTest
 	}
 	
 	@Test
+	void aLaterStructuralFailurePrecedesAnEarlierProfileFailure()
+	{
+		Envelope mismatched = new Envelope(Schemas.RESULT, List.of(Field.u(1, true, 1), Field.u(2, true, 3),
+				Field.u(3, true, 16), Field.u(5, true, 1), Field.u(6, true, 1), Field.u(7, true, 0),
+				Field.data(64, true, ascii("x.l2jfree/bridge"))), false, 0, null);
+		byte[] alone = Codec.structured().encode(List.of(mismatched));
+		assertThatThrownBy(() -> Codec.bridge().decode(alone)).isInstanceOf(WireException.class)
+				.extracting(thrown -> ((WireException) thrown).kind()).isEqualTo(WireException.Kind.FRAME);
+		
+		// Type 1000 is even and absent from the registry, so the structural walk fails before the profile check.
+		byte[] frame = Codec.withTrailingRecord(alone, 1000);
+		assertThatThrownBy(() -> Codec.bridge().decode(frame)).isInstanceOf(WireException.class)
+				.extracting(thrown -> ((WireException) thrown).kind()).isEqualTo(WireException.Kind.UNSUPPORTED);
+	}
+	
+	@Test
 	void legalProfileFramesRoundTrip()
 	{
 		keeps(result(1, 0, 2, -1, null));

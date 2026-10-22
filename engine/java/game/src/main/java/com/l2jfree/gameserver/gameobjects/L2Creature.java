@@ -663,8 +663,8 @@ public abstract class L2Creature extends L2Object
 	
 	/**
 	 * A bridge character's teleport. The lock covers the whole body. A nested call on this thread gets its own
-	 * generation; the outer call stops before it writes a position that generation no longer owns. A new generation
-	 * does not start while a completion of an older one is inside the lock.
+	 * generation; the outer call stops before it writes a position that generation no longer owns. A teleport
+	 * started while a completion holds the lock is queued on that client and runs after the completion returns.
 	 */
 	private void teleToLocationBridge(int x, int y, int z, int heading, boolean allowRandomOffset)
 	{
@@ -672,7 +672,24 @@ public abstract class L2Creature extends L2Object
 		try
 		{
 			if (_bridgeCompleting)
+			{
+				L2Player completing = (L2Player)this;
+				if (completing.isBridgeClosing())
+					return;
+				
+				L2Client queuedClient = completing.getClient();
+				if (queuedClient == null || queuedClient.isBridgeDisconnectRequested())
+					return;
+				
+				final int queuedX = x;
+				final int queuedY = y;
+				final int queuedZ = z;
+				final int queuedHeading = heading;
+				final boolean queuedOffset = allowRandomOffset;
+				// Enqueue only. This queue does not run the task before submit returns.
+				queuedClient.submit(() -> teleToLocation(queuedX, queuedY, queuedZ, queuedHeading, queuedOffset));
 				return;
+			}
 			
 			L2Player player = (L2Player)this;
 			if (player.isBridgeClosing())
