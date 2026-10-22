@@ -163,6 +163,12 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 		return _bridgeDisconnectRequested.get();
 	}
 	
+	/** True after the one full disconnect has finished, including its save. */
+	public boolean isBridgeDisconnectFinished()
+	{
+		return isBridge() && _disconnected;
+	}
+	
 	public void requestBridgeDisconnect()
 	{
 		DisconnectionExecutor.request(this);

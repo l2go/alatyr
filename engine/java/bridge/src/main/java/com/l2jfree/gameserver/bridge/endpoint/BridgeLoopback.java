@@ -94,6 +94,22 @@ final class BridgeLoopback implements Runnable
 		}
 	}
 	
+	void watch(L2Client client)
+	{
+		if (client != null)
+			clients.add(client);
+	}
+	
+	private boolean disconnectsFinished()
+	{
+		for (L2Client client : clients)
+		{
+			if (!client.isBridgeDisconnectFinished())
+				return false;
+		}
+		return true;
+	}
+	
 	int port()
 	{
 		try
@@ -230,7 +246,7 @@ final class BridgeLoopback implements Runnable
 				InetAddress.getByAddress(new byte[] { 127, 0, 0, 1 }), sink);
 		sink.attach(client);
 		transport.client = client;
-		clients.add(client);
+		watch(client);
 		BridgeAdmission.schedule(client, LoginLink.getInstance(), reply.account, reply.character,
 				records -> enqueue(transport, records));
 	}
@@ -367,13 +383,36 @@ final class BridgeLoopback implements Runnable
 	
 	void close()
 	{
-		stopping = true;
-		selector.wakeup();
+		close(30_000);
+	}
+	
+	/**
+	 * Asks each session for its one full disconnect, keeps writing while those saves run, and waits until they finish
+	 * or {@code budgetMs} has passed. The selector thread is stopped after that wait.
+	 */
+	void close(long budgetMs)
+	{
 		for (L2Client client : clients)
 			client.requestBridgeDisconnect();
+		long end = System.nanoTime() + budgetMs * 1_000_000L;
+		while (System.nanoTime() < end && !disconnectsFinished())
+		{
+			selector.wakeup();
+			try
+			{
+				Thread.sleep(10);
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				break;
+			}
+		}
+		stopping = true;
+		selector.wakeup();
 		try
 		{
-			thread.join(30_000);
+			thread.join(1_000);
 		}
 		catch (InterruptedException e)
 		{
