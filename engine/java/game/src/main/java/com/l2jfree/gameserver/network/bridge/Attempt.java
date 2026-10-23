@@ -30,6 +30,7 @@ public final class Attempt
 	static final int MAX_EFFECTS = 64;
 	
 	private final L2Player _player;
+	private final com.l2jfree.gameserver.network.L2Client _client;
 	private final int _classIndex;
 	private final ArrayList<BridgeEffect> _effects = new ArrayList<BridgeEffect>();
 	private final BitSet _refusals = new BitSet();
@@ -43,10 +44,21 @@ public final class Attempt
 	
 	public Attempt(L2Player player)
 	{
+		this(null, player);
+	}
+
+	public Attempt(com.l2jfree.gameserver.network.L2Client client, L2Player player)
+	{
 		if (player == null)
 			throw new IllegalArgumentException("player");
 		_player = player;
+		_client = client;
 		_classIndex = player.getClassIndex();
+	}
+
+	boolean belongsTo(com.l2jfree.gameserver.network.L2Client client)
+	{
+		return _client != null && _client == client && client.getActiveChar() == _player;
 	}
 	
 	public L2Player player()

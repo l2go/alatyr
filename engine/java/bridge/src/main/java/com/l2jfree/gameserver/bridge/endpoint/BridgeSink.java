@@ -62,9 +62,9 @@ public final class BridgeSink implements ClientSink
 		if (_client != null && _client.getActiveChar() == player)
 		{
 			if (packet instanceof com.l2jfree.gameserver.network.packets.server.NpcHtmlMessage html)
-				com.l2jfree.gameserver.network.bridge.EffectLedger.spoken(player, html.bridgeNpcObjectId());
+				com.l2jfree.gameserver.network.bridge.EffectLedger.spoken(_client, player, html.bridgeNpcObjectId());
 			else if (packet instanceof com.l2jfree.gameserver.network.packets.server.NpcQuestHtmlMessage html)
-				com.l2jfree.gameserver.network.bridge.EffectLedger.spoken(player, html.bridgeNpcObjectId());
+				com.l2jfree.gameserver.network.bridge.EffectLedger.spoken(_client, player, html.bridgeNpcObjectId());
 		}
 		// Describing the packet is a later slice. This sink never encodes a server packet.
 	}

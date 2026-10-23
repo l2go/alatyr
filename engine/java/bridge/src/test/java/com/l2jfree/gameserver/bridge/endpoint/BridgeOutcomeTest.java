@@ -57,10 +57,17 @@ class BridgeOutcomeTest
 		org.mockito.Mockito.when(client.getActiveChar()).thenReturn(player);
 		var sink = new BridgeSink(records -> { });
 		sink.attach(client);
-		Attempt attempt = new Attempt(player);
+		Attempt attempt = new Attempt(client, player);
 		EffectLedger.open(attempt);
 		try
 		{
+			var otherClient = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);
+			org.mockito.Mockito.when(otherClient.isBridge()).thenReturn(true);
+			org.mockito.Mockito.when(otherClient.getActiveChar()).thenReturn(player);
+			var otherSink = new BridgeSink(records -> { });
+			otherSink.attach(otherClient);
+			otherSink.deliver(new com.l2jfree.gameserver.network.packets.server.NpcHtmlMessage(70, "other session"), player);
+			assertThat(BridgeOutcome.match(attempt, 5, 0, 70, 0)).isEqualTo(BridgeOutcome.UNKNOWN);
 			sink.deliver(new com.l2jfree.gameserver.network.packets.server.NpcHtmlMessage(71, "other"), player);
 			assertThat(BridgeOutcome.match(attempt, 5, 0, 70, 0)).isEqualTo(BridgeOutcome.UNKNOWN);
 			sink.deliver(new com.l2jfree.gameserver.network.packets.server.NpcHtmlMessage(70, "dialogue"), player);
