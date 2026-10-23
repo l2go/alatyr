@@ -11,6 +11,30 @@ import org.junit.jupiter.api.Test;
 class BridgeAttemptSessionTest
 {
 	@Test
+	void reorderedSkillFieldsReplayTheSamePendingAttempt()
+	{
+		var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, bytes -> { });
+		session.ready();
+		var id = com.l2jfree.gameserver.bridge.wire.Field.s(1, true, 12);
+		var level = com.l2jfree.gameserver.bridge.wire.Field.s(2, true, 1);
+		for (var skill : java.util.List.of(java.util.List.of(id, level), java.util.List.of(level, id)))
+		{
+			var intent = com.l2jfree.gameserver.bridge.wire.Envelope.of(
+					com.l2jfree.gameserver.bridge.wire.Schemas.INTENT, java.util.List.of(
+					com.l2jfree.gameserver.bridge.wire.Field.u(1, true, 1),
+					com.l2jfree.gameserver.bridge.wire.Field.u(2, true, 13),
+					com.l2jfree.gameserver.bridge.wire.Field.u(3, true, 1),
+					com.l2jfree.gameserver.bridge.wire.Field.s(14, true, 0),
+					com.l2jfree.gameserver.bridge.wire.Field.obj(18, true, skill)));
+			assertThat(session.accept(client, intent).kind)
+					.isIn(BridgeIntents.Kind.ACCEPTED, BridgeIntents.Kind.REPLAY);
+		}
+		assertThat(fifo).hasSize(1);
+	}
+
+	@Test
 	void anEvictedResultReturnsUnrecoverableWithoutWorldWork()
 	{
 		ArrayDeque<Runnable> fifo = new ArrayDeque<>();

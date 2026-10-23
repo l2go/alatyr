@@ -32,6 +32,16 @@ final class BridgeAttemptSession
 		long received = System.nanoTime();
 		long ttl = intent.field(4) == null ? 5000 : intent.field(4).value().u();
 		var fields = new java.util.ArrayList<>(intent.fields());
+		for (int i = 0; i < fields.size(); i++)
+		{
+			var field = fields.get(i);
+			if (field.number() == 18)
+			{
+				var skill = new java.util.ArrayList<>(field.value().fields());
+				skill.sort(java.util.Comparator.comparingInt(com.l2jfree.gameserver.bridge.wire.Field::number));
+				fields.set(i, com.l2jfree.gameserver.bridge.wire.Field.obj(18, field.essential(), skill));
+			}
+		}
 		fields.sort(java.util.Comparator.comparingInt(com.l2jfree.gameserver.bridge.wire.Field::number));
 		byte[] normalized = Codec.bridge().encode(java.util.List.of(Envelope.of(intent.type(), fields)));
 		if (normalized.length > 4096)
