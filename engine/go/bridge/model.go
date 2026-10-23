@@ -29,8 +29,12 @@ const (
 )
 
 // Error reports a bridge failure. Code is the endpoint's refusal code for
-// OpenRefused. ProtocolKind classifies a protocol failure reported by Open or
-// Resume as CloseFrameError or CloseUnsupported; otherwise it is zero.
+// OpenRefused. ProtocolKind records the last frame the session failed to read,
+// validate or apply: CloseUnsupported for an unsupported frame and
+// CloseFrameError for any other failure, including capacity and refusal. It is
+// zero if no frame failed and is not reset when the session detaches. Only an
+// error that ends a pending Open or Resume through session failure carries it,
+// whatever its Kind; a refusal or Bye answered directly does not.
 type Error struct {
 	Kind         FailureKind
 	Code         uint64

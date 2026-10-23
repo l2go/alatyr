@@ -56,10 +56,10 @@ const (
 type phase uint8
 
 const (
-	phaseOpening  phase = iota // handshake until the first complete checkpoint
-	phaseLive                  // commands may be written
+	phaseOpening  phase = iota // from Open until an accepting Opened
+	phaseLive                  // after an accepting Opened; commands may be written
 	phaseDetached              // the transport is gone; Resume may reopen it
-	phaseRecovery              // Resume is replaying retained results
+	phaseRecovery              // from an accepted Resume until its accepting Opened
 )
 
 // An operation and an outgoing write carry the caller's context to the owner
