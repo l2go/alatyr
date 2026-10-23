@@ -122,6 +122,10 @@ func (r *row) int64(name string) int64 {
 	return n
 }
 func (c *Catalog) tree(class int32) []SkillLearn { return c.skillTree[class] }
+
+// SkillCost returns the SP cost of the row for skill id at skillLevel in
+// class's tree, if that row's minimum level is at most level. It does not check
+// the known skill level, the character's SP or the trainer; callers do.
 func (c *Catalog) SkillCost(class, id, skillLevel, level int32) (int32, bool) {
 	for _, k := range c.tree(class) {
 		if k.SkillID == id && k.Level == skillLevel && k.MinLevel <= level {
@@ -150,8 +154,14 @@ func (c *Catalog) skillTrainerRow(r row) error {
 	c.teach[npc][class] = true
 	return nil
 }
-func (c *Catalog) CanTeach(npc, class int32) bool  { return c.teach[npc][class] }
+
+// CanTeach reports whether NPC template npc trains class.
+func (c *Catalog) CanTeach(npc, class int32) bool { return c.teach[npc][class] }
+
+// HTML returns the authored page at its world-relative path.
 func (c *Catalog) HTML(path string) (string, bool) { v, ok := c.html[path]; return v, ok }
+
+// Skill returns a copy of skill id at level.
 func (c *Catalog) Skill(id, level int32) (Skill, bool) {
 	v, ok := c.skills[id].levels[level]
 	v.Funcs = cloneFuncs(v.Funcs)

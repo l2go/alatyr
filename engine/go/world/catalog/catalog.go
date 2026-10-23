@@ -14,6 +14,8 @@ import (
 	"strconv"
 )
 
+// PlayerTemplate is a class template from player_template.csv with its level-up
+// gains from level_up_gain.csv. Collision values hold the male and female sizes.
 type PlayerTemplate struct {
 	Name                             string
 	ClassID                          int32
@@ -31,14 +33,18 @@ type PlayerTemplate struct {
 	ClassBaseLevel                  int32
 }
 
+// ItemKind is the template table an item comes from.
 type ItemKind uint8
 
+// Item kinds.
 const (
-	Weapon ItemKind = iota + 1
-	Armor
-	EtcItem
+	Weapon  ItemKind = iota + 1 // weapon_template.csv
+	Armor                       // armor_template.csv
+	EtcItem                     // etc_item_template.csv
 )
 
+// ItemTemplate is one authored item. Weapon, armor and other-item fields are
+// set only for the matching Kind.
 type ItemTemplate struct {
 	ID           int32
 	Name         string
@@ -204,6 +210,8 @@ func (c *Catalog) addItem(t ItemTemplate, err error) error {
 	return nil
 }
 
+// Catalog is a loaded rendered world. It is immutable after Load and safe for
+// concurrent readers.
 type Catalog struct {
 	players    map[int32]PlayerTemplate
 	items      map[int32]ItemTemplate
@@ -221,8 +229,13 @@ type Catalog struct {
 	mapRegions []mapRegion
 }
 
+// Player returns the template of class id.
 func (c *Catalog) Player(id int32) (PlayerTemplate, bool) { t, ok := c.players[id]; return t, ok }
-func (c *Catalog) Item(id int32) (ItemTemplate, bool)     { t, ok := c.items[id]; return t, ok }
+
+// Item returns the template of item id.
+func (c *Catalog) Item(id int32) (ItemTemplate, bool) { t, ok := c.items[id]; return t, ok }
+
+// PassiveFuncs returns a copy of the stat functions of passive skill id at level.
 func (c *Catalog) PassiveFuncs(id, level int32) []ItemFunc {
 	return cloneFuncs(c.passive[[2]int32{id, level}])
 }
@@ -242,7 +255,7 @@ func Load(root string) (*Catalog, error) {
 		row  func(row) error
 	}{
 		{"player_template.csv", c.playerRow}, {"level_up_gain.csv", c.levelRow},
-		{"weapon_template.csv", c.weaponRow}, {"armor_template.csv", c.etcArmorRow}, {"etc_item_template.csv", c.etcRow},
+		{"weapon_template.csv", c.weaponRow}, {"armor_template.csv", c.armorRow}, {"etc_item_template.csv", c.etcRow},
 	} {
 		if err := readCSV(filepath.Join(root, "catalog", s.file), s.row); err != nil {
 			return nil, fmt.Errorf("catalog: %s: %w", s.file, err)
@@ -265,7 +278,7 @@ func (c *Catalog) weaponRow(r row) error {
 		EvasionMod: r.int("evasion_modifier"), AttackSpeed: r.int("attack_speed"), SoulshotCount: r.int("soulshot_count"), SpiritshotCount: r.int("spiritshot_count")}
 	return c.addItem(t, r.err)
 }
-func (c *Catalog) etcArmorRow(r row) error {
+func (c *Catalog) armorRow(r row) error {
 	t := ItemTemplate{ID: r.int("id"), Name: r.str("name"), Kind: Armor, BodyPartName: r.str("body_part"), Weight: r.int("weight"),
 		ArmorType: r.str("armor_type"), PDef: r.int("physical_defense"), MDef: r.int("magic_defense"), ArmorEvasionMod: r.int("evasion_modifier"), MPBonus: r.int("mp_bonus")}
 	return c.addItem(t, r.err)

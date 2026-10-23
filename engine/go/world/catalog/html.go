@@ -16,6 +16,9 @@ var compactTags = func() []string {
 	return out
 }()
 
+// CompactHTML collapses whitespace the way the reference server compacts
+// authored pages: whitespace runs become one space, and spaces next to angle
+// brackets and around common layout tags are removed.
 func CompactHTML(html string) string {
 	s := strings.Map(func(r rune) rune {
 		if javaWhitespace(r) {

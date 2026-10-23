@@ -10,8 +10,10 @@ import (
 	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
 
+// Name identifies a stat as authored stat functions name it.
 type Name string
 
+// Stats that authored functions may modify.
 const (
 	MaxHP    Name = "maxHp"
 	MaxMP    Name = "maxMp"
@@ -78,6 +80,12 @@ const (
 	weaponTypeXbow = "crossbow"
 )
 
+// Player holds the inputs of a character's stat calculation: its class
+// template, level, worn items, item functions and passive skill functions.
+// A stat is calculated by applying the standard formula functions and the
+// matching Funcs and SkillFuncs in ascending Order; at equal Order the standard
+// functions come first, then Funcs, then SkillFuncs, each in input order. A
+// function with a Cond applies only when the condition holds.
 type Player struct {
 	Template   catalog.PlayerTemplate
 	Mage       *bool // nil when authored class metadata is absent
@@ -282,9 +290,9 @@ func (p *Player) levelGain(add, mod float64) float64 {
 	lvl := p.Level - p.Template.ClassBaseLevel
 	fadd := float32(add)
 	fmod := float64(float32(mod) * float32(lvl))
-	max := (float64(fadd) + fmod) * float64(lvl)
-	min := float64(fadd*float32(lvl)) + fmod
-	return (max + min) / 2
+	high := (float64(fadd) + fmod) * float64(lvl)
+	low := float64(fadd*float32(lvl)) + fmod
+	return (high + low) / 2
 }
 
 func (p *Player) pDefMod(v float64) float64 {
