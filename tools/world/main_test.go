@@ -132,7 +132,7 @@ func TestModuleHasNoRequire(t *testing.T) {
 			t.Fatalf("go.mod requires a module: %s", line)
 		}
 	}
-	if !strings.Contains(string(data), "go 1.27.1\n") || !strings.Contains(string(data), "toolchain go1.27.1\n") {
+	if !strings.Contains(string(data), "go 1.27.1\n") || !strings.Contains(string(data), "toolchain go1.27.3\n") {
 		t.Fatalf("%s", data)
 	}
 }
