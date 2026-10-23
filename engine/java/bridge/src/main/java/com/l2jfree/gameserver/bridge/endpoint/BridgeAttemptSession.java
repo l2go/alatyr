@@ -24,7 +24,10 @@ final class BridgeAttemptSession
 {
 	private final BridgeIntents intents = new BridgeIntents();
 	private final Consumer<Runnable> submit;
-	private final Consumer<byte[]> outbound;
+	private Consumer<byte[]> outbound;
+	private final java.util.Map<Long, byte[]> queued = new java.util.HashMap<>();
+	private boolean detached;
+	private volatile long epoch = 1;
 
 	BridgeAttemptSession(Consumer<Runnable> submit, Consumer<byte[]> outbound)
 	{
@@ -37,6 +40,26 @@ final class BridgeAttemptSession
 		intents.markReady();
 	}
 
+	/** Reader-side cancellation; running work is absent from queued and keeps its one terminal outcome. */
+	synchronized void detach()
+	{
+		detached = true;
+		intents.markNotReady();
+		for (var entry : queued.entrySet())
+			intents.complete(entry.getKey(), entry.getValue());
+		queued.clear();
+	}
+
+	/** Rebinds output without running any work. The checkpoint owner publishes this copy before admission opens. */
+	synchronized java.util.List<byte[]> resume(long nextEpoch, Consumer<byte[]> output)
+	{
+		epoch = nextEpoch;
+		outbound = java.util.Objects.requireNonNull(output);
+		detached = false;
+		intents.markNotReady();
+		return intents.retainedResults();
+	}
+
 	BridgeIntents.Decision accept(L2Client client, Envelope intent)
 	{
 		long n = intent.field(1).value().u();
@@ -47,7 +70,7 @@ final class BridgeAttemptSession
 				throw com.l2jfree.gameserver.bridge.wire.WireException.frame();
 			byte[] identity = intent.unsupportedHash().clone();
 			return accept(n, identity, () -> BridgeResults.encode(n, verb, 3, 9, null),
-					BridgeResults.encode(n, verb, 3, 1, null));
+					BridgeResults.encode(n, verb, 3, 1, null), BridgeResults.transportLost(n, verb));
 		}
 		long received = System.nanoTime();
 		long ttl = intent.field(4) == null ? 5000 : intent.field(4).value().u();
@@ -69,7 +92,7 @@ final class BridgeAttemptSession
 		// Decode our own canonical bytes to sever all receive-side mutable arrays before FIFO submission.
 		Envelope acceptedIntent = Codec.bridge().decode(normalized).get(0);
 		return accept(n, normalized, () -> execute(client, acceptedIntent, n, verb, received, ttl),
-				BridgeResults.encode(n, verb, 3, 1, null));
+				BridgeResults.encode(n, verb, 3, 1, null), BridgeResults.transportLost(n, verb));
 	}
 
 	private byte[] execute(L2Client client, Envelope intent, long n, long verb, long received, long ttl)
@@ -79,7 +102,7 @@ final class BridgeAttemptSession
 			if (client.getState() != L2Client.GameClientState.IN_GAME
 					|| client.getActiveChar() == null)
 				return BridgeResults.encode(n, verb, 3, 1, null);
-			if (intent.field(3).value().u() != 1)
+			if (intent.field(3).value().u() != epoch)
 				return BridgeResults.encode(n, verb, 3, 1, null);
 			if (ttl < 0 || ttl > 5000)
 				return BridgeResults.encode(n, verb, 3, 10, null);
@@ -157,32 +180,58 @@ final class BridgeAttemptSession
 
 	BridgeIntents.Decision accept(long n, byte[] normalized, Supplier<byte[]> execution)
 	{
-		return accept(n, normalized, execution, BridgeResults.encode(n, 0, 3, 1, null));
+		return accept(n, normalized, execution, BridgeResults.encode(n, 0, 3, 1, null),
+				BridgeResults.transportLost(n, 0));
 	}
 
-	private synchronized BridgeIntents.Decision accept(long n, byte[] normalized, Supplier<byte[]> execution, byte[] notReady)
+	private BridgeIntents.Decision accept(long n, byte[] normalized, Supplier<byte[]> execution, byte[] notReady,
+			byte[] transportLost)
 	{
-		BridgeIntents.Decision decision = intents.offer(n, normalized);
-		if (decision.kind == BridgeIntents.Kind.NOT_READY)
+		BridgeIntents.Decision decision;
+		byte[] immediate = null;
+		Consumer<byte[]> target;
+		synchronized (this)
 		{
-			intents.complete(n, notReady);
-			outbound.accept(intents.result(n));
+			// The caller's transport fence must be checked before entering this method. Detached readers never
+			// register a new number; a detached session only retains work admitted before the fence was lost.
+			if (detached)
+				throw new IllegalStateException("detached bridge admission");
+			decision = intents.offer(n, normalized);
+			if (decision.kind == BridgeIntents.Kind.NOT_READY)
+			{
+				intents.complete(n, notReady);
+				immediate = intents.result(n);
+			}
+			else if (decision.kind == BridgeIntents.Kind.REPLAY)
+				immediate = intents.result(n);
+			else if (decision.kind == BridgeIntents.Kind.UNRECOVERABLE)
+				immediate = BridgeResults.encode(n, 0, 5, 20, null);
+			else if (decision.kind == BridgeIntents.Kind.ACCEPTED)
+				queued.put(n, transportLost);
+			target = outbound;
 		}
-		else if (decision.kind == BridgeIntents.Kind.REPLAY)
-		{
-			byte[] result = intents.result(n);
-			if (result != null)
-				outbound.accept(result);
-		}
-		else if (decision.kind == BridgeIntents.Kind.UNRECOVERABLE)
-			outbound.accept(BridgeResults.encode(n, 0, 5, 20, null));
-		else if (decision.kind == BridgeIntents.Kind.ACCEPTED)
+		if (immediate != null)
+			target.accept(immediate);
+		if (decision.kind == BridgeIntents.Kind.ACCEPTED)
 		{
 			submit.accept(() ->
 			{
+				synchronized (BridgeAttemptSession.this)
+				{
+					if (queued.remove(n) == null)
+						return;
+				}
 				byte[] result = execution.get();
-				intents.complete(n, result);
-				outbound.accept(intents.result(n));
+				Consumer<byte[]> destination;
+				byte[] retained;
+				synchronized (BridgeAttemptSession.this)
+				{
+					intents.complete(n, result);
+					retained = intents.result(n);
+					destination = detached ? null : outbound;
+				}
+				if (destination != null && retained != null)
+					destination.accept(retained);
 			});
 		}
 		return decision;

@@ -23,6 +23,57 @@ import org.junit.jupiter.api.Test;
 class BridgeAttemptSessionTest
 {
 	@Test
+	void detachFinalizesQueuedWorkAndResumeNeverRunsItAgain()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> first = new ArrayList<>();
+		ArrayList<byte[]> replacement = new ArrayList<>();
+		BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, first::add);
+		session.ready();
+		session.accept(1, new byte[] { 7 }, () -> { throw new AssertionError("detached purchase"); });
+		session.detach();
+		var retained = session.resume(2, replacement::add);
+		assertThat(retained).hasSize(1);
+		var result = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(retained.get(0)).get(0);
+		assertThat(result.field(2).value().u()).isEqualTo(3);
+		assertThat(result.field(3).value().u()).isEqualTo(16);
+		assertThat(result.field(7).value().u()).isZero();
+		assertThat(result.field(65).value().u()).isEqualTo(9);
+		fifo.remove().run();
+		session.ready();
+		assertThat(session.accept(1, new byte[] { 7 }, () -> { throw new AssertionError("replay"); }).kind)
+				.isEqualTo(BridgeIntents.Kind.REPLAY);
+		assertThat(replacement.get(0)).containsExactly(retained.get(0));
+		assertThat(first).isEmpty();
+	}
+
+	@Test
+	void detachInsideStartedPurchaseRetainsDoneForResumeWithoutSecondPurchase()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> first = new ArrayList<>();
+		ArrayList<byte[]> replacement = new ArrayList<>();
+		AtomicInteger purchases = new AtomicInteger();
+		BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, first::add);
+		session.ready();
+		session.accept(1, new byte[] { 7 }, () ->
+		{
+			purchases.incrementAndGet();
+			session.detach();
+			return new byte[] { 2, 13 };
+		});
+		fifo.remove().run();
+		assertThat(first).isEmpty();
+		var retained = session.resume(2, replacement::add);
+		assertThat(retained.get(0)).containsExactly(2, 13);
+		session.ready();
+		session.accept(1, new byte[] { 7 }, () -> { throw new AssertionError("second purchase"); });
+		assertThat(replacement.get(0)).containsExactly(2, 13);
+		assertThat(purchases).hasValue(1);
+		assertThat(fifo).isEmpty();
+	}
+
+	@Test
 	void castRejectsAnOutOfProfileKnownSkillBeforeBinding()
 	{
 		var player = BridgeTestPlayers.player();

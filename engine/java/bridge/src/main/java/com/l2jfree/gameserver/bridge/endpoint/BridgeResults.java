@@ -32,6 +32,16 @@ final class BridgeResults
 
 	static byte[] encode(long n, long verb, int stage, long reason, Attempt attempt)
 	{
+		return encode(n, verb, stage, reason, attempt, 0);
+	}
+
+	static byte[] transportLost(long n, long verb)
+	{
+		return encode(n, verb, 3, 16, null, 9);
+	}
+
+	private static byte[] encode(long n, long verb, int stage, long reason, Attempt attempt, int transportReason)
+	{
 		int refusal = 0;
 		if (stage == BridgeOutcome.UNKNOWN && reason == 0 && attempt != null
 				&& !attempt.isFailed() && !attempt.isLedgerIncomplete() && attempt.effects().isEmpty())
@@ -63,6 +73,8 @@ final class BridgeResults
 		};
 		if (refusal != 0)
 			bridgeReason = refusal;
+		if (transportReason != 0)
+			bridgeReason = transportReason;
 		if (bridgeReason != 0)
 		{
 			fields.add(Field.data(64, true, "x.l2jfree/bridge".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
