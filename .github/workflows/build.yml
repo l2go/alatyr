@@ -602,9 +602,9 @@ jobs:
         env:
           L2JFREE_IMAGE: l2jfree:ci
         run: |
-          printf 'RateXp = 3.\nGuideProbe = 1\n' \
-            | docker compose -f deploy/compose.yaml exec -T server tee /var/lib/l2jfree/config/rates.properties >/dev/null
-          docker compose -f deploy/compose.yaml exec -T server stat -c '%U %a %n' /var/lib/l2jfree/config/rates.properties
+          printf 'MaximumOnlineUsers = 50\nGuideProbe = 1\n' \
+            | docker compose -f deploy/compose.yaml exec -T server tee /var/lib/l2jfree/config/server.properties >/dev/null
+          docker compose -f deploy/compose.yaml exec -T server stat -c '%U %a %n' /var/lib/l2jfree/config/server.properties
 
       - name: Restart the server and probe again
         env:
@@ -614,7 +614,7 @@ jobs:
           docker compose -f deploy/compose.yaml restart server
           docker compose -f deploy/compose.yaml up -d --wait --wait-timeout 600
           # the restart read the setting of the step before
-          docker compose -f deploy/compose.yaml logs --no-color server | grep -q "operator file 'rates.properties' sets 'GuideProbe'" \
+          docker compose -f deploy/compose.yaml logs --no-color server | grep -q "operator file 'server.properties' sets 'GuideProbe'" \
             || { echo "::error::the server did not read the file that the command of the deploy guides wrote"; exit 1; }
           python3 deploy/probe/login_init.py --host 127.0.0.1 --port 2106 --timeout 60
           python3 deploy/probe/login_init.py --host 127.0.0.1 --port 7777 --timeout 60 --connect-only

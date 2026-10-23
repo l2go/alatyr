@@ -3613,7 +3613,7 @@ public final class Config
 		@Override
 		protected void loadImpl(L2Properties vitalitySettings)
 		{
-			ENABLE_VITALITY = Boolean.parseBoolean(vitalitySettings.getProperty("EnableVitality", "True"));
+			ENABLE_VITALITY = Boolean.parseBoolean(vitalitySettings.getProperty("EnableVitality", "False"));
 			RECOVER_VITALITY_ON_RECONNECT =
 					Boolean.parseBoolean(vitalitySettings.getProperty("RecoverVitalityOnReconnect", "True"));
 			ENABLE_VITALITY_CHAMPION =
