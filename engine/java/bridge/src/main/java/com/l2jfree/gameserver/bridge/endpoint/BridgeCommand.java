@@ -25,6 +25,28 @@ final class BridgeCommand
 	static L2ClientPacket packet(L2Client client, Envelope intent)
 	{
 		int verb = Math.toIntExact(intent.field(2).value().u());
+		int[] payload = switch (verb)
+		{
+			case 1 -> new int[] { 11 };
+			case 2, 3, 4, 5, 10 -> new int[] { 64 };
+			case 6 -> new int[] { 64, 68 };
+			case 7 -> new int[] { 14, 16, 17, 66 };
+			case 8 -> new int[] { 14, 16, 17, 64, 66 };
+			case 9 -> new int[0];
+			case 12 -> new int[] { 18, 19, 64 };
+			case 13 -> new int[] { 14, 18 };
+			default -> throw new IllegalArgumentException("verb");
+		};
+		for (Field field : intent.fields())
+		{
+			if (field.number() <= 4)
+				continue;
+			boolean allowed = false;
+			for (int number : payload)
+				allowed |= field.number() == number;
+			if (!allowed)
+				throw new IllegalArgumentException("payload field");
+		}
 		return switch (verb)
 		{
 			case 1 -> {
@@ -33,7 +55,12 @@ final class BridgeCommand
 			}
 			case 3 -> AttackRequest.forBridge(positive(intent, 64));
 			case 5 -> Action.forBridge(positive(intent, 64));
-			case 6 -> RequestBypassToServer.forBridge(new String(required(intent, 68).data(), java.nio.charset.StandardCharsets.UTF_8));
+			case 6 -> {
+				int npc = positive(intent, 64);
+				if (client.getActiveChar().getTarget() == null || client.getActiveChar().getTargetId() != npc)
+					throw new IllegalArgumentException("dialogue target");
+				yield RequestBypassToServer.forBridge(new String(required(intent, 68).data(), java.nio.charset.StandardCharsets.UTF_8));
+			}
 			case 7 -> RequestBuyItem.forBridge(integer(intent, 14), positive(intent, 66), positiveCount(intent));
 			case 8 -> {
 				int object = positive(intent, 64);
@@ -45,6 +72,8 @@ final class BridgeCommand
 			}
 			case 9 -> RequestRestartPoint.forBridge();
 			case 12, 13 -> {
+				if (verb == 12)
+					positive(intent, 64);
 				Value skill = required(intent, 18);
 				int id = skillNumber(skill, 1);
 				int level = skillNumber(skill, 2);

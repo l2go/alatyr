@@ -11,6 +11,17 @@ import org.junit.jupiter.api.Test;
 class BridgeAttemptSessionTest
 {
 	@Test
+	void everyVerbBeforeReadySchedulesNoWorldWork()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, bytes -> { throw new AssertionError("output"); });
+		for (int verb : new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13 })
+			assertThat(session.accept(1, new byte[] { (byte)verb }, () -> { throw new AssertionError("world"); }).kind)
+					.isEqualTo(BridgeIntents.Kind.NOT_READY);
+		assertThat(fifo).isEmpty();
+	}
+
+	@Test
 	void aLivePurchaseRunsTheDirectHandlerOnceAndReplaysItsEncodedReceipt()
 	{
 		var player = BridgeTestPlayers.player();
