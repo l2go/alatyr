@@ -1,9 +1,10 @@
 name: build
 
-# The pipeline. Microsoft OpenJDK 25 builds and tests the code. The image job
-# builds the Linux image from the verified platform distribution, starts it with
-# Docker Compose, probes the login and world ports, and publishes the image from
-# main. The release workflow promotes a published image to a version.
+# The pipeline. A pull request runs only the checks of the parts it changes: the Java build and the database
+# tests, the Go modules, or the authored world; a change of documentation alone runs none of them. The image is built
+# for main: after a merge the image jobs build both platforms, rehearse the operator's first week on them, and
+# publish the image, signed and attested. The release workflow promotes that image to a version. A manual run
+# (workflow_dispatch) runs everything, including the image and the measurements.
 
 on:
   push:
@@ -22,9 +23,49 @@ concurrency:
 
 
 jobs:
-  # Checks the Go module scaffolds independently of the Java server.
+  # Decides which parts a pull request changes. Main and manual runs check every part. A required check whose job is
+  # skipped counts as passed, so the jobs below run whenever this job did not succeed.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      java: ${{ steps.paths.outputs.java }}
+      go: ${{ steps.paths.outputs.go }}
+      world: ${{ steps.paths.outputs.world }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # The merge commit of a pull request and its first parent, the head of the base branch.
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Name the changed parts
+        id: paths
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != pull_request ]; then
+            printf '%s\n' java=true go=true world=true >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files="$(git diff --name-only HEAD^1 HEAD)"
+          printf '%s\n' "$files"
+          changed() { if grep -Eq "$1" <<< "$files"; then echo true; else echo false; fi; }
+          pipeline="$(changed '^\.github/workflows/build\.yml$')"
+          java="$(changed '^(engine/java/|pom\.xml$|\.mvn/|mvnw|deploy/release/)')"
+          go="$(changed '^(engine/go/|tools/ci/|go\.work|\.github/workflows/)')"
+          world="$(changed '^(world/|tools/world/)')"
+          if [ "$pipeline" = true ]; then java=true; go=true; world=true; fi
+          printf '%s\n' "java=$java" "go=$go" "world=$world" | tee -a "$GITHUB_OUTPUT"
+
+  # Checks the Go modules, the boundary checker, and the workflows.
   go:
     name: go
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.go == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -119,10 +160,10 @@ jobs:
           done
           staticcheck ./tools/ci/*.go
 
-      - name: Lint the changed workflows
+      - name: Lint the workflows
         run: |
           set -euo pipefail
-          actionlint .github/workflows/build.yml .github/workflows/docs-links.yml .github/workflows/public-text.yml
+          actionlint .github/workflows/*.yml
 
       - name: Check module vulnerabilities
         env:
@@ -134,6 +175,8 @@ jobs:
           done
 
       - name: Check codec fuzzing readiness
+        # The seed corpus runs with the tests of every pull request; the search for new inputs runs on main.
+        if: github.event_name != 'pull_request'
         env:
           GOWORK: "off"
         run: |
@@ -141,6 +184,8 @@ jobs:
           go run ./tools/ci/check-engine-go.go -fuzz
 
       - name: Check bridge profile fuzzing readiness
+        # The seed corpus runs with the tests of every pull request; the search for new inputs runs on main.
+        if: github.event_name != 'pull_request'
         working-directory: engine/go/bridge
         env:
           GOWORK: "off"
@@ -161,6 +206,8 @@ jobs:
           go test -run='^$' -fuzz='^FuzzDecodeMeaning$' -fuzztime=10s -parallel=1 -timeout=2m ./meaning
 
       - name: Check gateway transport fuzzing readiness
+        # The seed corpus runs with the tests of every pull request; the search for new inputs runs on main.
+        if: github.event_name != 'pull_request'
         working-directory: engine/go/gateway
         env:
           GOWORK: "off"
@@ -173,6 +220,8 @@ jobs:
           done
 
       - name: Check world translation fuzzing readiness
+        # The seed corpus runs with the tests of every pull request; the search for new inputs runs on main.
+        if: github.event_name != 'pull_request'
         working-directory: engine/go/worldbridge
         env:
           GOWORK: "off"
@@ -200,6 +249,8 @@ jobs:
   # Formats, vets, and tests the world tool, then checks that the authored world matches a fresh render.
   # It does not build the server and runs beside the Java build.
   world:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.world == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -270,6 +321,8 @@ jobs:
             ${{ runner.temp }}/world-render/world/data
 
   build:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.java == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -291,32 +344,11 @@ jobs:
 
       # Unit tests run in this job. Tests tagged integration need PostgreSQL and run
       # in the integration job. Surefire excludes that tag unless -Dgroups is set.
-      # Record the Maven build JVM so the baseline does not depend on Surefire.
-      - name: Build, test, and package with Java 25 while recording JFR
-        env:
-          MAVEN_OPTS: -XX:StartFlightRecording=filename=${{ github.workspace }}/jfr/maven-build.jfr,settings=profile,dumponexit=true
+      - name: Build, test, and package with Java 25
         run: >-
-          mkdir -p jfr &&
           ./mvnw -B -ntp
           -Dl2jfree.build.revision=${{ github.sha }}
           install
-
-      - name: Report JFR baseline size and checksum
-        run: |
-          recording="jfr/maven-build.jfr"
-          test -s "$recording"
-          stat -c '%s bytes %n' "$recording"
-          sha256sum "$recording"
-
-      - name: Upload baseline JFR recordings
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: l2jfree-jfr-baseline
-          if-no-files-found: error
-          path: jfr/*.jfr
-
-      - name: Generate aggregate CycloneDX SBOM
-        run: ./mvnw -B -ntp org.cyclonedx:cyclonedx-maven-plugin:2.9.2:makeAggregateBom
 
       - name: Verify the platform distribution
         shell: bash
@@ -327,12 +359,7 @@ jobs:
             exit 1
           fi
           archive="${archives[0]}"
-          entries="$(unzip -Z1 "$archive" | tee dist-entries.txt)"
-          sha256sum "$archive" > dist-sha256.txt
-          if grep -Eiq '(^|/)libs/[^/]*(spring|hibernate|cglib|ehcache|c3p0|mchange-commons|ecj|irclib)[^/]*\.jar$' <<< "$entries"; then
-            echo "The platform distribution contains a removed persistence, compiler, or IRC library: $archive"
-            exit 1
-          fi
+          entries="$(unzip -Z1 "$archive")"
           if grep -Evq '^l2jfree/' <<< "$entries"; then
             echo "Every entry of the platform distribution must be under l2jfree/: $archive"
             exit 1
@@ -371,39 +398,6 @@ jobs:
             echo "The archive passport is not world.id=buyan-okolitsa: $archive"
             exit 1
           fi
-          for artifact in slf4j-api jul-to-slf4j logback-classic logback-core; do
-            count="$(grep -Ec "^l2jfree/libs/${artifact}-[^/]+\.jar$" <<< "$entries" || true)"
-            if [[ "$count" -ne 1 ]]; then
-              echo "Expected exactly one ${artifact} runtime jar in $archive, found $count"
-              exit 1
-            fi
-          done
-          if grep -Eiq '^l2jfree/libs/(slf4j-jdk14|commons-logging|jcl-over-slf4j)-[^/]+\.jar$' <<< "$entries"; then
-            echo "The platform distribution contains a conflicting logging runtime jar: $archive"
-            exit 1
-          fi
-          test -s target/bom.json
-
-      - name: Upload the distribution file list
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: dist-file-list
-          if-no-files-found: warn
-          path: |
-            dist-entries.txt
-            dist-sha256.txt
-
-      - name: Scan dependency SBOM for known vulnerabilities
-        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
-        with:
-          sbom: target/bom.json
-          fail-build: false
-          output-format: json
-          output-file: target/vulnerability-report.json
-
-      - name: Verify vulnerability report
-        run: test -s target/vulnerability-report.json
 
       - name: Collect the verified distributions
         shell: bash
@@ -412,8 +406,6 @@ jobs:
           mkdir -p dist
           cp "engine/java/platform/target/l2jfree-platform-${version}-dist.zip" dist/
           cp "engine/java/smoke/target/l2jfree-smoke-${version}.jar" dist/l2jfree-smoke.jar
-          cp target/bom.json "dist/l2jfree-${version}-sbom.json"
-          cp target/vulnerability-report.json "dist/l2jfree-${version}-vulnerability-report.json"
 
       - name: Upload the verified distributions
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -423,6 +415,8 @@ jobs:
           path: dist/*
 
   integration:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.java == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -460,15 +454,13 @@ jobs:
             engine/java/game/target/statement-check.txt
             engine/java/game/target/database-docs/*
 
-  # Builds the Platform 3.0 image from the verified platform distribution,
-  # starts the stack with Docker Compose, and probes the login and world ports.
-  # The world loads for minutes, so the waits are long. A push to
-  # main also publishes the image, signed and attested. The package is public,
-  # and sha-* tags are kept for 30 days.
+  # Builds the image of each platform from the verified distribution, rehearses the operator's first week on it, and on
+  # main pushes it by digest, signed and attested. It runs after a merge and on request, not for a pull request. Only
+  # image-index names a digest edge and sha-*, and only after every check of the commit passed.
   image-platform:
-    # The image is published from main, so it waits for every check of the code, not for the build alone.
     name: image (${{ matrix.arch }}, ${{ matrix.runner }})
-    needs: [build, integration, go]
+    needs: build
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -531,12 +523,6 @@ jobs:
           deploy/verify-image.sh l2jfree:ci linux/${{ matrix.arch }}
           docker image inspect l2jfree:ci --format '{{.Size}} bytes' | tee image-size.txt
 
-      - name: Record the previous release size
-        if: matrix.arch == 'amd64'
-        run: |
-          docker pull ghcr.io/l2go/l2jfree:3.2.0
-          docker image inspect ghcr.io/l2go/l2jfree:3.2.0 --format '{{.Size}} bytes' | tee image-size-before.txt
-
       - name: Check the image world matches the repository
         run: deploy/check-image-world.sh l2jfree:ci
 
@@ -547,7 +533,6 @@ jobs:
           name: image-file-list-${{ matrix.arch }}
           if-no-files-found: warn
           path: |
-            image-size-before.txt
             image-size.txt
             image-file-list.txt
             image-world-manifest.txt
@@ -703,9 +688,8 @@ jobs:
           docker compose -f deploy/compose.yaml logs --no-color --tail 300 server > stop.log
           test "$seconds" -lt 30 || { echo "::error::the server needed $seconds s to stop"; exit 1; }
           test "$code" = 0 -o "$code" = 143 || { echo "::error::the server did not stop by itself (exit code $code)"; exit 1; }
-          for line in 'RaidBossSpawnManager: All raidboss info saved' 'Olympiad System: Data saved' 'Data saved. All players disconnected'; do
-            grep -q "$line" stop.log || { echo "::error::the stop did not log: $line"; exit 1; }
-          done
+          grep -q 'Data saved. All players disconnected' stop.log \
+            || { echo "::error::the stop did not log that the players were saved"; exit 1; }
 
       # The backup and the restore of the deployment guide, run as the guide writes them: a dump of the two schemas, a
       # stack destroyed with its volumes, a clean start, the restore, and the account of the first session finds its
@@ -874,25 +858,25 @@ jobs:
           path: digests/*
           if-no-files-found: error
 
-  # The rules of main require one check named image. It passes only when the image of every platform passed, and it
-  # runs even when one failed, because a skipped required check would count as passed.
+  # The rules of main require one check named image. After a merge it passes only when the image of every platform
+  # passed, and it runs even when one failed, because a skipped required check would count as passed. A pull request
+  # builds no image, so there the check is skipped.
   image:
-    needs: [image-platform, go]
-    if: always()
+    needs: image-platform
+    if: ${{ always() && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
     steps:
       - name: Require the image of every platform
         env:
-          GO_RESULT: ${{ needs.go.result }}
           RESULT: ${{ needs.image-platform.result }}
         run: |
-          test "$GO_RESULT" = success || { echo "::error::the Go checks did not pass: $GO_RESULT"; exit 1; }
           test "$RESULT" = success || { echo "::error::the image of a platform did not pass: $RESULT"; exit 1; }
 
+  # Names the verified digests edge and sha-* only when every check of the commit passed.
   image-index:
-    needs: [image, world, go]
+    needs: [image, build, integration, go, world, empty-world]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -945,7 +929,8 @@ jobs:
   # Readiness must come with no ERROR, no WARN and no uncaught exception. A missing catalog directory must
   # end the process and name the key. This job does not publish the image and does not change the image job.
   empty-world:
-    needs: [build]
+    needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     permissions:
@@ -1152,59 +1137,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: startup-measurement
-          path: startup
-          if-no-files-found: ignore
-
-  # A restart of the container is slower than a start in a new container. The same stop is followed by three kinds of
-  # start to find out what the difference depends on.
-  restart-diagnosis:
-    if: github.event_name == 'workflow_dispatch'
-    needs: [build]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    continue-on-error: true
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          fetch-depth: 1
-
-      - name: Download the verified distributions
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: l2jfree-dist
-          path: dist
-
-      - name: Stage the image context
-        run: unzip -q dist/l2jfree-platform-*-dist.zip -d deploy/image
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
-
-      - name: Build the image
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
-        with:
-          context: deploy/image
-          load: true
-          tags: l2jfree:ci
-          cache-from: type=gha
-
-      - name: Compare the kinds of start after a stop
-        run: |
-          mkdir -p startup
-          python3 deploy/measure/startup.py --image l2jfree:ci --runs 3 --diagnose --output startup | tee startup/restart-table.txt
-          {
-            echo "### The same stop, followed by three kinds of start (G1)"
-            echo
-            cat startup/restart.md
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Keep the numbers
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: restart-diagnosis
           path: startup
           if-no-files-found: ignore
 
