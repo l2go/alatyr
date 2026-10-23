@@ -129,7 +129,7 @@ func (w *World) Learn(ctx context.Context, id, skillID, level int32) error {
 		w.putSkill(s, p, k)
 		p.char.SP -= cost
 		s.group([]Effect{
-			ResourceTransferred{Resource: Resource{Kind: ResourceSP}, From: ResourceLocation{Entity: p.ref(), Place: PlaceCharacter}, To: ResourceLocation{Place: PlaceLearning}, Quantity: int64(cost), FromQuantityBefore: int64(oldSP), FromQuantityAfter: int64(p.char.SP)},
+			ResourceTransferred{Resource: Resource{Kind: ResourceSP}, From: ResourceLocation{Entity: p.ref(), Place: PlaceCharacter}, To: ResourceLocation{Place: PlaceLearning}, Amount: IntegerAmount(int64(cost)), FromBalance: Balance{Before: IntegerAmount(int64(oldSP)), After: IntegerAmount(int64(p.char.SP))}},
 			CapabilityChanged{Entity: p.ref(), Capability: CapabilitySkill, ID: skillID, Before: max(oldSkill, 0), After: level},
 		})
 		s.finish(Done)

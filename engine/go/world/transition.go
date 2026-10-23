@@ -106,16 +106,42 @@ type Resource struct {
 	TemplateID int32
 }
 
-// ResourceTransferred records an exact integer quantity or a continuous amount.
-// Integer balances use Quantity fields without floating-point conversion.
-// Continuous balances use Amount and the non-Quantity balance fields instead.
+// Amount is a closed, comparable resource quantity. The zero value is exact
+// integer zero. ResourceItem, ResourceSP and ResourceXP use integers;
+// ResourceHP, ResourceMP and ResourceCP use continuous amounts.
+type Amount struct {
+	continuous bool
+	integer    int64
+	real       float64
+}
+
+// IntegerAmount constructs an exact quantity without floating-point conversion.
+func IntegerAmount(n int64) Amount { return Amount{integer: n} }
+
+// ContinuousAmount constructs a continuous quantity, including continuous zero.
+func ContinuousAmount(n float64) Amount { return Amount{continuous: true, real: n} }
+
+// Integer returns the exact quantity and whether the amount is integer.
+func (a Amount) Integer() (int64, bool) { return a.integer, !a.continuous }
+
+// Continuous returns the quantity and whether the amount is continuous.
+func (a Amount) Continuous() (float64, bool) { return a.real, a.continuous }
+
+// Balance records resource amounts before and after a transition. The amounts
+// have the same kind as the transfer. A world source or sink has a zero balance
+// of that kind; it is not a measured participant balance.
+type Balance struct {
+	Before, After Amount
+}
+
+// ResourceTransferred records one quantity and balances in the resource's
+// numeric kind. Consumers can inspect that kind without inferring populated
+// fields or converting exact integer balances to floating point.
 type ResourceTransferred struct {
-	Resource                                                                 Resource
-	From, To                                                                 ResourceLocation
-	Amount                                                                   float64
-	Quantity                                                                 int64
-	FromBefore, FromAfter, ToBefore, ToAfter                                 float64
-	FromQuantityBefore, FromQuantityAfter, ToQuantityBefore, ToQuantityAfter int64
+	Resource               Resource
+	From, To               ResourceLocation
+	Amount                 Amount
+	FromBalance, ToBalance Balance
 }
 
 func (ResourceTransferred) effect() {}
@@ -414,19 +440,21 @@ func cloneCommit(t Commit) Commit {
 	return t
 }
 func (s *state) itemTransfer(p *player, item Ref, resource Resource, from ResourceLocation, quantity, before, after int64) {
-	s.group([]Effect{ResourceTransferred{Resource: resource, From: from, To: ResourceLocation{Entity: p.ref(), Item: item, Place: PlaceInventory}, Quantity: quantity,
-		ToQuantityBefore: before, ToQuantityAfter: after}})
+	s.group([]Effect{ResourceTransferred{Resource: resource, From: from, To: ResourceLocation{Entity: p.ref(), Item: item, Place: PlaceInventory}, Amount: IntegerAmount(quantity),
+		ToBalance: Balance{Before: IntegerAmount(before), After: IntegerAmount(after)}}})
 }
 func (s *state) resourceChange(entity Ref, kind ResourceKind, before, after float64) {
 	if before == after {
 		return
 	}
-	e := ResourceTransferred{Resource: Resource{Kind: kind}, Amount: after - before,
-		From: ResourceLocation{Place: PlaceWorld}, To: ResourceLocation{Entity: entity, Place: PlaceCharacter}, ToBefore: before, ToAfter: after}
+	e := ResourceTransferred{Resource: Resource{Kind: kind}, Amount: ContinuousAmount(after - before),
+		From: ResourceLocation{Place: PlaceWorld}, To: ResourceLocation{Entity: entity, Place: PlaceCharacter},
+		FromBalance: Balance{Before: ContinuousAmount(0), After: ContinuousAmount(0)},
+		ToBalance:   Balance{Before: ContinuousAmount(before), After: ContinuousAmount(after)}}
 	if after < before {
-		e.Amount = before - after
+		e.Amount = ContinuousAmount(before - after)
 		e.From, e.To = e.To, e.From
-		e.FromBefore, e.FromAfter, e.ToBefore, e.ToAfter = before, after, 0, 0
+		e.FromBalance, e.ToBalance = e.ToBalance, e.FromBalance
 	}
 	s.group([]Effect{e})
 }

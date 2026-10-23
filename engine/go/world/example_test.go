@@ -73,7 +73,11 @@ func ExampleWorld_Learn() {
 			for _, effect := range group.Effects {
 				switch e := effect.(type) {
 				case world.ResourceTransferred:
-					fmt.Println("SP:", e.FromQuantityBefore, "->", e.FromQuantityAfter)
+					before, beforeOK := e.FromBalance.Before.Integer()
+					after, afterOK := e.FromBalance.After.Integer()
+					if beforeOK && afterOK {
+						fmt.Println("SP:", before, "->", after)
+					}
 				case world.CapabilityChanged:
 					fmt.Println("skill:", e.ID, e.Before, "->", e.After)
 				}

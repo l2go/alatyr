@@ -43,7 +43,7 @@ func (w *World) dropOnGround(s *state, n *npc, killer *player, templateID int32,
 	}
 	g.pos = w.onGround(g.pos)
 	s.ground[g.id] = g
-	s.group([]Effect{ExistenceChanged{Entity: g.ref(), After: true}, ResourceTransferred{Resource: Resource{Kind: ResourceItem, TemplateID: templateID}, From: ResourceLocation{Place: PlaceReward}, To: ResourceLocation{Entity: g.ref(), Place: PlaceGround}, Quantity: count, ToQuantityAfter: count}}, Fact{Subject: g.ref(), Property: PropertyPosition, After: PointValue(g.pos)})
+	s.group([]Effect{ExistenceChanged{Entity: g.ref(), After: true}, ResourceTransferred{Resource: Resource{Kind: ResourceItem, TemplateID: templateID}, From: ResourceLocation{Place: PlaceReward}, To: ResourceLocation{Entity: g.ref(), Place: PlaceGround}, Amount: IntegerAmount(count), ToBalance: Balance{After: IntegerAmount(count)}}}, Fact{Subject: g.ref(), Property: PropertyPosition, After: PointValue(g.pos)})
 	w.logItem(itemlog.Create, "Loot", g.id, templateID, count, killer, n.tmpl.Name)
 	w.showGround(s, g, n.id)
 	s.afterRule(autoDestroy, RuleItemDecay, func(s *state) {
@@ -192,7 +192,7 @@ func (w *World) doPickup(s *state, p *player, item int32) {
 	if before != 0 {
 		row = slices.IndexFunc(p.char.Items, func(held Item) bool { return held.TemplateID == it.TemplateID && !held.Equipped() })
 	}
-	effects := []Effect{ResourceTransferred{Resource: Resource{Kind: ResourceItem, TemplateID: it.TemplateID}, From: ResourceLocation{Entity: g.ref(), Place: PlaceGround}, To: ResourceLocation{Entity: p.ref(), Item: p.itemRefs[p.char.Items[row].ObjectID], Place: PlaceInventory}, Quantity: it.Count, FromQuantityBefore: it.Count, ToQuantityBefore: before, ToQuantityAfter: after}}
+	effects := []Effect{ResourceTransferred{Resource: Resource{Kind: ResourceItem, TemplateID: it.TemplateID}, From: ResourceLocation{Entity: g.ref(), Place: PlaceGround}, To: ResourceLocation{Entity: p.ref(), Item: p.itemRefs[p.char.Items[row].ObjectID], Place: PlaceInventory}, Amount: IntegerAmount(it.Count), FromBalance: Balance{Before: IntegerAmount(it.Count)}, ToBalance: Balance{Before: IntegerAmount(before), After: IntegerAmount(after)}}}
 	if before != 0 {
 		effects = append(effects, ExistenceChanged{Entity: g.ref(), Before: true})
 	}
@@ -211,7 +211,7 @@ func (w *World) Pickup(ctx context.Context, id, item int32) error {
 }
 
 func (w *World) removeFromGround(s *state, g *groundItem) {
-	s.group([]Effect{ResourceTransferred{Resource: Resource{Kind: ResourceItem, TemplateID: g.templateID}, From: ResourceLocation{Entity: g.ref(), Place: PlaceGround}, To: ResourceLocation{Place: PlaceDecay}, Quantity: g.count, FromQuantityBefore: g.count}, ExistenceChanged{Entity: g.ref(), Before: true}})
+	s.group([]Effect{ResourceTransferred{Resource: Resource{Kind: ResourceItem, TemplateID: g.templateID}, From: ResourceLocation{Entity: g.ref(), Place: PlaceGround}, To: ResourceLocation{Place: PlaceDecay}, Amount: IntegerAmount(g.count), FromBalance: Balance{Before: IntegerAmount(g.count)}}, ExistenceChanged{Entity: g.ref(), Before: true}})
 	w.eraseGround(s, g)
 }
 func (w *World) eraseGround(s *state, g *groundItem) {

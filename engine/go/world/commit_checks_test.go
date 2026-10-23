@@ -70,7 +70,7 @@ func TestCommitPickupExactTransfer(t *testing.T) {
 					t.Fatalf("transfers: got %d, want 1", len(transfers))
 				}
 				e := transfers[0]
-				if e.From.Entity != ground || e.To.Entity != entry.Self.Entity || e.Quantity != tc.count || e.ToQuantityBefore != tc.held || e.ToQuantityAfter != tc.held+tc.count {
+				if e.From.Entity != ground || e.To.Entity != entry.Self.Entity || e.Amount != IntegerAmount(tc.count) || e.ToBalance != (Balance{Before: IntegerAmount(tc.held), After: IntegerAmount(tc.held + tc.count)}) || e.FromBalance != (Balance{Before: IntegerAmount(tc.count)}) {
 					t.Fatalf("transfer: got %+v, want exact %d + %d", e, tc.held, tc.count)
 				}
 				if e.To.Item.Gen == 0 || tc.held == 0 && e.To.Item != ground || tc.held != 0 && e.To.Item.ID != 102 {

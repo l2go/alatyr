@@ -15,6 +15,57 @@ type fixedRandomSource uint64
 
 func (r fixedRandomSource) Uint64() uint64 { return uint64(r) }
 
+func TestAmountClosedKinds(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		amount     Amount
+		integer    int64
+		continuous float64
+		isInteger  bool
+	}{
+		{"zero", Amount{}, 0, 0, true},
+		{"exact integer", IntegerAmount(1<<54 + 3), 1<<54 + 3, 0, true},
+		{"continuous zero", ContinuousAmount(0), 0, 0, false},
+		{"fraction", ContinuousAmount(0.5), 0, 0.5, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			integer, integerOK := tc.amount.Integer()
+			continuous, continuousOK := tc.amount.Continuous()
+			if integerOK != tc.isInteger || continuousOK == tc.isInteger || integer != tc.integer || continuous != tc.continuous {
+				t.Fatalf("amount: got (%d, %v), (%g, %v), want %+v", integer, integerOK, continuous, continuousOK, tc)
+			}
+		})
+	}
+}
+
+func TestCommitContinuousResourceBalances(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		before, after float64
+	}{
+		{"gain", 10, 10.5}, {"spend", 10.5, 10},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var log commitLog
+			w := New(nil, nil, WithCommits(log.observe))
+			entity := Ref{ID: 1, Gen: 1}
+			w.s.rule(RuleRegeneration, func() { w.s.resourceChange(entity, ResourceHP, tc.before, tc.after) })
+			commits := log.read()
+			if len(commits) != 1 || len(commits[0].Groups) != 1 || len(commits[0].Groups[0].Effects) != 1 {
+				t.Fatalf("resource commits: got %+v, want one transfer", commits)
+			}
+			e := commits[0].Groups[0].Effects[0].(ResourceTransferred)
+			balance, worldBalance := e.ToBalance, e.FromBalance
+			if tc.after < tc.before {
+				balance, worldBalance = e.FromBalance, e.ToBalance
+			}
+			if e.Amount != ContinuousAmount(0.5) || balance != (Balance{Before: ContinuousAmount(tc.before), After: ContinuousAmount(tc.after)}) || worldBalance != (Balance{Before: ContinuousAmount(0), After: ContinuousAmount(0)}) {
+				t.Fatalf("continuous transfer: got %+v", e)
+			}
+		})
+	}
+}
+
 func TestCommitMissDoesNotRepeatAttackingFact(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var log commitLog

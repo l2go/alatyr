@@ -108,7 +108,7 @@ func TestCommitLearningCommitAndDurability(t *testing.T) {
 					t.Fatal("missing indivisible learning group")
 				}
 				sp, ok := group.Effects[0].(ResourceTransferred)
-				if !ok || sp.Resource.Kind != "sp" || sp.Quantity != 3 || sp.FromQuantityBefore != 20 || sp.FromQuantityAfter != 17 || sp.From.Entity != entry.Self.Entity {
+				if !ok || sp.Resource.Kind != ResourceSP || sp.Amount != IntegerAmount(3) || sp.FromBalance != (Balance{Before: IntegerAmount(20), After: IntegerAmount(17)}) || sp.From.Entity != entry.Self.Entity {
 					t.Fatalf("SP transfer: got %+v, want 20 → 17", group.Effects[0])
 				}
 				skill, ok := group.Effects[1].(CapabilityChanged)
