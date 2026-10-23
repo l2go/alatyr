@@ -41,6 +41,14 @@ final class BridgeAttemptSession
 	{
 		long n = intent.field(1).value().u();
 		long verb = intent.field(2).value().u();
+		if (intent.unsupported())
+		{
+			if (intent.encodedBytes() > 4096)
+				throw com.l2jfree.gameserver.bridge.wire.WireException.frame();
+			byte[] identity = intent.unsupportedHash().clone();
+			return accept(n, identity, () -> BridgeResults.encode(n, verb, 3, 9, null),
+					BridgeResults.encode(n, verb, 3, 1, null));
+		}
 		long received = System.nanoTime();
 		long ttl = intent.field(4) == null ? 5000 : intent.field(4).value().u();
 		var fields = new java.util.ArrayList<>(intent.fields());

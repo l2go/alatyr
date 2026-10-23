@@ -23,6 +23,27 @@ import org.junit.jupiter.api.Test;
 class BridgeAttemptSessionTest
 {
 	@Test
+	void anUnknownEssentialIntentIsRetainedAndNeverRunsWorldWork()
+	{
+		var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);
+		// Intent n1/rise/control1 plus essential U field99, encoded as an opaque receive fixture.
+		byte[] bytes = java.util.HexFormat.of().parseHex("0b09180128093801b80c01");
+		var intent = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(bytes).get(0);
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> output = new ArrayList<>();
+		BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, output::add);
+		session.ready();
+		session.accept(client, intent);
+		fifo.remove().run();
+		session.accept(client, intent);
+		assertThat(output).hasSize(2);
+		assertThat(output.get(1)).containsExactly(output.get(0));
+		assertThat(com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(output.get(0)).get(0).field(3).value().u())
+				.isEqualTo(9);
+		org.mockito.Mockito.verifyNoInteractions(client);
+	}
+
+	@Test
 	void reorderedSkillFieldsReplayTheSamePendingAttempt()
 	{
 		var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);
