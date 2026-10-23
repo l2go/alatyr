@@ -9,6 +9,13 @@
 // arrival order or differences between snapshots. World outcome stages are
 // translated by meaning, including the bridge's narrower completion sets.
 //
-// The translation layer has no exported API, session, transport or goroutines.
-// Session ownership and the shared bridge.Port implementation are separate work.
+// Open resolves a host-owned ready character and supplies a bridge.Port plus
+// its complete opening snapshot. One owner goroutine serializes writes,
+// source publications, checkpoints and recovery. The host owns the shared
+// World.Run; a request context never becomes the session's lifetime.
+//
+// Observation loss detaches the port, not the character. Resume captures the
+// same incarnation in a new epoch and replays copied receipts, never commands.
+// Close waits for departure and reports persistence failure without a hidden
+// retry. The host can retry that captured Owner and must close ports before Run.
 package worldbridge

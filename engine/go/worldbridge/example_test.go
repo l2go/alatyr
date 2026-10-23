@@ -11,8 +11,8 @@ import (
 	"github.com/l2go/alatyr/engine/go/world"
 )
 
-// The package intentionally has no public client yet. This example demonstrates
-// source translation without claiming a session or executing a wire effect.
+// This example demonstrates source translation without inferring effects from
+// observations. ExampleOpen demonstrates the public session boundary.
 func Example() {
 	tr, s := fixture()
 	p, err := prepare(command(2), s, s.End.Time)
