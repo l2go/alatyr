@@ -43,6 +43,26 @@ import io.netty.channel.embedded.EmbeddedChannel;
 /** Uses the real client FIFO and listener socket branches with isolated game state. */
 class BridgeTransportRecoveryTest
 {
+	@Test
+	void eofAfterSessionIdAssignmentButBeforeOpeningEndStillFullyDisconnects() throws Exception
+	{
+		try (Fixture fixture = new Fixture(20000))
+		{
+			fixture.seed();
+			fixture.client.submit(() -> fixture.owner.opened(BridgeFrames.accepted(fixture.id, 1)));
+			barrier(fixture.client);
+			assertThat(fixture.owner.id).isEqualTo(fixture.id);
+			assertThat(fixture.first.opened).isFalse();
+			var lost = mock(SocketChannel.class);
+			when(lost.read(any(ByteBuffer.class))).thenReturn(-1);
+			fixture.loop.account();
+			fixture.loop.serve(key(lost, fixture.first, true));
+			barrier(fixture.client);
+			assertThat(fixture.client.isBridgeDisconnectRequested()).isTrue();
+			verify(fixture.player).store(true, true);
+		}
+	}
+
 	@org.junit.jupiter.params.ParameterizedTest
 	@org.junit.jupiter.params.provider.ValueSource(booleans = { false, true })
 	void relocationAfterBeginCancelsOldReadyWithoutNestingCheckpoints(boolean live) throws Exception

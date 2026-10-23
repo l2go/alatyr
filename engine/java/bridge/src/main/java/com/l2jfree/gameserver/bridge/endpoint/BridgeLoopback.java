@@ -948,6 +948,7 @@ final class BridgeLoopback implements Runnable
 		void detach(Transport source)
 		{
 			long generation;
+			boolean fullDisconnect;
 			synchronized (source)
 			{
 				source.lost = true;
@@ -965,6 +966,7 @@ final class BridgeLoopback implements Runnable
 			synchronized (this)
 			{
 				generation = recovery.detach(source, source.fence);
+				fullDisconnect = generation == 0 && transport == source;
 				if (generation != 0)
 				{
 					transport = null;
@@ -973,7 +975,7 @@ final class BridgeLoopback implements Runnable
 			}
 			if (generation == 0)
 			{
-				if (id == 0)
+				if (fullDisconnect)
 					client.requestBridgeDisconnect();
 				return;
 			}
