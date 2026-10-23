@@ -103,7 +103,8 @@ class BridgeTransportRecoveryTest
 						assertThat(fixture.first.writing).isSameAs(frame);
 						assertThat(fixture.first.writingAt).isZero();
 						assertThat(fixture.first.held).isEqualTo(frame.length + 1);
-						assertThat(fixture.first.queued).isEmpty();
+						assertThat(fixture.first.queued).hasSize(1); // FIFO only flags retirement; selector owns cleanup.
+						assertThat(fixture.first.retire).isTrue();
 						assertThat(fixture.first.closing).isTrue();
 					}
 				}
@@ -298,6 +299,7 @@ class BridgeTransportRecoveryTest
 			barrier(fixture.client);
 			barrier(fixture.client);
 			assertThat(fixture.client.isBridgeDisconnectFinished()).isTrue();
+			BridgeLoopback.applyOutputFlags(replacement); // Explicit selector turn before inspecting its queue.
 			assertThat(replacement.queued).hasSize(1);
 			var records = fixture.drain(replacement);
 			assertThat(records).hasSize(1);
@@ -921,6 +923,7 @@ class BridgeTransportRecoveryTest
 			fixture.owner.sink.deliver(new UserInfo(fixture.player), fixture.player);
 			assertThat(fixture.first.afterCheckpoint).isNotEmpty();
 			fixture.owner.sink.deliver(TeleportToLocation.forBridgeRelocation(fixture.player, 8, 9, 10, 0, 1), fixture.player);
+			BridgeLoopback.applyOutputFlags(fixture.first); // Selector discards the cancelled generation's backlog.
 			assertThat(fixture.first.queued).isEmpty();
 			assertThat(fixture.first.afterCheckpoint).isEmpty();
 			assertThat(fixture.first.held).isZero();

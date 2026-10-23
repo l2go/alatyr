@@ -756,6 +756,7 @@ final class BridgeLoopback implements Runnable
 			byte[] writing;
 			synchronized (transport)
 			{
+				applyOutputFlags(transport);
 				if (transport.writing == null)
 				{
 					transport.writing = transport.queued.poll();
@@ -774,6 +775,7 @@ final class BridgeLoopback implements Runnable
 				// A cancelled writer still owns its borrowed slice, not the replacement's byte budget.
 				if (transport.writing != writing)
 					return written;
+				applyOutputFlags(transport);
 				if (n > 0)
 				{
 					transport.writingAt += n;
@@ -783,6 +785,67 @@ final class BridgeLoopback implements Runnable
 					return written;
 				transport.writing = null;
 			}
+		}
+	}
+
+	/** Selector-only cleanup of queued output; the active borrowed array remains owned by flush. */
+	static void applyOutputFlags(Transport transport)
+	{
+		synchronized (transport)
+		{
+			while (transport.discardAfterCheckpointCount > 0 && !transport.afterCheckpoint.isEmpty())
+			{
+				transport.held = Math.max(0, transport.held - transport.afterCheckpoint.remove().length);
+				transport.discardAfterCheckpointCount--;
+			}
+			transport.discardAfterCheckpointCount = 0;
+			if (transport.retire)
+			{
+				if (transport.checkpoint != null) transport.checkpoint.cancel();
+				transport.checkpoint = null;
+				while (!transport.queued.isEmpty())
+					transport.held = Math.max(0, transport.held - transport.queued.remove().length);
+				while (!transport.afterCheckpoint.isEmpty())
+					transport.held = Math.max(0, transport.held - transport.afterCheckpoint.remove().length);
+				transport.openingFacts.clear();
+				transport.openingFactBytes = 0;
+				transport.terminalReply = null;
+			}
+			else if (transport.terminalReply != null)
+			{
+				byte[] reply = transport.terminalReply;
+				transport.terminalReply = null;
+				transport.openingFacts.clear();
+				transport.openingFactBytes = 0;
+				if (!transport.lost)
+				{
+					if (reply.length > OUT_QUEUE_BYTES - transport.held)
+						failSlow(transport);
+					else
+					{
+						transport.queued.add(reply);
+						transport.held += reply.length;
+					}
+				}
+			}
+		}
+	}
+
+	/** Producer-side claim; the selector alone materializes this terminal reply in queued/held. */
+	private static void requestCloseResult(Transport transport, List<Envelope> records)
+	{
+		synchronized (transport)
+		{
+			if (transport.terminal || transport.closing)
+				return;
+			if (resultExpired(transport, System.nanoTime()))
+				records = List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL));
+			transport.terminalReply = frame(records);
+			transport.terminal = true;
+			transport.awaitingResult = false;
+			transport.attemptFence.closing = true;
+			transport.attemptFence.valid = false;
+			armClose(transport);
 		}
 	}
 
@@ -843,6 +906,7 @@ final class BridgeLoopback implements Runnable
 		BridgeRecovery.Checkpoint token = null;
 		synchronized (transport)
 		{
+			applyOutputFlags(transport);
 			if (transport.lost || transport.closing || transport.checkpoint == null)
 				return;
 			byte[] frame;
@@ -962,8 +1026,7 @@ final class BridgeLoopback implements Runnable
 						current.holdOpeningFacts = true;
 						// The fresh opening/recovery snapshot subsumes these observations. In particular, facts
 						// cannot precede Begin when the cancelled producer had not transferred its first frame.
-						while (!current.afterCheckpoint.isEmpty())
-							current.held -= current.afterCheckpoint.remove().length;
+						current.discardAfterCheckpointCount = current.afterCheckpoint.size();
 						current.reuseCheckpointBegin = began;
 						return;
 					}
@@ -1012,7 +1075,7 @@ final class BridgeLoopback implements Runnable
 				if (reply.lost)
 					recipient = transport;
 				else
-					fromSink(reply, records);
+					requestCloseResult(reply, records);
 			}
 			if (recipient != null && recipient != reply)
 			{
@@ -1024,7 +1087,7 @@ final class BridgeLoopback implements Runnable
 					{
 						armResultWait(recipient);
 						recipient.resultDeadline = deadline;
-						fromSink(recipient, records);
+						requestCloseResult(recipient, records);
 					}
 				}
 			}
@@ -1040,12 +1103,7 @@ final class BridgeLoopback implements Runnable
 					other.attemptFence.closing = true;
 					other.terminal = true;
 					other.awaitingResult = false;
-					if (other.checkpoint != null) other.checkpoint.cancel();
-					other.checkpoint = null;
-					other.queued.clear();
-					other.afterCheckpoint.clear();
-					// The selector may be writing a borrowed slice outside this monitor.
-					// Leave its active array, offset and byte accounting under selector ownership.
+					other.retire = true;
 					armClose(other);
 				}
 			}
@@ -1067,13 +1125,8 @@ final class BridgeLoopback implements Runnable
 				initialOpening = source.epoch == 1 && !source.opened;
 				source.lost = true;
 				source.attemptFence.valid = false;
-				if (source.checkpoint != null)
-					source.checkpoint.cancel();
-				source.checkpoint = null;
-				source.queued.clear();
-				source.afterCheckpoint.clear();
-				source.writing = null;
-				source.held = 0;
+				source.retire = true;
+				armClose(source);
 					source.checkpointDeadline = 0;
 			}
 			// Serialize the state, binding and admission changes with Resume. No source/model callback runs here.
@@ -1331,6 +1384,17 @@ final class BridgeLoopback implements Runnable
 	{
 		if (key.attachment() instanceof Transport)
 			disconnectBound((Transport) key.attachment());
+		if (key.attachment() instanceof Transport source)
+		{
+			synchronized (source)
+			{
+				source.retire = true;
+				applyOutputFlags(source);
+				source.writing = null;
+				source.writingAt = 0;
+				source.held = 0;
+			}
+		}
 		try
 		{
 			key.cancel();
@@ -1471,6 +1535,9 @@ final class BridgeLoopback implements Runnable
 		byte[] writing;
 		int writingAt;
 		int held;
+		boolean retire;
+		byte[] terminalReply;
+		int discardAfterCheckpointCount;
 		volatile boolean closing;
 		long closeDeadline;
 		volatile boolean awaitingResult;

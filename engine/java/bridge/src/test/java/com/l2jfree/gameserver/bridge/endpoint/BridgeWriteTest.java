@@ -104,4 +104,25 @@ class BridgeWriteTest
 		assertThat(transport.writingAt).isZero();
 		assertThat(transport.held).isEqualTo(replacement ? next.length : 0);
 	}
+
+	@Test
+	void selectorRetirementDebitsOnlyTheUnstartedQueues()
+	{
+		Transport transport = new Transport(SECRET);
+		byte[] active = new byte[] { 1, 2, 3 };
+		transport.writing = active;
+		transport.writingAt = 1;
+		transport.queued.add(new byte[4]);
+		transport.afterCheckpoint.add(new byte[5]);
+		transport.held = 2 + 4 + 5;
+		transport.retire = true;
+		BridgeLoopback.applyOutputFlags(transport);
+		assertThat(transport.writing).isSameAs(active);
+		assertThat(transport.writingAt).isEqualTo(1);
+		assertThat(transport.held).isEqualTo(2);
+		assertThat(transport.queued).isEmpty();
+		assertThat(transport.afterCheckpoint).isEmpty();
+		BridgeLoopback.applyOutputFlags(transport);
+		assertThat(transport.held).isEqualTo(2);
+	}
 }
