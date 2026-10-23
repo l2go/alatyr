@@ -71,12 +71,12 @@ type Snapshot struct {
 type Witness uint8
 
 const (
-	// NoWitness provides no evidence for the action.
-	NoWitness Witness = iota
-	// Match proves the action within its original evidence window.
-	Match
-	// Candidate must remain valid until the full window or checkpoint ends.
-	Candidate
+	// WitnessNone provides no evidence for the action.
+	WitnessNone Witness = iota
+	// WitnessMatch proves the action within its original evidence window.
+	WitnessMatch
+	// WitnessCandidate must remain valid until the full window or checkpoint ends.
+	WitnessCandidate
 )
 
 // State is the injected dictionary/projection; it contains no transport logic.

@@ -281,7 +281,7 @@ func (s *game) observe(update Update) bool {
 				continue
 			}
 			switch s.state.Witness(ex.action, update) {
-			case Match:
+			case WitnessMatch:
 				if ex.action.AfterCheckpoint {
 					ex.candidate = s.gate.now()
 					ex.hasCandidate = true
@@ -293,7 +293,7 @@ func (s *game) observe(update Update) bool {
 					s.result(o.Record())
 					delete(s.actions, n)
 				}
-			case Candidate:
+			case WitnessCandidate:
 				ex.candidate = s.gate.now()
 				ex.hasCandidate = true
 			}

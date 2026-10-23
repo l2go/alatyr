@@ -57,7 +57,7 @@ func (*testState) Plan(wire.Record, int64) (*Action, wire.Reason) {
 func (*testState) Validate(*Action, int64) wire.Reason       { return wire.ReasonNone }
 func (*testState) Start(*Action)                             {}
 func (*testState) Confirmed(*Action) bool                    { return false }
-func (*testState) Witness(*Action, Update) Witness           { return NoWitness }
+func (*testState) Witness(*Action, Update) Witness           { return WitnessNone }
 func (*testState) CandidateValid(*Action) bool               { return false }
 func (*testState) Proof(*Action, int64) (wire.Record, error) { return wire.Record{}, nil }
 func (*testState) Invalidate()                               {}
