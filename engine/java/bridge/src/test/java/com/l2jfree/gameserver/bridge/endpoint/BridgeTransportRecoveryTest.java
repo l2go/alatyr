@@ -154,8 +154,11 @@ class BridgeTransportRecoveryTest
 		private final List<org.mockito.MockedStatic<?>> mocks = new ArrayList<>();
 		final com.l2jfree.gameserver.model.olympiad.Olympiad olympiad;
 
-		OpeningWorld()
+		OpeningWorld() throws java.sql.SQLException
 		{
+			var database = isolate(com.l2jfree.L2DatabaseFactory.class);
+			var connection = mock(java.sql.Connection.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+			when(database.getConnection()).thenReturn(connection);
 			isolate(com.l2jfree.gameserver.instancemanager.InstanceManager.class);
 			isolate(com.l2jfree.gameserver.Announcements.class);
 			isolate(com.l2jfree.gameserver.model.sevensigns.SevenSigns.class);
