@@ -25,6 +25,26 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeOutcomeTest
 {
 	@Test
+	void anAlreadyKnownLearningLevelCannotProduceANewDone()
+	{
+		var player = BridgeTestPlayers.player();
+		Attempt attempt = new Attempt(player);
+		EffectLedger.open(attempt);
+		try
+		{
+			EffectLedger.expectLearningCost(player, 0, 0, 0, 0);
+			assertThat(BridgeOutcome.learn(attempt, 12, 1)).isEqualTo(BridgeOutcome.UNKNOWN);
+			EffectLedger.record(player, BridgeEffect.skill(12, 1, 2));
+			assertThat(BridgeOutcome.learn(attempt, 12, 1)).isEqualTo(BridgeOutcome.UNKNOWN);
+			assertThat(BridgeOutcome.learn(attempt, 12, 2)).isEqualTo(BridgeOutcome.DONE);
+		}
+		finally
+		{
+			EffectLedger.close();
+		}
+	}
+
+	@Test
 	void synchronousDialogueFromTheTargetNpcSurvivesAFWithoutAcceptingOtherPanels()
 	{
 		var player = BridgeTestPlayers.player();
