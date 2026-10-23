@@ -4,6 +4,7 @@
 package world
 
 import (
+	"context"
 	"reflect"
 	"testing"
 	"testing/synctest"
@@ -102,10 +103,22 @@ func TestWorldHasOnlyCanonicalSourceAPI(t *testing.T) {
 			}
 		})
 	}
-	for _, method := range []string{"Leave", "Logout"} {
+	for _, method := range []string{"LeaveRef", "LogoutRef"} {
 		t.Run(method, func(t *testing.T) {
 			if _, ok := reflect.TypeFor[*World]().MethodByName(method); ok {
-				t.Fatalf("got ID-based %s, want captured-ref departure only", method)
+				t.Fatalf("got suffixed %s, want canonical departure names", method)
+			}
+		})
+	}
+	for _, name := range []string{"Leave", "Logout"} {
+		t.Run(name, func(t *testing.T) {
+			method, ok := reflect.TypeFor[*World]().MethodByName(name)
+			if !ok {
+				t.Fatalf("missing %s, want captured-ref departure", name)
+			}
+			want := reflect.TypeFor[func(*World, context.Context, Ref) error]()
+			if method.Type != want {
+				t.Fatalf("%s signature: got %v, want %v", name, method.Type, want)
 			}
 		})
 	}

@@ -52,7 +52,7 @@
 // Pages and lesson lists carry their own detached Dialogue and affordances.
 // SkillsShown carries detached effective skills and runtime reuse availability.
 // Delayed reading never borrows authority from a later Capture.
-// LeaveRef and LogoutRef check a captured Ref in the same turn as departure. Only
+// Leave and Logout check a captured Ref in the same turn as departure. Only
 // that incarnation can retry its pending detached save; Store is unchanged.
 // Departure always requires a captured incarnation. Parameters is the complete
 // issued parameter set; lesson capabilities and costs have one source, Affordance.

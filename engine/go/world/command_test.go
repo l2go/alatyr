@@ -397,7 +397,7 @@ func TestExecuteLearnUsesAffordanceAndSeparateDurability(t *testing.T) {
 				if sp.Amount != IntegerAmount(lesson.Cost[0].Quantity) || len(log.writes) != 1 || log.writes[0].Intent != commit.Intent.ID || (log.writes[0].Err != nil) != failed {
 					t.Fatalf("cost/durability: got %+v %+v", sp, log.writes)
 				}
-				if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
+				if err := w.Leave(ctx, entry.Self.Entity); err != nil {
 					t.Fatal(err)
 				}
 				if store.saved.SP != 17 || !slices.Contains(store.saved.Skills, Skill{ID: 9202, Level: 1}) {

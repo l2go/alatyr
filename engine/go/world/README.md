@@ -113,11 +113,11 @@ are closed values with typed accessors, not arbitrary payloads.
 `WithRandomSource` supplies an exclusively owned random source before spawn;
 the default remains crypto-seeded ChaCha8, without a bit-exact replay promise.
 
-`LeaveRef` takes the captured `Ref`, closes events and saves a detached snapshot
+`Leave` takes the captured `Ref`, closes events and saves a detached snapshot
 outside the loop. A failed save can be retried only by the same incarnation;
 re-entry is blocked until it succeeds. A different live or pending incarnation
 returns `RefusalError` with `ReasonStale`, inspectable with `errors.As`.
-`LogoutRef` takes the same `Ref` and also checks combat stance atomically with
+`Logout` takes the same `Ref` and also checks combat stance atomically with
 departure. Both operations require a captured incarnation; there is no ID-only
 departure API.
 An accepted command completes even if its caller cancels in flight.

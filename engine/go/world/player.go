@@ -402,11 +402,11 @@ type RefusalError struct {
 // Error describes the refusal without replacing its typed Reason.
 func (e *RefusalError) Error() string { return "world: operation refused: " + string(e.Reason) }
 
-// LeaveRef removes only owner and closes its events before saving on the caller.
+// Leave removes only owner and closes its events before saving on the caller.
 // A failed save leaves a detached snapshot that only the same Ref can retry.
 // A different live or pending incarnation returns a RefusalError with ReasonStale.
 // Repeating a successful departure is harmless while the identity remains absent.
-func (w *World) LeaveRef(ctx context.Context, owner Ref) error {
+func (w *World) Leave(ctx context.Context, owner Ref) error {
 	return w.leave(ctx, owner, false)
 }
 func (w *World) leave(ctx context.Context, owner Ref, voluntary bool) error {

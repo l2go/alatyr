@@ -185,8 +185,8 @@ func (w *World) teleport(s *state, p *player, to Point, revive bool) error {
 	return nil
 }
 
-// LogoutRef refuses an active combat stance and leaves only owner.
-// LeaveRef is the unconditional, retryable path for disconnection.
-func (w *World) LogoutRef(ctx context.Context, owner Ref) error {
+// Logout refuses an active combat stance and leaves only owner.
+// Leave is the unconditional, retryable path for disconnection.
+func (w *World) Logout(ctx context.Context, owner Ref) error {
 	return w.leave(ctx, owner, true)
 }

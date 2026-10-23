@@ -86,7 +86,7 @@ func (w *World) showSkillList(s *state, p *player, n *npc) {
 }
 
 // Learn reserves a trainer offer and spends SP in the loop. PutSkill executes
-// on the caller; a failed write retains the learned skill for LeaveRef to save.
+// on the caller; a failed write retains the learned skill for Leave to save.
 // A host whose Store lacks PutSkill cannot learn a skill.
 func (w *World) Learn(ctx context.Context, id, skillID, level int32) error {
 	if _, ok := w.skillStore(); !ok {
