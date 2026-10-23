@@ -15,7 +15,6 @@ import (
 	"github.com/l2go/alatyr/engine/go/bridge/profile"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/world"
-	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
 
 func TestCheckpointUsesCapturedSourcesAndKnownEmpty(t *testing.T) {
@@ -134,6 +133,7 @@ func TestCheckpointBoundsFenceAndExpiredProposals(t *testing.T) {
 	}{
 		{"split fence", func(s *world.Scene) { s.End.Fence = 1 }, errSource},
 		{"split sequence", func(s *world.Scene) { s.End.Sequence++ }, errSource},
+		{"split publication", func(s *world.Scene) { s.End.Seq++ }, errSource},
 		{"object bound", func(s *world.Scene) { s.Objects = make([]world.Observation, maxRows+1) }, errCapacity},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -233,7 +233,7 @@ func TestSourceInputsRemainUnchanged(t *testing.T) {
 	s = lessonScene(s)
 	before := s
 	before.Dialogue.Affordances = slices.Clone(s.Dialogue.Affordances)
-	before.Dialogue.Affordances[0].Params = slices.Clone(s.Dialogue.Affordances[0].Params)
+	before.Dialogue.Affordances[0].Parameters = slices.Clone(s.Dialogue.Affordances[0].Parameters)
 	before.Dialogue.Affordances[0].Cost = slices.Clone(s.Dialogue.Affordances[0].Cost)
 	_, _, err := tr.checkpoint(s, 1, 1, 0)
 	if err != nil {
@@ -271,8 +271,8 @@ func TestEverySupportedNotificationHasAnExplicitMapping(t *testing.T) {
 		{"teleport", world.Teleported{ObjectID: 1, Entity: s.Self.Entity, Fence: 3}, []uint64{4}},
 		{"died", world.Died{ObjectID: 2}, []uint64{6}},
 		{"revived", world.Revived{ObjectID: 2}, []uint64{7}},
-		{"dialogue", world.DialoguePage{NPCID: 2, HTML: s.Dialogue.HTML}, []uint64{11}},
-		{"skills", world.SkillsShown{Skills: []world.Skill{{ID: 301, Level: 1}}}, []uint64{23}},
+		{"dialogue", world.DialoguePage{Dialogue: s.Dialogue}, []uint64{11}},
+		{"skills", world.SkillsShown{Known: s.Skills, Complete: true}, []uint64{23}},
 		{"ground", world.ItemDropped{ObjectID: 3, TemplateID: 201, Count: 1, DropperID: 2}, []uint64{8}},
 		{"gone", world.ObjectGone{ObjectID: 2}, []uint64{10}},
 		{"notice", world.Announcement{Text: "Hello"}, []uint64{18}},
@@ -327,7 +327,7 @@ func TestDialogueNotificationRequiresActualPage(t *testing.T) {
 		event world.DialoguePage
 	}{
 		{"missing page", world.Dialogue{}, world.DialoguePage{}},
-		{"different page", choiceScene(s).Dialogue, world.DialoguePage{NPCID: 2, HTML: "<p>Other</p>"}},
+		{"missing authority", choiceScene(s).Dialogue, world.DialoguePage{Dialogue: world.Dialogue{HTML: "<p>Other</p>"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			scene := s
@@ -348,17 +348,18 @@ func TestLessonsAndEmptyListRequireActualSource(t *testing.T) {
 		count     int
 		wantError bool
 	}{
-		{"issued lesson", 1, false}, {"issued empty list", 0, false}, {"mismatched source", 2, true},
+		{"issued lesson", 1, false}, {"issued empty list", 0, false}, {"invalid lesson authority", 2, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			scene := s
-			event := world.LearnList{NPCID: 2}
-			for range tc.count {
-				event.Skills = append(event.Skills, catalog.SkillLearn{SkillID: 301, Level: 1, SP: 10})
-			}
 			if tc.count == 0 {
 				scene.Dialogue.Affordances = nil
 			}
+			if tc.wantError {
+				scene.Dialogue.Affordances = []world.Affordance{scene.Dialogue.Affordances[0]}
+				scene.Dialogue.Affordances[0].Cost = nil
+			}
+			event := world.LearnList{Dialogue: scene.Dialogue}
 			fs, err := tr.events(event, scene, 0)
 			if tc.wantError {
 				if !errors.Is(err, errSource) {

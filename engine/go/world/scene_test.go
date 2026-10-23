@@ -61,7 +61,7 @@ func TestCaptureReadsEverySourceWithoutEffects(t *testing.T) {
 		if got := drainEvents(subscription.Events); len(got) != 0 {
 			t.Fatalf("new stream replayed notifications: %+v", got)
 		}
-		fresh.Dialogue.Affordances[0].Params = []Parameter{{Name: "changed"}}
+		fresh.Dialogue.Affordances[0].Parameters = []Parameter{{Name: "changed"}}
 		fresh.Inventory[0].Item.Count = 77
 		fresh.Self.Char.Items[0].Count = 88
 		fresh.Objects[0].Entity.Gen = 0
@@ -156,7 +156,7 @@ func TestSubscriptionCloseReasonsAndRecovery(t *testing.T) {
 						t.Fatal(err)
 					}
 				case CloseLeave:
-					if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
+					if err := w.Leave(ctx, entry.Self.Entity); err != nil {
 						t.Fatal(err)
 					}
 				case CloseStop:
@@ -227,7 +227,7 @@ func TestTeleportFenceAndIncarnation(t *testing.T) {
 			t.Fatalf("old continuation: %+v", old)
 		}
 		executeTest(t, w, ctx, Request{Owner: owner, Verb: VerbAppear, Fence: second})
-		if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
+		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 		replacement := enterTest(t, w, ctx, syntheticCharacter(1))
@@ -313,7 +313,7 @@ func TestExecuteEntryMovementExitSave(t *testing.T) {
 			t.Fatalf("movement: got X %d, want 20", after.Self.Char.X)
 		}
 		drainEvents(sub.Events)
-		if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
+		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 		if store.saved.X != 20 || <-sub.End != CloseLeave {

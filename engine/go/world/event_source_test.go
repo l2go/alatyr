@@ -165,11 +165,11 @@ func TestMultiplePagesInOneTurnKeepSeparateAuthority(t *testing.T) {
 			t.Fatalf("turn sources: pages %+v, lessons %+v", pages, lessons)
 		}
 		list := lessons[0]
-		if list.Dialogue.Page != "A" || len(list.Skills) != len(list.Dialogue.Affordances) || len(list.Skills) == 0 || list.Seq() <= pages[0].Seq() || list.Seq() >= pages[1].Seq() {
+		if list.Dialogue.Page != "A" || len(list.Dialogue.Affordances) == 0 || list.Seq() <= pages[0].Seq() || list.Seq() >= pages[1].Seq() {
 			t.Fatalf("lesson source: got %+v", list)
 		}
 		list.Dialogue.Affordances[0].Cost[0].Quantity = 999
-		list.Skills[0].SP = 999
+		list.Dialogue.Affordances[0].Parameters[0].Value = IntValue(999)
 		if scene := captureTest(t, w, ctx, entry.Self.Entity); scene.Dialogue.Page != "B" || len(scene.Dialogue.Affordances) != 0 {
 			t.Fatalf("stale lesson replaced live page: %+v", scene.Dialogue)
 		}
