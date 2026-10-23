@@ -421,18 +421,88 @@ func TestExecuteMovementDeadlineStopsAtBoundary(t *testing.T) {
 		var log commitLog
 		w, _, ctx := startObservedWorld(t, &log)
 		entry := enterTest(t, w, ctx, syntheticCharacter(1))
-		scene := captureTest(t, w, ctx, entry.Self.Entity)
-		executeTest(t, w, ctx, Request{Owner: entry.Self.Entity, Verb: VerbMove, Position: Point{X: 1000}, Deadline: scene.End.Time + Time(150*time.Millisecond)})
-		advanceVirtual(100 * time.Millisecond)
-		at := captureTest(t, w, ctx, entry.Self.Entity).Self.Char.X
-		if at <= 0 {
-			t.Fatal("movement did not start before expiry")
-		}
-		advanceVirtual(500 * time.Millisecond)
-		if after := captureTest(t, w, ctx, entry.Self.Entity); after.Self.Char.X != at {
-			t.Fatalf("movement after expiry: got %d, want %d", after.Self.Char.X, at)
+		observer := enterTest(t, w, ctx, syntheticCharacter(2))
+		if scene := captureTest(t, w, ctx, observer.Self.Entity); !slices.ContainsFunc(scene.Objects, func(o Observation) bool { return o.Entity == entry.Self.Entity }) {
+			t.Fatal("observer does not know moving player")
 		}
 		drainEvents(entry.Events)
+		drainEvents(observer.Events)
+		scene := captureTest(t, w, ctx, entry.Self.Entity)
+		move := executeTest(t, w, ctx, Request{Owner: entry.Self.Entity, Verb: VerbMove, Position: Point{X: 1000}, Deadline: scene.End.Time + Time(150*time.Millisecond)})
+		if move.Outcome.Stage != StageUnknown {
+			t.Fatalf("move: got %+v, want unknown", move.Outcome)
+		}
+		for name, out := range map[string]<-chan Event{"self": entry.Events, "observer": observer.Events} {
+			if events := drainEvents(out); !containsEvent(events, func(e Moving) bool { return e.ObjectID == entry.Self.Entity.ID && e.To == (Point{X: 1000}) }) {
+				t.Fatalf("%s movement start: got %+v, want Moving", name, events)
+			}
+		}
+		advanceVirtual(100 * time.Millisecond)
+		at := captureTest(t, w, ctx, entry.Self.Entity)
+		pos := Point{at.Self.Char.X, at.Self.Char.Y, at.Self.Char.Z}
+		if pos.X <= 0 || !at.Moving {
+			t.Fatal("movement did not start before expiry")
+		}
+		drainEvents(entry.Events)
+		drainEvents(observer.Events)
+		log.reset()
+		advanceVirtual(100 * time.Millisecond)
+		want := Stopped{ObjectID: entry.Self.Entity.ID, Pos: pos, Heading: at.Self.Char.Heading}
+		for name, out := range map[string]<-chan Event{"self": entry.Events, "observer": observer.Events} {
+			var stops []Stopped
+			for _, event := range drainEvents(out) {
+				if e, ok := event.(Stopped); ok && e.ObjectID == entry.Self.Entity.ID {
+					stops = append(stops, e)
+				}
+			}
+			if !slices.Equal(stops, []Stopped{want}) {
+				t.Errorf("%s deadline stop: got %+v, want exactly %+v", name, stops, want)
+			}
+		}
+		advanceVirtual(400 * time.Millisecond)
+		after := captureTest(t, w, ctx, entry.Self.Entity)
+		if got := (Point{after.Self.Char.X, after.Self.Char.Y, after.Self.Char.Z}); got != pos || after.Moving || after.Self.Char.Heading != want.Heading {
+			t.Fatalf("captured stop: got position %v heading %v moving %v, want %v %v false", got, after.Self.Char.Heading, after.Moving, pos, want.Heading)
+		}
+		seen := captureTest(t, w, ctx, observer.Self.Entity)
+		i := slices.IndexFunc(seen.Objects, func(o Observation) bool { return o.Entity == entry.Self.Entity })
+		if i < 0 || seen.Objects[i].Moving {
+			t.Fatalf("observer capture: got %+v, want stopped player", seen.Objects)
+		}
+		view, ok := seen.Objects[i].State.(PlayerSeen)
+		if !ok || (Point{view.Player.Char.X, view.Player.Char.Y, view.Player.Char.Z}) != pos || view.Player.Char.Heading != want.Heading {
+			t.Fatalf("observer position: got %+v, want position %v heading %v", seen.Objects[i], pos, want.Heading)
+		}
+		for name, out := range map[string]<-chan Event{"self": entry.Events, "observer": observer.Events} {
+			for _, event := range drainEvents(out) {
+				if e, ok := event.(Stopped); ok && e.ObjectID == entry.Self.Entity.ID {
+					t.Errorf("%s repeated deadline stop: %+v", name, e)
+				}
+				if e, ok := event.(Moving); ok && e.ObjectID == entry.Self.Entity.ID {
+					t.Errorf("%s late movement: %+v", name, e)
+				}
+				if e, ok := event.(AttackStarted); ok && e.AttackerID == entry.Self.Entity.ID {
+					t.Errorf("%s late attack: %+v", name, e)
+				}
+			}
+		}
+		for _, commit := range log.read() {
+			if commit.Outcome.Intent == move.Intent.ID {
+				t.Errorf("deadline cleanup refixed move outcome: %+v", commit.Outcome)
+			}
+			for _, group := range commit.Groups {
+				for _, fact := range group.Facts {
+					if fact.Subject == entry.Self.Entity && fact.Property == PropertyPosition {
+						t.Errorf("position integrated after deadline: %+v", fact)
+					}
+				}
+				for _, effect := range group.Effects {
+					if harm, ok := effect.(HarmApplied); ok && harm.Source == entry.Self.Entity {
+						t.Errorf("late player harm: %+v", harm)
+					}
+				}
+			}
+		}
 	})
 }
 

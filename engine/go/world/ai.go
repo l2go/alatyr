@@ -278,6 +278,9 @@ func (w *World) haltIntention(s *state, a actor) {
 		w.stopFollow(s, a)
 		s.change(c.ref(), PropertyMovement, boolValue(c.move != nil), IntValue(0))
 		c.move = nil
+		if c.ai.clientMoving && c.ai.pawnOffset == 0 {
+			w.broadcastToKnown(s, a, Stopped{ObjectID: c.id, Pos: c.pos, Heading: c.heading})
+		}
 		w.clientStoppedMoving(s, a)
 		w.changeIntention(s, a, intentIdle, 0, Point{})
 	})
