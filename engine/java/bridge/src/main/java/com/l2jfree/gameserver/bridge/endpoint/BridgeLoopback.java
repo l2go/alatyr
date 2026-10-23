@@ -820,7 +820,10 @@ final class BridgeLoopback implements Runnable
 			if (transport.disconnectStarted)
 				return false;
 			transport.disconnectStarted = true;
-			transport.lost = true;
+			// A bound explicit Close retains its writable transport for the save-produced Bye.
+			// Pending sockets and accidental losses have no such result-wait obligation.
+			if (transport.client == null || !transport.awaitingResult)
+				transport.lost = true;
 			transport.attemptFence.valid = false;
 			return true;
 		}

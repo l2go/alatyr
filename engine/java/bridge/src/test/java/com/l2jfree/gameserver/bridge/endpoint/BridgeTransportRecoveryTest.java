@@ -87,6 +87,13 @@ class BridgeTransportRecoveryTest
 						assertThat(fixture.client.isBridgeDisconnectRequested()).isTrue();
 					var socket = mock(SocketChannel.class);
 					when(socket.read(any(ByteBuffer.class))).thenReturn(-1);
+					when(socket.write(any(ByteBuffer.class))).thenAnswer(call ->
+					{
+						ByteBuffer bytes = call.getArgument(0);
+						int written = bytes.remaining();
+						bytes.position(bytes.limit());
+						return written;
+					});
 					fixture.loop.account();
 					fixture.loop.serve(key(socket, replacement, true));
 					assertThat(replacement.disconnectStarted).isTrue();
