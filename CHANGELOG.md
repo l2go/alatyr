@@ -4,13 +4,11 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-10-23
+
 ### Changed
 
 - The repository moved from `l2go/l2jfree` to `l2go/alatyr`, and the project site moved to <https://l2go.github.io/alatyr/>. GitHub redirects the old repository address; the old site address does not. The image name `ghcr.io/l2go/l2jfree` is unchanged. Go module paths moved to `github.com/l2go/alatyr/...`; consumers must update their imports and dependency pins (#303).
-
-## [3.2.1]
-
-### Changed
 
 - Vitality is off by default, so a new character earns exactly the experience and SP the world records; set `EnableVitality = True` in your `vitality.properties` to bring it back.
 
@@ -140,7 +138,9 @@ Final 2.x release: Java 25 bytecode, HikariCP, Jython 2.7.5b1, Logback configura
 the bundled datapack, CI unit tests, and dependency upgrades. See the
 [release](https://github.com/l2go/alatyr/releases/tag/v2.5.0).
 
-[Unreleased]: https://github.com/l2go/alatyr/compare/v3.1.1...HEAD
+[Unreleased]: https://github.com/l2go/alatyr/compare/v3.2.1...HEAD
+[3.2.1]: https://github.com/l2go/alatyr/compare/v3.2.0...v3.2.1
+[3.2.0]: https://github.com/l2go/alatyr/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/l2go/alatyr/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/l2go/alatyr/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/l2go/alatyr/compare/v2.5.0...v3.0.0
