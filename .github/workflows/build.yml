@@ -42,13 +42,14 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version-file: go.work
+          # With GOTOOLCHAIN=local, setup-go reads the go directive, not toolchain.
+          go-version: "1.27.3"
           cache: false
 
       - name: Check Go version and formatting
         run: |
           set -euo pipefail
-          test "$(go env GOVERSION)" = go1.27.1
+          test "$(go env GOVERSION)" = go1.27.3
           test -z "$(gofmt -l engine/go tools/ci/check-engine-go.go tools/ci/check-engine-go_test.go)"
 
       - name: Check workspace synchronization
@@ -104,7 +105,7 @@ jobs:
           mkdir -p "$GOBIN"
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
-          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
           echo "$GOBIN" >> "$GITHUB_PATH"
 
       - name: Check Go code with Staticcheck
@@ -167,6 +168,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+    env:
+      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -195,11 +198,13 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version-file: tools/world/go.mod
+          go-version: "1.27.3"
 
       - name: Check formatting, vet, and test
         working-directory: tools/world
         run: |
+          set -euo pipefail
+          test "$(go env GOVERSION)" = go1.27.3
           test -z "$(gofmt -l .)"
           go vet ./...
           go test -v ./...
