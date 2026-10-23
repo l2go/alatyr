@@ -29,6 +29,51 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeActorReceiptRaceTest
 {
 	@Test
+	void spWriterWaitsForTheStorageLeafBeforeCapturingItsReceipt() throws Exception
+	{
+		L2Player player = BridgeTestPlayers.player();
+		when(player.isBridgeSession()).thenReturn(true);
+		PlayerStat stat = new PlayerStat(player);
+		stat.setSp(100);
+		var field = com.l2jfree.gameserver.gameobjects.stat.CreatureStat.class.getDeclaredField("_bridgeStatLock");
+		field.setAccessible(true);
+		Object leaf = field.get(stat);
+		CountDownLatch beforeLock = new CountDownLatch(1);
+		AtomicReference<Throwable> failure = new AtomicReference<>();
+		AtomicReference<Attempt> recorded = new AtomicReference<>();
+		Thread main = Thread.currentThread();
+		when(player.isBridgeSession()).thenAnswer(call ->
+		{
+			if (Thread.currentThread() != main) beforeLock.countDown();
+			return true;
+		});
+		Thread own = worker(failure, () ->
+		{
+			Attempt attempt = new Attempt(player);
+			EffectLedger.open(attempt);
+			try { stat.setSp(90); recorded.set(attempt); }
+			finally { EffectLedger.close(); }
+		});
+		try
+		{
+			synchronized (leaf)
+			{
+				own.start();
+				await(beforeLock);
+				long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+				while (own.getState() != Thread.State.BLOCKED && own.isAlive() && System.nanoTime() < deadline)
+					Thread.onSpinWait();
+				assertThat(own.getState()).isEqualTo(Thread.State.BLOCKED);
+				stat.setSp(110);
+			}
+		}
+		finally { own.join(5000); }
+		assertThat(own.isAlive()).isFalse();
+		assertThat(failure.get()).isNull();
+		assertThat(recorded.get().effects()).containsExactly(BridgeEffect.sp(-20, 110, 90));
+	}
+
+	@Test
 	void competingSpWriteCannotSupplyTheExpectedLearningDelta() throws Exception
 	{
 		for (boolean subclass : new boolean[] { false, true })
