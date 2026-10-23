@@ -37,9 +37,12 @@ import com.l2jfree.gameserver.network.packets.client.RequestBuyItem;
 class BridgePurchaseExecutionTest
 {
 	@ParameterizedTest
-	@ValueSource(booleans = { true, false })
-	void liveDuplicateRunsTheActualPurchaseHandlerOnce(boolean enoughCoin)
+	@ValueSource(ints = { 0, 1, 2 })
+	void liveDuplicateRunsTheActualPurchaseHandlerOnce(int scenario)
 	{
+		boolean enoughCoin = scenario != 0;
+		boolean taxed = scenario == 2;
+		long debit = taxed ? 13 : 10;
 		var player = BridgeTestPlayers.player();
 		int packetCap = com.l2jfree.Config.MAX_ITEM_IN_PACKET;
 		com.l2jfree.Config.MAX_ITEM_IN_PACKET = 1;
@@ -49,6 +52,13 @@ class BridgePurchaseExecutionTest
 		var inventory = mock(PlayerInventory.class);
 		var template = mock(L2Item.class);
 		var list = mock(L2TradeList.class);
+		var merchant = taxed ? mock(com.l2jfree.gameserver.gameobjects.instance.L2MerchantInstance.class) : null;
+		if (taxed)
+		{
+			when(player.getTarget(com.l2jfree.gameserver.gameobjects.L2Merchant.class)).thenReturn(merchant);
+			when(merchant.getIsInTown()).thenReturn(true);
+			when(merchant.getTemplate()).thenReturn(mock(com.l2jfree.gameserver.gameobjects.templates.L2NpcTemplate.class));
+		}
 		when(client.isBridge()).thenReturn(true);
 		when(client.getActiveChar()).thenReturn(player);
 		when(player.isGM()).thenReturn(true);
@@ -61,10 +71,10 @@ class BridgePurchaseExecutionTest
 		when(list.getListId()).thenReturn(1);
 		when(list.containsItemId(1060)).thenReturn(true);
 		when(list.getPriceForItemId(1060)).thenReturn(5L);
-		when(player.reduceAdena(eq("Buy"), eq(10L), any(), eq(false))).thenAnswer(call ->
+		when(player.reduceAdena(eq("Buy"), eq(debit), any(), eq(false))).thenAnswer(call ->
 		{
 			if (enoughCoin)
-				EffectLedger.record(player, BridgeEffect.coin(-10));
+				EffectLedger.record(player, BridgeEffect.coin(-debit));
 			return enoughCoin;
 		});
 		when(inventory.addItem(eq("Buy"), eq(1060), eq(2L), eq(player), any())).thenAnswer(call ->
@@ -74,6 +84,8 @@ class BridgePurchaseExecutionTest
 		});
 		try (var itemTables = mockStatic(ItemTable.class);
 				var tradeTables = mockStatic(TradeListTable.class);
+				var castleRates = mockStatic(com.l2jfree.gameserver.gameobjects.NpcCastle.class);
+				var htmlCache = mockStatic(com.l2jfree.gameserver.cache.HtmCache.class);
 				var tickets = mockStatic(MercTicketManager.class))
 		{
 			var items = mock(ItemTable.class);
@@ -82,6 +94,9 @@ class BridgePurchaseExecutionTest
 			itemTables.when(ItemTable::getInstance).thenReturn(items);
 			tradeTables.when(TradeListTable::getInstance).thenReturn(trades);
 			tickets.when(MercTicketManager::getInstance).thenReturn(mercs);
+			castleRates.when(() -> com.l2jfree.gameserver.gameobjects.NpcCastle.shopRate(null)).thenReturn(1.37);
+			htmlCache.when(com.l2jfree.gameserver.cache.HtmCache::getInstance)
+					.thenReturn(mock(com.l2jfree.gameserver.cache.HtmCache.class));
 			when(items.getTemplate(1060)).thenReturn(template);
 			when(trades.getBuyList(1)).thenReturn(list);
 			when(mercs.getItemIds()).thenReturn(new int[0]);
@@ -104,9 +119,9 @@ class BridgePurchaseExecutionTest
 			assertThat(output.get(1)).containsExactly(output.get(0));
 			var result = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(output.get(0)).get(0);
 			assertThat(result.field(2).value().u()).isEqualTo(enoughCoin ? 2 : 4);
-			org.mockito.Mockito.verify(player).reduceAdena("Buy", 10L, null, false);
+			org.mockito.Mockito.verify(player).reduceAdena("Buy", debit, merchant, false);
 			org.mockito.Mockito.verify(inventory, org.mockito.Mockito.times(enoughCoin ? 1 : 0))
-					.addItem("Buy", 1060, 2L, player, null);
+					.addItem("Buy", 1060, 2L, player, merchant);
 		}
 		}
 		finally
