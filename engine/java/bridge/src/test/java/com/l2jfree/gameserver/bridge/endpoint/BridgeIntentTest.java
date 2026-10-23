@@ -28,6 +28,40 @@ import com.l2jfree.gameserver.bridge.endpoint.BridgeIntents.Kind;
 class BridgeIntentTest
 {
 	@Test
+	void recoveryCopiesOnlyCompletedResultsInAttemptOrder()
+	{
+		BridgeIntents intents = ready();
+		for (int n = 1; n <= 3; n++)
+			intents.offer(n, new byte[] { (byte)n });
+		intents.complete(3, new byte[] { 3 });
+		intents.complete(1, new byte[] { 1 });
+		var snapshot = intents.retainedResults();
+		assertThat(snapshot).hasSize(2);
+		assertThat(snapshot.get(0)).containsExactly(1);
+		assertThat(snapshot.get(1)).containsExactly(3);
+		snapshot.get(0)[0] = 99;
+		intents.complete(2, new byte[] { 2 });
+		assertThat(snapshot).hasSize(2);
+		assertThat(intents.retainedResults().get(0)).containsExactly(1);
+		assertThat(intents.retainedResults().get(1)).containsExactly(2);
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> snapshot.clear())
+				.isInstanceOf(UnsupportedOperationException.class);
+	}
+
+	@Test
+	void checkpointGateKeepsNumbersAndPreviousResults()
+	{
+		BridgeIntents intents = ready();
+		intents.offer(1, new byte[] { 1 });
+		intents.complete(1, new byte[] { 2 });
+		intents.markNotReady();
+		assertThat(intents.offer(1, new byte[] { 1 }).kind).isEqualTo(Kind.REPLAY);
+		assertThat(intents.result(1)).containsExactly(2);
+		assertThat(intents.offer(2, new byte[] { 2 }).kind).isEqualTo(Kind.NOT_READY);
+		assertThat(intents.next()).isEqualTo(3);
+	}
+
+	@Test
 	void aCompletedResultIsImmutableAndCannotBeReplaced()
 	{
 		BridgeIntents intents = ready();

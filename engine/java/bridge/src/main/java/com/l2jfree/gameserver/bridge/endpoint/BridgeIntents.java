@@ -38,6 +38,22 @@ final class BridgeIntents
 	{
 		ready = true;
 	}
+
+	/** A new checkpoint closes admission without resetting attempt numbers or retained outcomes. */
+	synchronized void markNotReady()
+	{
+		ready = false;
+	}
+
+	/** Copies terminal outcomes in attempt order; neither the caller nor later completion can alter the copy. */
+	synchronized java.util.List<byte[]> retainedResults()
+	{
+		var ordered = new java.util.TreeMap<>(results);
+		var copy = new java.util.ArrayList<byte[]>(ordered.size());
+		for (byte[] result : ordered.values())
+			copy.add(result.clone());
+		return java.util.List.copyOf(copy);
+	}
 	
 	synchronized long next()
 	{
