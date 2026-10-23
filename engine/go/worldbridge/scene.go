@@ -293,7 +293,7 @@ func (t translator) checkpoint(s world.Scene, epoch, next uint64, origin world.T
 	if len(s.Objects) > maxRows || len(s.Coverage) > 7 {
 		return out, next, errCapacity
 	}
-	if s.Begin.Sequence != s.End.Sequence || s.Begin.Time != s.End.Time || s.Begin.Fence != s.End.Fence {
+	if s.Begin.Sequence != s.End.Sequence || s.Begin.Seq != s.End.Seq || s.Begin.Time != s.End.Time || s.Begin.Fence != s.End.Fence {
 		return out, next, errSource
 	}
 	coverage := map[world.Domain]world.Coverage{}

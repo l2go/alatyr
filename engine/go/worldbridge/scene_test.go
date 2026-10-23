@@ -133,6 +133,7 @@ func TestCheckpointBoundsFenceAndExpiredProposals(t *testing.T) {
 	}{
 		{"split fence", func(s *world.Scene) { s.End.Fence = 1 }, errSource},
 		{"split sequence", func(s *world.Scene) { s.End.Sequence++ }, errSource},
+		{"split publication", func(s *world.Scene) { s.End.Seq++ }, errSource},
 		{"object bound", func(s *world.Scene) { s.Objects = make([]world.Observation, maxRows+1) }, errCapacity},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
