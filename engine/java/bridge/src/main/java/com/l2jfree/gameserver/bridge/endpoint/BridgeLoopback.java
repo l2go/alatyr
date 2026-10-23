@@ -66,7 +66,7 @@ final class BridgeLoopback implements Runnable
 	private final byte[] fullBye;
 	private volatile boolean admitting = true;
 	private volatile Consumer<L2Client> beforeWatch;
-	private int transports;
+	private volatile int transports;
 	private volatile boolean stopping;
 
 	private BridgeLoopback(BridgeSettings settings, GameServerContext context, ServerSocketChannel server,
