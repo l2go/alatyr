@@ -134,6 +134,7 @@ class BridgeActorReceiptRaceTest
 		L2Player player = BridgeTestPlayers.player();
 		var npc = mock(com.l2jfree.gameserver.gameobjects.L2Npc.class);
 		when(npc.getObjectId()).thenReturn(70);
+		when(npc.getStatus()).thenReturn(mock(com.l2jfree.gameserver.gameobjects.status.NpcStatus.class));
 		when(player.getKnownList()).thenReturn(mock(com.l2jfree.gameserver.gameobjects.knownlist.PlayerKnownList.class));
 		when(npc.getKnownList()).thenReturn(mock(com.l2jfree.gameserver.gameobjects.knownlist.NpcKnownList.class));
 		var lock = L2Creature.class.getDeclaredField("_bridgeTargetLock");
