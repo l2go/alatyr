@@ -57,12 +57,13 @@ jobs:
           go work sync
           git diff --exit-code -- go.work go.work.sum tools/world/go.mod tools/world/go.sum engine/go
           test ! -e go.work.sum
-          for module in tools/world engine/go/protocol engine/go/gateway engine/go/world; do
+          for module in tools/world engine/go/protocol engine/go/world; do
             test ! -e "$module/go.sum"
           done
           printf '%s\n' \
             'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0 h1:rMwRQ7Ky/sqoadBzm0G8x1JznT9qSwVIoEIzajZFh/A=' \
             'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/bridge/go.sum
+          cmp engine/go/bridge/go.sum engine/go/gateway/go.sum
 
       - name: Vet and test the boundary checker
         env:
@@ -148,17 +149,30 @@ jobs:
           printf '%s\n' "$targets" | grep -Fxq FuzzDecodeProfile
           go test -run='^$' -fuzz='^FuzzDecodeProfile$' -fuzztime=10s -parallel=1 -timeout=2m ./profile
 
+      - name: Check gateway transport fuzzing readiness
+        working-directory: engine/go/gateway
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          for target in FuzzStreamRead FuzzWebSocketRead; do
+            targets="$(go test -list "^$target$" .)"
+            printf '%s\n' "$targets" | grep -Fxq "$target"
+            go test -run='^$' -fuzz="^$target$" -fuzztime=5s -parallel=1 -timeout=2m .
+          done
+
       - name: Check that validation left the source unchanged
         run: |
           set -euo pipefail
           git diff --exit-code
           test ! -e go.work.sum
-          for module in tools/world engine/go/protocol engine/go/gateway engine/go/world; do
+          for module in tools/world engine/go/protocol engine/go/world; do
             test ! -e "$module/go.sum"
           done
           printf '%s\n' \
             'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0 h1:rMwRQ7Ky/sqoadBzm0G8x1JznT9qSwVIoEIzajZFh/A=' \
             'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/bridge/go.sum
+          cmp engine/go/bridge/go.sum engine/go/gateway/go.sum
 
   # Formats, vets, and tests the world tool, then checks that the authored world matches a fresh render.
   # It does not build the server and runs beside the Java build.
