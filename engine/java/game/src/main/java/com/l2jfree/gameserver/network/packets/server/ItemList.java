@@ -14,6 +14,11 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
@@ -45,8 +50,37 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  * 
  * @version $Revision: 1.4.2.1.2.4 $ $Date: 2005/03/27 15:29:57 $
  */
-public class ItemList extends L2ServerPacket
+public class ItemList extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		var goods = new java.util.ArrayList<com.l2jfree.gameserver.network.bridge.BridgeValue>();
+		Long coin = null;
+		for (L2ItemInstance item : _items)
+		{
+			if (item == null || item.getItem() == null)
+				continue;
+			long count = item.getCount();
+			if (count < 0)
+				throw new IllegalArgumentException("negative inventory count");
+			goods.add(BridgeField.object(1, BridgeField.number(2, item.getObjectId()),
+					BridgeField.number(3, item.getItemDisplayId()), BridgeField.number(4, count)).value());
+			if (item.getItemId() == 57)
+			{
+				if (coin != null)
+					throw new IllegalArgumentException("duplicate purse");
+				coin = count;
+			}
+		}
+		var fields = new java.util.ArrayList<BridgeField>();
+		fields.add(BridgeField.list(24, goods));
+		fields.add(BridgeField.flag(31, true));
+		if (coin != null)
+			fields.add(BridgeField.number(23, coin));
+		sink.emit(new BridgeFact(14, fields));
+	}
+
 	private static final String _S__11_ITEMLIST = "[S] 11 ItemList";
 	private final L2ItemInstance[] _items;
 	private final boolean _showWindow;
