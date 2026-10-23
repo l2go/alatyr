@@ -475,6 +475,9 @@ func (s *game) connections() []*connection {
 	return out
 }
 func (s *game) send(c *connection, r wire.Record) {
+	if s.closed || c.closing {
+		return
+	}
 	s.trace(c, r, 0, false)
 	if !c.enqueue(r) {
 		if c.transfer && !c.restarted {
@@ -487,20 +490,32 @@ func (s *game) send(c *connection, r wire.Record) {
 }
 func (s *game) broadcast(r wire.Record) {
 	for _, c := range s.connections() {
+		if s.closed {
+			return
+		}
 		if c.hello {
 			s.send(c, r)
 		}
 	}
 }
 func (s *game) drop(c *connection, reason wire.CloseReason) {
+	if s.closed {
+		return
+	}
 	owner, _ := s.attempts.Controller()
-	if owner == c.id && !s.closed {
+	if owner == c.id {
 		if err := s.attempts.Lose(c.id); err != nil {
 			s.fail(wire.CloseInternal)
 			return
 		}
 		s.stop = true
 	}
+	s.finish(c, reason)
+}
+
+// finish is also used by endScope's terminal drain. It cannot restart a
+// checkpoint, call State, or mutate the protocol's already closed controller.
+func (s *game) finish(c *connection, reason wire.CloseReason) {
 	s.gate.mu.Lock()
 	_, exists := s.conns[c.id]
 	s.gate.mu.Unlock()
@@ -547,10 +562,20 @@ func (s *game) endScope(reason wire.CloseReason, detached bool) {
 		s.gate.cfg.Diagnostic(Summary{AtMS: s.gate.now(), Session: s.id, Epoch: s.attempts.Projection(), Record: wire.Bye, Reason: uint64(reason)})
 	}
 	for _, o := range s.attempts.Close() {
-		s.broadcast(o.Record())
+		for _, c := range s.connections() {
+			if c.hello && !c.closing {
+				// Final outcomes may drain before Bye, but never restart a
+				// transfer (and therefore never call Snapshot after closure).
+				r := o.Record()
+				s.trace(c, r, 0, false)
+				if !c.enqueue(r) {
+					s.finish(c, wire.CloseSlowConsumer)
+				}
+			}
+		}
 	}
 	for _, c := range s.connections() {
-		s.drop(c, reason)
+		s.finish(c, reason)
 	}
 	s.worldOnce.Do(func() {
 		if detached {
@@ -593,6 +618,9 @@ func (s *game) run(ctx context.Context) {
 	}()
 	defer s.fail(wire.CloseWorldClosed)
 	for {
+		if s.closed {
+			return
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -618,6 +646,9 @@ func (s *game) run(ctx context.Context) {
 	}
 }
 func (s *game) checkpoint(c *connection, welcome *wire.Record, hold bool) bool {
+	if s.closed || c.closing {
+		return false
+	}
 	snapshot, err := s.state.Snapshot(s.gate.now())
 	if err != nil {
 		s.fail(wire.CloseInternal)
@@ -688,6 +719,9 @@ func (s *game) checkpoint(c *connection, welcome *wire.Record, hold bool) bool {
 }
 func limit(fields []wire.Field, n uint32) int { v, _ := wire.Find(fields, n); return int(v.U) }
 func (s *game) checkpointDone(c *connection) {
+	if s.closed || c.closing {
+		return
+	}
 	ready := c.capturedReady
 	c.transfer = false
 	c.restarted = false
@@ -707,11 +741,17 @@ func (s *game) checkpointDone(c *connection) {
 	owner, _ := s.attempts.Controller()
 	if owner == c.id || owner == 0 && c.mayAuto && c.mode == wire.ModeAct {
 		s.grant(c)
+		if s.closed {
+			return
+		}
 	}
 	c.mayAuto = false
 	s.commitReadyWitnesses()
 }
 func (s *game) grant(c *connection) {
+	if s.closed || c.closing {
+		return
+	}
 	old, _ := s.attempts.Controller()
 	grant, err := s.attempts.Take(c.id)
 	if err != nil || grant.NextN == math.MaxUint64 {
@@ -720,15 +760,21 @@ func (s *game) grant(c *connection) {
 	}
 	if old != 0 && old != c.id {
 		for _, v := range s.connections() {
+			if s.closed {
+				return
+			}
 			if v.id == old {
 				s.send(v, control(wire.ControlLost, grant.Epoch, 0))
 			}
 		}
 	}
+	if s.closed {
+		return
+	}
 	s.send(c, control(wire.ControlGranted, grant.Epoch, grant.NextN))
 }
 func (s *game) receive(c *connection, r wire.Record) bool {
-	if c.closing {
+	if s.closed || c.closing {
 		return false
 	}
 	if !c.hello {
@@ -797,7 +843,7 @@ func (s *game) receive(c *connection, r wire.Record) bool {
 		s.drop(c, wire.CloseFrameError)
 		return false
 	}
-	return true
+	return !s.closed
 }
 func (s *game) intent(c *connection, r wire.Record) {
 	s.expire()
@@ -826,6 +872,9 @@ func (s *game) intent(c *connection, r wire.Record) {
 			s.broadcast(admission.Result.Record())
 		} else {
 			s.send(c, admission.Result.Record())
+		}
+		if s.closed {
+			return
 		}
 	}
 	if admission.Close != nil {
@@ -876,6 +925,9 @@ func (s *game) intent(c *connection, r wire.Record) {
 	s.actions[a.N] = &execution{action: action}
 }
 func (s *game) stamp(r *wire.Record) bool {
+	if s.closed {
+		return false
+	}
 	if s.seq == math.MaxUint64 {
 		s.fail(wire.CloseInternal)
 		return false
@@ -894,13 +946,18 @@ func set(r *wire.Record, n uint32, f wire.Field) {
 	}
 	r.Fields = append(r.Fields, f)
 }
-func (s *game) fact(r wire.Record) {
-	if s.stamp(&r) {
-		s.broadcast(r)
+func (s *game) fact(r wire.Record) bool {
+	if !s.stamp(&r) {
+		return false
 	}
+	s.broadcast(r)
+	return !s.closed
 }
 
 func (s *game) process(in input) {
+	if s.closed {
+		return
+	}
 	if in.abort {
 		s.gate.mu.Lock()
 		unused := len(s.conns) == 0 && s.provisional
@@ -942,6 +999,9 @@ func (s *game) process(in input) {
 	}
 	in.conn.receivedAt = in.received
 	for _, r := range in.records {
+		if s.closed {
+			return
+		}
 		s.trace(in.conn, r, in.bytes, true)
 		if !s.receive(in.conn, r) {
 			break

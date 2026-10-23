@@ -5,14 +5,23 @@ package gateway
 
 import (
 	"context"
+	"net"
 	"slices"
 	"time"
 
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
 
-func (s *game) result(o wire.Record) {
+// result and fact report whether the scope is still open. Output may fail
+// synchronously through a checkpoint restart, so callers must stop immediately.
+func (s *game) result(o wire.Record) bool {
+	if s.closed {
+		return false
+	}
 	s.broadcast(o)
+	if s.closed {
+		return false
+	}
 	if f := s.gate.cfg.Diagnostic; f != nil {
 		summary := Summary{AtMS: s.gate.now(), Session: s.id, Epoch: s.attempts.Projection(), Record: wire.Result, N: uintField(o, 1), Stage: uintField(o, 2), Reason: uintField(o, 3), Requested: uintField(o, 5), Effective: uintField(o, 6)}
 		if entry, ok := s.attempts.Lookup(summary.N); ok {
@@ -20,6 +29,7 @@ func (s *game) result(o wire.Record) {
 		}
 		f(summary)
 	}
+	return true
 }
 func (s *game) service(ctx context.Context) {
 	if s.closed {
@@ -78,6 +88,9 @@ func (s *game) service(ctx context.Context) {
 	}
 	slices.Sort(ns)
 	for _, n := range ns {
+		if s.closed {
+			return
+		}
 		ex := s.actions[n]
 		entry, ok := s.attempts.Lookup(n)
 		if !ok || entry.Terminal {
@@ -94,7 +107,9 @@ func (s *game) service(ctx context.Context) {
 			delete(s.actions, n)
 			continue
 		} else if o != nil {
-			s.result(o.Record())
+			if !s.result(o.Record()) {
+				return
+			}
 			delete(s.actions, n)
 			continue
 		}
@@ -104,7 +119,9 @@ func (s *game) service(ctx context.Context) {
 				s.fail(wire.CloseInternal)
 				return
 			}
-			s.result(o.Record())
+			if !s.result(o.Record()) {
+				return
+			}
 			delete(s.actions, n)
 			continue
 		}
@@ -123,7 +140,9 @@ func (s *game) service(ctx context.Context) {
 					s.fail(wire.CloseInternal)
 					return
 				}
-				s.result(o.Record())
+				if !s.result(o.Record()) {
+					return
+				}
 				delete(s.actions, n)
 				continue
 			} else {
@@ -132,6 +151,9 @@ func (s *game) service(ctx context.Context) {
 		}
 		if ex.action.Local {
 			for other, pending := range s.actions {
+				if s.closed {
+					return
+				}
 				entry, _ := s.attempts.Lookup(other)
 				selectionPlan := false
 				for _, step := range pending.action.Steps {
@@ -139,7 +161,9 @@ func (s *game) service(ctx context.Context) {
 				}
 				if other != n && !entry.Sent && (pending.waiting || selectionPlan) {
 					if o, e := s.attempts.Fail(other, wire.ReasonInterrupted); e == nil {
-						s.result(o.Record())
+						if !s.result(o.Record()) {
+							return
+						}
 					}
 					delete(s.actions, other)
 				}
@@ -149,7 +173,9 @@ func (s *game) service(ctx context.Context) {
 				s.fail(wire.CloseInternal)
 				return
 			}
-			s.result(o.Record())
+			if !s.result(o.Record()) {
+				return
+			}
 			delete(s.actions, n)
 			continue
 		}
@@ -159,7 +185,9 @@ func (s *game) service(ctx context.Context) {
 				s.fail(wire.CloseInternal)
 				return
 			}
-			s.result(o.Record())
+			if !s.result(o.Record()) {
+				return
+			}
 			continue
 		}
 		if ex.index == 0 && !ex.waiting {
@@ -199,7 +227,9 @@ func (s *game) service(ctx context.Context) {
 					s.fail(wire.CloseInternal)
 					return
 				}
-				s.result(o.Record())
+				if !s.result(o.Record()) {
+					return
+				}
 				delete(s.actions, n)
 				continue
 			}
@@ -247,7 +277,9 @@ func (s *game) service(ctx context.Context) {
 				s.fail(wire.CloseInternal)
 				return
 			}
-			s.result(o.Record())
+			if !s.result(o.Record()) {
+				return
+			}
 			delete(s.actions, n)
 			continue
 		}
@@ -262,7 +294,9 @@ func (s *game) service(ctx context.Context) {
 					s.fail(wire.CloseInternal)
 					return
 				}
-				s.result(o.Record())
+				if !s.result(o.Record()) {
+					return
+				}
 			}
 		}
 		// Yield between packets. A control/epoch/input change is seen before the
@@ -271,6 +305,9 @@ func (s *game) service(ctx context.Context) {
 	}
 }
 func (s *game) write(ctx context.Context, step Step) error {
+	if s.closed {
+		return net.ErrClosed
+	}
 	budget := s.gate.cfg.Write
 	if step.N != 0 {
 		budget = min(budget, time.Duration(max(int64(0), step.DeadlineMS-s.gate.now()))*time.Millisecond)
@@ -298,7 +335,9 @@ func (s *game) observe(update Update) bool {
 			return false
 		}
 		for _, o := range outcomes {
-			s.result(o.Record())
+			if !s.result(o.Record()) {
+				return false
+			}
 		}
 		s.state.Invalidate()
 	}
@@ -350,6 +389,9 @@ func (s *game) observe(update Update) bool {
 	}
 	if update.Relocate {
 		for _, c := range s.connections() {
+			if s.closed {
+				return false
+			}
 			if c.hello {
 				if !s.checkpoint(c, nil, true) && s.closed {
 					return false
@@ -369,6 +411,9 @@ func (s *game) observe(update Update) bool {
 	// One callback per typed update, even if it has no public Fact. Only State
 	// establishes a witness; asynchronous failures never create Done.
 	for n, ex := range s.actions {
+		if s.closed {
+			return false
+		}
 		entry, ok := s.attempts.Lookup(n)
 		if !ok || entry.Terminal || !s.attempts.Eligible(n, observed) {
 			continue
@@ -403,17 +448,21 @@ func (s *game) observe(update Update) bool {
 	}
 	if !update.Relocate && !holdLive {
 		for _, r := range observation.Facts {
-			s.fact(r)
-			if s.closed {
+			if !s.fact(r) {
 				return false
 			}
 		}
 	}
 	for _, r := range results {
-		s.result(r)
+		if !s.result(r) {
+			return false
+		}
 	}
 	for _, c := range s.connections() {
-		if !c.hello || c.ready {
+		if s.closed {
+			return false
+		}
+		if c.closing || !c.hello || c.ready {
 			continue
 		}
 		snapshot, err := s.state.Snapshot(s.gate.now())
@@ -434,6 +483,9 @@ func (s *game) observe(update Update) bool {
 			if len(raw) > s.gate.cfg.OutBytes-c.bytes-c.active {
 				c.mu.Unlock()
 				s.drop(c, wire.CloseSlowConsumer)
+				if s.closed {
+					return false
+				}
 				continue
 			}
 			c.queue = append(c.queue, outgoing{raw: raw, fence: c.generation})
@@ -441,7 +493,9 @@ func (s *game) observe(update Update) bool {
 			c.mu.Unlock()
 			c.wake()
 		} else if snapshot.Ready && !c.transfer {
-			s.checkpoint(c, nil, false)
+			if !s.checkpoint(c, nil, false) {
+				return false
+			}
 		}
 	}
 
@@ -485,20 +539,32 @@ func (s *game) expire() {
 					return
 				}
 				set(&r, 32, wire.U(32, true, n))
-				s.fact(r)
-				s.result(o.Record())
+				if !s.fact(r) {
+					return
+				}
+				if !s.result(o.Record()) {
+					return
+				}
 				delete(s.actions, n)
 			}
 		}
 	}
 	for _, o := range s.attempts.Expire(now) {
-		s.result(o.Record())
+		if !s.result(o.Record()) {
+			return
+		}
 		ex := s.actions[o.N]
 		if ex == nil || !ex.action.AfterCheckpoint || !ex.hasCandidate {
 			delete(s.actions, o.N)
 		}
 	}
 	for _, c := range s.connections() {
+		if s.closed {
+			return
+		}
+		if c.closing {
+			continue
+		}
 		if !c.hello {
 			if now-c.lastPong >= s.gate.cfg.Hello.Milliseconds() {
 				s.drop(c, wire.CloseFrameError)
@@ -577,13 +643,19 @@ func (s *game) commitReadyWitnesses() {
 			o, err := s.attempts.CommitWitness(n, ex.candidate, s.gate.now())
 			if err == nil {
 				set(&r, 32, wire.U(32, true, n))
-				s.fact(r)
-				s.result(o.Record())
+				if !s.fact(r) {
+					return
+				}
+				if !s.result(o.Record()) {
+					return
+				}
 				delete(s.actions, n)
 				continue
 			}
 		}
-		s.fact(r)
+		if !s.fact(r) {
+			return
+		}
 		delete(s.actions, n)
 	}
 }
