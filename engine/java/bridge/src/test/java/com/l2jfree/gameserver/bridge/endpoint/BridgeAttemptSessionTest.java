@@ -23,6 +23,38 @@ import org.junit.jupiter.api.Test;
 class BridgeAttemptSessionTest
 {
 	@Test
+	void expiredQueuedIntentRetainsThePairedReasonWithoutBuildingAPacket()
+	{
+		var player = BridgeTestPlayers.player();
+		var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);
+		org.mockito.Mockito.when(client.getState()).thenReturn(com.l2jfree.gameserver.network.L2Client.GameClientState.IN_GAME);
+		org.mockito.Mockito.when(client.getActiveChar()).thenReturn(player);
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> output = new ArrayList<>();
+		BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, output::add);
+		session.ready();
+		var intent = com.l2jfree.gameserver.bridge.wire.Envelope.of(
+				com.l2jfree.gameserver.bridge.wire.Schemas.INTENT, java.util.List.of(
+				com.l2jfree.gameserver.bridge.wire.Field.u(1, true, 1),
+				com.l2jfree.gameserver.bridge.wire.Field.u(2, true, 9),
+				com.l2jfree.gameserver.bridge.wire.Field.u(3, true, 1),
+				com.l2jfree.gameserver.bridge.wire.Field.u(4, false, 0)));
+		session.accept(client, intent);
+		fifo.remove().run();
+		session.accept(client, intent);
+		assertThat(output).hasSize(2);
+		assertThat(output.get(1)).containsExactly(output.get(0));
+		var result = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(output.get(0)).get(0);
+		assertThat(result.field(2).value().u()).isEqualTo(3);
+		assertThat(result.field(3).value().u()).isEqualTo(6);
+		assertThat(result.field(7).value().u()).isZero();
+		assertThat(result.field(64).value().data()).containsExactly("x.l2jfree/bridge".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		assertThat(result.field(65).value().u()).isEqualTo(6);
+		org.mockito.Mockito.verifyNoInteractions(player);
+		assertThat(fifo).isEmpty();
+	}
+
+	@Test
 	void queuedClosingRetainsItsFinalReasonWithoutBindingWorldWork()
 	{
 		var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);
