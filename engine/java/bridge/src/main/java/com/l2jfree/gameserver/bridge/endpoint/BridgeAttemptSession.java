@@ -43,7 +43,7 @@ final class BridgeAttemptSession
 					case 2, 4, 5, 10 -> 0x1f;
 					case 3 -> 0x01;
 					case 6 -> 0x21;
-					case 7 -> 0x37;
+					case 7 -> 0x40;
 					case 8 -> 0x1e;
 					case 9 -> 0x6d;
 					case 12 -> 0x39;
