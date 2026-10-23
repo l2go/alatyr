@@ -5,17 +5,17 @@ document.documentElement.classList.add("js");
 (function greet() {
   const gold = "color:#f6d58e;font-family:monospace;line-height:1.15";
   const soft = "color:#c9b994;font-family:Georgia,serif;font-size:12px";
-  const citadel = [
-    "            *",
-    "           /^\\",
-    "      *   |[ ]|   *",
-    "     /^\\  |   |  /^\\",
-    "    |[ ]|_|[ ]|_|[ ]|",
-    "    |   |   _   |   |",
-    "  __|___|__| |__|___|__",
+  const island = [
+    "              *",
+    "             /^\\",
+    "             |#|",
+    "      /\\     | |",
+    "   __/  \\____|_|__",
+    " ~/  o  o   o     \\~~",
+    "~~~~~~~~~~~~~~~~~~~~~~~",
   ].join("\n");
-  console.log("%c" + citadel, gold);
-  console.log("%cL2JFREE — a Lineage II server, revived.\n" +
+  console.log("%c" + island, gold);
+  console.log("%cALATYR — a Lineage II server, revived.\n" +
     "24 people built it. 24 days rebuilt it. 24 clients play it on every merge.\n" +
     "Curious? Type 42 on the page, or read /alatyr/numbers/\n" +
     "Source: https://github.com/l2go/alatyr", soft);
@@ -61,7 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }, { passive: true });
   onScroll();
 
-  // Type 4 and then 2 anywhere outside a field: the citadel answers.
+  // Type 4 and then 2 anywhere outside a field: the island answers.
   let last = "";
   let toast = null;
   let timer = 0;

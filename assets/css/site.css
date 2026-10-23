@@ -1,4 +1,4 @@
-/* L2JFree project site. One world: the night sky, the citadel, and the gold of its lights. */
+/* Alatyr project site. One world: the island at dusk, the sea, and the gold of its lights. */
 
 @font-face {
   font-family: "Cinzel";
@@ -159,7 +159,7 @@ img, svg { display: block; max-width: 100%; }
   .hero__text { padding: 9rem 0 5.5rem; }
 }
 
-/* the living lights of the citadel, as in the banner */
+/* the living lights of the island: the beacon and the village windows */
 .sun { animation: breathe 6s ease-in-out infinite; }
 @keyframes breathe { 50% { opacity: .45; } }
 .halo { transform-box: fill-box; transform-origin: center; animation: halo 3.6s ease-in-out infinite; }

@@ -1,7 +1,7 @@
 <!doctype html>
 <!--
   You read source code. So do we.
-  L2JFREE = SIGNED = 58. INVARIANT = 108. FINAL = 42.
+  ALATYR = ROOTED = 77. L2JFREE = SIGNED = 58. INVARIANT = 108. FINAL = 42.
   3.0.0, 3.1.0, and 3.1.1 add up to 3, 4, and 5: a Pythagorean triple.
   Coincidence? Almost certainly. The p-value is at /alatyr/numbers/
 -->
@@ -11,11 +11,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>L2JFree — a Lineage II server, revived</title>
-<meta name="description" content="An open-source Lineage II server, silent since 2015, revived in 2026: login and world in one Java 25 process on PostgreSQL 18, shipped as a signed image that CI plays on every merge.">
+<title>Alatyr — a Lineage II server, revived</title>
+<meta name="description" content="An open-source Lineage II server, formerly L2JFree, silent since 2015, revived in 2026: login and world in one Java 25 process on PostgreSQL 18, shipped as a signed image that CI plays on every merge.">
 <meta name="theme-color" content="#05060c">
 <meta property="og:type" content="website">
-<meta property="og:title" content="L2JFree — a Lineage II server, revived">
+<meta property="og:title" content="Alatyr — a Lineage II server, revived">
 <meta property="og:description" content="One process. Two ports. One command. Every merge rehearsed as a release.">
 <meta property="og:url" content="https://l2go.github.io/alatyr/">
 <meta property="og:image" content="https://l2go.github.io/alatyr/assets/img/og.jpg">
@@ -30,7 +30,7 @@
 <a class="skip" href="#main">Skip to content</a>
 
 <header class="bar">
-  <a class="bar__mark" href="/alatyr/">L2JFREE</a>
+  <a class="bar__mark" href="/alatyr/">ALATYR</a>
   <nav aria-label="Sections">
     <a href="#start">Start</a>
     <a class="opt" href="#engineering">Engineering</a>
@@ -45,63 +45,39 @@
 <section class="hero" aria-labelledby="hero-title">
   <svg class="hero__art hero__art--wide" viewBox="0 0 1600 714" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
     <defs>
-      <radialGradient id="sunglow" cx="870" cy="215" r="200" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd27a" stop-opacity=".55"/><stop offset="1" stop-color="#ff9d3c" stop-opacity="0"/></radialGradient>
+      <radialGradient id="sunglow" cx="1600" cy="180" r="240" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd27a" stop-opacity=".5"/><stop offset="1" stop-color="#ff9d3c" stop-opacity="0"/></radialGradient>
       <radialGradient id="node" r=".5"><stop offset="0" stop-color="#fff8e1" stop-opacity=".95"/><stop offset=".4" stop-color="#ffd27a" stop-opacity=".55"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/></radialGradient>
-      <filter id="blur" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="2.2"/></filter>
     </defs>
-    <image href="/alatyr/assets/img/citadel.webp" width="1600" height="714"/>
-    <circle class="sun" cx="870" cy="215" r="200" fill="url(#sunglow)"/>
-    <g class="sparks">
-      <circle class="spark" r="3.2" fill="#fff3c4" filter="url(#blur)"><animateMotion dur="3.2s" repeatCount="indefinite" path="M1147 70L937 248"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.15;.8;1" dur="3.2s" repeatCount="indefinite"/></circle>
-      <circle class="spark" r="3.2" fill="#fff3c4" filter="url(#blur)"><animateMotion dur="3.9s" begin="-0.9s" repeatCount="indefinite" path="M1147 70L1416 254"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.15;.8;1" dur="3.9s" begin="-0.9s" repeatCount="indefinite"/></circle>
-      <circle class="spark" r="3.2" fill="#fff3c4" filter="url(#blur)"><animateMotion dur="4.6s" begin="-1.8s" repeatCount="indefinite" path="M1416 254L1571 333"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.15;.8;1" dur="4.6s" begin="-1.8s" repeatCount="indefinite"/></circle>
-      <circle class="spark" r="3.2" fill="#fff3c4" filter="url(#blur)"><animateMotion dur="5.3s" begin="-2.7s" repeatCount="indefinite" path="M937 248L1333 328"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.15;.8;1" dur="5.3s" begin="-2.7s" repeatCount="indefinite"/></circle>
-    </g>
+    <image href="/alatyr/assets/img/island-hero.webp" width="1600" height="714"/>
+    <circle class="sun" cx="1600" cy="180" r="240" fill="url(#sunglow)"/>
     <g>
-      <circle class="halo n1" cx="1147" cy="70" r="26" fill="url(#node)"/><circle class="ring n1" cx="1147" cy="70" r="14" fill="none" stroke="#ffe3a3" stroke-width="1.2"/>
-      <circle class="halo n2" cx="937" cy="248" r="18" fill="url(#node)"/><circle class="ring n2" cx="937" cy="248" r="10" fill="none" stroke="#ffe3a3" stroke-width="1.2"/>
-      <circle class="halo n3" cx="1416" cy="254" r="18" fill="url(#node)"/><circle class="ring n3" cx="1416" cy="254" r="10" fill="none" stroke="#ffe3a3" stroke-width="1.2"/>
-      <circle class="halo n4" cx="1333" cy="328" r="18" fill="url(#node)"/><circle class="ring n4" cx="1333" cy="328" r="10" fill="none" stroke="#ffe3a3" stroke-width="1.2"/>
-      <circle class="halo n5" cx="1571" cy="333" r="18" fill="url(#node)"/><circle class="ring n5" cx="1571" cy="333" r="10" fill="none" stroke="#ffe3a3" stroke-width="1.2"/>
-    </g>
-    <g>
-      <circle class="ember" cx="1040" cy="640" r="1.6"/><circle class="ember e2" cx="1210" cy="680" r="1.2"/><circle class="ember e3" cx="1350" cy="620" r="1.8"/>
-      <circle class="ember e4" cx="980" cy="700" r="1.1"/><circle class="ember e5" cx="1480" cy="690" r="1.4"/><circle class="ember e6" cx="1120" cy="610" r="1.3"/>
+      <circle class="halo n1" cx="1468" cy="241" r="24" fill="url(#node)"/><circle class="ring n1" cx="1468" cy="241" r="12" fill="none" stroke="#ffe3a3" stroke-width="1.2"/>
+      <circle class="halo n2" cx="979" cy="313" r="10" fill="url(#node)"/>
+      <circle class="halo n3" cx="1063" cy="336" r="10" fill="url(#node)"/>
+      <circle class="halo n4" cx="1163" cy="323" r="10" fill="url(#node)"/>
     </g>
   </svg>
-  <svg class="hero__art hero__art--narrow" viewBox="800 0 760 714" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+  <svg class="hero__art hero__art--narrow" viewBox="720 0 760 714" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
     <defs>
-      <radialGradient id="sunglow-n" cx="870" cy="215" r="200" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd27a" stop-opacity=".55"/><stop offset="1" stop-color="#ff9d3c" stop-opacity="0"/></radialGradient>
+      <radialGradient id="sunglow-n" cx="1600" cy="180" r="240" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffd27a" stop-opacity=".5"/><stop offset="1" stop-color="#ff9d3c" stop-opacity="0"/></radialGradient>
       <radialGradient id="node-n" r=".5"><stop offset="0" stop-color="#fff8e1" stop-opacity=".95"/><stop offset=".4" stop-color="#ffd27a" stop-opacity=".55"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/></radialGradient>
-      <filter id="blur-n" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="2.2"/></filter>
     </defs>
-    <image href="/alatyr/assets/img/citadel.webp" width="1600" height="714"/>
-    <circle class="sun" cx="870" cy="215" r="200" fill="url(#sunglow-n)"/>
-    <g class="sparks">
-      <circle class="spark" r="3.2" fill="#fff3c4" filter="url(#blur-n)"><animateMotion dur="3.2s" repeatCount="indefinite" path="M1147 70L937 248"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.15;.8;1" dur="3.2s" repeatCount="indefinite"/></circle>
-      <circle class="spark" r="3.2" fill="#fff3c4" filter="url(#blur-n)"><animateMotion dur="3.9s" begin="-0.9s" repeatCount="indefinite" path="M1147 70L1416 254"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.15;.8;1" dur="3.9s" begin="-0.9s" repeatCount="indefinite"/></circle>
-      <circle class="spark" r="3.2" fill="#fff3c4" filter="url(#blur-n)"><animateMotion dur="4.6s" begin="-1.8s" repeatCount="indefinite" path="M1416 254L1571 333"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.15;.8;1" dur="4.6s" begin="-1.8s" repeatCount="indefinite"/></circle>
-      <circle class="spark" r="3.2" fill="#fff3c4" filter="url(#blur-n)"><animateMotion dur="5.3s" begin="-2.7s" repeatCount="indefinite" path="M937 248L1333 328"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.15;.8;1" dur="5.3s" begin="-2.7s" repeatCount="indefinite"/></circle>
-    </g>
+    <image href="/alatyr/assets/img/island-hero.webp" width="1600" height="714"/>
+    <circle class="sun" cx="1600" cy="180" r="240" fill="url(#sunglow-n)"/>
     <g>
-      <circle class="halo n1" cx="1147" cy="70" r="26" fill="url(#node-n)"/><circle class="ring n1" cx="1147" cy="70" r="14" fill="none" stroke="#ffe3a3" stroke-width="1.2"/>
-      <circle class="halo n2" cx="937" cy="248" r="18" fill="url(#node-n)"/><circle class="ring n2" cx="937" cy="248" r="10" fill="none" stroke="#ffe3a3" stroke-width="1.2"/>
-      <circle class="halo n3" cx="1416" cy="254" r="18" fill="url(#node-n)"/><circle class="ring n3" cx="1416" cy="254" r="10" fill="none" stroke="#ffe3a3" stroke-width="1.2"/>
-      <circle class="halo n4" cx="1333" cy="328" r="18" fill="url(#node-n)"/><circle class="ring n4" cx="1333" cy="328" r="10" fill="none" stroke="#ffe3a3" stroke-width="1.2"/>
-      <circle class="halo n5" cx="1571" cy="333" r="18" fill="url(#node-n)"/><circle class="ring n5" cx="1571" cy="333" r="10" fill="none" stroke="#ffe3a3" stroke-width="1.2"/>
-    </g>
-    <g>
-      <circle class="ember" cx="1040" cy="640" r="1.6"/><circle class="ember e2" cx="1210" cy="680" r="1.2"/><circle class="ember e3" cx="1350" cy="620" r="1.8"/>
-      <circle class="ember e4" cx="980" cy="700" r="1.1"/><circle class="ember e5" cx="1480" cy="690" r="1.4"/><circle class="ember e6" cx="1120" cy="610" r="1.3"/>
+      <circle class="halo n1" cx="1468" cy="241" r="24" fill="url(#node-n)"/><circle class="ring n1" cx="1468" cy="241" r="12" fill="none" stroke="#ffe3a3" stroke-width="1.2"/>
+      <circle class="halo n2" cx="979" cy="313" r="10" fill="url(#node-n)"/>
+      <circle class="halo n3" cx="1063" cy="336" r="10" fill="url(#node-n)"/>
+      <circle class="halo n4" cx="1163" cy="323" r="10" fill="url(#node-n)"/>
     </g>
   </svg>
   <div class="hero__veil"></div>
   <div class="wrap">
     <div class="hero__text">
       <p class="eyebrow">Lineage II · Gracia Final · Protocol 83</p>
-      <h1 id="hero-title">L2JFree</h1>
+      <h1 id="hero-title">Alatyr</h1>
       <div class="rule"></div>
-      <p class="lede">An open-source game server, silent since 2015, revived for 2026. Login and world run in one Java&nbsp;25 process on PostgreSQL&nbsp;18, shipped as a signed image that the pipeline starts, plays, restarts, and restores on every merge.</p>
+      <p class="lede">Formerly L2JFree, an open-source game server silent since 2015, revived for 2026. Login and world run in one Java&nbsp;25 process on PostgreSQL&nbsp;18, shipped as a signed image that the pipeline starts, plays, restarts, and restores on every merge.</p>
       <div class="actions">
         <a class="btn" href="#start">Start a server</a>
         <a class="btn btn--ghost" href="#notes">Read the notes</a>
@@ -127,7 +103,7 @@
   <div class="wrap start">
     <div class="reveal">
       <p class="kicker">Start</p>
-      <h2 id="start-title">Raise the citadel</h2>
+      <h2 id="start-title">Light the beacon</h2>
       <p class="intro">From a checkout, with Docker Compose. The first start creates the database passwords, migrates the schemas, and loads the game world; it takes a few minutes. The first login creates the account.</p>
       <p><a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">Deploy guide</a> · <a href="https://github.com/l2go/alatyr/releases">Releases with a compose bundle</a></p>
     </div>
@@ -270,7 +246,7 @@
       <li class="lit reveal"><time datetime="2026-10-11">Oct 2026</time><div><h3>3.0.0</h3><p>Six days later: one process, PostgreSQL 18 with a schema and a role per module, a signed image, and a pipeline that plays it on every merge.</p></div></li>
       <li class="lit reveal"><time datetime="2026-10-12">Oct 2026</time><div><h3>3.1.0 and 3.1.1</h3><p>Economy and login defects closed by their invariants, a signature for the release archive, and a measured start.</p></div></li>
       <li class="lit reveal"><time datetime="2026-10-15">Oct 2026</time><div><h3>3.2.0</h3><p>The server leaves the inherited world behind and ships Okolitsa, an original world built by a Go tool from source files that use text keys. Monsters reward the players who fought them.</p></div></li>
-      <li class="lit reveal"><time datetime="2026-10-23">Oct 2026</time><div><h3>3.2.1</h3><p>Native images for amd64 and arm64 on Debian 13, honest x1 rewards by default, and the project's new home at l2go/alatyr.</p></div></li>
+      <li class="lit reveal"><time datetime="2026-10-23">Oct 2026</time><div><h3>3.2.1</h3><p>Native images for amd64 and arm64 on Debian 13, honest x1 rewards by default, and a new name and home: Alatyr, at l2go/alatyr.</p></div></li>
     </ol>
   </div>
 </section>
@@ -341,7 +317,7 @@ gh attestation verify l2jfree-$VERSION-compose.tar.gz --repo l2go/alatyr \
 <footer class="foot">
   <div class="wrap">
     <div class="foot__top">
-      <span class="foot__mark" title="L2JFREE = SIGNED = 58">L2JFREE</span>
+      <span class="foot__mark" title="ALATYR = ROOTED = 77">ALATYR</span>
       <nav aria-label="Project">
         <a href="https://github.com/l2go/alatyr">Repository</a>
         <a href="https://github.com/l2go/alatyr/releases">Releases</a>
@@ -349,7 +325,7 @@ gh attestation verify l2jfree-$VERSION-compose.tar.gz --repo l2go/alatyr \
         <a href="https://github.com/l2go/alatyr/blob/main/SECURITY.md">Security</a>
       </nav>
     </div>
-    <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server. Since 3.2 it ships no data inherited from the fork; its world, Okolitsa, is original content. It does not modify, patch, or distribute the game client.</p>
+    <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. Alatyr, formerly L2JFree, is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server. Since 3.2 it ships no data inherited from the fork; its world, Okolitsa, is original content. It does not modify, patch, or distribute the game client.</p>
     <p>The code is under the GNU GPLv3. Banner art generated with AI. Cinzel typeface under the SIL Open Font License. <a class="sigma" href="/alatyr/numbers/" title="The numbers">Σ</a></p>
   </div>
 </footer>
