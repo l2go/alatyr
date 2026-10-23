@@ -43,8 +43,7 @@ func (w *World) decayPlayer(s *state, p *player) {
 func (w *World) Appear(ctx context.Context, id int32) error {
 	return w.act(ctx, id, VerbAppear, func(s *state, p *player) {
 		if p.teleporting {
-			p.teleporting = false
-			s.change(p.ref(), PropertyTeleporting, boolValue(true), Value{})
+			s.setBool(p.ref(), PropertyTeleporting, &p.teleporting, false)
 			w.place(s, p)
 			w.revalidateZone(s, p)
 			if p.pendingRevive {
@@ -59,8 +58,7 @@ func (w *World) Appear(ctx context.Context, id int32) error {
 
 func (w *World) revive(s *state, p *player) {
 	p.pendingRevive = false
-	p.dead = false
-	s.change(p.ref(), PropertyDead, boolValue(true), Value{})
+	s.setBool(p.ref(), PropertyDead, &p.dead, false)
 	w.setHP(s, p, float64(p.maxHP())*respawnRestoreHP)
 	w.broadcastToKnown(s, p, Revived{ObjectID: p.id})
 }

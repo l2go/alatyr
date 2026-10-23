@@ -418,8 +418,7 @@ func (w *World) clientStartAutoAttack(s *state, a actor) {
 	c := a.base()
 	if !c.ai.autoAttacking {
 		w.broadcastToKnown(s, a, CombatStance{ObjectID: c.id, On: true})
-		c.ai.autoAttacking = true
-		s.change(c.ref(), PropertyCombat, Value{}, boolValue(true))
+		s.setBool(c.ref(), PropertyCombat, &c.ai.autoAttacking, true)
 	}
 	w.addStance(s, a)
 }
@@ -433,8 +432,7 @@ func (w *World) clientStopAutoAttack(s *state, a actor) {
 	}
 	if c.ai.autoAttacking {
 		w.broadcastToKnown(s, a, CombatStance{ObjectID: c.id})
-		c.ai.autoAttacking = false
-		s.change(c.ref(), PropertyCombat, boolValue(true), Value{})
+		s.setBool(c.ref(), PropertyCombat, &c.ai.autoAttacking, false)
 	}
 }
 func (w *World) startFollow(s *state, a actor, target int32, rng int32) {

@@ -28,8 +28,7 @@ func (w *World) doAttack(s *state, a, t actor) {
 	c.attackSeq++
 	seq := c.attackSeq
 	c.attackEnd = time.Now().Add(duration)
-	c.attacking = 1
-	s.change(c.ref(), PropertyAttacking, Value{}, boolValue(true))
+	s.setAttacking(c, 1)
 	oldHeading := c.heading
 	c.heading = headingTo(c.pos, tc.pos)
 	s.change(c.ref(), PropertyHeading, IntValue(int64(oldHeading)), IntValue(int64(c.heading)))
@@ -48,19 +47,16 @@ func (w *World) doAttack(s *state, a, t actor) {
 	})
 	s.afterRule(duration, RuleAttackReady, func(s *state) {
 		if s.live(a) && c.attackSeq == seq && !c.dead {
-			c.attacking = 0
-			s.change(c.ref(), PropertyAttacking, boolValue(true), Value{})
+			s.setAttacking(c, 0)
 			w.notifyReadyToAct(s, a)
 		}
 	})
 	if miss {
-		s.change(c.ref(), PropertyAttacking, boolValue(c.attacking != 0), IntValue(0))
-		c.attacking = 0
+		s.setAttacking(c, 0)
 	}
 }
 func (w *World) abortAttack(s *state, a actor) {
-	s.change(a.base().ref(), PropertyAttacking, boolValue(a.base().attacking != 0), Value{})
-	a.base().attacking = 0
+	s.setAttacking(a.base(), 0)
 }
 func (w *World) onHit(s *state, a, t actor, damage int, crit, miss bool) {
 	c, tc := a.base(), t.base()

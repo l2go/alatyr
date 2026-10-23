@@ -128,8 +128,9 @@ func (w *World) stopMove(s *state, a actor) {
 	c := a.base()
 	if c.move != nil {
 		w.updatePosition(s, a, s.ticks)
+		before := c.move != nil
 		c.move = nil
-		s.change(c.ref(), PropertyMovement, boolValue(true), Value{})
+		s.change(c.ref(), PropertyMovement, boolValue(before), boolValue(c.move != nil))
 	}
 	w.broadcastToKnown(s, a, Stopped{ObjectID: c.id, Pos: c.pos, Heading: c.heading})
 }

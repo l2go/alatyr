@@ -360,11 +360,9 @@ func (w *World) leave(ctx context.Context, id int32, voluntary bool) error {
 			c = w.selfOf(p).Char
 			p.attackSeq++
 			p.castSeq++
-			s.change(p.ref(), PropertyAttacking, boolValue(p.attacking != 0), IntValue(0))
-			s.change(p.ref(), PropertyCasting, boolValue(p.casting), IntValue(0))
+			s.setAttacking(p.base(), 0)
+			s.setBool(p.ref(), PropertyCasting, &p.casting, false)
 			s.change(p.ref(), PropertyMovement, boolValue(p.move != nil), IntValue(0))
-			p.attacking = 0
-			p.casting = false
 			p.move = nil
 			p.regenOn = false
 			if !p.teleporting {

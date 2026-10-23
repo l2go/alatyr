@@ -76,8 +76,7 @@ func (w *World) doCast(s *state, p *player, req *castRequest, target int32) {
 		hit = int32(float64(hit) * multiplier)
 		cool = int32(float64(cool) * multiplier)
 	}
-	p.casting = true
-	s.change(p.ref(), PropertyCasting, Value{}, boolValue(true))
+	s.setBool(p.ref(), PropertyCasting, &p.casting, true)
 	p.castSeq++
 	seq := p.castSeq
 	reuse := sk.ReuseDelay
@@ -170,8 +169,7 @@ func (w *World) skillReflect(s *state, sk catalog.Skill) {
 	s.rng.IntN(100)
 }
 func (w *World) onMagicFinalizer(s *state, p *player, env castEnv) {
-	p.casting = false
-	s.change(p.ref(), PropertyCasting, boolValue(true), Value{})
+	s.setBool(p.ref(), PropertyCasting, &p.casting, false)
 	n, ok := s.npcs[env.skillTarget]
 	if p.target == env.skillTarget && ok && !n.dead && n.mob() && p.ai.intention != intentMoveTo && (p.ai.next == nil || p.ai.next.intent == intentIdle) &&
 		(env.skill.CastRange < 200 || float64(p.attackRange()+200) > distance2D(p.pos, n.pos)) {
@@ -184,8 +182,7 @@ func (w *World) abortCast(s *state, p *player) {
 	if !p.casting {
 		return
 	}
-	p.casting = false
-	s.change(p.ref(), PropertyCasting, boolValue(true), Value{})
+	s.setBool(p.ref(), PropertyCasting, &p.casting, false)
 	p.castSeq++
 	w.executeNextIntention(s, p)
 	w.broadcastToKnown(s, p, SkillCanceled{ObjectID: p.id})

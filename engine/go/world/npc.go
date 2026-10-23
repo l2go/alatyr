@@ -303,8 +303,7 @@ func (w *World) setRunning(s *state, a actor, running bool) {
 	if c.running == running {
 		return
 	}
-	c.running = running
-	s.change(c.ref(), PropertyGait, boolValue(!running), boolValue(running))
+	s.setBool(c.ref(), PropertyGait, &c.running, running)
 	w.broadcastToKnown(s, a, GaitChanged{ObjectID: c.id, Running: running})
 	w.markBroadcast(s, a, broadcastFullInfo)
 }

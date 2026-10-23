@@ -158,8 +158,7 @@ func (w *World) Teleport(ctx context.Context, id int32, to Point, revive bool) e
 		p.ai.next = nil
 		p.move = nil
 		w.decayPlayer(s, p)
-		p.teleporting = true
-		s.change(p.ref(), PropertyTeleporting, Value{}, boolValue(true))
+		s.setBool(p.ref(), PropertyTeleporting, &p.teleporting, true)
 		p.pendingRevive = revive
 		old := p.pos
 		p.pos = to

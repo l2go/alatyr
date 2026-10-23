@@ -38,8 +38,7 @@ func (w *World) sitDown(s *state, p *player) {
 	if p.sitting || p.attackingNow(now) || p.dead || p.tryingToSitOrStand(now) {
 		return
 	}
-	p.sitting = true
-	s.change(p.ref(), PropertyPosture, Value{}, boolValue(true))
+	s.setBool(p.ref(), PropertyPosture, &p.sitting, true)
 	w.setIntention(s, p, order{intent: intentRest})
 	w.broadcastToKnown(s, p, PostureChanged{ObjectID: p.id, Sitting: true, Pos: p.pos})
 	p.lastSitStand = now
@@ -50,8 +49,7 @@ func (w *World) standUp(s *state, p *player, force bool) {
 	if !p.sitting || p.dead || (p.tryingToSitOrStand(now) && !force) {
 		return
 	}
-	p.sitting = false
-	s.change(p.ref(), PropertyPosture, boolValue(true), Value{})
+	s.setBool(p.ref(), PropertyPosture, &p.sitting, false)
 	w.setIntention(s, p, order{intent: intentIdle})
 	w.broadcastToKnown(s, p, PostureChanged{ObjectID: p.id, Pos: p.pos})
 	p.lastSitStand = now

@@ -30,13 +30,11 @@ func (w *World) die(s *state, a, killer actor) {
 	}
 	w.startDying(s, a)
 	w.setHP(s, a, 0)
-	c.dead = true
-	s.change(c.ref(), PropertyDead, Value{}, boolValue(true))
+	s.setBool(c.ref(), PropertyDead, &c.dead, true)
 	if p, ok := a.(*player); ok {
 		w.setTarget(s, p, 0)
 		p.castSeq++
-		s.change(p.ref(), PropertyCasting, boolValue(p.casting), IntValue(0))
-		p.casting = false
+		s.setBool(p.ref(), PropertyCasting, &p.casting, false)
 	}
 	s.change(c.ref(), PropertyTarget, RefValue(s.ref(c.target)), RefValue(Ref{}))
 	c.target = 0

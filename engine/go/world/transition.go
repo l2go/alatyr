@@ -232,6 +232,19 @@ func boolValue(b bool) Value {
 	return IntValue(0)
 }
 
+// setBool keeps the recorded before value coupled to the assigned state.
+func (s *state) setBool(entity Ref, property Property, field *bool, next bool) {
+	before := *field
+	*field = next
+	s.change(entity, property, boolValue(before), boolValue(next))
+}
+
+func (s *state) setAttacking(c *creature, next int32) {
+	before := c.attacking
+	c.attacking = next
+	s.change(c.ref(), PropertyAttacking, boolValue(before != 0), boolValue(next != 0))
+}
+
 // EffectGroup is an ordered, indivisible set of effects and source observations.
 type EffectGroup struct {
 	Cause   Cause
