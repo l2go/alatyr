@@ -367,7 +367,9 @@ final class BridgeLoopback implements Runnable
 		}
 		if (reply.close)
 		{
-			if (reply.waitForDisconnect && transport.client != null)
+			if (reply.waitForDisconnect && transport.resumeOwner != null)
+				transport.resumeOwner.closeResumingTransport(transport, records.get(0));
+			else if (reply.waitForDisconnect && transport.client != null)
 			{
 				armResultWait(transport);
 				disconnectBound(transport);
@@ -1028,6 +1030,39 @@ final class BridgeLoopback implements Runnable
 			}), settings.graceMs());
 		}
 
+		void closeResumingTransport(Transport source, Envelope close)
+		{
+			L2Client bound;
+			synchronized (this)
+			{
+				long currentEpoch = recovery.epoch();
+				synchronized (source)
+				{
+					long expectedEpoch = source.client == null ? source.resumeEpoch : source.epoch;
+					long requestedEpoch = close.field(2).value().u();
+					if (close.field(1).value().u() != id || source.resumeSession != id
+							|| Long.compareUnsigned(requestedEpoch, expectedEpoch) > 0
+							|| source.client == null && (currentEpoch == -1L || expectedEpoch != currentEpoch + 1))
+					{
+						finishTerminal(source, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
+						return;
+					}
+					if (Long.compareUnsigned(requestedEpoch, expectedEpoch) < 0)
+						return;
+					// The authenticated Close survives EOF and socket disposal before FIFO adoption.
+					// Resume observes this intent without binding the dead socket or consuming its epoch.
+					source.explicitClose = true;
+					bound = source.client;
+					if (bound == null)
+						finishTerminal(source, List.of(BridgeFrames.bye(BridgeFrames.BYE_NORMAL)));
+					else
+						armResultWait(source);
+				}
+			}
+			if (bound != null)
+				disconnectBound(source);
+		}
+
 		void notePendingResume(Transport replacement, long session, long epoch)
 		{
 			synchronized (this)
@@ -1054,35 +1089,48 @@ final class BridgeLoopback implements Runnable
 				return;
 			}
 			BridgeRecovery.Resume decision;
+			boolean closeRequested;
 			synchronized (this)
 			{
 				synchronized (replacement)
 				{
-					if (replacement.lost || replacement.closing || replacement.terminal || replacement.disconnectStarted)
+					closeRequested = replacement.explicitClose;
+					if (!closeRequested && (replacement.lost || replacement.closing
+							|| replacement.terminal || replacement.disconnectStarted))
 						return; // Do not consume an epoch or invalidate the existing grace for a cancelled socket.
 				}
-				if (transport != null && (transport.terminal || transport.awaitingResult))
-					recovery.close();
-				decision = recovery.resume(replacement, epoch);
-				if (decision == BridgeRecovery.Resume.ACCEPTED)
+				if (closeRequested)
+					decision = BridgeRecovery.Resume.CLOSED;
+				else
 				{
-					Transport old = transport;
-					if (old != null)
+					if (transport != null && (transport.terminal || transport.awaitingResult))
+						recovery.close();
+					decision = recovery.resume(replacement, epoch);
+					if (decision == BridgeRecovery.Resume.ACCEPTED)
 					{
-						synchronized (old) { old.lost = true; old.attemptFence.valid = false; armClose(old); }
-						attempts.detach();
+						Transport old = transport;
+						if (old != null)
+						{
+							synchronized (old) { old.lost = true; old.attemptFence.valid = false; armClose(old); }
+							attempts.detach();
+						}
+						replacement.session = this;
+						replacement.attempts = attempts;
+						replacement.fence = recovery.fence();
+						replacement.epoch = epoch;
+						replacement.holdOpeningFacts = true;
+						replacement.attemptFence.ready = false;
+						attempts.resume(epoch, this::publishResult, replacement.attemptFence);
+						// Publish the complete binding, not a socket whose attempt table still belongs to no session.
+						replacement.client = client;
+						transport = replacement;
 					}
-					replacement.session = this;
-					replacement.attempts = attempts;
-					replacement.fence = recovery.fence();
-					replacement.epoch = epoch;
-					replacement.holdOpeningFacts = true;
-					replacement.attemptFence.ready = false;
-					attempts.resume(epoch, this::publishResult, replacement.attemptFence);
-					// Publish the complete binding, not a socket whose attempt table still belongs to no session.
-					replacement.client = client;
-					transport = replacement;
 				}
+			}
+			if (closeRequested)
+			{
+				client.requestBridgeDisconnect();
+				return;
 			}
 			if (decision == BridgeRecovery.Resume.REPLAY)
 			{
@@ -1351,6 +1399,7 @@ final class BridgeLoopback implements Runnable
 		volatile Session resumeOwner;
 		long resumeSession;
 		long resumeEpoch;
+		boolean explicitClose;
 		long readDeadline;
 		final long openingDeadline = System.nanoTime() + OPENING_NS;
 		volatile boolean opened;

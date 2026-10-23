@@ -45,6 +45,106 @@ class BridgeTransportRecoveryTest
 {
 	@org.junit.jupiter.params.ParameterizedTest
 	@org.junit.jupiter.params.provider.ValueSource(booleans = { false, true })
+	void closeAndResumeAdoptionHaveOneOrderAndSaveOnceEvenAfterEof(boolean closeFirst) throws Exception
+	{
+		try (Fixture fixture = new Fixture(closeFirst ? 20018 : 20020))
+		{
+			fixture.open();
+			var timer = new java.util.concurrent.atomic.AtomicReference<Runnable>();
+			doAnswer(call -> { timer.set(call.getArgument(0)); return null; })
+					.when(fixture.pool.pool).scheduleGeneral(any(Runnable.class), anyLong());
+			fixture.owner.detach(fixture.first);
+			Runnable originalGrace = timer.get();
+			var replacement = new BridgeLoopback.Transport(new byte[32]);
+			try (var adoption = new FifoGate(fixture.client))
+			{
+				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+				if (!closeFirst)
+				{
+					adoption.release();
+					barrier(fixture.client);
+					assertThat(fixture.owner.transport).isSameAs(replacement);
+				}
+				try (var cleanup = closeFirst ? null : new FifoGate(fixture.client))
+				{
+					var close = Envelope.of(Schemas.CLOSE,
+							List.of(Field.u(1, true, fixture.id), Field.u(2, true, 2), Field.u(3, true, 0)));
+					fixture.loop.acceptFrame(replacement, List.of(close));
+					fixture.loop.acceptFrame(replacement, List.of(close));
+					assertThat(replacement.explicitClose).isTrue();
+					assertThat(replacement.attemptFence.valid).isFalse();
+					if (closeFirst)
+					{
+						assertThat(replacement.client).isNull();
+						assertThat(fixture.client.isBridgeDisconnectRequested()).isFalse();
+					}
+					else
+						assertThat(fixture.client.isBridgeDisconnectRequested()).isTrue();
+					var socket = mock(SocketChannel.class);
+					when(socket.read(any(ByteBuffer.class))).thenReturn(-1);
+					fixture.loop.account();
+					fixture.loop.serve(key(socket, replacement, true));
+					assertThat(replacement.disconnectStarted).isTrue();
+					assertThat(timer.get()).isSameAs(originalGrace);
+					// Queue the original expiry too: it must not be invalidated by adopting this terminal socket,
+					// and its cleanup request must never duplicate the explicit Close save.
+					originalGrace.run();
+					adoption.release();
+					if (cleanup != null) cleanup.release();
+					barrier(fixture.client);
+					barrier(fixture.client);
+					assertThat(fixture.client.isBridgeDisconnectFinished()).isTrue();
+					assertThat(fixture.owner.recovery.epoch()).isEqualTo(closeFirst ? 1 : 2);
+					if (closeFirst)
+					{
+						assertThat(replacement.client).isNull();
+						assertThat(replacement.attempts).isNull();
+						assertThat(replacement.checkpoint).isNull();
+					}
+					verify(fixture.player).store(true, true);
+					verify(fixture.player).deleteMe();
+				}
+			}
+		}
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "session", "epoch", "resumeEpoch" })
+	void anInvalidPendingCloseCannotCloseTheAuthenticatedTarget(String mismatch) throws Exception
+	{
+		try (Fixture fixture = new Fixture(20022))
+		{
+			fixture.open();
+			var timer = new java.util.concurrent.atomic.AtomicReference<Runnable>();
+			doAnswer(call -> { timer.set(call.getArgument(0)); return null; })
+					.when(fixture.pool.pool).scheduleGeneral(any(Runnable.class), anyLong());
+			fixture.owner.detach(fixture.first);
+			try (var gate = new FifoGate(fixture.client))
+			{
+				var replacement = new BridgeLoopback.Transport(new byte[32]);
+				long epoch = mismatch.equals("resumeEpoch") ? 5 : 2;
+				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, epoch)));
+				var close = Envelope.of(Schemas.CLOSE, List.of(
+						Field.u(1, true, mismatch.equals("session") ? fixture.id + 1 : fixture.id),
+						Field.u(2, true, mismatch.equals("epoch") ? 3 : epoch), Field.u(3, true, 0)));
+				fixture.loop.acceptFrame(replacement, List.of(close));
+				gate.release();
+				barrier(fixture.client);
+				assertThat(replacement.explicitClose).isFalse();
+				assertThat(replacement.client).isNull();
+				assertThat(fixture.owner.recovery.epoch()).isEqualTo(1);
+				assertThat(fixture.client.isBridgeDisconnectRequested()).isFalse();
+				verify(fixture.player, never()).store(true, true);
+				timer.get().run();
+				barrier(fixture.client);
+				barrier(fixture.client);
+				verify(fixture.player).store(true, true);
+			}
+		}
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(booleans = { false, true })
 	void eofAndResumeAdoptionHaveOneOrderAndTheSurvivingGraceSaves(boolean eofFirst) throws Exception
 	{
 		try (Fixture fixture = new Fixture(eofFirst ? 20010 : 20012))
