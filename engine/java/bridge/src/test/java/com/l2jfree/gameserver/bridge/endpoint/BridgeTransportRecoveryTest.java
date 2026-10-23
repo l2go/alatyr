@@ -43,6 +43,69 @@ import io.netty.channel.embedded.EmbeddedChannel;
 /** Uses the real client FIFO and listener socket branches with isolated game state. */
 class BridgeTransportRecoveryTest
 {
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(booleans = { false, true })
+	void relocationAfterBeginCancelsOldReadyWithoutNestingCheckpoints(boolean live) throws Exception
+	{
+		try (Fixture fixture = new Fixture(live ? 19998 : 19997))
+		{
+			if (live) fixture.open(); else fixture.seed();
+			fixture.client.submit(() ->
+			{
+				if (live) fixture.owner.captureCheckpoint(); else fixture.owner.opened(BridgeFrames.accepted(fixture.id, 1));
+			});
+			barrier(fixture.client);
+			var oldToken = fixture.first.token;
+			var bytes = new ByteArrayOutputStream();
+			var socket = mock(SocketChannel.class);
+			when(socket.write(any(ByteBuffer.class))).thenAnswer(call ->
+			{
+				ByteBuffer buffer = call.getArgument(0);
+				byte[] copy = new byte[buffer.remaining()]; buffer.get(copy); bytes.write(copy); return copy.length;
+			});
+			// One selector turn writes Begin and the copied facts but cannot transfer End yet.
+			fixture.loop.serve(key(socket, fixture.first, false));
+			barrier(fixture.client);
+			assertThat(fixture.first.checkpoint.began()).isTrue();
+			doReturn(false).when(fixture.player).captureBridgeScene(any(Runnable.class));
+			fixture.owner.sink.deliver(TeleportToLocation.forBridgeRelocation(fixture.player, 8, 9, 10, 0, 1), fixture.player);
+			fixture.client.submit(() -> fixture.owner.finishCheckpoint(fixture.first, oldToken));
+			barrier(fixture.client);
+			assertThat(fixture.first.attemptFence.ready).isFalse();
+			doAnswer(call ->
+			{
+				doAnswer(capture -> { ((Runnable)capture.getArgument(0)).run(); return true; })
+						.when(fixture.player).captureBridgeScene(any(Runnable.class));
+				fixture.owner.sink.deliver(new UserInfo(fixture.player), fixture.player);
+				return null;
+			}).when(fixture.player).completeBridgeTeleport(1);
+			fixture.owner.sink.ownTeleported(1);
+			barrier(fixture.client);
+			var records = new ArrayList<Envelope>();
+			var input = new ByteArrayInputStream(bytes.toByteArray());
+			while (input.available() != 0) records.addAll(Codec.bridge().read(input));
+			records.addAll(fixture.drain(fixture.first));
+			boolean inside = false;
+			int ready = 0;
+			for (Envelope record : records)
+			{
+				if (record.type() != Schemas.CHECKPOINT) continue;
+				if (record.field(1).value().u() == Schemas.BEGIN)
+				{
+					assertThat(inside).isFalse(); inside = true;
+				}
+				else
+				{
+					assertThat(inside).isTrue(); inside = false;
+					if (record.field(3).value().u() == 1) ready++;
+				}
+			}
+			assertThat(inside).isFalse();
+			assertThat(ready).isEqualTo(1);
+			assertThat(records).filteredOn(record -> record.type() == Schemas.OPENED).hasSize(live ? 0 : 1);
+		}
+	}
+
 	@Test
 	void aFailedCaptureClosesInternallyWithoutPublishingReady() throws Exception
 	{
