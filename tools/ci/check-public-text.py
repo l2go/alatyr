@@ -3,11 +3,11 @@
 
 import argparse
 import codecs
-import json
 from pathlib import Path
 import re
 import subprocess
 import sys
+from urllib.parse import quote
 
 
 FORBIDDEN = re.compile(r"[\u0400-\u052f]")
@@ -47,7 +47,7 @@ def check(root):
             continue
         for number, line in enumerate(content.splitlines(), 1):
             if FORBIDDEN.search(line):
-                safe_path = json.dumps(str(path), ensure_ascii=True)
+                safe_path = quote(str(path), safe="/")
                 print(f"{safe_path}:{number}: {MESSAGE}", file=sys.stderr)
                 rejected = True
     return not rejected

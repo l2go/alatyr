@@ -1,11 +1,11 @@
 """Exercise the public-text boundary against temporary tracked files."""
 
-import json
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from urllib.parse import unquote
 
 
 CHECKER = Path(__file__).with_name("check-public-text.py").resolve()
@@ -41,7 +41,7 @@ class PublicTextTest(unittest.TestCase):
                 self.write("content/unusual.extension", ("line one\nprivate-content-" + chr(code)).encode())
                 result = self.scan()
                 self.assertEqual(result.returncode, 1)
-                self.assertIn('"content/unusual.extension":2: a non-English letter in a public file', result.stderr)
+                self.assertIn("content/unusual.extension:2: a non-English letter in a public file", result.stderr)
                 self.assertNotIn("private-content", result.stderr)
                 self.assertNotIn(chr(code), result.stderr)
 
@@ -54,10 +54,14 @@ class PublicTextTest(unittest.TestCase):
         result = self.scan()
         self.assertEqual(result.returncode, 1)
         self.assertEqual(result.stdout, "")
-        expected = f"{json.dumps(path, ensure_ascii=True)}:1: a non-English letter in a public file"
-        self.assertEqual(result.stderr, expected + "\n")
-        self.assertEqual(result.stderr.splitlines(), [expected])
-        self.assertFalse(result.stderr.startswith("::"))
+        self.assertEqual(len(result.stderr.splitlines()), 1)
+        encoded_path, separator, message = result.stderr.partition(":1: ")
+        self.assertEqual(separator, ":1: ")
+        self.assertEqual(message, "a non-English letter in a public file\n")
+        self.assertRegex(encoded_path, r"\A(?:[A-Za-z0-9_.~/-]|%[0-9A-F]{2})+\Z")
+        self.assertEqual(unquote(encoded_path), path)
+        self.assertNotIn("::", result.stderr)
+        self.assertNotIn("##[", result.stderr)
         self.assertNotIn("\x1b", result.stderr)
         self.assertNotIn("private-content", result.stderr)
         self.assertNotIn(chr(0x0410), result.stderr)
@@ -71,11 +75,29 @@ class PublicTextTest(unittest.TestCase):
     def test_escape_in_path_is_escaped(self):
         self.assert_safe_path_diagnostic("page\x1b[31m.txt")
 
-    def test_error_command_at_start_of_path_is_quoted(self):
+    def test_error_command_at_start_of_path_is_encoded(self):
         self.assert_safe_path_diagnostic("::error::forged.txt")
 
-    def test_mask_command_at_start_of_path_is_quoted(self):
+    def test_mask_command_at_start_of_path_is_encoded(self):
         self.assert_safe_path_diagnostic("::add-mask::marker.txt")
+
+    def test_legacy_error_command_at_start_of_path_is_encoded(self):
+        self.assert_safe_path_diagnostic("##[error]forged annotation.txt")
+
+    def test_legacy_error_command_in_middle_of_path_is_encoded(self):
+        self.assert_safe_path_diagnostic("page##[error]forged annotation.txt")
+
+    def test_legacy_mask_command_at_start_of_path_is_encoded(self):
+        self.assert_safe_path_diagnostic("##[add-mask]x%0A.txt")
+
+    def test_legacy_mask_command_in_middle_of_path_is_encoded(self):
+        self.assert_safe_path_diagnostic("page##[add-mask]x%0A.txt")
+
+    def test_hash_in_path_is_encoded(self):
+        self.assert_safe_path_diagnostic("#.txt")
+
+    def test_open_bracket_in_path_is_encoded(self):
+        self.assert_safe_path_diagnostic("[.txt")
 
     def test_text_with_a_byte_order_mark_is_checked(self):
         for encoding in ("utf-8-sig", "utf-16", "utf-32"):
@@ -107,7 +129,7 @@ class PublicTextTest(unittest.TestCase):
         self.write("site.html", chr(0x0410).encode())
         result = self.scan()
         self.assertEqual(result.returncode, 1)
-        self.assertIn('"site.html":1: a non-English letter in a public file', result.stderr)
+        self.assertIn("site.html:1: a non-English letter in a public file", result.stderr)
         self.assertNotIn("candidate code executed", result.stderr)
 
 
