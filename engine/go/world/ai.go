@@ -22,15 +22,19 @@ const (
 )
 
 type order struct {
-	intent intention
-	object int32
-	pos    Point
-	cast   *castRequest
-	cause  Cause
+	intent   intention
+	object   int32
+	pos      Point
+	cast     *castRequest
+	cause    Cause
+	deadline Time
+	target   Ref
 }
 
 type ai struct {
 	cause     Cause
+	deadline  Time
+	refTarget Ref
 	intention intention
 	object    int32
 	pos       Point
@@ -65,6 +69,9 @@ func (w *World) inProtectedAction(s *state, a actor) bool {
 func (w *World) setIntention(s *state, a actor, o order) {
 	if o.cause == (Cause{}) {
 		o.cause = s.cause()
+		if s.batch != nil && s.batch.intent.ID == o.cause.Intent {
+			o.deadline = s.batch.intent.Deadline
+		}
 	}
 	if !a.isPlayer() {
 		o.cause = Cause{Rule: RuleAI}
@@ -73,6 +80,9 @@ func (w *World) setIntention(s *state, a actor, o order) {
 }
 func (w *World) applyIntention(s *state, a actor, o order) {
 	c := a.base()
+	if o.deadline != 0 && s.now() >= o.deadline || o.target != (Ref{}) && s.ref(o.target.ID) != o.target {
+		return
+	}
 	if w.inProtectedAction(s, a) {
 		w.actionIgnored(s, a)
 		c.ai.next = &o
@@ -80,6 +90,8 @@ func (w *World) applyIntention(s *state, a actor, o order) {
 	}
 	c.ai.next = nil
 	c.ai.cause = o.cause
+	c.ai.deadline = o.deadline
+	c.ai.refTarget = o.target
 	if o.intent != intentAttack {
 		w.stopFollow(s, a)
 	}
@@ -221,6 +233,10 @@ func (w *World) thinkWithCause(s *state, a actor) {
 		return
 	}
 	c := a.base()
+	if a.isPlayer() && (c.ai.deadline != 0 && s.now() >= c.ai.deadline || c.ai.refTarget != (Ref{}) && s.ref(c.ai.refTarget.ID) != c.ai.refTarget) {
+		w.haltIntention(s, a)
+		return
+	}
 	if a.isPlayer() {
 		if c.ai.thinking && c.ai.intention != intentCast {
 			w.actionIgnored(s, a)
@@ -252,6 +268,19 @@ func (w *World) thinkWithCause(s *state, a actor) {
 	case intentAttack:
 		w.thinkAttackMob(s, n)
 	}
+}
+
+// haltIntention does not integrate another position after a deadline. Cleanup
+// is a world rule, not a newly executed effect of the expired command.
+func (w *World) haltIntention(s *state, a actor) {
+	s.rule(RuleTimer, func() {
+		c := a.base()
+		w.stopFollow(s, a)
+		s.change(c.ref(), PropertyMovement, boolValue(c.move != nil), IntValue(0))
+		c.move = nil
+		w.clientStoppedMoving(s, a)
+		w.changeIntention(s, a, intentIdle, 0, Point{})
+	})
 }
 func (w *World) notifyArrived(s *state, a actor) {
 	c := a.base()
@@ -462,6 +491,10 @@ func (w *World) stopFollow(s *state, a actor) {
 }
 func (w *World) followTarget(s *state, a actor) {
 	c := a.base()
+	if a.isPlayer() && (c.ai.deadline != 0 && s.now() >= c.ai.deadline || c.ai.refTarget != (Ref{}) && s.ref(c.ai.refTarget.ID) != c.ai.refTarget) {
+		w.haltIntention(s, a)
+		return
+	}
 	t, ok := s.actor(c.ai.follow)
 	if !ok {
 		return

@@ -27,6 +27,7 @@ func (w *World) doAttack(s *state, a, t actor) {
 	duration := time.Duration(500000/max(a.pAtkSpd(), 10)) * time.Millisecond
 	c.attackSeq++
 	seq := c.attackSeq
+	deadline := c.ai.deadline
 	c.attackEnd = time.Now().Add(duration)
 	s.setAttacking(c, 1)
 	oldHeading := c.heading
@@ -41,7 +42,7 @@ func (w *World) doAttack(s *state, a, t actor) {
 	}
 	w.broadcastToKnown(s, a, AttackStarted{AttackerID: c.id, TargetID: tc.id, Damage: int32(damage), Critical: crit, Miss: miss, From: c.pos, TargetPos: tc.pos})
 	s.afterRule(duration/2, RuleAttackHit, func(s *state) {
-		if s.live(a) && s.live(t) && c.attackSeq == seq {
+		if s.live(a) && s.live(t) && c.attackSeq == seq && (deadline == 0 || s.now() < deadline) {
 			w.onHit(s, a, t, damage, crit, miss)
 		}
 	})
