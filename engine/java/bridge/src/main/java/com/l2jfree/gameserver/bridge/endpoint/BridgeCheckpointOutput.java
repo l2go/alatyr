@@ -30,12 +30,25 @@ final class BridgeCheckpointOutput
 	private int remaining;
 	private final byte[] end;
 	private boolean endAllowed;
+	private byte[] begin;
+	private boolean began;
 
 	BridgeCheckpointOutput(List<Envelope> snapshot, long epoch, List<byte[]> results, Envelope opened)
 	{
+		this(snapshot, epoch, results, opened, true);
+	}
+
+	BridgeCheckpointOutput(List<Envelope> snapshot, long epoch, List<byte[]> results, Envelope opened, boolean includeBegin)
+	{
 		if (results.size() > BridgeIntents.COMPLETED_CAP)
 			throw new IllegalArgumentException("checkpoint result capacity");
-		append(BridgeFrames.checkpoint(Schemas.BEGIN, epoch, false));
+		if (includeBegin)
+		{
+			begin = encode(BridgeFrames.checkpoint(Schemas.BEGIN, epoch, false));
+			add(begin);
+		}
+		else
+			began = true;
 		long retained = 0;
 		for (Envelope fact : snapshot)
 		{
@@ -67,6 +80,8 @@ final class BridgeCheckpointOutput
 		if (frame == null || frame.length > available || frame == end && !endAllowed)
 			return null;
 		frames.remove();
+		if (frame == begin)
+			began = true;
 		remaining -= frame.length;
 		return frame;
 	}
@@ -79,6 +94,11 @@ final class BridgeCheckpointOutput
 	boolean waitingForEnd()
 	{
 		return frames.peek() == end && !endAllowed;
+	}
+
+	boolean began()
+	{
+		return began;
 	}
 
 	/** Only a fresh FIFO relocation check may grant the terminal ready tail. */

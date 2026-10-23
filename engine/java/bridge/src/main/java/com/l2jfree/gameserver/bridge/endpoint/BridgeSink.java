@@ -84,12 +84,17 @@ public final class BridgeSink implements ClientSink
 	/** Copies state and reserves its sequence range under one leaf monitor, without consulting the model. */
 	synchronized Capture snapshot(long epoch, boolean completeObjects)
 	{
+		return snapshot(epoch, completeObjects, false);
+	}
+
+	synchronized Capture snapshot(long epoch, boolean completeObjects, boolean includeRelocation)
+	{
 		_epoch = epoch;
 		if (completeObjects)
 			_projection.completeObjects();
 		var result = new ArrayList<Envelope>();
 		long ms = Math.max(0, (System.nanoTime() - _born) / 1_000_000);
-		var snapshot = _projection.capture(ms);
+		var snapshot = _projection.capture(ms, includeRelocation);
 		for (BridgeFact fact : snapshot.facts())
 			result.add(SemanticFacts.envelope(fact, _sequence = Math.incrementExact(_sequence), ms, _epoch, domain(fact.kind())));
 		return new Capture(result, snapshot.ready());

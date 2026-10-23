@@ -50,6 +50,7 @@ final class BridgeProjection
 	private boolean inventoryComplete;
 	private BridgeFact skills;
 	private BridgeFact quests;
+	private BridgeFact relocation;
 
 	private record WindowKey(int kind, long list) {}
 	private record Window(BridgeFact fact, long seq, long born) {}
@@ -74,6 +75,7 @@ final class BridgeProjection
 			{
 				if (fact.kind() == 4 && flag(fact.fields(), 67))
 				{
+					relocation = fact;
 					BridgeFact self = actors.get(own);
 					actors.clear();
 					if (self != null)
@@ -192,8 +194,20 @@ final class BridgeProjection
 
 	Snapshot capture(long ms)
 	{
+		return capture(ms, false);
+	}
+
+	Snapshot capture(long ms, boolean includeRelocation)
+	{
 		var copy = new ArrayList<BridgeFact>();
-		copy.addAll(actors.values());
+		BridgeFact self = actors.get(own);
+		if (self != null)
+			copy.add(self);
+		if (includeRelocation && self != null && relocation != null)
+			copy.add(relocation);
+		for (var actor : actors.entrySet())
+			if (actor.getKey() != own)
+				copy.add(actor.getValue());
 		copy.addAll(motion.values());
 		copy.addAll(vitals.values());
 		if (inventoryComplete || !inventory.isEmpty() || coin != null)

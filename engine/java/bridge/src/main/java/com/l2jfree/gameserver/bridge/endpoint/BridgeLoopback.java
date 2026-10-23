@@ -308,8 +308,7 @@ final class BridgeLoopback implements Runnable
 		catch (WireException e)
 		{
 			long reason = e.kind() == WireException.Kind.UNSUPPORTED ? BridgeFrames.BYE_UNSUPPORTED : BridgeFrames.BYE_FRAME;
-			offer(transport, frame(List.of(BridgeFrames.bye(reason))));
-			armClose(transport);
+			finishTerminal(transport, List.of(BridgeFrames.bye(reason)));
 		}
 		flushKey(key);
 	}
@@ -410,7 +409,6 @@ final class BridgeLoopback implements Runnable
 		sink.attach(client);
 		transport.client = client;
 		owner.attach(client);
-		sessions.put(client, owner);
 		Consumer<L2Client> gate = beforeWatch;
 		if (gate != null)
 			gate.accept(client);
@@ -798,7 +796,7 @@ final class BridgeLoopback implements Runnable
 	}
 
 	/** One game session owns the sink and attempts across successive sockets. */
-	private final class Session
+	final class Session
 	{
 		volatile Transport transport;
 		final BridgeRecovery recovery;
@@ -818,10 +816,12 @@ final class BridgeLoopback implements Runnable
 		void attach(L2Client value)
 		{
 			client = value;
+			transport.client = value;
 			attempts = new BridgeAttemptSession(client::submit, this::publishResult);
 			attempts.bindFence(transport.attemptFence);
 			transport.session = this;
 			transport.attempts = attempts;
+			sessions.put(client, this);
 		}
 
 		void opened(List<Envelope> records)
@@ -860,13 +860,30 @@ final class BridgeLoopback implements Runnable
 				}
 				if (relocation && current.checkpoint != null)
 				{
+					boolean began = current.checkpoint.began();
 					current.checkpoint.cancel();
 					current.checkpoint = null;
 					current.token = null;
 					current.endScheduled = false;
 					while (!current.afterCheckpoint.isEmpty())
 						current.queued.add(current.afterCheckpoint.remove());
+					if (!current.opened)
+					{
+						current.reuseCheckpointBegin = began;
+						return;
+					}
+					if (began)
+					{
+						offer(current, frame(records));
+						offer(current, frame(List.of(BridgeFrames.checkpoint(com.l2jfree.gameserver.bridge.wire.Schemas.END,
+								current.epoch, false))));
+						selector.wakeup();
+						return;
+					}
 				}
+				if (!terminal && current.holdOpeningFacts && records.stream().allMatch(record ->
+						record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.FACT))
+					return;
 				if (!terminal && current.holdOpeningFacts && records.stream().allMatch(record ->
 						record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.RESULT))
 					return;
@@ -955,6 +972,7 @@ final class BridgeLoopback implements Runnable
 			replacement.session = this;
 			replacement.attempts = attempts;
 			replacement.fence = recovery.fence();
+			replacement.epoch = epoch;
 			replacement.holdOpeningFacts = true;
 			replacement.attemptFence.ready = false;
 			attempts.resume(epoch, this::publishResult, replacement.attemptFence);
@@ -983,7 +1001,7 @@ final class BridgeLoopback implements Runnable
 			{
 				synchronized (sink)
 				{
-					var capture = sink.snapshot(epoch, true);
+					var capture = sink.snapshot(epoch, true, !current.opened);
 					if (!capture.ready())
 						return;
 					synchronized (current)
@@ -994,7 +1012,8 @@ final class BridgeLoopback implements Runnable
 						current.openingFactBytes = 0;
 						current.holdOpeningFacts = false;
 						current.checkpoint = new BridgeCheckpointOutput(capture.records(), epoch, retained,
-								BridgeFrames.accepted(id, epoch).get(2));
+								current.opened ? null : BridgeFrames.accepted(id, epoch).get(2), !current.reuseCheckpointBegin);
+						current.reuseCheckpointBegin = false;
 						current.token = token;
 						current.endScheduled = false;
 					}
@@ -1181,6 +1200,8 @@ final class BridgeLoopback implements Runnable
 		volatile boolean lost;
 		final BridgeAttemptSession.Fence attemptFence = new BridgeAttemptSession.Fence();
 		long fence = 1;
+		long epoch = 1;
+		boolean reuseCheckpointBegin;
 		long checkpointDeadline;
 		BridgeCheckpointOutput checkpoint;
 		BridgeRecovery.Checkpoint token;
