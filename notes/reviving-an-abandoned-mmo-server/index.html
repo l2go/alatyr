@@ -15,30 +15,30 @@
 <meta property="og:image" content="https://l2go.github.io/alatyr/assets/img/covers/reviving.jpg">
 <meta property="article:published_time" content="2026-10-12">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="/l2jfree/assets/img/favicon.svg" type="image/svg+xml">
-<link rel="author" href="/l2jfree/humans.txt">
-<link rel="preload" href="/l2jfree/assets/fonts/cinzel.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/l2jfree/assets/css/site.css">
-<script src="/l2jfree/assets/js/site.js"></script>
+<link rel="icon" href="/alatyr/assets/img/favicon.svg" type="image/svg+xml">
+<link rel="author" href="/alatyr/humans.txt">
+<link rel="preload" href="/alatyr/assets/fonts/cinzel.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/alatyr/assets/css/site.css">
+<script src="/alatyr/assets/js/site.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <div class="progress" aria-hidden="true"></div>
 <header class="bar">
-  <a class="bar__mark" href="/l2jfree/">L2JFREE</a>
+  <a class="bar__mark" href="/alatyr/">L2JFREE</a>
   <nav aria-label="Sections">
-    <a href="/l2jfree/#start">Start</a>
-    <a class="opt" href="/l2jfree/#engineering">Engineering</a>
-    <a href="/l2jfree/#notes">Notes</a>
+    <a href="/alatyr/#start">Start</a>
+    <a class="opt" href="/alatyr/#engineering">Engineering</a>
+    <a href="/alatyr/#notes">Notes</a>
     <a href="https://github.com/l2go/alatyr">GitHub</a>
   </nav>
 </header>
 <main id="main">
 <article>
 <header class="article-head">
-  <picture><source srcset="/l2jfree/assets/img/covers/reviving.webp" type="image/webp"><img src="/l2jfree/assets/img/covers/reviving.jpg" alt="" width="1600" height="667"></picture>
+  <picture><source srcset="/alatyr/assets/img/covers/reviving.webp" type="image/webp"><img src="/alatyr/assets/img/covers/reviving.jpg" alt="" width="1600" height="667"></picture>
   <div class="wrap">
-    <div class="crumbs"><a href="/l2jfree/#notes">Reviving L2JFree</a> · Part 1</div>
+    <div class="crumbs"><a href="/alatyr/#notes">Reviving L2JFree</a> · Part 1</div>
     <h1>Reviving an abandoned MMO server: 2009 → 2026</h1>
     <p class="dek">An open-source Lineage II server went silent in 2015. Twenty-four days of work turned it into one Java 25 process on PostgreSQL 18, shipped as a signed image that CI plays on every merge.</p>
     <div class="byline"><time datetime="2026-10-12">12 October 2026</time> · 7 min read</div>
@@ -189,8 +189,8 @@
 <p>Twenty-four people built it over nearly nine years. Twenty-four days rebuilt it. Twenty-four clients play it on every merge.</p>
 <p>The rest of the series takes one decision at a time:</p>
 <ol>
-<li><a href="/l2jfree/notes/one-process-hard-boundaries/"><strong>One process, hard boundaries</strong></a>: two modules in one JVM that still cannot see each other.</li>
-<li><a href="/l2jfree/notes/an-island-of-our-own/"><strong>An island of our own</strong></a>: how the server left an inherited world for one it wrote.</li>
+<li><a href="/alatyr/notes/one-process-hard-boundaries/"><strong>One process, hard boundaries</strong></a>: two modules in one JVM that still cannot see each other.</li>
+<li><a href="/alatyr/notes/an-island-of-our-own/"><strong>An island of our own</strong></a>: how the server left an inherited world for one it wrote.</li>
 <li><strong>One save, one transaction</strong>: how a player and their items reach the database together or not at all.</li>
 <li><strong>Every merge is a release rehearsal</strong>: what the pipeline does to an image before it may be published.</li>
 <li><strong>Releases promote, never rebuild</strong>: why the release workflow has no build step.</li>
@@ -198,11 +198,11 @@
 <li><strong>Old bugs, new invariants</strong>: the classes of defects a 2009 server carries, and the checks that keep them out.</li>
 </ol>
 <p>The code is at <a href="https://github.com/l2go/alatyr">github.com/l2go/alatyr</a>, under GPLv3.</p>
-<div class="aside"><strong>Update, 16 October 2026.</strong> Version 3.2.0 went a step past a revival: the server no longer ships the world it inherited, and it runs a small original one instead. That turn is part 3, <a href="/l2jfree/notes/an-island-of-our-own/">An island of our own</a>.</div>
+<div class="aside"><strong>Update, 16 October 2026.</strong> Version 3.2.0 went a step past a revival: the server no longer ships the world it inherited, and it runs a small original one instead. That turn is part 3, <a href="/alatyr/notes/an-island-of-our-own/">An island of our own</a>.</div>
 </div>
 <nav class="series" aria-label="Series">
 <span></span>
-<a class="later" href="/l2jfree/notes/one-process-hard-boundaries/"><small>Next</small><span>One process, hard boundaries</span></a>
+<a class="later" href="/alatyr/notes/one-process-hard-boundaries/"><small>Next</small><span>One process, hard boundaries</span></a>
 </nav>
 </article>
 </main>
@@ -218,7 +218,7 @@
       </nav>
     </div>
     <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server. Since 3.2 it ships no data inherited from the fork; its world, Okolitsa, is original content. It does not modify, patch, or distribute the game client.</p>
-    <p>The code is under the GNU GPLv3. Banner art generated with AI. Cinzel typeface under the SIL Open Font License. <a class="sigma" href="/l2jfree/numbers/" title="The numbers">Σ</a></p>
+    <p>The code is under the GNU GPLv3. Banner art generated with AI. Cinzel typeface under the SIL Open Font License. <a class="sigma" href="/alatyr/numbers/" title="The numbers">Σ</a></p>
   </div>
 </footer>
 </body>

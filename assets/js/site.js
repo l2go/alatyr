@@ -17,7 +17,7 @@ document.documentElement.classList.add("js");
   console.log("%c" + citadel, gold);
   console.log("%cL2JFREE — a Lineage II server, revived.\n" +
     "24 people built it. 24 days rebuilt it. 24 clients play it on every merge.\n" +
-    "Curious? Type 42 on the page, or read /l2jfree/numbers/\n" +
+    "Curious? Type 42 on the page, or read /alatyr/numbers/\n" +
     "Source: https://github.com/l2go/alatyr", soft);
 })();
 
@@ -93,7 +93,7 @@ document.addEventListener("DOMContentLoaded", () => {
       strong.textContent = "FINAL = 42.";
       const text = document.createTextNode(" The answer was in the client's name all along. ");
       const link = document.createElement("a");
-      link.href = "/l2jfree/numbers/";
+      link.href = "/alatyr/numbers/";
       link.textContent = "The numbers";
       toast.append(strong, text, link);
       document.body.appendChild(toast);
