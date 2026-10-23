@@ -13,7 +13,7 @@ import (
 
 func TestDiagnosticBoundsAndFailureIsolation(t *testing.T) {
 	dir := t.TempDir()
-	j, err := NewJournal(dir, 1024, 512, time.Hour, time.Second, 8)
+	j, err := NewJournal(JournalConfig{Directory: dir, Bytes: 1024, FileBytes: 512, Age: time.Hour, Cleanup: time.Second, Queued: 8})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestDiagnosticBoundsAndFailureIsolation(t *testing.T) {
 		}
 	}
 	blocked := filepath.Join(t.TempDir(), "broken")
-	k, err := NewJournal(blocked, 1024, 512, time.Hour, time.Second, 8)
+	k, err := NewJournal(JournalConfig{Directory: blocked, Bytes: 1024, FileBytes: 512, Age: time.Hour, Cleanup: time.Second, Queued: 8})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,5 +70,35 @@ func TestDiagnosticBoundsAndFailureIsolation(t *testing.T) {
 	}
 	if k.Errors() == 0 {
 		t.Fatal("missing diagnostic failure count")
+	}
+}
+
+func TestJournalConfigValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*JournalConfig)
+	}{
+		{"queue", func(c *JournalConfig) { c.Queued = 0 }},
+		{"total-bytes", func(c *JournalConfig) { c.Bytes = 0 }},
+		{"file-bytes", func(c *JournalConfig) { c.FileBytes = 0 }},
+		{"file-over-total", func(c *JournalConfig) { c.FileBytes = c.Bytes + 1 }},
+		{"age", func(c *JournalConfig) { c.Age = 0 }},
+		{"cleanup", func(c *JournalConfig) { c.Cleanup = 0 }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := JournalConfig{Directory: filepath.Join(t.TempDir(), "journal"), Bytes: 1024,
+				FileBytes: 512, Age: time.Hour, Cleanup: time.Second, Queued: 8}
+			tc.mutate(&c)
+			j, err := NewJournal(c)
+			if err == nil {
+				t.Error("NewJournal accepted invalid limits")
+				if err := j.Close(); err != nil {
+					t.Error(err)
+				}
+			}
+			if _, err := os.Stat(c.Directory); !os.IsNotExist(err) {
+				t.Fatalf("invalid configuration touched directory: %v", err)
+			}
+		})
 	}
 }

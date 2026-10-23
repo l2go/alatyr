@@ -35,16 +35,36 @@ type Journal struct {
 	err              error
 }
 
+// JournalConfig supplies explicit directory, retention, and queue limits.
+// There are no defaults; NewJournal rejects invalid limits before opening files.
+type JournalConfig struct {
+	// Directory is the host-owned journal directory. It is created with mode 0700
+	// if absent; the caller is responsible for existing directory permissions.
+	Directory string
+	// Bytes is the required positive total retained journal size in bytes.
+	Bytes int64
+	// FileBytes is the required positive per-file size limit in bytes, at most Bytes.
+	// A single encoded record larger than this limit is rejected.
+	FileBytes int64
+	// Age is the required positive maximum retained file age.
+	Age time.Duration
+	// Cleanup is the required positive interval for age-based cleanup when idle.
+	Cleanup time.Duration
+	// Queued is the required positive record capacity of the asynchronous queue.
+	// Record rejects overflow instead of blocking the session loop.
+	Queued int
+}
+
 // NewJournal starts a bounded numeric journal with byte and age retention.
 // The caller owns the directory and must call Close to drain the accepted queue.
-func NewJournal(dir string, bytes, fileBytes int64, age, cleanup time.Duration, queued int) (*Journal, error) {
-	if queued < 1 || bytes < 1 || fileBytes < 1 || fileBytes > bytes || age <= 0 || cleanup <= 0 {
+func NewJournal(c JournalConfig) (*Journal, error) {
+	if c.Queued < 1 || c.Bytes < 1 || c.FileBytes < 1 || c.FileBytes > c.Bytes || c.Age <= 0 || c.Cleanup <= 0 {
 		return nil, fmt.Errorf("gateway: invalid diagnostic limits")
 	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(c.Directory, 0700); err != nil {
 		return nil, err
 	}
-	j := &Journal{dir: dir, bytes: bytes, fileBytes: fileBytes, age: age, cleanup: cleanup, queue: make(chan Summary, queued), done: make(chan struct{}), now: time.Now}
+	j := &Journal{dir: c.Directory, bytes: c.Bytes, fileBytes: c.FileBytes, age: c.Age, cleanup: c.Cleanup, queue: make(chan Summary, c.Queued), done: make(chan struct{}), now: time.Now}
 	j.wg.Add(1)
 	go j.run()
 	return j, nil
