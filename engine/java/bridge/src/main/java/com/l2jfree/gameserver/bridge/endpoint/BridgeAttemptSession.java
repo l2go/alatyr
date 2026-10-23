@@ -31,7 +31,17 @@ final class BridgeAttemptSession
 		long verb = intent.field(2).value().u();
 		long received = System.nanoTime();
 		long ttl = intent.field(4) == null ? 5000 : intent.field(4).value().u();
-		return accept(n, Codec.bridge().encode(java.util.List.of(intent)), () ->
+		var fields = new java.util.ArrayList<>(intent.fields());
+		fields.sort(java.util.Comparator.comparingInt(com.l2jfree.gameserver.bridge.wire.Field::number));
+		byte[] normalized = Codec.bridge().encode(java.util.List.of(Envelope.of(intent.type(), fields)));
+		if (normalized.length > 4096)
+			throw new IllegalArgumentException("retained payload");
+		// Decode our own canonical bytes to sever all receive-side mutable arrays before FIFO submission.
+		Envelope acceptedIntent = Codec.bridge().decode(normalized).get(0);
+		return accept(n, normalized, () -> execute(client, acceptedIntent, n, verb, received, ttl));
+	}
+
+	private byte[] execute(L2Client client, Envelope intent, long n, long verb, long received, long ttl)
 		{
 			if (client.isBridgeDisconnectRequested() || client.getState() != L2Client.GameClientState.IN_GAME
 					|| client.getActiveChar() == null)
@@ -108,8 +118,7 @@ final class BridgeAttemptSession
 			{
 				return BridgeResults.encode(n, verb, 4, 24, null);
 			}
-		});
-	}
+		}
 
 	BridgeIntents.Decision accept(long n, byte[] normalized, Supplier<byte[]> execution)
 	{
