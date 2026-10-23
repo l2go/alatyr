@@ -108,4 +108,29 @@ class BridgeInventoryDescribeTest
 			assertThat(BridgeTestFacts.field(fact, 68)).isNull();
 		assertThat(((BridgeValue.ListValue)BridgeTestFacts.field(sink.facts.get(1), 24).value()).items()).isEmpty();
 	}
+
+	@Test
+	void proposalDeliveryInsideAnAttemptCannotManufactureASpokenReceipt()
+	{
+		var player = BridgeTestPlayers.player();
+		var client = mock(com.l2jfree.gameserver.network.L2Client.class);
+		when(client.isBridge()).thenReturn(true);
+		when(client.getActiveChar()).thenReturn(player);
+		var records = new java.util.ArrayList<java.util.List<com.l2jfree.gameserver.bridge.wire.Envelope>>();
+		var sink = new BridgeSink(records::add);
+		sink.attach(client);
+		var attempt = new com.l2jfree.gameserver.network.bridge.Attempt(client, player);
+		com.l2jfree.gameserver.network.bridge.EffectLedger.open(attempt);
+		try
+		{
+			sink.deliver(new BuyList(List.of(item(1060, -1)), 1, 10), player);
+			sink.deliver(new SellList(player, mock(L2MerchantInstance.class)), player);
+			sink.deliver(new AcquireSkillList(AcquireSkillList.SkillType.Usual), player);
+			assertThat(records).hasSize(3);
+			assertThat(attempt.hasSpoken()).isFalse();
+			assertThat(attempt.effects()).isEmpty();
+			assertThat(BridgeOutcome.match(attempt, 5, 0, 70, 0)).isEqualTo(BridgeOutcome.UNKNOWN);
+		}
+		finally { com.l2jfree.gameserver.network.bridge.EffectLedger.close(); }
+	}
 }

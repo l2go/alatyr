@@ -44,6 +44,7 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  */
 public final class BridgeSink implements ClientSink
 {
+	private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(BridgeSink.class);
 	private final Consumer<List<Envelope>> _outbound;
 	private final AtomicBoolean _disconnected = new AtomicBoolean();
 	private L2Client _client;
@@ -115,6 +116,8 @@ public final class BridgeSink implements ClientSink
 		catch (RuntimeException failure)
 		{
 			_failed = true;
+			// Packet content and exception text can contain private or saved action data.
+			LOG.warn("Bridge projection failed for packet class {}", packet == null ? "null" : packet.getClass().getName());
 			EffectLedger.incomplete(player);
 			_client.requestBridgeDisconnect(BridgeFailure.internal());
 		}
