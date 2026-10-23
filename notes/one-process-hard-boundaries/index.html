@@ -35,7 +35,7 @@
 </header>
 <main id="main">
 <article>
-<header class="article-head">
+<header class="article-head article-head--focus-47">
   <picture><source srcset="/alatyr/assets/img/covers/boundaries.webp" type="image/webp"><img src="/alatyr/assets/img/covers/boundaries.jpg" alt="" width="1600" height="667"></picture>
   <div class="wrap">
     <div class="crumbs"><a href="/alatyr/#notes">Reviving L2JFree</a> · Part 2</div>
@@ -47,7 +47,7 @@
 <div class="prose">
 <p>A Lineage II server is really two servers. The login server checks a password and hands the client a key. The world server takes that key, lets the client in, and runs the game. In L2JFree, as in every L2J server of its time, they were separate processes that talked over a protocol of their own.</p>
 <h2>The problem</h2>
-<p>The socket between login and world existed for one reason: in 2006 the two could run on different machines. By 2026 that reason was gone. Nobody runs the login of a private server on a separate host, and the price of the socket was everywhere:</p>
+<p>The socket between login and world existed for one reason: in 2006 the two could run on different machines. By 2026 that reason was gone. This project had no reason to run the login on a separate host, and the price of the socket was everywhere:</p>
 <ul>
 <li><strong>Registration.</strong> A world announced itself to the login with a hex id file and a row in a <code>game_server</code> table, created by a <code>register_gameserver</code> tool. Get any of the three wrong and the world never appeared in the server list.</li>
 <li><strong>A protocol to keep in step.</strong> Every change to how a session key travelled meant a change on both sides, deployed together. One of the first fixes, binding a world login to the exact key the login had checked (<a href="https://github.com/l2go/alatyr/pull/26">#26</a>), had to change both servers and the messages between them.</li>
@@ -136,7 +136,7 @@
 <h2>What it cost</h2>
 <ul>
 <li><strong>One fate.</strong> Login and world now share a JVM's lifetime, heap, and threads. A crash or an out-of-memory error takes both down, and a slow world can starve the login of CPU. For a game server this is the right trade: a login without a world is useless to a player, and the world was always the part that needed watching.</li>
-<li><strong>No separate scaling.</strong> The login can no longer run on its own machine. Nobody needed that.</li>
+<li><strong>No separate scaling.</strong> The login can no longer run on its own machine. This project never needed that.</li>
 <li><strong>Login and world update together.</strong> They always had to, in practice; now the image enforces it.</li>
 <li><strong>Some features went away.</strong> The telnet status server of the login, with its four commands, was removed. Only the world has a telnet status.</li>
 </ul>

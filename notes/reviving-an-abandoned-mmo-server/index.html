@@ -35,7 +35,7 @@
 </header>
 <main id="main">
 <article>
-<header class="article-head">
+<header class="article-head article-head--focus-52">
   <picture><source srcset="/alatyr/assets/img/covers/reviving.webp" type="image/webp"><img src="/alatyr/assets/img/covers/reviving.jpg" alt="" width="1600" height="667"></picture>
   <div class="wrap">
     <div class="crumbs"><a href="/alatyr/#notes">Reviving L2JFree</a> · Part 1</div>
@@ -56,7 +56,7 @@
 <li><strong>Security of its time.</strong> The keys that the login handed to the world came from the fast game random generator, whose 48 bits of state can be recovered from a few outputs. The password check stopped at the length of the stored value, so an empty stored hash accepted any password.</li>
 <li><strong>An economy with holes.</strong> Item weight was summed in an <code>int</code>, so a big enough stack wrapped to a negative load. Trades and stores could move one side and fail the other.</li>
 </ul>
-<p>None of this is unusual. It is what a codebase looks like when nobody has been paid to say no to it for a decade.</p>
+<p>None of this is unusual. It is what a codebase looks like after a decade without a maintainer.</p>
 <h2>The rules I worked under</h2>
 <p>One maintainer and a public repository. That set three rules before any code changed.</p>
 <ol>
@@ -191,14 +191,14 @@
 <ol>
 <li><a href="/alatyr/notes/one-process-hard-boundaries/"><strong>One process, hard boundaries</strong></a>: two modules in one JVM that still cannot see each other.</li>
 <li><a href="/alatyr/notes/an-island-of-our-own/"><strong>An island of our own</strong></a>: how the server left an inherited world for one it wrote.</li>
-<li><strong>One save, one transaction</strong>: how a player and their items reach the database together or not at all.</li>
+<li><a href="/alatyr/notes/one-save-one-transaction/">One save, one transaction</a>: how one save became one transaction, and what a rollback has to put back.</li>
 <li><strong>Every merge is a release rehearsal</strong>: what the pipeline does to an image before it may be published.</li>
 <li><strong>Releases promote, never rebuild</strong>: why the release workflow has no build step.</li>
 <li><strong>Starting a Java 25 server</strong>: G1 against ZGC, with and without the AOT cache, measured in CI.</li>
 <li><strong>Old bugs, new invariants</strong>: the classes of defects a 2009 server carries, and the checks that keep them out.</li>
 </ol>
 <p>The code is at <a href="https://github.com/l2go/alatyr">github.com/l2go/alatyr</a>, under GPLv3.</p>
-<div class="aside"><strong>Update, 16 October 2026.</strong> Version 3.2.0 went a step past a revival: the server no longer ships the world it inherited, and it runs a small original one instead. That turn is part 3, <a href="/alatyr/notes/an-island-of-our-own/">An island of our own</a>.</div>
+<div class="aside"><strong>Update, 23 October 2026.</strong> Version 3.2.0 went a step past a revival: the server no longer ships the world it inherited, and it runs a small original one instead. That turn is part 3, <a href="/alatyr/notes/an-island-of-our-own/">An island of our own</a>. Since 3.2.1 the image is published for linux/arm64 as well as linux/amd64, and the project lives at <a href="https://github.com/l2go/alatyr">l2go/alatyr</a>.</div>
 </div>
 <nav class="series" aria-label="Series">
 <span></span>
