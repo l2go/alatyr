@@ -14,6 +14,13 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import static com.l2jfree.gameserver.network.bridge.BridgeField.number;
+import static com.l2jfree.gameserver.network.bridge.BridgeField.at;
+
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.gameobjects.L2Creature;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
@@ -28,8 +35,14 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  * 
  * @version $Revision: 1.1.2.1.2.3 $ $Date: 2005/03/27 15:29:57 $
  */
-public class ValidateLocation extends L2ServerPacket
+public class ValidateLocation extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		sink.emit(BridgeFact.of(4, number(64, _charObjId), at(13, _x, _y, _z)));
+	}
+
 	private static final String _S__76_SETTOLOCATION = "[S] 61 ValidateLocation";
 	private final int _charObjId;
 	private final int _x, _y, _z, _heading;

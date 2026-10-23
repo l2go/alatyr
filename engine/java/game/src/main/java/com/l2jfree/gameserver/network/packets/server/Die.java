@@ -14,6 +14,12 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import static com.l2jfree.gameserver.network.bridge.BridgeField.number;
+
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.Config;
 import com.l2jfree.gameserver.gameobjects.L2Attackable;
 import com.l2jfree.gameserver.gameobjects.L2Creature;
@@ -38,8 +44,14 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  * 
  * @version $Revision: 1.3.2.1.2.5 $ $Date: 2005/03/27 18:46:18 $
  */
-public class Die extends L2ServerPacket
+public class Die extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		sink.emit(BridgeFact.of(6, number(64, _charObjId)));
+	}
+
 	private static final String _S__00_DIE = "[S] 00 Die [dddddddd]";
 	public static final int FEATHER_OF_BLESSING_1 = 10649;
 	public static final int FEATHER_OF_BLESSING_2 = 13300;

@@ -14,6 +14,13 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import static com.l2jfree.gameserver.network.bridge.BridgeField.number;
+import static com.l2jfree.gameserver.network.bridge.BridgeField.flag;
+
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import org.apache.commons.lang3.ArrayUtils;
 
 import com.l2jfree.Config;
@@ -25,8 +32,22 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 /**
  * @author Forsaiken
  */
-public final class Attack extends L2ServerPacket
+public final class Attack extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, L2Player receiver)
+	{
+		if (_hits == null || _hits.length == 0)
+			throw new IllegalArgumentException("empty attack");
+		for (int i = 0; i < _hits.length; i++)
+		{
+			Hit hit = _hits[i];
+			sink.emit(BridgeFact.of(5, number(64, _attackerObjId),
+					number(65, i == 0 ? _targetObjId : hit._targetId), number(17, hit._damage),
+					flag(18, (hit._flags & HITFLAG_MISS) == 0)));
+		}
+	}
+
 	private static final String _S__06_ATTACK = "[S] 33 Attack";
 	
 	public static final int HITFLAG_USESS = 0x10;

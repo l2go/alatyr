@@ -14,10 +14,22 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import static com.l2jfree.gameserver.network.bridge.BridgeField.number;
+
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
-public class AutoAttackStop extends L2ServerPacket
+public class AutoAttackStop extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		sink.emit(BridgeFact.of(16, number(64, _targetObjId), number(27, sink.now())));
+	}
+
 	private static final String _S__26_AUTOATTACKSTOP = "[S] 26 AutoAttackStop [d]";
 	private final int _targetObjId;
 	

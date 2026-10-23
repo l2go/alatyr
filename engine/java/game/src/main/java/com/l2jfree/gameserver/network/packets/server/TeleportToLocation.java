@@ -14,6 +14,15 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import static com.l2jfree.gameserver.network.bridge.BridgeField.number;
+import static com.l2jfree.gameserver.network.bridge.BridgeField.at;
+import static com.l2jfree.gameserver.network.bridge.BridgeField.flag;
+
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+import com.l2jfree.gameserver.gameobjects.L2Player;
+
 import com.l2jfree.Config;
 import com.l2jfree.gameserver.gameobjects.L2Object;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
@@ -27,8 +36,34 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  *
  * @version $Revision: 1.3.2.1.2.3 $ $Date: 2005/03/27 15:29:39 $
  */
-public class TeleportToLocation extends L2ServerPacket
+public class TeleportToLocation extends L2ServerPacket implements SemanticPacket
 {
+	private final L2Player _bridgeRelocationOwner;
+	private final long _bridgeRelocationGeneration;
+
+	/** Captures the source call's generation before publication, never a later generation getter. */
+	public static TeleportToLocation forBridgeRelocation(L2Player owner, int x, int y, int z, int heading,
+			long generation)
+	{
+		if (owner == null || generation == 0)
+			throw new IllegalArgumentException("relocation source");
+		return new TeleportToLocation(owner, x, y, z, heading, owner, generation);
+	}
+
+	@Override
+	public void describe(FactSink sink, L2Player receiver)
+	{
+		if (receiver != null && receiver.getObjectId() == _targetObjId)
+		{
+			if (_bridgeRelocationOwner != receiver || _bridgeRelocationGeneration == 0)
+				throw new IllegalArgumentException("missing relocation source");
+			sink.emit(BridgeFact.of(4, number(64, _targetObjId), at(13, _x, _y, _z),
+					number(66, _bridgeRelocationGeneration), flag(67, true)));
+		}
+		else
+			sink.emit(BridgeFact.of(4, number(64, _targetObjId), at(13, _x, _y, _z)));
+	}
+
 	private static final String _S__38_TELEPORTTOLOCATION = "[S] 28 TeleportToLocation";
 	private final int _targetObjId;
 	private final int _x;
@@ -41,6 +76,13 @@ public class TeleportToLocation extends L2ServerPacket
 	 */
 	public TeleportToLocation(L2Object obj, int x, int y, int z, int heading)
 	{
+		this(obj, x, y, z, heading, null, 0);
+	}
+
+	private TeleportToLocation(L2Object obj, int x, int y, int z, int heading, L2Player owner, long generation)
+	{
+		_bridgeRelocationOwner = owner;
+		_bridgeRelocationGeneration = generation;
 		_targetObjId = obj.getObjectId();
 		_x = x;
 		_y = y;

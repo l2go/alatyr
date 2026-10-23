@@ -744,7 +744,7 @@ public abstract class L2Creature extends L2Object
 			if (!ownsBridgeTeleport(generation))
 				return;
 			
-			broadcastPacket(new TeleportToLocation(this, destX, destY, destZ, heading));
+			broadcastPacket(TeleportToLocation.forBridgeRelocation(player, destX, destY, destZ, heading, generation));
 			if (!ownsBridgeTeleport(generation))
 				return;
 			
