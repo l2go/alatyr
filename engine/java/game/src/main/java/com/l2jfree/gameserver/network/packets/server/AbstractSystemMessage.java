@@ -45,6 +45,11 @@ public abstract class AbstractSystemMessage<T extends AbstractSystemMessage> ext
 		protected abstract int getType();
 		
 		protected abstract void write2(AbstractSystemMessage sm);
+
+		protected com.l2jfree.gameserver.network.bridge.BridgeMessageArg describe()
+		{
+			throw new IllegalArgumentException("unsupported message element");
+		}
 	}
 	
 	private static final class TextElement extends Element
@@ -54,6 +59,12 @@ public abstract class AbstractSystemMessage<T extends AbstractSystemMessage> ext
 		private TextElement(String text)
 		{
 			_text = text;
+		}
+
+		@Override
+		protected com.l2jfree.gameserver.network.bridge.BridgeMessageArg describe()
+		{
+			return com.l2jfree.gameserver.network.bridge.BridgeMessageArg.text(_text);
 		}
 		
 		@Override
@@ -76,6 +87,15 @@ public abstract class AbstractSystemMessage<T extends AbstractSystemMessage> ext
 		private NumberElement(int number)
 		{
 			_number = number;
+		}
+
+		@Override
+		protected final com.l2jfree.gameserver.network.bridge.BridgeMessageArg describe()
+		{
+			if (getClass() != NumberElement.class && getClass() != FortElement.class
+					&& getClass() != NpcElement.class && getClass() != ItemElement.class)
+				throw new IllegalArgumentException("unsupported message element");
+			return com.l2jfree.gameserver.network.bridge.BridgeMessageArg.number(getType(), _number);
 		}
 		
 		@Override
@@ -141,6 +161,12 @@ public abstract class AbstractSystemMessage<T extends AbstractSystemMessage> ext
 		{
 			_number = number;
 		}
+
+		@Override
+		protected com.l2jfree.gameserver.network.bridge.BridgeMessageArg describe()
+		{
+			return com.l2jfree.gameserver.network.bridge.BridgeMessageArg.number(TYPE_ITEM_NUMBER, _number);
+		}
 		
 		@Override
 		protected int getType()
@@ -164,6 +190,13 @@ public abstract class AbstractSystemMessage<T extends AbstractSystemMessage> ext
 		{
 			_skillId = skillId;
 			_skillLvl = skillLvl;
+		}
+
+		@Override
+		protected com.l2jfree.gameserver.network.bridge.BridgeMessageArg describe()
+		{
+			return new com.l2jfree.gameserver.network.bridge.BridgeMessageArg(TYPE_SKILL_NAME, null,
+					_skillId, _skillLvl, 0);
 		}
 		
 		@Override
@@ -191,6 +224,12 @@ public abstract class AbstractSystemMessage<T extends AbstractSystemMessage> ext
 			_x = x;
 			_y = y;
 			_z = z;
+		}
+
+		@Override
+		protected com.l2jfree.gameserver.network.bridge.BridgeMessageArg describe()
+		{
+			return new com.l2jfree.gameserver.network.bridge.BridgeMessageArg(TYPE_ZONE_NAME, null, _x, _y, _z);
 		}
 		
 		@Override
@@ -227,6 +266,18 @@ public abstract class AbstractSystemMessage<T extends AbstractSystemMessage> ext
 	
 	protected final int _messageId;
 	protected Element[] _elements;
+
+	protected final java.util.List<com.l2jfree.gameserver.network.bridge.BridgeMessageArg> describeElements()
+	{
+		var arguments = new java.util.ArrayList<com.l2jfree.gameserver.network.bridge.BridgeMessageArg>();
+		for (Element element : _elements)
+		{
+			if (element == null)
+				throw new IllegalArgumentException("unprepared message element");
+			arguments.add(element.describe());
+		}
+		return java.util.List.copyOf(arguments);
+	}
 	
 	public AbstractSystemMessage(SystemMessageId messageId)
 	{

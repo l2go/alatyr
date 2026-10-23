@@ -15,7 +15,6 @@
 package com.l2jfree.gameserver.network.bridge;
 
 import java.util.ArrayList;
-import java.util.BitSet;
 import java.util.Collections;
 import java.util.List;
 
@@ -33,7 +32,7 @@ public final class Attempt
 	private final com.l2jfree.gameserver.network.L2Client _client;
 	private final int _classIndex;
 	private final ArrayList<BridgeEffect> _effects = new ArrayList<BridgeEffect>();
-	private final BitSet _refusals = new BitSet();
+	private final ArrayList<Integer> _refusals = new ArrayList<Integer>();
 	
 	private boolean _started;
 	private boolean _failed;
@@ -133,12 +132,24 @@ public final class Attempt
 			_incomplete = true;
 			return;
 		}
-		_refusals.set(systemMessageId);
+		if (_refusals.contains(systemMessageId))
+			return;
+		if (_refusals.size() >= MAX_EFFECTS)
+		{
+			_incomplete = true;
+			return;
+		}
+		_refusals.add(systemMessageId);
 	}
 	
 	public boolean hasRefusal(int systemMessageId)
 	{
-		return systemMessageId >= 0 && _refusals.get(systemMessageId);
+		return systemMessageId >= 0 && _refusals.contains(systemMessageId);
+	}
+
+	public List<Integer> refusals()
+	{
+		return List.copyOf(_refusals);
 	}
 	
 	public List<BridgeEffect> effects()
