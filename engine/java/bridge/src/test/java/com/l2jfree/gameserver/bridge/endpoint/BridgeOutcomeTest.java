@@ -13,6 +13,49 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeOutcomeTest
 {
 	@Test
+	void partialSalesAndPaidZeroRemainUnknown()
+	{
+		var player = BridgeTestPlayers.player();
+		Attempt attempt = new Attempt(player);
+		EffectLedger.open(attempt);
+		try
+		{
+			EffectLedger.record(player, BridgeEffect.item(1060, 70, -1));
+			assertThat(BridgeOutcome.match(attempt, 8, 1060, 70, 2)).isEqualTo(BridgeOutcome.UNKNOWN);
+			EffectLedger.record(player, BridgeEffect.coin(5));
+			assertThat(BridgeOutcome.match(attempt, 8, 1060, 70, 2)).isEqualTo(BridgeOutcome.UNKNOWN);
+			EffectLedger.record(player, BridgeEffect.item(1060, 70, -1));
+			assertThat(BridgeOutcome.match(attempt, 8, 1060, 70, 2)).isEqualTo(BridgeOutcome.DONE);
+		}
+		finally
+		{
+			EffectLedger.close();
+		}
+	}
+
+	@Test
+	void foreignOwnerAndOtherThreadCannotSupplyThePurchaseReceipt() throws Exception
+	{
+		var player = BridgeTestPlayers.player();
+		var other = BridgeTestPlayers.player();
+		Attempt attempt = new Attempt(player);
+		EffectLedger.open(attempt);
+		try
+		{
+			EffectLedger.record(other, BridgeEffect.item(1060, 70, 2));
+			Thread worker = new Thread(() -> EffectLedger.record(player, BridgeEffect.coin(-13)));
+			worker.start();
+			worker.join();
+			assertThat(attempt.effects()).isEmpty();
+			assertThat(BridgeOutcome.match(attempt, 7, 1060, 0, 2)).isEqualTo(BridgeOutcome.UNKNOWN);
+		}
+		finally
+		{
+			EffectLedger.close();
+		}
+	}
+
+	@Test
 	void learningRequiresTheSelectedCostAndRejectsExtraOrMissingReceipts()
 	{
 		L2Player player = BridgeTestPlayers.player();
