@@ -103,6 +103,8 @@ final class BridgeCommand
 					positive(intent, 64);
 				Value skill = required(intent, 18);
 				int id = skillNumber(skill, 1);
+				if (id > 32000)
+					throw new IllegalArgumentException("skill identifier");
 				int level = skillNumber(skill, 2);
 				if (verb == 13)
 					yield RequestAquireSkill.forBridge(id, level, integer(intent, 14));

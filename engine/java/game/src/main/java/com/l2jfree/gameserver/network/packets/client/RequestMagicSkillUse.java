@@ -33,7 +33,7 @@ public class RequestMagicSkillUse extends L2ClientPacket
 	/** Creates a direct cast; the caller validates the current skill level before execution. */
 	public static RequestMagicSkillUse forBridge(int skillId, boolean force)
 	{
-		if (skillId <= 0)
+		if (skillId <= 0 || skillId > 32000)
 			throw new IllegalArgumentException("skillId");
 		RequestMagicSkillUse packet = new RequestMagicSkillUse();
 		packet._skillId = skillId;

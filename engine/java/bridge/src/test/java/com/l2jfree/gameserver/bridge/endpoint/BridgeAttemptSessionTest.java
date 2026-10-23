@@ -23,6 +23,38 @@ import org.junit.jupiter.api.Test;
 class BridgeAttemptSessionTest
 {
 	@Test
+	void castRejectsAnOutOfProfileKnownSkillBeforeBinding()
+	{
+		var player = BridgeTestPlayers.player();
+		var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);
+		org.mockito.Mockito.when(client.getActiveChar()).thenReturn(player);
+		org.mockito.Mockito.when(player.getSkillLevel(32000)).thenReturn(1);
+		org.mockito.Mockito.when(player.getSkillLevel(32001)).thenReturn(1);
+		for (int id : new int[] { 32000, 32001 })
+		{
+			var intent = com.l2jfree.gameserver.bridge.wire.Envelope.of(
+					com.l2jfree.gameserver.bridge.wire.Schemas.INTENT, java.util.List.of(
+					com.l2jfree.gameserver.bridge.wire.Field.u(1, true, 1),
+					com.l2jfree.gameserver.bridge.wire.Field.u(2, true, 12),
+					com.l2jfree.gameserver.bridge.wire.Field.u(3, true, 1),
+					com.l2jfree.gameserver.bridge.wire.Field.s(64, true, 70),
+					com.l2jfree.gameserver.bridge.wire.Field.obj(18, true, java.util.List.of(
+							com.l2jfree.gameserver.bridge.wire.Field.s(1, true, id),
+							com.l2jfree.gameserver.bridge.wire.Field.s(2, true, 1)))));
+			if (id == 32000)
+				assertThat(BridgeCommand.packet(client, intent)).isNotNull();
+			else
+				org.assertj.core.api.Assertions.assertThatThrownBy(() -> BridgeCommand.packet(client, intent))
+						.isInstanceOf(IllegalArgumentException.class);
+		}
+		org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+				com.l2jfree.gameserver.network.packets.client.RequestMagicSkillUse.forBridge(32001, false))
+				.isInstanceOf(IllegalArgumentException.class);
+		org.mockito.Mockito.verify(client).getActiveChar();
+		org.mockito.Mockito.verifyNoMoreInteractions(client);
+	}
+
+	@Test
 	void expiredQueuedIntentRetainsThePairedReasonWithoutBuildingAPacket()
 	{
 		var player = BridgeTestPlayers.player();
