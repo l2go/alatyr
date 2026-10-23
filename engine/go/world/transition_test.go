@@ -13,6 +13,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
 
 type commitLog struct {
@@ -44,9 +46,14 @@ func (log *commitLog) reset() {
 
 func startObservedWorld(t *testing.T, log *commitLog) (*World, *testStore, context.Context) {
 	t.Helper()
+	return startObservedWorldWithCatalog(t, log, syntheticCatalog(t))
+}
+
+func startObservedWorldWithCatalog(t *testing.T, log *commitLog, cat *catalog.Catalog) (*World, *testStore, context.Context) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	store := &testStore{}
-	w := New(syntheticCatalog(t), store, WithCommits(log.observe), WithDurability(log.durable), WithRandomSource(rand.NewChaCha8([32]byte{1})))
+	w := New(cat, store, WithCommits(log.observe), WithDurability(log.durable), WithRandomSource(rand.NewChaCha8([32]byte{1})))
 	done := make(chan error, 1)
 	go func() { done <- w.Run(ctx) }()
 	t.Cleanup(func() {

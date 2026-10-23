@@ -187,10 +187,17 @@ func (w *World) skillReflect(s *state, sk catalog.Skill) {
 }
 func (w *World) onMagicFinalizer(s *state, p *player, env castEnv) {
 	s.setBool(p.ref(), PropertyCasting, &p.casting, false)
+	// An automatic continuation inherits the cast's authority. Cleanup must
+	// not renew it, but a separately queued command keeps its own authority.
+	if env.deadline != 0 && s.now() >= env.deadline || len(env.refs) == 0 || s.ref(env.skillTarget) != env.refs[0] {
+		w.haltIntention(s, p)
+		w.executeNextIntention(s, p)
+		return
+	}
 	n, ok := s.npcs[env.skillTarget]
 	if p.target == env.skillTarget && ok && len(env.refs) > 0 && n.ref() == env.refs[0] && !n.dead && n.mob() && p.ai.intention != intentMoveTo && (p.ai.next == nil || p.ai.next.intent == intentIdle) &&
 		(env.skill.CastRange < 200 || float64(p.attackRange()+200) > distance2D(p.pos, n.pos)) {
-		w.setIntention(s, p, order{intent: intentAttack, object: n.id})
+		w.setIntention(s, p, order{intent: intentAttack, object: n.id, cause: s.cause(), deadline: env.deadline, target: env.refs[0]})
 	}
 	w.clientStartAutoAttack(s, p)
 	w.executeNextIntention(s, p)
