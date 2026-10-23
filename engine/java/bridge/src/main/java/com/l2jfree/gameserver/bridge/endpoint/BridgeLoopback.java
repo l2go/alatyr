@@ -1032,6 +1032,20 @@ final class BridgeLoopback implements Runnable
 
 		void captureCheckpoint()
 		{
+			try
+			{
+				captureCheckpointChecked();
+			}
+			catch (RuntimeException failure)
+			{
+				// Encoding limits and sequence exhaustion are terminal, never a slow or falsely ready scene.
+				recovery.close();
+				client.requestBridgeDisconnect(com.l2jfree.gameserver.network.bridge.BridgeFailure.internal());
+			}
+		}
+
+		private void captureCheckpointChecked()
+		{
 			Transport current = transport;
 			if (id == 0 || current == null || current.lost || client.isBridgeDisconnectRequested())
 				return;
@@ -1074,6 +1088,19 @@ final class BridgeLoopback implements Runnable
 		}
 
 		void finishCheckpoint(Transport current, BridgeRecovery.Checkpoint expected)
+		{
+			try
+			{
+				finishCheckpointChecked(current, expected);
+			}
+			catch (RuntimeException failure)
+			{
+				recovery.close();
+				client.requestBridgeDisconnect(com.l2jfree.gameserver.network.bridge.BridgeFailure.internal());
+			}
+		}
+
+		private void finishCheckpointChecked(Transport current, BridgeRecovery.Checkpoint expected)
 		{
 			var player = client.getActiveChar();
 			if (player == null || current != transport)

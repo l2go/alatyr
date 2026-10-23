@@ -44,6 +44,23 @@ import io.netty.channel.embedded.EmbeddedChannel;
 class BridgeTransportRecoveryTest
 {
 	@Test
+	void aFailedCaptureClosesInternallyWithoutPublishingReady() throws Exception
+	{
+		try (Fixture fixture = new Fixture(19996))
+		{
+			fixture.seed();
+			doThrow(new IllegalArgumentException("capture capacity")).when(fixture.player).captureBridgeScene(any(Runnable.class));
+			fixture.client.submit(() -> fixture.owner.opened(BridgeFrames.accepted(fixture.id, 1)));
+			barrier(fixture.client);
+			barrier(fixture.client);
+			assertThat(fixture.client.isBridgeDisconnectRequested()).isTrue();
+			assertThat(fixture.first.checkpoint).isNull();
+			assertThat(fixture.first.attemptFence.ready).isFalse();
+			verify(fixture.player).store(true, true);
+		}
+	}
+
+	@Test
 	void anExplicitCloseOfARecoverySessionSavesInsteadOfEnteringGrace() throws Exception
 	{
 		try (Fixture fixture = new Fixture(19994))
