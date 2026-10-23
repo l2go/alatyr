@@ -3,6 +3,7 @@
 
 import argparse
 import codecs
+import json
 from pathlib import Path
 import re
 import subprocess
@@ -46,7 +47,7 @@ def check(root):
             continue
         for number, line in enumerate(content.splitlines(), 1):
             if FORBIDDEN.search(line):
-                safe_path = str(path).encode("ascii", errors="backslashreplace").decode("ascii")
+                safe_path = json.dumps(str(path), ensure_ascii=True)
                 print(f"{safe_path}:{number}: {MESSAGE}", file=sys.stderr)
                 rejected = True
     return not rejected
