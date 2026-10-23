@@ -524,6 +524,8 @@ final class BridgeLoopback implements Runnable
 				return;
 
 			transport.awaitingResult = true;
+			transport.attemptFence.closing = true;
+			transport.attemptFence.valid = false;
 			transport.resultDeadline = System.nanoTime() + RESULT_BUDGET_NS;
 		}
 	}
@@ -536,6 +538,8 @@ final class BridgeLoopback implements Runnable
 				return;
 
 			transport.terminal = true;
+			transport.attemptFence.closing = true;
+			transport.attemptFence.valid = false;
 			transport.awaitingResult = false;
 			transport.openingFacts.clear();
 			transport.openingFactBytes = 0;
@@ -766,7 +770,7 @@ final class BridgeLoopback implements Runnable
 		if (transport == null || transport.disconnectStarted)
 			return;
 		transport.disconnectStarted = true;
-		if (transport.session != null && !transport.terminal
+		if (transport.session != null && !transport.terminal && !transport.awaitingResult
 				&& !transport.client.isBridgeDisconnectRequested())
 		{
 			transport.session.detach(transport);
@@ -774,7 +778,11 @@ final class BridgeLoopback implements Runnable
 		}
 		L2Client client = transport.client;
 		if (client != null)
+		{
+			transport.attemptFence.closing = true;
+			transport.attemptFence.valid = false;
 			client.requestBridgeDisconnect();
+		}
 	}
 
 	/** Only queue operations occur under this monitor; relocation checks are queued after it is released. */
@@ -985,6 +993,8 @@ final class BridgeLoopback implements Runnable
 			BridgeRecovery.Resume decision;
 			synchronized (this)
 			{
+				if (transport != null && (transport.terminal || transport.awaitingResult))
+					recovery.close();
 				decision = recovery.resume(replacement, epoch);
 				if (decision == BridgeRecovery.Resume.ACCEPTED)
 				{

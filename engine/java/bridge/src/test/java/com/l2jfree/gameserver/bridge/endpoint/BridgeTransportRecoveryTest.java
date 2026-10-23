@@ -44,6 +44,28 @@ import io.netty.channel.embedded.EmbeddedChannel;
 class BridgeTransportRecoveryTest
 {
 	@Test
+	void anExplicitCloseOfARecoverySessionSavesInsteadOfEnteringGrace() throws Exception
+	{
+		try (Fixture fixture = new Fixture(19994))
+		{
+			fixture.open();
+			fixture.first.dialogue.accept(List.of(resume(fixture.id, 1)));
+			var close = Envelope.of(Schemas.CLOSE, List.of(Field.u(1, true, fixture.id), Field.u(2, true, 1), Field.u(3, true, 0)));
+			fixture.loop.acceptFrame(fixture.first, List.of(close));
+			fixture.loop.acceptFrame(fixture.first, List.of(close));
+			barrier(fixture.client);
+			assertThat(fixture.client.isBridgeDisconnectRequested()).isTrue();
+			assertThat(fixture.first.attemptFence.closing).isTrue();
+			verify(fixture.player).store(true, true);
+			var replacement = new BridgeLoopback.Transport(new byte[32]);
+			fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+			barrier(fixture.client);
+			assertThat(replacement.client).isNull();
+			assertThat(fixture.drain(replacement)).noneMatch(record -> record.type() == Schemas.CHECKPOINT);
+		}
+	}
+
+	@Test
 	void aTeleportInsideTheActualEnterWorldDefersOpenedUntilTheQueuedCompletion() throws Exception
 	{
 		try (Fixture fixture = new Fixture(19992))
