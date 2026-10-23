@@ -137,6 +137,8 @@ class BridgeDescribeLifecycleTest
 			assertThat(transport.terminal).isFalse();
 			assertThat(transport.closing).isFalse();
 			sink.disconnect(com.l2jfree.gameserver.network.bridge.BridgeFailure.normal());
+			loop.serviceControl(transport);
+			BridgeLoopback.applyOutputFlags(transport);
 			assertThat(transport.queued).hasSize(2);
 			assertThat(transport.terminal).isTrue();
 		}

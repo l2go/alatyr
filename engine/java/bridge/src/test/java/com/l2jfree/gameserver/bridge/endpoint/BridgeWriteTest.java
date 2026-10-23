@@ -71,6 +71,8 @@ class BridgeWriteTest
 		Transport transport = new Transport(SECRET);
 		BridgeLoopback.offer(transport, new byte[BridgeLoopback.OUT_QUEUE_BYTES - bye.length - 1]);
 		BridgeLoopback.offer(transport, new byte[8]);
+		assertThat(transport.slowRequested).isTrue();
+		BridgeLoopback.applyUnboundControl(transport);
 		
 		assertThat(transport.closing).isTrue();
 		assertThat(transport.queued).hasSize(2);
@@ -124,5 +126,41 @@ class BridgeWriteTest
 		assertThat(transport.afterCheckpoint).isEmpty();
 		BridgeLoopback.applyOutputFlags(transport);
 		assertThat(transport.held).isEqualTo(2);
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(ints = { 0, 1, 2 })
+	void anOrdinaryFrameWriteHasOneNonRenewableFiveSecondDeadline(int shortWrite) throws Exception
+	{
+		Transport transport = new Transport(SECRET);
+		transport.opened = true;
+		BridgeLoopback.offer(transport, new byte[] { 1, 2, 3, 4, 5 });
+		var socket = mock(java.nio.channels.SocketChannel.class);
+		when(socket.write(any(ByteBuffer.class))).thenReturn(shortWrite);
+		BridgeLoopback.flush(transport, socket);
+		long deadline = transport.writeDeadline;
+		assertThat(deadline).isNotZero();
+		assertThat(BridgeLoopback.FRAME_WRITE_NS).isEqualTo(5_000_000_000L);
+		BridgeLoopback.flush(transport, socket);
+		assertThat(transport.writeDeadline).isEqualTo(deadline);
+		BridgeLoopback.expire(transport, deadline - 1);
+		assertThat(transport.lost).isFalse();
+		BridgeLoopback.expire(transport, deadline);
+		assertThat(transport.lost).isTrue();
+		assertThat(transport.retire).isTrue();
+		assertThat(transport.held).isGreaterThanOrEqualTo(0);
+	}
+
+	@Test
+	void completingAFrameReleasesItsDeadlineAndItsExactBudget() throws Exception
+	{
+		Transport transport = new Transport(SECRET);
+		BridgeLoopback.offer(transport, new byte[7]);
+		var socket = mock(java.nio.channels.SocketChannel.class);
+		when(socket.write(any(ByteBuffer.class))).thenAnswer(call -> ((ByteBuffer)call.getArgument(0)).remaining());
+		assertThat(BridgeLoopback.flush(transport, socket)).isEqualTo(7);
+		assertThat(transport.writeDeadline).isZero();
+		assertThat(transport.held).isZero();
+		assertThat(transport.writing).isNull();
 	}
 }

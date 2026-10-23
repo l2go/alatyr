@@ -52,6 +52,7 @@ final class BridgeLoopback implements Runnable
 	static final int OUT_QUEUE_BYTES = 262144;
 	static final long BYE_CLOSE_NS = 100_000_000L;
 	static final long FRAME_READ_NS = 5_000_000_000L;
+	static final long FRAME_WRITE_NS = 5_000_000_000L;
 	static final long OPENING_NS = 10_000_000_000L;
 	/** How long a bound close waits for the disconnect save before the bye is internal. */
 	static final long RESULT_BUDGET_NS = 30_000_000_000L;
@@ -69,6 +70,8 @@ final class BridgeLoopback implements Runnable
 	private volatile Consumer<L2Client> beforeWatch;
 	private volatile int transports;
 	private volatile boolean stopping;
+	private volatile Consumer<Transport> afterResumeGuard;
+	private volatile long shutdownDeadline;
 
 	private BridgeLoopback(BridgeSettings settings, GameServerContext context, ServerSocketChannel server,
 			Selector selector)
@@ -156,30 +159,111 @@ final class BridgeLoopback implements Runnable
 	@Override
 	public void run()
 	{
-		while (!stopping)
+		try
 		{
-			try
+			while (!stopping)
 			{
-				selector.select(nextWaitMs());
-				reapClients();
-				for (SelectionKey key : selector.keys())
+				try
 				{
-					if (key.attachment() instanceof Transport)
-						expire((Transport) key.attachment());
+					selector.select(nextWaitMs());
+					reapClients();
+					for (SelectionKey key : selector.keys())
+					{
+						if (key.attachment() instanceof Transport)
+						serviceControl((Transport) key.attachment());
+					}
+					flushAll();
+					Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
+					while (keys.hasNext())
+					{
+						SelectionKey key = keys.next();
+						keys.remove();
+						serve(key);
+					}
 				}
-				flushAll();
-				Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
-				while (keys.hasNext())
+				catch (IOException e)
 				{
-					SelectionKey key = keys.next();
-					keys.remove();
-					serve(key);
+					if (!stopping)
+						stopping = true;
 				}
 			}
-			catch (IOException e)
+		}
+		finally
+		{
+			// Selector.close cancels keys, but does not close their channels.
+			for (SelectionKey key : List.copyOf(selector.keys()))
+				if (key.attachment() instanceof Transport)
+					drop(key);
+		}
+	}
+
+	/** Test-only gate inside the Session transaction, after the replacement guard. */
+	void holdAfterResumeGuard(Consumer<Transport> gate)
+	{
+		afterResumeGuard = gate;
+	}
+
+	/** Selector control work is never entered from a sink callback or with a transport monitor held. */
+	void serviceControl(Transport source)
+	{
+		Session owner = source.resumeOwner != null ? source.resumeOwner : source.session;
+		if (!admitting && owner == null)
+		{
+			loseTransport(source);
+			synchronized (source) { source.retire = true; armClose(source); }
+		}
+		if (owner != null)
+			owner.serviceCloseResult();
+		expire(source);
+		boolean cancel;
+		synchronized (source) { cancel = source.cancelRecords != null || source.slowRequested; }
+		if (cancel)
+			cancelTransport(source);
+		if (source.lost || source.terminal)
+			disconnectBound(source);
+	}
+
+	private static Session ownerOf(Transport source)
+	{
+		return source.resumeOwner != null ? source.resumeOwner : source.session;
+	}
+
+	/** Owner publication and unbound cancellation meet under M; bound cancellation always enters Q first. */
+	private static void cancelTransport(Transport source)
+	{
+		while (true)
+		{
+			Session owner = ownerOf(source);
+			if (owner != null)
 			{
-				if (!stopping)
-					stopping = true;
+				synchronized (owner) { applyCancellation(source); }
+				return;
+			}
+			synchronized (source)
+			{
+				if (ownerOf(source) == null)
+				{
+					applyCancellation(source);
+					return;
+				}
+			}
+		}
+	}
+
+	private static void applyCancellation(Transport source)
+	{
+		synchronized (source)
+		{
+			if (source.cancelRecords != null)
+			{
+				List<Envelope> records = source.cancelRecords;
+				source.cancelRecords = null;
+				claimTerminal(source, records);
+			}
+			if (source.slowRequested)
+			{
+				source.slowRequested = false;
+				claimSlow(source);
 			}
 		}
 	}
@@ -244,7 +328,6 @@ final class BridgeLoopback implements Runnable
 			}
 			if (transports >= TRANSPORT_CAP)
 			{
-				socket.configureBlocking(true);
 				writeAll(socket, fullBye);
 				socket.close();
 				return;
@@ -278,12 +361,13 @@ final class BridgeLoopback implements Runnable
 		int n = socket.read(transport.input);
 		if (n < 0)
 		{
+			loseTransport(transport);
 			disconnectBound(transport);
 			drop(key);
 			return;
 		}
 		if (n > 0 && transport.pending.size() == 0)
-			transport.readDeadline = System.nanoTime() + FRAME_READ_NS;
+			synchronized (transport) { transport.readDeadline = System.nanoTime() + FRAME_READ_NS; }
 		transport.input.flip();
 		byte[] got = new byte[transport.input.remaining()];
 		transport.input.get(got);
@@ -342,7 +426,14 @@ final class BridgeLoopback implements Runnable
 		{
 			long id = reply.resume.field(1).value().u();
 			long epoch = reply.resume.field(2).value().u();
-			if (transport.session != null && transport.session.id != id)
+			if (transport.client != null && epoch != transport.epoch)
+			{
+				finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
+				disconnectBound(transport);
+				return;
+			}
+			if (transport.session != null && transport.session.id != id
+					|| transport.resumeOwner != null && transport.resumeOwner.id != id)
 			{
 				finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
 				return;
@@ -353,8 +444,8 @@ final class BridgeLoopback implements Runnable
 				finishTerminal(transport, List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_CLOSED)));
 			else
 			{
-				owner.notePendingResume(transport, id, epoch);
-				client.submit(() -> owner.resume(transport, id, epoch));
+				if (owner.notePendingResume(transport, id, epoch))
+					client.submit(() -> owner.resume(transport, id, epoch));
 			}
 			selector.wakeup();
 			return;
@@ -378,7 +469,10 @@ final class BridgeLoopback implements Runnable
 				transport.resumeOwner.closeResumingTransport(transport, records.get(0));
 			else if (reply.waitForDisconnect && transport.client != null)
 			{
-				armResultWait(transport);
+				if (transport.session != null)
+					transport.session.registerClose(transport);
+				else
+					armResultWait(transport);
 				disconnectBound(transport);
 			}
 			else if (!reply.records.isEmpty())
@@ -472,8 +566,7 @@ final class BridgeLoopback implements Runnable
 				if (transport.holdOpeningFacts
 						&& records.stream().allMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.FACT))
 				{
-					expire(transport);
-					if (transport.terminal || transport.closing)
+					if (transport.terminal || transport.closing || transport.cancelRecords != null || transport.slowRequested)
 						return;
 					byte[] bytes = frame(records);
 					if (bytes.length > OUT_QUEUE_BYTES - transport.openingFactBytes)
@@ -509,19 +602,59 @@ final class BridgeLoopback implements Runnable
 
 	static void expire(Transport transport, long now)
 	{
+		while (true)
+		{
+			Session owner = ownerOf(transport);
+			if (owner != null)
+			{
+				synchronized (owner) { expireLocked(transport, now, owner); }
+				return;
+			}
+			synchronized (transport)
+			{
+				if (ownerOf(transport) == null)
+				{
+					expireLocked(transport, now, null);
+					return;
+				}
+			}
+		}
+	}
+
+	private static void expireLocked(Transport transport, long now, Session owner)
+	{
+		boolean resultTimeout = false;
 		synchronized (transport)
 		{
-			if (resultExpired(transport, now))
-				finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)));
+			if (resultExpired(transport, now) || transport.awaitingResult && transport.writeDeadline != 0
+					&& now >= transport.writeDeadline)
+				resultTimeout = true;
+			else if (transport.awaitingResult && !transport.closing && transport.readDeadline != 0
+					&& now >= transport.readDeadline)
+				claimTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
+			else if (!transport.closing && transport.writeDeadline != 0 && now >= transport.writeDeadline)
+			{
+				transport.lost = true;
+				transport.attemptFence.valid = false;
+				transport.retire = true;
+				armClose(transport);
+			}
 			else if (!transport.closing && !transport.terminal && !transport.awaitingResult)
 			{
 				if (transport.checkpointDeadline != 0 && now - transport.checkpointDeadline >= 0)
-					failSlow(transport);
+					claimSlow(transport);
 				else if (transport.readDeadline != 0 && now - transport.readDeadline >= 0)
-					finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
+					claimTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
 				else if (!transport.opened && now - transport.openingDeadline >= 0)
-					finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)));
+					claimTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)));
 			}
+		}
+		if (resultTimeout)
+		{
+			if (owner != null)
+				owner.completeCloseResult(List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)));
+			else
+				claimTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)));
 		}
 	}
 
@@ -548,6 +681,34 @@ final class BridgeLoopback implements Runnable
 
 	private static void finishTerminal(Transport transport, List<Envelope> records)
 	{
+		// Producers can hold sink -> transport. They publish a request, never enter Session.
+		if (Thread.holdsLock(transport))
+		{
+			if (!transport.terminal && !transport.closing && transport.cancelRecords == null && !transport.slowRequested)
+				transport.cancelRecords = List.copyOf(records);
+			return;
+		}
+		while (true)
+		{
+			Session owner = ownerOf(transport);
+			if (owner != null)
+			{
+				synchronized (owner) { claimTerminal(transport, records); }
+				return;
+			}
+			synchronized (transport)
+			{
+				if (ownerOf(transport) == null)
+				{
+					claimTerminal(transport, records);
+					return;
+				}
+			}
+		}
+	}
+
+	private static void claimTerminal(Transport transport, List<Envelope> records)
+	{
 		synchronized (transport)
 		{
 			if (transport.terminal || transport.closing)
@@ -557,9 +718,7 @@ final class BridgeLoopback implements Runnable
 			transport.attemptFence.closing = true;
 			transport.attemptFence.valid = false;
 			transport.awaitingResult = false;
-			transport.openingFacts.clear();
-			transport.openingFactBytes = 0;
-			offer(transport, frame(records));
+			transport.terminalReply = frame(records);
 			armClose(transport);
 		}
 	}
@@ -571,8 +730,7 @@ final class BridgeLoopback implements Runnable
 
 		synchronized (transport)
 		{
-			expire(transport);
-			if (transport.terminal || transport.closing)
+			if (transport.terminal || transport.closing || transport.cancelRecords != null || transport.slowRequested)
 				return;
 			for (Envelope record : records)
 			{
@@ -620,20 +778,30 @@ final class BridgeLoopback implements Runnable
 
 		synchronized (transport)
 		{
-			if (transport.closing || transport.lost)
+			if (transport.closing || transport.lost || transport.cancelRecords != null || transport.slowRequested)
 				return;
 			if (transport.held + bytes.length > OUT_QUEUE_BYTES)
 			{
 				failSlow(transport);
 				return;
 			}
-			transport.queued.add(bytes);
+			if (transport.releaseAfterCheckpoint)
+				transport.afterCheckpoint.add(bytes);
+			else
+				transport.queued.add(bytes);
 			transport.held += bytes.length;
 		}
 	}
 
 	private static void failSlow(Transport transport)
 	{
+		transport.slowRequested = true;
+	}
+
+	private static void claimSlow(Transport transport)
+	{
+		if (transport.terminal || transport.closing)
+			return;
 		transport.lost = transport.session != null;
 		if (transport.lost)
 			transport.attemptFence.valid = false;
@@ -692,7 +860,13 @@ final class BridgeLoopback implements Runnable
 					if (transport.checkpointDeadline != 0)
 						deadline = deadline == 0 ? transport.checkpointDeadline : Math.min(deadline, transport.checkpointDeadline);
 				}
+				if (transport.writeDeadline != 0)
+					deadline = deadline == 0 ? transport.writeDeadline : Math.min(deadline, transport.writeDeadline);
+				if (!transport.closing && transport.readDeadline != 0)
+					deadline = deadline == 0 ? transport.readDeadline : Math.min(deadline, transport.readDeadline);
 			}
+			if (shutdownDeadline != 0)
+				deadline = deadline == 0 ? shutdownDeadline : Math.min(deadline, shutdownDeadline);
 			wait = Math.min(wait, selectTimeout(now, deadline));
 		}
 		return wait;
@@ -728,8 +902,12 @@ final class BridgeLoopback implements Runnable
 			return;
 
 		Transport transport = (Transport) key.attachment();
+		serviceControl(transport);
 		pumpCheckpoint(transport);
 		flush(transport, (SocketChannel) key.channel());
+		Session owner = transport.resumeOwner != null ? transport.resumeOwner : transport.session;
+		if (owner != null)
+			owner.serviceCloseResult();
 		boolean close;
 		synchronized (transport)
 		{
@@ -761,6 +939,7 @@ final class BridgeLoopback implements Runnable
 				{
 					transport.writing = transport.queued.poll();
 					transport.writingAt = 0;
+					transport.writeDeadline = transport.writing == null ? 0 : System.nanoTime() + FRAME_WRITE_NS;
 				}
 				if (transport.writing == null)
 					return written;
@@ -779,11 +958,14 @@ final class BridgeLoopback implements Runnable
 				if (n > 0)
 				{
 					transport.writingAt += n;
-					transport.held = Math.max(0, transport.held - n);
+					transport.held -= n;
+					if (writing == transport.saveReplyFrame)
+						transport.saveReplyStarted = true;
 				}
 				if (n <= 0 || transport.writingAt < transport.writing.length)
 					return written;
 				transport.writing = null;
+				transport.writeDeadline = 0;
 			}
 		}
 	}
@@ -795,18 +977,24 @@ final class BridgeLoopback implements Runnable
 		{
 			while (transport.discardAfterCheckpointCount > 0 && !transport.afterCheckpoint.isEmpty())
 			{
-				transport.held = Math.max(0, transport.held - transport.afterCheckpoint.remove().length);
+				transport.held -= transport.afterCheckpoint.remove().length;
 				transport.discardAfterCheckpointCount--;
 			}
 			transport.discardAfterCheckpointCount = 0;
+			if (transport.releaseAfterCheckpoint)
+			{
+				while (!transport.afterCheckpoint.isEmpty())
+					transport.queued.add(transport.afterCheckpoint.remove());
+				transport.releaseAfterCheckpoint = false;
+			}
 			if (transport.retire)
 			{
 				if (transport.checkpoint != null) transport.checkpoint.cancel();
 				transport.checkpoint = null;
 				while (!transport.queued.isEmpty())
-					transport.held = Math.max(0, transport.held - transport.queued.remove().length);
+					transport.held -= transport.queued.remove().length;
 				while (!transport.afterCheckpoint.isEmpty())
-					transport.held = Math.max(0, transport.held - transport.afterCheckpoint.remove().length);
+					transport.held -= transport.afterCheckpoint.remove().length;
 				transport.openingFacts.clear();
 				transport.openingFactBytes = 0;
 				transport.terminalReply = null;
@@ -820,7 +1008,7 @@ final class BridgeLoopback implements Runnable
 				if (!transport.lost)
 				{
 					if (reply.length > OUT_QUEUE_BYTES - transport.held)
-						failSlow(transport);
+						transport.slowRequested = true;
 					else
 					{
 						transport.queued.add(reply);
@@ -831,22 +1019,13 @@ final class BridgeLoopback implements Runnable
 		}
 	}
 
-	/** Producer-side claim; the selector alone materializes this terminal reply in queued/held. */
-	private static void requestCloseResult(Transport transport, List<Envelope> records)
+	/** Test seam for the selector's request drain, without acquiring another monitor. */
+	static void applyUnboundControl(Transport transport)
 	{
-		synchronized (transport)
-		{
-			if (transport.terminal || transport.closing)
-				return;
-			if (resultExpired(transport, System.nanoTime()))
-				records = List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL));
-			transport.terminalReply = frame(records);
-			transport.terminal = true;
-			transport.awaitingResult = false;
-			transport.attemptFence.closing = true;
-			transport.attemptFence.valid = false;
-			armClose(transport);
-		}
+		if (transport.resumeOwner != null || transport.session != null)
+			throw new IllegalArgumentException("Bound cancellation requires the Session transaction");
+		applyCancellation(transport);
+		applyOutputFlags(transport);
 	}
 
 	private void disconnectBound(Transport transport)
@@ -855,7 +1034,7 @@ final class BridgeLoopback implements Runnable
 			return;
 		// An authenticated pending Resume has an owner, but no client binding or attempt table yet.
 		// Cancel under that owner's transition monitor so adoption and EOF have one order.
-		Session owner = transport.resumeOwner;
+		Session owner = transport.resumeOwner != null ? transport.resumeOwner : transport.session;
 		if (owner != null)
 		{
 			synchronized (owner)
@@ -866,6 +1045,9 @@ final class BridgeLoopback implements Runnable
 		}
 		else if (!invalidateDisconnectedTransport(transport))
 			return;
+		if (transport.session != null && transport.session.transport != transport
+				&& !transport.awaitingResult && !transport.explicitClose)
+			return; // Retired transports cannot disconnect a newer binding, or cancel its grace.
 		if (transport.session != null && !transport.terminal && !transport.awaitingResult
 				&& !transport.client.isBridgeDisconnectRequested())
 		{
@@ -881,6 +1063,28 @@ final class BridgeLoopback implements Runnable
 		}
 	}
 
+	private static void loseTransport(Transport source)
+	{
+		while (true)
+		{
+			Session owner = ownerOf(source);
+			if (owner != null)
+			{
+				synchronized (owner) { synchronized (source) { source.lost = true; source.attemptFence.valid = false; } }
+				return;
+			}
+			synchronized (source)
+			{
+				if (ownerOf(source) == null)
+				{
+					source.lost = true;
+					source.attemptFence.valid = false;
+					return;
+				}
+			}
+		}
+	}
+
 	private static boolean invalidateDisconnectedTransport(Transport transport)
 	{
 		synchronized (transport)
@@ -890,7 +1094,7 @@ final class BridgeLoopback implements Runnable
 			transport.disconnectStarted = true;
 			// A bound explicit Close retains its writable transport for the save-produced Bye.
 			// Pending sockets and accidental losses have no such result-wait obligation.
-			if (transport.client == null || !transport.awaitingResult)
+			if (!transport.terminal && (transport.client == null || !transport.awaitingResult))
 				transport.lost = true;
 			transport.attemptFence.valid = false;
 			return true;
@@ -947,6 +1151,11 @@ final class BridgeLoopback implements Runnable
 		volatile Transport transport;
 		// A pending Close can receive only the save outcome, without becoming the session transport.
 		volatile Transport closeReplyTransport;
+		final java.util.concurrent.atomic.AtomicReference<List<Envelope>> saveNotification = new java.util.concurrent.atomic.AtomicReference<>();
+		List<Envelope> closeOutcome;
+		long saveDeadline;
+		long outcomeCloseDeadline;
+		Transport outcomeRecipient;
 		final java.util.Set<Transport> sessionTransports = java.util.concurrent.ConcurrentHashMap.newKeySet();
 		final BridgeRecovery recovery;
 		final BridgeSink sink;
@@ -1005,7 +1214,7 @@ final class BridgeLoopback implements Runnable
 				return;
 			synchronized (current)
 			{
-				if (!terminal && (current.lost || current.closing))
+				if (!terminal && (current.lost || current.closing || current.cancelRecords != null || current.slowRequested))
 					return;
 				boolean relocation = records.stream().anyMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.FACT
 						&& record.field(67) != null && record.field(67).value().u() == 1);
@@ -1030,8 +1239,7 @@ final class BridgeLoopback implements Runnable
 						current.reuseCheckpointBegin = began;
 						return;
 					}
-					while (!current.afterCheckpoint.isEmpty())
-						current.queued.add(current.afterCheckpoint.remove());
+					current.releaseAfterCheckpoint = true;
 					if (began)
 					{
 						offer(current, frame(records));
@@ -1064,34 +1272,111 @@ final class BridgeLoopback implements Runnable
 			fromSink(current, records);
 		}
 
-		/** Sink callback: only one transport monitor at a time, never the Session transition monitor. */
+		/** Sink callback publishes immutable control work. It must never acquire Session under sink. */
 		private void publishCloseResult(Transport reply, List<Envelope> records)
 		{
-			Transport recipient = reply;
-			long deadline;
-			synchronized (reply)
+			saveNotification.compareAndSet(null, List.copyOf(records));
+			selector.wakeup();
+		}
+
+		void registerClose(Transport source)
+		{
+			synchronized (this)
 			{
-				deadline = reply.resultDeadline;
-				if (reply.lost)
-					recipient = transport;
-				else
-					requestCloseResult(reply, records);
-			}
-			if (recipient != null && recipient != reply)
-			{
-				synchronized (recipient)
+				armResultWait(source);
+				synchronized (source)
 				{
-					if (recipient.lost)
-						recipient = null;
-					else
+					if (saveDeadline == 0) saveDeadline = source.resultDeadline;
+					source.resultDeadline = saveDeadline;
+				}
+				closeReplyTransport = source;
+			}
+		}
+
+		/** Selector control work, outside sink. Deadline and save compete for one immutable outcome. */
+		void serviceCloseResult()
+		{
+			synchronized (this)
+			{
+				List<Envelope> notification = saveNotification.getAndSet(null);
+				if (notification != null)
+				{
+					Transport preferred = closeReplyTransport;
+					boolean expired;
+					synchronized (preferred) { expired = resultExpired(preferred, System.nanoTime()); }
+					completeCloseResult(expired ? List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)) : notification);
+				}
+				if (closeOutcome == null)
+					return;
+				if (outcomeRecipient != null)
+				{
+					boolean started;
+					synchronized (outcomeRecipient)
 					{
-						armResultWait(recipient);
-						recipient.resultDeadline = deadline;
-						requestCloseResult(recipient, records);
+						started = outcomeRecipient.saveReplyStarted;
+						if (!outcomeRecipient.lost && !outcomeRecipient.saveReplyStarted)
+							return;
+					}
+					if (started)
+					{
+						retireOtherTransports(outcomeRecipient);
+						return;
 					}
 				}
+				outcomeRecipient = null;
+				selectCloseRecipient();
 			}
-			// LocalChannel closure does not close listener sockets. Retire every non-recipient explicitly.
+		}
+
+		void completeCloseResult(List<Envelope> records)
+		{
+			synchronized (this)
+			{
+				if (closeOutcome != null)
+					return;
+				closeOutcome = List.copyOf(records);
+				selectCloseRecipient();
+			}
+		}
+
+		private boolean claimSaveRecipient(Transport candidate)
+		{
+			if (candidate == null || !sessionTransports.contains(candidate))
+				return false;
+			synchronized (candidate)
+			{
+				if (candidate.physicallyClosed || candidate.lost || candidate.retire || candidate.terminal || candidate.closing
+						|| candidate.cancelRecords != null || candidate.slowRequested
+						|| !candidate.awaitingResult && candidate != transport)
+					return false;
+				armResultWait(candidate);
+				// The session has already arbitrated its deadline. Never reinterpret the outcome here.
+				candidate.terminalReply = frame(closeOutcome);
+				candidate.saveReplyFrame = candidate.terminalReply;
+				candidate.terminal = true;
+				candidate.awaitingResult = false;
+				candidate.attemptFence.closing = true;
+				candidate.attemptFence.valid = false;
+				if (outcomeCloseDeadline == 0) outcomeCloseDeadline = System.nanoTime() + BYE_CLOSE_NS;
+				armClose(candidate);
+				candidate.closeDeadline = outcomeCloseDeadline;
+				outcomeRecipient = candidate;
+				return true;
+			}
+		}
+
+		private void selectCloseRecipient()
+		{
+			if (claimSaveRecipient(closeReplyTransport) || claimSaveRecipient(transport))
+				return;
+			for (Transport candidate : sessionTransports)
+				if (claimSaveRecipient(candidate))
+					return;
+			retireOtherTransports(null);
+		}
+
+		private void retireOtherTransports(Transport recipient)
+		{
 			for (Transport other : sessionTransports)
 			{
 				if (other == recipient)
@@ -1107,7 +1392,6 @@ final class BridgeLoopback implements Runnable
 					armClose(other);
 				}
 			}
-			selector.wakeup();
 		}
 
 		void publishResult(byte[] result)
@@ -1120,18 +1404,18 @@ final class BridgeLoopback implements Runnable
 			long generation;
 			boolean fullDisconnect;
 			boolean initialOpening;
-			synchronized (source)
-			{
-				initialOpening = source.epoch == 1 && !source.opened;
-				source.lost = true;
-				source.attemptFence.valid = false;
-				source.retire = true;
-				armClose(source);
-					source.checkpointDeadline = 0;
-			}
 			// Serialize the state, binding and admission changes with Resume. No source/model callback runs here.
 			synchronized (this)
 			{
+				synchronized (source)
+				{
+					initialOpening = source.epoch == 1 && !source.opened;
+					source.lost = true;
+					source.attemptFence.valid = false;
+					source.retire = true;
+					armClose(source);
+					source.checkpointDeadline = 0;
+				}
 				if (transport == source && initialOpening)
 				{
 					recovery.close();
@@ -1154,7 +1438,9 @@ final class BridgeLoopback implements Runnable
 			}
 			com.l2jfree.gameserver.ThreadPoolManager.getInstance().scheduleGeneral(() -> client.submit(() ->
 			{
-				if (recovery.expireGrace(generation))
+				boolean expired;
+				synchronized (this) { expired = recovery.expireGrace(generation); }
+				if (expired)
 					client.requestBridgeDisconnect();
 			}), settings.graceMs());
 		}
@@ -1183,20 +1469,31 @@ final class BridgeLoopback implements Runnable
 					source.explicitClose = true;
 					bound = source.client;
 					armResultWait(source);
-					if (bound == null)
-						closeReplyTransport = source;
+					if (saveDeadline == 0) saveDeadline = source.resultDeadline;
+					source.resultDeadline = saveDeadline;
+					closeReplyTransport = source;
+				}
+				if (transport != null && transport != source)
+				{
+					armResultWait(transport);
+					synchronized (transport) { transport.resultDeadline = saveDeadline; }
 				}
 			}
+			// No submit under Session. The pending Resume is already ahead of this full task in FIFO.
+			client.requestBridgeDisconnect();
 			if (bound != null)
 				disconnectBound(source);
 		}
 
-		void notePendingResume(Transport replacement, long session, long epoch)
+		boolean notePendingResume(Transport replacement, long session, long epoch)
 		{
 			synchronized (this)
 			{
 				synchronized (replacement)
 				{
+					if (replacement.lost || replacement.closing || replacement.terminal || replacement.disconnectStarted
+							|| replacement.cancelRecords != null || replacement.slowRequested)
+						return false;
 					if (replacement.resumeOwner != null && replacement.resumeOwner != this)
 						throw WireException.frame();
 					if (replacement.resumeOwner == null)
@@ -1207,16 +1504,12 @@ final class BridgeLoopback implements Runnable
 					}
 				}
 				sessionTransports.add(replacement);
+				return true;
 			}
 		}
 
 		void resume(Transport replacement, long session, long epoch)
 		{
-			if (session != id || client.isBridgeDisconnectRequested())
-			{
-				finishTerminal(replacement, List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_CLOSED)));
-				return;
-			}
 			BridgeRecovery.Resume decision;
 			boolean closeRequested;
 			synchronized (this)
@@ -1225,34 +1518,47 @@ final class BridgeLoopback implements Runnable
 				{
 					closeRequested = replacement.explicitClose;
 					if (!closeRequested && (replacement.lost || replacement.closing
-							|| replacement.terminal || replacement.disconnectStarted))
+							|| replacement.terminal || replacement.disconnectStarted
+							|| replacement.cancelRecords != null || replacement.slowRequested))
 						return; // Do not consume an epoch or invalidate the existing grace for a cancelled socket.
 				}
 				if (closeRequested)
 					decision = BridgeRecovery.Resume.CLOSED;
+				else if (session != id || client.isBridgeDisconnectRequested())
+					decision = BridgeRecovery.Resume.CLOSED;
 				else
 				{
-					if (transport != null && (transport.terminal || transport.awaitingResult))
-						recovery.close();
-					decision = recovery.resume(replacement, epoch);
-					if (decision == BridgeRecovery.Resume.ACCEPTED)
+					Consumer<Transport> gate = afterResumeGuard;
+					if (gate != null) gate.accept(replacement);
+					if (transport == replacement && epoch != replacement.epoch)
 					{
-						Transport old = transport;
-						if (old != null)
+						claimTerminal(replacement, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
+						decision = BridgeRecovery.Resume.FRAME;
+					}
+					else
+					{
+						if (transport != null && (transport.terminal || transport.awaitingResult))
+							recovery.close();
+						decision = recovery.resume(replacement, epoch);
+						if (decision == BridgeRecovery.Resume.ACCEPTED)
 						{
-							synchronized (old) { old.lost = true; old.attemptFence.valid = false; armClose(old); }
-							attempts.detach();
+							Transport old = transport;
+							if (old != null)
+							{
+								synchronized (old) { old.lost = true; old.attemptFence.valid = false; armClose(old); }
+								attempts.detach();
+								}
+							replacement.session = this;
+							replacement.attempts = attempts;
+							replacement.fence = recovery.fence();
+							replacement.epoch = epoch;
+							replacement.holdOpeningFacts = true;
+							replacement.attemptFence.ready = false;
+							attempts.resume(epoch, this::publishResult, replacement.attemptFence);
+							// Publish the complete binding, not a socket whose attempt table still belongs to no session.
+							replacement.client = client;
+							transport = replacement;
 						}
-						replacement.session = this;
-						replacement.attempts = attempts;
-						replacement.fence = recovery.fence();
-						replacement.epoch = epoch;
-						replacement.holdOpeningFacts = true;
-						replacement.attemptFence.ready = false;
-						attempts.resume(epoch, this::publishResult, replacement.attemptFence);
-						// Publish the complete binding, not a socket whose attempt table still belongs to no session.
-						replacement.client = client;
-						transport = replacement;
 					}
 				}
 			}
@@ -1273,6 +1579,8 @@ final class BridgeLoopback implements Runnable
 			{
 				finishTerminal(replacement, List.of(decision == BridgeRecovery.Resume.CLOSED
 						? BridgeFrames.openedRefused(BridgeFrames.REASON_CLOSED) : BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
+				if (replacement.client != null)
+					client.requestBridgeDisconnect();
 				return;
 			}
 			captureCheckpoint();
@@ -1382,6 +1690,17 @@ final class BridgeLoopback implements Runnable
 
 	private void drop(SelectionKey key)
 	{
+		if (key.attachment() instanceof Transport source)
+		{
+			loseTransport(source);
+			synchronized (source)
+			{
+				if (source.physicallyClosed)
+					return;
+				source.physicallyClosed = true;
+				source.lost = true;
+			}
+		}
 		if (key.attachment() instanceof Transport)
 			disconnectBound((Transport) key.attachment());
 		if (key.attachment() instanceof Transport source)
@@ -1392,6 +1711,7 @@ final class BridgeLoopback implements Runnable
 				applyOutputFlags(source);
 				source.writing = null;
 				source.writingAt = 0;
+				source.writeDeadline = 0;
 				source.held = 0;
 			}
 		}
@@ -1408,7 +1728,11 @@ final class BridgeLoopback implements Runnable
 		if (key.attachment() instanceof Transport source)
 		{
 			Session owner = source.resumeOwner != null ? source.resumeOwner : source.session;
-			if (owner != null) owner.sessionTransports.remove(source);
+			if (owner != null)
+			{
+				owner.sessionTransports.remove(source);
+				owner.serviceCloseResult();
+			}
 		}
 		if (transports > 0)
 			transports--;
@@ -1427,6 +1751,20 @@ final class BridgeLoopback implements Runnable
 	{
 		admitting = false;
 		selector.wakeup();
+		for (Session owner : sessions.values())
+		{
+			synchronized (owner)
+			{
+				for (Transport source : owner.sessionTransports)
+				{
+					synchronized (source)
+					{
+						if (source.client == null && !source.explicitClose)
+							claimTerminal(source, List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_CLOSED)));
+					}
+				}
+			}
+		}
 		for (L2Client client : clients)
 			client.requestBridgeDisconnect();
 	}
@@ -1437,9 +1775,12 @@ final class BridgeLoopback implements Runnable
 	 */
 	void close(long budgetMs)
 	{
+		long budgetNs = Math.max(0, Math.min(30_000, budgetMs)) * 1_000_000L;
+		long end = System.nanoTime() + budgetNs;
+		long saveEnd = end - Math.min(1_000_000_000L, budgetNs);
+		shutdownDeadline = end;
 		stopAdmitting();
-		long end = System.nanoTime() + budgetMs * 1_000_000L;
-		while (System.nanoTime() < end && !disconnectsFinished())
+		while (System.nanoTime() < saveEnd && !disconnectsFinished())
 		{
 			selector.wakeup();
 			try
@@ -1452,18 +1793,23 @@ final class BridgeLoopback implements Runnable
 				break;
 			}
 		}
+		if (!disconnectsFinished())
+			System.getLogger(BridgeLoopback.class.getName()).log(System.Logger.Level.WARNING,
+					"Bridge shutdown budget expired with unfinished saves; no parallel save will be started");
 		reapClients();
 		stopping = true;
 		selector.wakeup();
 		try
 		{
-			thread.join(1_000);
+			thread.join(Math.max(1, Math.min(1_000, (end - System.nanoTime()) / 1_000_000L)));
 		}
 		catch (InterruptedException e)
 		{
 			Thread.currentThread().interrupt();
 		}
 		virtualChannels.shutdownGracefully(0, 1, TimeUnit.SECONDS);
+		if (thread.isAlive())
+			throw new IllegalStateException("Bridge selector did not finish its bounded socket disposal");
 		try
 		{
 			selector.close();
@@ -1479,8 +1825,10 @@ final class BridgeLoopback implements Runnable
 	private static void writeAll(SocketChannel socket, byte[] bytes) throws IOException
 	{
 		ByteBuffer buffer = ByteBuffer.wrap(bytes);
-		while (buffer.hasRemaining())
-			socket.write(buffer);
+		long end = System.nanoTime() + BYE_CLOSE_NS;
+		while (buffer.hasRemaining() && System.nanoTime() < end)
+			if (socket.write(buffer) == 0)
+				break; // Refusal is best effort; never stall the sole selector on an unregistered socket.
 	}
 
 	private static byte[] frame(List<Envelope> records)
@@ -1519,7 +1867,7 @@ final class BridgeLoopback implements Runnable
 			transport.pending.write(data, size + (int) length, data.length - size - (int) length);
 		// A coalesced next prefix arrived in the same read: retain its original deadline.
 		if (transport.pending.size() == 0)
-			transport.readDeadline = 0;
+			synchronized (transport) { transport.readDeadline = 0; }
 		return Codec.bridge().decode(body);
 	}
 
@@ -1536,7 +1884,12 @@ final class BridgeLoopback implements Runnable
 		int writingAt;
 		int held;
 		boolean retire;
+		boolean releaseAfterCheckpoint;
 		byte[] terminalReply;
+		List<Envelope> cancelRecords;
+		boolean slowRequested;
+		byte[] saveReplyFrame;
+		boolean saveReplyStarted;
 		int discardAfterCheckpointCount;
 		volatile boolean closing;
 		long closeDeadline;
@@ -1544,20 +1897,22 @@ final class BridgeLoopback implements Runnable
 		long resultDeadline;
 		volatile boolean terminal;
 		boolean disconnectStarted;
+		boolean physicallyClosed;
 		volatile Session resumeOwner;
 		long resumeSession;
 		long resumeEpoch;
 		boolean explicitClose;
 		long readDeadline;
+		long writeDeadline;
 		final long openingDeadline = System.nanoTime() + OPENING_NS;
 		volatile boolean opened;
 		volatile L2Client client;
-		BridgeAttemptSession attempts;
-		Session session;
+		volatile BridgeAttemptSession attempts;
+		volatile Session session;
 		volatile boolean lost;
 		final BridgeAttemptSession.Fence attemptFence = new BridgeAttemptSession.Fence();
-		long fence = 1;
-		long epoch = 1;
+		volatile long fence = 1;
+		volatile long epoch = 1;
 		boolean reuseCheckpointBegin;
 		long checkpointDeadline;
 		BridgeCheckpointOutput checkpoint;

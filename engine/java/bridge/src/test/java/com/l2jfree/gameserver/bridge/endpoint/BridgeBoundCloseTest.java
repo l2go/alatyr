@@ -155,6 +155,7 @@ class BridgeBoundCloseTest
 				Envelope repeatedOpen = openFrame(new byte[32]);
 				bound.loop.acceptFrame(bound.transport, List.of(repeatedOpen));
 				assertThat(inStore.await(5, TimeUnit.SECONDS)).isTrue();
+				BridgeLoopback.applyOutputFlags(bound.transport);
 				assertThat(bound.transport.queued).hasSize(1);
 				assertThat(reason(bound.transport)).isEqualTo(BridgeFrames.BYE_FRAME);
 				bound.loop.acceptFrame(bound.transport, List.of(repeatedOpen));
@@ -252,9 +253,7 @@ class BridgeBoundCloseTest
 		try (InlinePool pool = InlinePool.open(); Bound bound = Bound.open(store))
 		{
 			bound.closeOnce();
-			long end = System.nanoTime() + 5_000_000_000L;
-			while (bound.transport.queued.isEmpty() && System.nanoTime() < end)
-				Thread.sleep(10);
+			bound.awaitDisconnect();
 			assertThat(reason(bound.transport)).isEqualTo(reason);
 			assertThat(bound.transport.queued).hasSize(1);
 			bound.closeOnce();
@@ -267,6 +266,7 @@ class BridgeBoundCloseTest
 	
 	private static long reason(Transport transport) throws Exception
 	{
+		BridgeLoopback.applyUnboundControl(transport);
 		byte[] frame = transport.queued.peek();
 		List<Envelope> records = Codec.bridge().read(new ByteArrayInputStream(frame));
 		return records.get(0).field(1).value().u();
@@ -327,6 +327,8 @@ class BridgeBoundCloseTest
 			while (!client.isBridgeDisconnectFinished() && System.nanoTime() < end)
 				Thread.sleep(10);
 			assertThat(client.isBridgeDisconnectFinished()).isTrue();
+			loop.serviceControl(transport);
+			BridgeLoopback.applyOutputFlags(transport);
 		}
 
 		@Override
