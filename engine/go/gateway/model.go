@@ -177,6 +177,10 @@ type State interface {
 	// participant with an internal reason without logging the value or error text.
 	Confirmed(*Action) (bool, error)
 	// Witness is called by the loop for eligible actions on observed facts.
+	// For an action without AfterCheckpoint, WitnessMatch is valid only when
+	// Apply returns exactly one Fact for the update. The runtime attaches the
+	// cause to that Fact and emits its Result afterward. Returning WitnessMatch
+	// with any other Fact count closes the participant with CloseInternal.
 	// Invalid adapter values return an error, not WitnessNone; the runtime closes
 	// the participant with an internal reason without logging the value or error text.
 	Witness(*Action, Update) (Witness, error)
