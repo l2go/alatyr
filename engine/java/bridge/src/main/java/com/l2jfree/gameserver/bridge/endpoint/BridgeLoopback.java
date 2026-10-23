@@ -876,6 +876,8 @@ final class BridgeLoopback implements Runnable
 	final class Session
 	{
 		volatile Transport transport;
+		// A pending Close can receive only the save outcome, without becoming the session transport.
+		volatile Transport closeReplyTransport;
 		final BridgeRecovery recovery;
 		final BridgeSink sink;
 		BridgeAttemptSession attempts;
@@ -920,12 +922,15 @@ final class BridgeLoopback implements Runnable
 
 		void publish(List<Envelope> records)
 		{
-			Transport current = transport;
+			boolean terminal = records.stream().anyMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.BYE);
+			Transport reply = closeReplyTransport;
+			Transport current = terminal && reply != null ? reply : transport;
 			if (current == null)
 				return;
-			boolean terminal = records.stream().anyMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.BYE);
 			synchronized (current)
 			{
+				if (terminal && current == reply && current.lost)
+					return; // EOF cancels output, not the single full disconnect and save.
 				if (!terminal && (current.lost || current.closing))
 					return;
 				boolean relocation = records.stream().anyMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.FACT
@@ -1063,10 +1068,9 @@ final class BridgeLoopback implements Runnable
 					// Resume observes this intent without binding the dead socket or consuming its epoch.
 					source.explicitClose = true;
 					bound = source.client;
+					armResultWait(source);
 					if (bound == null)
-						finishTerminal(source, List.of(BridgeFrames.bye(BridgeFrames.BYE_NORMAL)));
-					else
-						armResultWait(source);
+						closeReplyTransport = source;
 				}
 			}
 			if (bound != null)

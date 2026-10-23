@@ -44,6 +44,72 @@ import io.netty.channel.embedded.EmbeddedChannel;
 class BridgeTransportRecoveryTest
 {
 	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "saved", "false", "exception", "deadline" })
+	void aPendingCloseWaitsForItsSingleSaveOutcomeOnTheLiveSocket(String outcome) throws Exception
+	{
+		var saving = new CountDownLatch(1);
+		var releaseSave = new CountDownLatch(1);
+		try (Fixture fixture = new Fixture(20024))
+		{
+			fixture.open();
+			doAnswer(call ->
+			{
+				saving.countDown();
+				assertThat(releaseSave.await(5, TimeUnit.SECONDS)).isTrue();
+				if (outcome.equals("exception")) throw new IllegalStateException("save fixture");
+				return !outcome.equals("false");
+			}).when(fixture.player).store(true, true);
+			fixture.owner.detach(fixture.first);
+			var replacement = new BridgeLoopback.Transport(new byte[32]);
+			try
+			{
+				try (var gate = new FifoGate(fixture.client))
+				{
+					fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+					var close = Envelope.of(Schemas.CLOSE,
+							List.of(Field.u(1, true, fixture.id), Field.u(2, true, 2), Field.u(3, true, 0)));
+					fixture.loop.acceptFrame(replacement, List.of(close));
+					fixture.loop.acceptFrame(replacement, List.of(close));
+					assertThat(replacement.awaitingResult).isTrue();
+					assertThat(replacement.terminal).isFalse();
+					assertThat(replacement.queued).isEmpty();
+					verify(fixture.player, never()).store(true, true);
+					gate.release();
+					assertThat(saving.await(5, TimeUnit.SECONDS)).isTrue();
+					// Even after disconnect starts, no normal Bye can precede the store outcome.
+					assertThat(replacement.queued).isEmpty();
+					assertThat(replacement.client).isNull();
+					assertThat(replacement.attempts).isNull();
+					assertThat(replacement.checkpoint).isNull();
+					assertThat(fixture.owner.transport).isNull();
+					assertThat(fixture.owner.recovery.epoch()).isEqualTo(1);
+					if (outcome.equals("deadline"))
+					{
+						synchronized (replacement) { replacement.resultDeadline = System.nanoTime() - 1; }
+						BridgeLoopback.expire(replacement, System.nanoTime());
+						assertThat(replacement.queued).hasSize(1);
+					}
+				}
+			}
+			finally { releaseSave.countDown(); }
+			barrier(fixture.client);
+			barrier(fixture.client);
+			assertThat(fixture.client.isBridgeDisconnectFinished()).isTrue();
+			assertThat(replacement.queued).hasSize(1);
+			var records = fixture.drain(replacement);
+			assertThat(records).hasSize(1);
+			assertThat(records.get(0).type()).isEqualTo(Schemas.BYE);
+			assertThat(records.get(0).field(1).value().u()).isEqualTo(outcome.equals("saved")
+					? BridgeFrames.BYE_NORMAL : BridgeFrames.BYE_INTERNAL);
+			assertThat(fixture.owner.recovery.epoch()).isEqualTo(1);
+			assertThat(replacement.client).isNull();
+			assertThat(replacement.attempts).isNull();
+			verify(fixture.player).store(true, true);
+			verify(fixture.player).deleteMe();
+		}
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
 	@org.junit.jupiter.params.provider.ValueSource(booleans = { false, true })
 	void closeAndResumeAdoptionHaveOneOrderAndSaveOnceEvenAfterEof(boolean closeFirst) throws Exception
 	{
@@ -97,6 +163,7 @@ class BridgeTransportRecoveryTest
 					fixture.loop.account();
 					fixture.loop.serve(key(socket, replacement, true));
 					assertThat(replacement.disconnectStarted).isTrue();
+					verify(socket).close();
 					assertThat(timer.get()).isSameAs(originalGrace);
 					// Queue the original expiry too: it must not be invalidated by adopting this terminal socket,
 					// and its cleanup request must never duplicate the explicit Close save.
@@ -112,6 +179,7 @@ class BridgeTransportRecoveryTest
 						assertThat(replacement.client).isNull();
 						assertThat(replacement.attempts).isNull();
 						assertThat(replacement.checkpoint).isNull();
+						assertThat(replacement.queued).isEmpty(); // A lost pending Close needs no undeliverable Bye.
 					}
 					verify(fixture.player).store(true, true);
 					verify(fixture.player).deleteMe();
