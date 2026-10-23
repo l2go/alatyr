@@ -1035,7 +1035,9 @@ final class BridgeLoopback implements Runnable
 			}
 			if (decision == BridgeRecovery.Resume.REPLAY)
 			{
-				if (replacement.checkpoint == null)
+				// No producer can also mean relocation is still pending. Join that continuation;
+				// only a transport that already completed its opening may replay Opened.
+				if (replacement.opened)
 					enqueue(replacement, List.of(BridgeFrames.accepted(id, epoch).get(2)));
 				return;
 			}

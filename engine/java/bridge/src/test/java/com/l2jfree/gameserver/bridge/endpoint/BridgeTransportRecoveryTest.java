@@ -465,9 +465,20 @@ class BridgeTransportRecoveryTest
 				assertThat(replacement.checkpoint).isNull();
 				assertThat(replacement.queued).isEmpty();
 				assertThat(replacement.attemptFence.ready).isFalse();
+				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+				barrier(fixture.client);
+				assertThat(replacement.checkpoint).isNull();
+				assertThat(replacement.queued).isEmpty();
 				fixture.owner.sink.ownTeleported(1);
 				barrier(fixture.client);
 			}
+			var producer = replacement.checkpoint;
+			var token = replacement.token;
+			fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+			barrier(fixture.client);
+			assertThat(replacement.checkpoint).isSameAs(producer);
+			assertThat(replacement.token).isEqualTo(token);
+			assertThat(replacement.queued).isEmpty();
 			var records = fixture.drain(replacement);
 			assertThat(records).filteredOn(record -> record.type() == Schemas.FACT && record.field(67) != null).hasSize(1);
 			assertThat(records.get(records.size() - 2).field(3).value().u()).isEqualTo(1);
