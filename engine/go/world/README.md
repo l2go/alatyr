@@ -62,8 +62,10 @@ replacement. Channel closure does not automatically remove or save the character
 and an optional monotonic deadline. It returns the same source `Commit` that
 the observer receives. Validation failures have a typed refusal reason; loop,
 admission and persistence failures return Go errors. Selection never attacks,
-talks or collects an item. Cast retains the requested target and level even
-while queued. Deadlines are checked before execution and deferred effects;
+talks or collects an item. Selecting the same target completes with
+`StageDone` and no groups. A dialogue choice completes with `StageDone` when
+its lesson list is issued, including an empty list. Cast retains the requested
+target and level even while queued. Deadlines are checked before execution and deferred effects;
 started work is not promoted from `StageUnknown` by later notifications.
 Unsupported operations are refused before execution.
 

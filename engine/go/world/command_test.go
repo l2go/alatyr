@@ -55,12 +55,21 @@ func TestExecuteSelectOnlyAndSameCommit(t *testing.T) {
 		if commit.Outcome.Stage != StageDone || len(commit.Groups) != 1 || len(commit.Groups[0].Effects) != 0 || len(commit.Groups[0].Facts) != 1 || commit.Groups[0].Facts[0].After != RefValue(target) {
 			t.Fatalf("selection: got %+v, want one target fact and no effect", commit)
 		}
-		if same := executeTest(t, w, ctx, req); same.Outcome.Stage != StageUnknown || len(same.Groups) != 0 {
-			t.Fatalf("same target: got %+v, want unknown without mutations", same)
+		drainEvents(entry.Events)
+		log.reset()
+		same := executeTest(t, w, ctx, req)
+		if same.Outcome.Stage != StageDone || len(same.Groups) != 0 {
+			t.Fatalf("same target: got %+v, want done without groups", same)
+		}
+		if got := log.read(); len(got) != 1 || !reflect.DeepEqual(got[0], same) {
+			t.Fatalf("same-target observer: got %+v, want returned commitment %+v", got, same)
+		}
+		if events := drainEvents(entry.Events); len(events) != 0 {
+			t.Fatalf("same-target notifications: got %+v, want none", events)
 		}
 		if err := w.do(ctx, func(s *state) {
 			p := s.players[1]
-			if p.attacking != 0 || p.casting || p.ai.intention != intentIdle || p.lastFolk != 0 {
+			if p.attacking != 0 || p.casting || p.ai.intention != intentIdle || p.lastFolk != 0 || p.lastTarget != 0 {
 				t.Errorf("select performed action: %+v", p.ai)
 			}
 		}); err != nil {
@@ -72,6 +81,61 @@ func TestExecuteSelectOnlyAndSameCommit(t *testing.T) {
 		}
 		drainEvents(entry.Events)
 	})
+}
+
+func TestExecuteChooseCommitsIssuedList(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		skills []Skill
+		count  int
+	}{
+		{"available lessons", nil, 2},
+		{"empty list", []Skill{{ID: 9201, Level: 1}, {ID: 9202, Level: 1}}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				var log commitLog
+				w, _, ctx := startObservedWorld(t, &log)
+				c := syntheticCharacter(1)
+				c.Skills = tc.skills
+				entry := enterTest(t, w, ctx, c)
+				teacher := refTest(t, w, ctx, objectOf(t, w, ctx, 9102))
+				executeTest(t, w, ctx, Request{Owner: entry.Self.Entity, Verb: VerbTalk, Target: teacher})
+				scene := captureTest(t, w, ctx, entry.Self.Entity)
+				if len(scene.Dialogue.Affordances) != 1 {
+					t.Fatalf("choices: got %+v, want one", scene.Dialogue.Affordances)
+				}
+				req := Request{Owner: entry.Self.Entity, Verb: VerbChoose, Target: teacher, AffordanceID: scene.Dialogue.Affordances[0].ID}
+				drainEvents(entry.Events)
+				log.reset()
+				commit := executeTest(t, w, ctx, req)
+				if commit.Outcome.Stage != StageDone || commit.Outcome.Reason != "" {
+					t.Fatalf("choose: got %+v, want done", commit)
+				}
+				if got := log.read(); len(got) != 1 || !reflect.DeepEqual(got[0], commit) {
+					t.Fatalf("choose observer: got %+v, want returned commitment %+v", got, commit)
+				}
+				for _, group := range commit.Groups {
+					if group.Cause.Intent != commit.Intent.ID || len(group.Effects) != 0 {
+						t.Fatalf("choose group: got %+v, want command facts without effects", group)
+					}
+				}
+				events := drainEvents(entry.Events)
+				if !containsEvent(events, func(e LearnList) bool { return e.NPCID == teacher.ID && len(e.Skills) == tc.count }) {
+					t.Fatalf("lesson list: got %+v, want %d lessons", events, tc.count)
+				}
+				if !containsEvent(events, func(e AffordancesChanged) bool { return len(e.Affordances) == tc.count }) {
+					t.Fatalf("issued affordances: got %+v, want %d", events, tc.count)
+				}
+				if captured := captureTest(t, w, ctx, entry.Self.Entity); len(captured.Dialogue.Affordances) != tc.count {
+					t.Fatalf("captured lessons: got %+v, want %d", captured.Dialogue.Affordances, tc.count)
+				}
+				if replay := executeTest(t, w, ctx, req); replay.Outcome.Stage != StageRefused || replay.Outcome.Reason != ReasonStale || len(replay.Groups) != 0 {
+					t.Fatalf("replaced choice: got %+v, want stale refusal without groups", replay)
+				}
+			})
+		})
+	}
 }
 
 func TestExecuteRefusalAndDeadline(t *testing.T) {

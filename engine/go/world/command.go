@@ -90,11 +90,12 @@ func (w *World) execute(s *state, p *player, req Request) *Skill {
 			s.resolve(StageRefused, ReasonStale)
 			return nil
 		}
-		old := p.target
-		w.setTarget(s, p, req.Target.ID)
-		if p.target != old {
+		if p.target == req.Target.ID {
 			s.finish(StageDone)
+			return nil
 		}
+		w.setTarget(s, p, req.Target.ID)
+		s.finish(StageDone)
 	case VerbAttack:
 		t, ok := s.actor(req.Target.ID)
 		if !ok || t.base().ref() != req.Target {
@@ -160,6 +161,9 @@ func (w *World) execute(s *state, p *player, req Request) *Skill {
 		}
 		if req.Verb == VerbChoose {
 			w.showSkillList(s, p, n)
+			if s.err == nil {
+				s.finish(StageDone)
+			}
 			return nil
 		}
 		if !affordanceSkill(a, req.Skill) {
