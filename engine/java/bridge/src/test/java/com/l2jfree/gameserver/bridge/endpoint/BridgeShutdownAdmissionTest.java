@@ -67,7 +67,7 @@ class BridgeShutdownAdmissionTest
 			assertThat(socket.getInputStream().read()).isEqualTo(-1);
 		}
 		closer.join(3000);
-		assertThat(loop.clientCount()).isEqualTo(1);
+		assertThat(loop.clientCount()).isZero();
 	}
 	
 	private static BridgeLoopback listener()

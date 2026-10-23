@@ -314,7 +314,6 @@ final class BridgeLoopback implements Runnable
 
 	void acceptFrame(Transport transport, List<Envelope> records) throws IOException
 	{
-		expire(transport);
 		if (transport.closing || transport.terminal)
 			return;
 		BridgeReply reply = transport.dialogue.accept(records);
