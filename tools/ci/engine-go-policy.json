@@ -13,7 +13,7 @@
       "module": "github.com/l2go/alatyr/engine/go/gateway",
       "package": "gateway",
       "license": "AGPL-3.0-or-later",
-      "phase": "scaffold"
+      "phase": "active"
     },
     {
       "path": "engine/go/bridge",
