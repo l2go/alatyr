@@ -49,6 +49,17 @@ public final class EffectLedger
 	{
 		ACTIVE.remove();
 	}
+
+	/** Attributes only synchronous dialogue from the owner's currently observed NPC. */
+	public static void spoken(com.l2jfree.gameserver.network.L2Client client, L2Player owner, int npcId)
+	{
+		Attempt attempt = ACTIVE.get();
+		if (attempt == null || !attempt.belongsTo(client) || owner != attempt.player() || npcId <= 0)
+			return;
+		var npc = owner.getLastFolkNPC();
+		if (npc != null && owner.getTarget() == npc && npc.getObjectId() == npcId)
+			attempt.noteSpoken(owner, npcId);
+	}
 	
 	public static void record(L2Player owner, BridgeEffect effect)
 	{
@@ -56,6 +67,22 @@ public final class EffectLedger
 		if (attempt == null)
 			return;
 		attempt.add(owner, effect);
+	}
+
+	/** Marks an owner mutation path whose complete receipt set is not represented by this profile. */
+	public static void incomplete(L2Player owner)
+	{
+		Attempt attempt = ACTIVE.get();
+		if (attempt != null)
+			attempt.markIncomplete(owner);
+	}
+
+	/** A direct storage mutation without an owner cannot certify an active attempt. */
+	public static void incompleteUnattributedMutation()
+	{
+		Attempt attempt = ACTIVE.get();
+		if (attempt != null)
+			attempt.markIncomplete(attempt.player());
 	}
 	
 	public static void expectLearningCost(L2Player owner, int branch, int spCost, int itemId, long itemCount)

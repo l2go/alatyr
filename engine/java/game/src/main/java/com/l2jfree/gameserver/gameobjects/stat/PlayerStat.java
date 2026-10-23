@@ -425,7 +425,7 @@ public class PlayerStat extends PlayableStat
 	public final void setSp(int value)
 	{
 		if (getActiveChar().isSubClassActive())
-			getActiveChar().getSubClasses().get(getActiveChar().getClassIndex()).setSp(value);
+			getActiveChar().getSubClasses().get(getActiveChar().getClassIndex()).setSp(value, getActiveChar());
 		else
 			super.setSp(value);
 	}

@@ -51,6 +51,8 @@ final class BridgeDialogue
 		
 		if (first.type() == Schemas.PING && records.size() == 1)
 			return BridgeReply.of(List.of(BridgeFrames.pong(first.field(1).value().u())), false);
+		if (records.stream().allMatch(record -> record.type() == Schemas.INTENT))
+			return BridgeReply.of(List.of(), false);
 		if (first.type() == Schemas.CLOSE && records.size() == 1)
 		{
 			closed = true;

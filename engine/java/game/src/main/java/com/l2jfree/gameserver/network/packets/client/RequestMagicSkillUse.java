@@ -29,6 +29,18 @@ public class RequestMagicSkillUse extends L2ClientPacket
 	private int _skillId;
 	private boolean _ctrl;
 	private boolean _shift;
+
+	/** Creates a direct cast; the caller validates the current skill level before execution. */
+	public static RequestMagicSkillUse forBridge(int skillId, boolean force)
+	{
+		if (skillId <= 0 || skillId > 32000)
+			throw new IllegalArgumentException("skillId");
+		RequestMagicSkillUse packet = new RequestMagicSkillUse();
+		packet._skillId = skillId;
+		packet._ctrl = force;
+		packet._shift = false;
+		return packet;
+	}
 	
 	@Override
 	protected void readImpl()

@@ -150,6 +150,12 @@ public final class NpcQuestHtmlMessage extends L2ServerPacket
 	{
 		_replaceable = Replaceable.valueOf(text);
 	}
+
+	/** Identifies the dialogue source without serializing an NC packet. */
+	public int bridgeNpcObjectId()
+	{
+		return _npcObjId;
+	}
 	
 	@Override
 	public boolean canBeSentTo(L2Client client, L2Player activeChar)

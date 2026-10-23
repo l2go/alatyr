@@ -30,7 +30,8 @@ public final class SubClass
 	
 	private ClassId _class;
 	private long _exp = Experience.LEVEL[40];
-	private int _sp = 0;
+	private volatile int _sp = 0;
+	private final Object _bridgeStatLock = new Object();
 	private byte _level = 40;
 	private int _classIndex = 1;
 	
@@ -38,7 +39,7 @@ public final class SubClass
 	{
 		_class = ClassId.values()[classId];
 		_exp = exp;
-		_sp = sp;
+		setSp(sp);
 		_level = level;
 		_classIndex = classIndex;
 	}
@@ -101,7 +102,27 @@ public final class SubClass
 	
 	public void setSp(int spValue)
 	{
-		_sp = spValue;
+		setSp(spValue, null);
+	}
+
+	/** The owning player is resolved before entering the leaf mutation section. */
+	public void setSp(int spValue, com.l2jfree.gameserver.gameobjects.L2Player player)
+	{
+		com.l2jfree.gameserver.gameobjects.L2Player owner = player != null && player.isBridgeSession() ? player : null;
+		synchronized (_bridgeStatLock)
+		{
+			int before = _sp;
+			_sp = spValue;
+			int after = _sp;
+			if (com.l2jfree.gameserver.network.bridge.EffectLedger.isActive())
+			{
+				if (player == null)
+					com.l2jfree.gameserver.network.bridge.EffectLedger.incompleteUnattributedMutation();
+				else if (owner != null && before != after)
+					com.l2jfree.gameserver.network.bridge.EffectLedger.record(owner,
+							com.l2jfree.gameserver.network.bridge.BridgeEffect.sp((long)after - before, before, after));
+			}
+		}
 	}
 	
 	public void setClassIndex(int classIndex)

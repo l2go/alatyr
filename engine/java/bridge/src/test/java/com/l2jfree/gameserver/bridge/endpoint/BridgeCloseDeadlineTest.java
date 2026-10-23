@@ -34,6 +34,108 @@ import com.l2jfree.gameserver.bridge.endpoint.BridgeLoopback.Transport;
 class BridgeCloseDeadlineTest
 {
 	@Test
+	void openingExpiresAtTenSecondsEvenWithoutAnInputByte()
+	{
+		Transport transport = new Transport(new byte[32]);
+		assertThat(BridgeLoopback.OPENING_NS).isEqualTo(10_000_000_000L);
+		BridgeLoopback.expire(transport, transport.openingDeadline - 1);
+		assertThat(transport.closing).isFalse();
+		BridgeLoopback.expire(transport, transport.openingDeadline);
+		assertThat(transport.closing).isTrue();
+		assertThat(transport.queued).hasSize(1);
+		BridgeLoopback.expire(transport, transport.openingDeadline + 1);
+		assertThat(transport.queued).hasSize(1);
+	}
+
+	@Test
+	void aPartialPrefixKeepsItsDeadlineUntilTheWholeFrameArrives() throws Exception
+	{
+		Transport transport = new Transport(new byte[32]);
+		transport.opened = true;
+		assertThat(BridgeLoopback.FRAME_READ_NS).isEqualTo(5_000_000_000L);
+		long deadline = System.nanoTime() + BridgeLoopback.FRAME_READ_NS;
+		transport.readDeadline = deadline;
+		transport.pending.write(0x80);
+		assertThat(BridgeLoopback.takeFrame(transport)).isNull();
+		assertThat(transport.readDeadline).isEqualTo(deadline);
+		BridgeLoopback.expire(transport, deadline - 1);
+		assertThat(transport.closing).isFalse();
+		BridgeLoopback.expire(transport, deadline);
+		assertThat(transport.closing).isTrue();
+	}
+
+	@Test
+	void anIdleOpenedTransportHasNoFrameReadDeadline()
+	{
+		Transport transport = new Transport(new byte[32]);
+		transport.opened = true;
+		BridgeLoopback.expire(transport);
+		assertThat(transport.readDeadline).isZero();
+		assertThat(transport.closing).isFalse();
+	}
+
+	@Test
+	void aPartialPrefixExpiresWithoutWaitingForAnotherRead()
+	{
+		Transport transport = new Transport(new byte[32]);
+		transport.opened = true;
+		transport.pending.write(0x80);
+		transport.readDeadline = System.nanoTime() - 1;
+		BridgeLoopback.expire(transport);
+		assertThat(transport.closing).isTrue();
+		assertThat(transport.queued).hasSize(1);
+	}
+
+	@Test
+	void completedClientsReleaseBothRegistries()
+	{
+		com.l2jfree.gameserver.network.L2Client client = mock(com.l2jfree.gameserver.network.L2Client.class);
+		BridgeLoopback loop = listener();
+		int before = BridgeAdmission.sessionCount();
+		try
+		{
+			loop.watch(client);
+			BridgeAdmission.newSession(client);
+			loop.reapClients();
+			assertThat(loop.clientCount()).isEqualTo(1);
+			assertThat(BridgeAdmission.sessionCount()).isEqualTo(before + 1);
+			when(client.isBridgeDisconnectFinished()).thenReturn(true);
+			loop.reapClients();
+			assertThat(loop.clientCount()).isZero();
+			assertThat(BridgeAdmission.sessionCount()).isEqualTo(before);
+		}
+		finally
+		{
+			loop.close();
+		}
+	}
+
+	@Test
+	void aSinkByeClosesTheSocketAfterItDrains() throws Exception
+	{
+		Transport transport = new Transport(new byte[32]);
+		SocketChannel channel = mock(SocketChannel.class);
+		when(channel.write(any(ByteBuffer.class))).thenAnswer(call -> ((ByteBuffer) call.getArgument(0)).remaining());
+		SelectionKey key = mock(SelectionKey.class);
+		when(key.isValid()).thenReturn(true);
+		when(key.channel()).thenReturn(channel);
+		when(key.attachment()).thenReturn(transport);
+		BridgeLoopback loop = listener();
+		try
+		{
+			loop.account();
+			loop.fromSink(transport, java.util.List.of(BridgeFrames.bye(BridgeFrames.BYE_NORMAL)));
+			loop.serve(key);
+			verify(channel).close();
+			assertThat(loop.transports()).isZero();
+		}
+		finally
+		{
+			loop.close();
+		}
+	}
+
+	@Test
 	void theSelectTimeoutIsTheByeDeadline()
 	{
 		long now = System.nanoTime();
@@ -41,7 +143,7 @@ class BridgeCloseDeadlineTest
 		assertThat(BridgeLoopback.selectTimeout(now, now + 5_000_000_000L)).isEqualTo(1000);
 		assertThat(BridgeLoopback.selectTimeout(now, now - 1)).isEqualTo(1);
 	}
-	
+
 	@Test
 	void aBlockedWriteClosesWhenTheDeadlinePasses() throws Exception
 	{
@@ -73,7 +175,7 @@ class BridgeCloseDeadlineTest
 			loop.close();
 		}
 	}
-	
+
 	private static BridgeLoopback listener()
 	{
 		StringBuilder hex = new StringBuilder();

@@ -354,8 +354,15 @@ public final class L2ItemInstance extends L2Object implements FuncOwner, Element
 	 */
 	public synchronized void changeCount(String process, long count, L2Player creator, L2Object reference)
 	{
+		changeCountAndGetDelta(process, count, creator, reference);
+	}
+
+	/** Returns the clamped mutation delta under the existing item monitor. */
+	public synchronized long changeCountAndGetDelta(String process, long count, L2Player creator, L2Object reference)
+	{
 		if (count == 0)
-			return;
+			return 0;
+		long before = getCount();
 		
 		long max = getItemId() == ADENA_ID ? MAX_ADENA : Integer.MAX_VALUE;
 		
@@ -378,6 +385,7 @@ public final class L2ItemInstance extends L2Object implements FuncOwner, Element
 			param.add(reference);
 			_logItems.info("{}", param);
 		}
+		return getCount() - before;
 	}
 	
 	/**

@@ -50,6 +50,12 @@ public final class NpcHtmlMessage extends AbstractNpcHtmlMessage
 	{
 		// TODO
 	}
+
+	/** Identifies the dialogue source without serializing an NC packet. */
+	public int bridgeNpcObjectId()
+	{
+		return _npcObjId;
+	}
 	
 	@Override
 	public void prepareToSend(L2Client client, L2Player activeChar)

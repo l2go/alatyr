@@ -19,8 +19,8 @@ import java.util.LinkedHashMap;
 
 /**
  * Attempt numbers for one session. A repeated body is the stored attempt. A different body under the same number is
- * an error and does not replace it. Nothing is stored until the session is ready, and a number above the next one
- * closes the frame rules without moving the counter.
+ * an error and does not replace it. Pre-ready admission consumes a number and retains its final refusal without
+ * executing world work. A number above the next one closes the frame rules without moving the counter.
  */
 final class BridgeIntents
 {
@@ -29,21 +29,22 @@ final class BridgeIntents
 	
 	private final LinkedHashMap<Long, byte[]> pending = new LinkedHashMap<>();
 	private final LinkedHashMap<Long, byte[]> completed = new LinkedHashMap<>();
+	private final LinkedHashMap<Long, byte[]> results = new LinkedHashMap<>();
 	private long next = 1;
 	private long floor = 1;
 	private boolean ready;
 	
-	void markReady()
+	synchronized void markReady()
 	{
 		ready = true;
 	}
 	
-	long next()
+	synchronized long next()
 	{
 		return next;
 	}
 	
-	Decision offer(long n, byte[] content)
+	synchronized Decision offer(long n, byte[] content)
 	{
 		if (content == null)
 			throw new IllegalArgumentException("content");
@@ -57,8 +58,6 @@ final class BridgeIntents
 				return Decision.replay(stored);
 			return Decision.mismatch(stored);
 		}
-		if (!ready)
-			return Decision.notReady();
 		if (n > next)
 			return Decision.frame();
 		if (n != next || n < floor)
@@ -69,23 +68,40 @@ final class BridgeIntents
 		byte[] copy = content.clone();
 		pending.put(n, copy);
 		next++;
+		if (!ready)
+			return Decision.notReady();
 		return Decision.accepted(copy);
 	}
 	
 	/** Moves a pending attempt into the completed ring. The stored body stays the one that was accepted. */
-	void complete(long n)
+	synchronized void complete(long n)
+	{
+		complete(n, null);
+	}
+
+	/** Retains an encoded result once; callers cannot mutate the replay through their byte arrays. */
+	synchronized void complete(long n, byte[] result)
 	{
 		byte[] body = pending.remove(n);
 		if (body == null)
 			return;
 		
 		completed.put(n, body);
+		if (result != null)
+			results.put(n, result.clone());
 		while (completed.size() > COMPLETED_CAP)
 		{
 			Long oldest = completed.keySet().iterator().next();
 			completed.remove(oldest);
+			results.remove(oldest);
 			floor = Math.max(floor, oldest + 1);
 		}
+	}
+
+	synchronized byte[] result(long n)
+	{
+		byte[] stored = results.get(n);
+		return stored == null ? null : stored.clone();
 	}
 	
 	enum Kind
@@ -109,7 +125,7 @@ final class BridgeIntents
 		{
 			this.kind = kind;
 			this.code = code;
-			this.stored = stored;
+			this.stored = stored == null ? null : stored.clone();
 		}
 		
 		private static Decision accepted(byte[] stored)

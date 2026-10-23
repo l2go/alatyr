@@ -36,6 +36,26 @@ public final class MoveBackwardToLocation extends L2ClientPacket
 	*/
 	
 	private int _moveMovement;
+
+	/** Converts body height back to the handler's floor coordinate without truncation or overflow. */
+	public static MoveBackwardToLocation forBridge(L2Player actor, int x, int y, int bodyZ)
+	{
+		if (actor == null)
+			throw new IllegalArgumentException("actor");
+		double height = actor.getTemplate().getCollisionHeight();
+		double floor = bodyZ >= 0 ? Math.ceil(bodyZ - height) : Math.floor(bodyZ - height);
+		double restored = floor + height;
+		if (!Double.isFinite(height) || !Double.isFinite(floor) || floor < Integer.MIN_VALUE
+				|| floor > Integer.MAX_VALUE || restored < Integer.MIN_VALUE || restored > Integer.MAX_VALUE
+				|| (int)restored != bodyZ)
+			throw new IllegalArgumentException("bodyZ");
+		MoveBackwardToLocation packet = new MoveBackwardToLocation();
+		packet._targetX = x;
+		packet._targetY = y;
+		packet._targetZ = (int)floor;
+		packet._moveMovement = 1;
+		return packet;
+	}
 	
 	@Override
 	protected void readImpl()
