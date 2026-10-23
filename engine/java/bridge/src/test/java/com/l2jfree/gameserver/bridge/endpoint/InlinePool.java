@@ -30,11 +30,12 @@ import com.l2jfree.gameserver.ThreadPoolManager;
 final class InlinePool implements AutoCloseable
 {
 	private final MockedStatic<ThreadPoolManager> pools;
+	final ThreadPoolManager pool;
 	
 	private InlinePool()
 	{
 		pools = mockStatic(ThreadPoolManager.class);
-		ThreadPoolManager pool = mock(ThreadPoolManager.class);
+		pool = mock(ThreadPoolManager.class);
 		pools.when(ThreadPoolManager::getInstance).thenReturn(pool);
 		doAnswer(invocation ->
 		{

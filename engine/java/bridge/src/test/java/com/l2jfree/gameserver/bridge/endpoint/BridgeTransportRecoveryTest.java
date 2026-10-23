@@ -43,6 +43,102 @@ import io.netty.channel.embedded.EmbeddedChannel;
 /** Uses the real client FIFO and listener socket branches with isolated game state. */
 class BridgeTransportRecoveryTest
 {
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(booleans = { false, true })
+	void resumeBeforeOrAfterOwnCompletionUsesTheNewSceneWithoutEarlyReady(boolean completeFirst) throws Exception
+	{
+		try (Fixture fixture = new Fixture(completeFirst ? 19986 : 19984))
+		{
+			fixture.open();
+			var stable = new java.util.concurrent.atomic.AtomicBoolean(false);
+			doAnswer(call ->
+			{
+				if (!stable.get()) return false;
+				((Runnable)call.getArgument(0)).run(); return true;
+			}).when(fixture.player).captureBridgeScene(any(Runnable.class));
+			fixture.owner.sink.deliver(TeleportToLocation.forBridgeRelocation(fixture.player, 90, 91, 92, 0, 1), fixture.player);
+			fixture.owner.detach(fixture.first);
+			doAnswer(call ->
+			{
+				stable.set(true);
+				fixture.owner.sink.deliver(new UserInfo(fixture.player), fixture.player);
+				return null;
+			}).when(fixture.player).completeBridgeTeleport(1);
+			if (completeFirst)
+			{
+				fixture.owner.sink.ownTeleported(1);
+				barrier(fixture.client);
+			}
+			var replacement = new BridgeLoopback.Transport(new byte[32]);
+			fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+			barrier(fixture.client);
+			if (!completeFirst)
+			{
+				assertThat(replacement.checkpoint).isNull();
+				assertThat(replacement.queued).isEmpty();
+				assertThat(replacement.attemptFence.ready).isFalse();
+				fixture.owner.sink.ownTeleported(1);
+				barrier(fixture.client);
+			}
+			var records = fixture.drain(replacement);
+			assertThat(records).filteredOn(record -> record.type() == Schemas.FACT && record.field(67) != null).hasSize(1);
+			assertThat(records.get(records.size() - 2).field(3).value().u()).isEqualTo(1);
+			assertThat(records.getLast().type()).isEqualTo(Schemas.OPENED);
+			verify(fixture.player).completeBridgeTeleport(1);
+			verify(fixture.player, never()).store(true, true);
+		}
+	}
+
+	@Test
+	void resumeBeforeGraceExpiryKeepsTheClientEvenWhileRelocationDefersTheSnapshot() throws Exception
+	{
+		try (Fixture fixture = new Fixture(19980))
+		{
+			fixture.open();
+			var timer = new java.util.concurrent.atomic.AtomicReference<Runnable>();
+			doAnswer(call -> { timer.set(call.getArgument(0)); return null; })
+					.when(fixture.pool.pool).scheduleGeneral(any(Runnable.class), anyLong());
+			fixture.owner.detach(fixture.first);
+			doReturn(false).when(fixture.player).captureBridgeScene(any(Runnable.class));
+			var replacement = new BridgeLoopback.Transport(new byte[32]);
+			fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+			timer.get().run();
+			barrier(fixture.client);
+			assertThat(fixture.owner.transport).isSameAs(replacement);
+			assertThat(replacement.checkpoint).isNull();
+			assertThat(fixture.client.isBridgeDisconnectRequested()).isFalse();
+			doAnswer(call -> { ((Runnable)call.getArgument(0)).run(); return true; })
+					.when(fixture.player).captureBridgeScene(any(Runnable.class));
+			fixture.client.submit(fixture.owner::captureCheckpoint);
+			barrier(fixture.client);
+			assertThat(fixture.drain(replacement).getLast().type()).isEqualTo(Schemas.OPENED);
+			verify(fixture.player, never()).store(true, true);
+		}
+	}
+
+	@Test
+	void graceExpiryBeforeResumeClosesTheSessionAndNeverAdoptsTheReplacement() throws Exception
+	{
+		try (Fixture fixture = new Fixture(19982))
+		{
+			fixture.open();
+			var timer = new java.util.concurrent.atomic.AtomicReference<Runnable>();
+			doAnswer(call -> { timer.set(call.getArgument(0)); return null; })
+					.when(fixture.pool.pool).scheduleGeneral(any(Runnable.class), anyLong());
+			fixture.owner.detach(fixture.first);
+			timer.get().run();
+			barrier(fixture.client);
+			var replacement = new BridgeLoopback.Transport(new byte[32]);
+			fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+			barrier(fixture.client);
+			assertThat(fixture.client.isBridgeDisconnectRequested()).isTrue();
+			assertThat(fixture.owner.transport).isNull();
+			assertThat(replacement.client).isNull();
+			assertThat(fixture.drain(replacement)).noneMatch(record -> record.type() == Schemas.CHECKPOINT);
+			verify(fixture.player).store(true, true);
+		}
+	}
+
 	@Test
 	void aLateEofOnTheReplacedSocketCannotDetachTheAcceptedResume() throws Exception
 	{
