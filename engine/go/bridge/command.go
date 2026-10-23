@@ -126,7 +126,7 @@ func checkReceipt(r Receipt, c Command) error {
 	if r.Requested != c.Verb || r.Effective != c.Verb {
 		return wire.ErrFrame
 	}
-	if r.Stage != wire.Done {
+	if r.Stage != wire.StageDone {
 		return nil
 	}
 	switch c.Verb {

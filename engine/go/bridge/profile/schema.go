@@ -6,6 +6,7 @@ package profile
 
 import "github.com/l2go/alatyr/engine/go/protocol/wire"
 
+// Record types, the profile name and the reason namespace of bridge/1.
 const (
 	Open        uint64 = 256
 	Opened      uint64 = 258
@@ -16,6 +17,7 @@ const (
 	Namespace          = "x.l2jfree/bridge"
 )
 
+// Limits returns the codec limits of bridge/1.
 func Limits() wire.Limits {
 	return wire.Limits{FrameBytes: 65536, StringBytes: 4096, ListItems: 1024, Depth: 3, Records: 1024, Fields: 128, IdentifierBytes: 64, WorldBytes: 256, ClientBytes: 128}
 }
@@ -71,6 +73,8 @@ func AdvertisedLimits() map[uint32]uint64 {
 	return map[uint32]uint64{1: 65536, 2: 4096, 3: 1024, 4: 3, 5: 4096, 6: 64, 7: 8, 8: 262144, 14: 8, 15: 1024, 16: 128, 17: 5000, 20: 5000, 21: 5000, 22: 10000, 23: 15000, 24: 30000, 26: 2097152, 27: 65536, 28: 4, 29: 2, 30: 2097152}
 }
 
+// Registry returns NeutralRegistry extended with the bridge/1 records and
+// fields.
 func Registry() wire.Registry {
 	r := NeutralRegistry()
 	i32 := wire.Essential(wire.Int)

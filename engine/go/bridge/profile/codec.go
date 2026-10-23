@@ -5,46 +5,67 @@ package profile
 
 import (
 	"bytes"
-	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"io"
+
+	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
 
+// Codec is the shared wire codec restricted to the bridge/1 profile. Every
+// decoded record is also checked against the profile's field rules.
 type Codec struct{ wire *wire.Codec }
 
+// NewProfileCodec returns a codec built from Limits and Registry.
 func NewProfileCodec() (*Codec, error) {
-	w, e := wire.New(Limits(), Registry())
-	if e != nil {
-		return nil, e
+	w, err := wire.New(Limits(), Registry())
+	if err != nil {
+		return nil, err
 	}
 	return &Codec{w}, nil
 }
+
+// Decode decodes one frame. If any record fails the profile, it returns an
+// error and no records.
 func (c *Codec) Decode(b []byte) ([]wire.Record, error) {
-	r, e := c.wire.Decode(b)
-	return validate(r, e)
+	r, err := c.wire.Decode(b)
+	return validate(r, err)
 }
+
+// Read reads and decodes one frame like Decode.
 func (c *Codec) Read(r io.Reader) ([]wire.Record, error) {
-	v, e := c.wire.Read(r)
-	return validate(v, e)
+	v, err := c.wire.Read(r)
+	return validate(v, err)
 }
+
+// Encode encodes one frame and verifies that it decodes under the profile.
 func (c *Codec) Encode(r []wire.Record) ([]byte, error) {
-	b, e := c.wire.Encode(r)
-	if e != nil {
-		return nil, e
+	b, err := c.wire.Encode(r)
+	if err != nil {
+		return nil, err
 	}
-	if _, e = c.Decode(b); e != nil {
-		return nil, e
+	if _, err = c.Decode(b); err != nil {
+		return nil, err
 	}
 	return b, nil
 }
+
+// Write verifies one frame like Encode and writes it to w.
 func (c *Codec) Write(w io.Writer, r []wire.Record) error {
-	if _, e := c.Encode(r); e != nil {
-		return e
+	if _, err := c.Encode(r); err != nil {
+		return err
 	}
 	return c.wire.Write(w, r)
 }
-func U(r wire.Record, n uint32) uint64    { v, _ := wire.Find(r.Fields, n); return v.U }
-func S(r wire.Record, n uint32) int64     { v, _ := wire.Find(r.Fields, n); return v.S }
-func Has(r wire.Record, n uint32) bool    { _, b := wire.Find(r.Fields, n); return b }
+
+// U returns the unsigned value of field n of r, or zero if it is absent.
+func U(r wire.Record, n uint32) uint64 { v, _ := wire.Find(r.Fields, n); return v.U }
+
+// S returns the signed value of field n of r, or zero if it is absent.
+func S(r wire.Record, n uint32) int64 { v, _ := wire.Find(r.Fields, n); return v.S }
+
+// Has reports whether r has field n.
+func Has(r wire.Record, n uint32) bool { _, b := wire.Find(r.Fields, n); return b }
+
+// Data returns the bytes of field n of r, or nil if it is absent.
 func Data(r wire.Record, n uint32) []byte { v, _ := wire.Find(r.Fields, n); return v.Data }
 
 func validate(rs []wire.Record, err error) ([]wire.Record, error) {
@@ -52,8 +73,8 @@ func validate(rs []wire.Record, err error) ([]wire.Record, error) {
 		return nil, err
 	}
 	for _, r := range rs {
-		if e := check(r); e != nil {
-			return nil, e
+		if err := check(r); err != nil {
+			return nil, err
 		}
 	}
 	return rs, nil
@@ -125,10 +146,10 @@ func check(r wire.Record) error {
 		}
 		stage := wire.Stage(u(2))
 		reason := u(3)
-		if (stage == wire.Sent || stage == wire.Done) && u(7) != 2 {
+		if (stage == wire.StageSent || stage == wire.StageDone) && u(7) != 2 {
 			return frame
 		}
-		if stage == wire.Unrecoverable && (!pair || u(65) != 21) {
+		if stage == wire.StageUnrecoverable && (!pair || u(65) != 21) {
 			return frame
 		}
 		if pair {
@@ -140,13 +161,13 @@ func check(r wire.Record) error {
 				return frame
 			}
 		}
-		if has(66) != (stage == wire.Done) {
+		if has(66) != (stage == wire.StageDone) {
 			return frame
 		}
 		effects, _ := wire.Find(r.Fields, 66)
 		for _, v := range effects.Items {
-			if e := checkEffect(v.Fields); e != nil {
-				return e
+			if err := checkEffect(v.Fields); err != nil {
+				return err
 			}
 		}
 	case wire.Fact:
@@ -162,8 +183,8 @@ func check(r wire.Record) error {
 		}
 		args, _ := wire.Find(r.Fields, 72)
 		for _, v := range args.Items {
-			if e := checkMessage(v.Fields); e != nil {
-				return e
+			if err := checkMessage(v.Fields); err != nil {
+				return err
 			}
 		}
 	}
@@ -223,8 +244,8 @@ func checkEffect(fields []wire.Field) error {
 	default:
 		return wire.ErrUnsupported
 	}
-	if e := exact(fields, allowed); e != nil {
-		return e
+	if err := exact(fields, allowed); err != nil {
+		return err
 	}
 	delta, _ := wire.Find(fields, 4)
 	old, _ := wire.Find(fields, 6)

@@ -3,6 +3,8 @@
 
 package wire
 
+// validateEnvelope checks the cross-field rules of a session record that a
+// Schema alone cannot express.
 func validateEnvelope(r Record) error {
 	u := func(n uint32) uint64 { v, _ := Find(r.Fields, n); return v.U }
 	has := func(n uint32) bool { _, ok := Find(r.Fields, n); return ok }
@@ -16,7 +18,7 @@ func validateEnvelope(r Record) error {
 			return ErrFrame
 		}
 	case Checkpoint:
-		if u(2) == 0 || u(1) == Begin && u(3) != 0 {
+		if u(2) == 0 || CheckpointPhase(u(1)) == CheckpointBegin && u(3) != 0 {
 			return ErrFrame
 		}
 	case Fact:
@@ -29,16 +31,16 @@ func validateEnvelope(r Record) error {
 			return ErrFrame
 		}
 	case Control:
-		switch u(1) {
-		case TakeControl:
+		switch ControlOp(u(1)) {
+		case ControlTake:
 			if has(2) || has(3) {
 				return ErrFrame
 			}
-		case Granted:
+		case ControlGranted:
 			if !has(2) || !has(3) || u(2) == 0 || u(3) == 0 {
 				return ErrFrame
 			}
-		case Lost, Resync:
+		case ControlLost, ControlResync:
 			if !has(2) || u(2) == 0 || has(3) {
 				return ErrFrame
 			}
@@ -49,28 +51,28 @@ func validateEnvelope(r Record) error {
 		}
 		stage, reason, delivery := Stage(u(2)), Reason(u(3)), Delivery(u(7))
 		switch stage {
-		case Sent:
-			if reason != None || (delivery != Local && delivery != Backend) {
+		case StageSent:
+			if reason != ReasonNone || (delivery != DeliveryLocal && delivery != DeliveryBackend) {
 				return ErrFrame
 			}
-		case Done:
-			if reason != None || delivery != Backend {
+		case StageDone:
+			if reason != ReasonNone || delivery != DeliveryBackend {
 				return ErrFrame
 			}
-		case Refused:
-			if reason == None || delivery != NoDelivery {
+		case StageRefused:
+			if reason == ReasonNone || delivery != DeliveryNone {
 				return ErrFrame
 			}
-		case Unrecoverable:
-			if reason != TooOld || delivery != NoDelivery {
+		case StageUnrecoverable:
+			if reason != ReasonTooOld || delivery != DeliveryNone {
 				return ErrFrame
 			}
-		case Unknown:
-			if delivery != Backend && delivery != Partial {
+		case StageUnknown:
+			if delivery != DeliveryBackend && delivery != DeliveryPartial {
 				return ErrFrame
 			}
 			switch reason {
-			case Timeout, WorldClosed, Interrupted, TargetUnconfirmed, BackendError:
+			case ReasonTimeout, ReasonWorldClosed, ReasonInterrupted, ReasonTargetUnconfirmed, ReasonBackendError:
 			default:
 				return ErrFrame
 			}
