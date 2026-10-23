@@ -12,7 +12,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 - Vitality is off by default, so a new character earns exactly the experience and SP the world records; set `EnableVitality = True` in your `vitality.properties` to bring it back.
 
-- The image is published for linux/arm64 as well as linux/amd64; its base is Debian 13 slim instead of Arch Linux. The distribution adds the native network transports for linux/arm64. The world and the server code are unchanged.
+- The image is published for linux/arm64 as well as linux/amd64; its base is Debian 13 slim instead of Arch Linux. The distribution adds the native network transports for linux/arm64. This change leaves the world and the server code unchanged.
 
 ## [3.2.0] - 2026-10-15
 
