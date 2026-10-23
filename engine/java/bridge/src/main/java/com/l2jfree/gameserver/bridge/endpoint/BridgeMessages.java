@@ -14,8 +14,6 @@
  */
 package com.l2jfree.gameserver.bridge.endpoint;
 
-package com.l2jfree.gameserver.bridge.endpoint;
-
 import java.util.ArrayList;
 import java.util.List;
 
