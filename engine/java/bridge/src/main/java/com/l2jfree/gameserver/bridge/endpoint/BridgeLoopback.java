@@ -399,7 +399,7 @@ final class BridgeLoopback implements Runnable
 
 	void acceptFrame(Transport transport, List<Envelope> records) throws IOException
 	{
-		if (transport.closing || transport.terminal)
+		if (transport.closing || transport.terminal || transport.lost)
 			return;
 		if ((transport.session != null || transport.resumeOwner != null) && records.size() == 1
 				&& records.get(0).type() == com.l2jfree.gameserver.bridge.wire.Schemas.CLOSE)

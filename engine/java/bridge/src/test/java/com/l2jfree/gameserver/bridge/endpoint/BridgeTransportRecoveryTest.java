@@ -111,7 +111,7 @@ class BridgeTransportRecoveryTest
 	}
 
 	@org.junit.jupiter.params.ParameterizedTest
-	@org.junit.jupiter.params.provider.ValueSource(strings = { "live:timeout", "live:malformed", "detached:timeout", "detached:malformed" })
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "live:timeout", "live:malformed", "live:eof", "live:close", "live:auth", "live:overflow", "detached:timeout", "detached:malformed", "detached:eof", "detached:close", "detached:auth", "detached:overflow" })
 	void cancellationAndAdoptionShareTheSessionTransactionAtTheGuard(String scenario) throws Exception
 	{
 		var guarded = new CountDownLatch(1);
@@ -138,8 +138,7 @@ class BridgeTransportRecoveryTest
 					cancelling.countDown();
 					try
 					{
-						if (scenario.endsWith("timeout")) BridgeLoopback.expire(replacement, replacement.openingDeadline);
-						else fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id + 1, 2)));
+						cancelReplacement(fixture, replacement, scenario);
 					}
 					catch (Exception failure) { throw new AssertionError(failure); }
 					finally { cancelled.countDown(); }
@@ -157,7 +156,7 @@ class BridgeTransportRecoveryTest
 	}
 
 	@org.junit.jupiter.params.ParameterizedTest
-	@org.junit.jupiter.params.provider.ValueSource(strings = { "live:timeout", "live:malformed", "detached:timeout", "detached:malformed" })
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "live:timeout", "live:malformed", "live:eof", "live:auth", "live:overflow", "detached:timeout", "detached:malformed", "detached:eof", "detached:auth", "detached:overflow" })
 	void aPendingCancellationWinsWithoutConsumingEpochOrGrace(String scenario) throws Exception
 	{
 		try (Fixture fixture = new Fixture(20032))
@@ -169,8 +168,7 @@ class BridgeTransportRecoveryTest
 			try (var gate = new FifoGate(fixture.client))
 			{
 				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
-				if (scenario.endsWith("timeout")) BridgeLoopback.expire(replacement, replacement.openingDeadline);
-				else fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id + 1, 2)));
+				cancelReplacement(fixture, replacement, scenario);
 			}
 			barrier(fixture.client);
 			assertThat(fixture.owner.recovery.epoch()).isEqualTo(1);
@@ -186,6 +184,30 @@ class BridgeTransportRecoveryTest
 	private static Envelope close(long id, long epoch)
 	{
 		return Envelope.of(Schemas.CLOSE, List.of(Field.u(1, true, id), Field.u(2, true, epoch), Field.u(3, true, 0)));
+	}
+
+	private static void cancelReplacement(Fixture fixture, BridgeLoopback.Transport replacement, String scenario) throws Exception
+	{
+		switch (scenario.substring(scenario.indexOf(':') + 1))
+		{
+			case "timeout" -> BridgeLoopback.expire(replacement, replacement.openingDeadline);
+			case "eof" ->
+			{
+				SocketChannel socket = mock(SocketChannel.class);
+				when(socket.read(any(ByteBuffer.class))).thenReturn(-1);
+				fixture.loop.serve(key(socket, replacement, true));
+			}
+			case "close" -> fixture.loop.acceptFrame(replacement, List.of(close(fixture.id, 2)));
+			case "auth" -> fixture.loop.acceptFrame(replacement, List.of(Envelope.of(Schemas.RESUME, List.of(
+					Field.u(1, true, fixture.id), Field.u(2, true, 2), Field.data(3, true, new byte[] { 1 }),
+					Field.data(4, true, "bridge/1".getBytes(java.nio.charset.StandardCharsets.UTF_8)))));
+			case "overflow" ->
+			{
+				BridgeLoopback.offer(replacement, new byte[BridgeLoopback.OUT_QUEUE_BYTES + 1]);
+				fixture.loop.serviceControl(replacement);
+			}
+			default -> fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id + 1, 2)));
+		}
 	}
 
 	@org.junit.jupiter.params.ParameterizedTest
@@ -219,6 +241,37 @@ class BridgeTransportRecoveryTest
 			var replies = fixture.drain(fixture.first);
 			assertThat(replies).singleElement().satisfies(record ->
 				assertThat(record.field(1).value().u()).isEqualTo(saved ? BridgeFrames.BYE_NORMAL : BridgeFrames.BYE_INTERNAL));
+			assertThat(fixture.loop.transports()).isZero();
+			verify(fixture.player).store(true, true);
+		}
+	}
+
+	@Test
+	void losingAReplyAfterItsFirstByteCannotPublishASecondBye() throws Exception
+	{
+		try (Fixture fixture = new Fixture(20036))
+		{
+			fixture.open();
+			var replacement = new BridgeLoopback.Transport(new byte[32]);
+			try (var gate = new FifoGate(fixture.client))
+			{
+				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+				fixture.loop.acceptFrame(replacement, List.of(close(fixture.id, 2)));
+			}
+			barrier(fixture.client);
+			barrier(fixture.client);
+			var replySocket = mock(SocketChannel.class);
+			when(replySocket.write(any(ByteBuffer.class))).thenReturn(1).thenThrow(new java.io.IOException("partial reply"));
+			var replyKey = key(replySocket, replacement, false);
+			fixture.loop.account();
+			fixture.loop.account();
+			fixture.loop.serve(replyKey);
+			assertThat(replacement.saveReplyStarted).isTrue();
+			assertThat(fixture.first.retire).isTrue();
+			fixture.loop.serve(replyKey);
+			verify(replySocket).close();
+			verify(replyKey).cancel();
+			assertThat(fixture.drain(fixture.first)).isEmpty();
 			assertThat(fixture.loop.transports()).isZero();
 			verify(fixture.player).store(true, true);
 		}
