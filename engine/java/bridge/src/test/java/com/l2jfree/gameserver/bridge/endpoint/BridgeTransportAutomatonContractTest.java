@@ -64,6 +64,7 @@ class BridgeTransportAutomatonContractTest
 		String resume = method(source, "void resume(Transport replacement");
 		assertThat(resume.indexOf("synchronized (this)")).isLessThan(resume.indexOf("synchronized (replacement)"));
 		assertThat(resume).contains("cancelRecords", "slowRequested", "afterResumeGuard", "recovery.resume(");
+		assertThat(method(resume, "synchronized (replacement)")).doesNotContain("recovery.", "attempts.", "submit(");
 		assertThat(method(source, "boolean notePendingResume(")).contains("synchronized (this)", "cancelRecords", "return false");
 	}
 
@@ -75,5 +76,15 @@ class BridgeTransportAutomatonContractTest
 			assertThat(method(source, signature)).doesNotContain(".writing =", ".writingAt =", ".held =", ".queued.clear(");
 		assertThat(method(source, "static int flush(")).contains("transport.writing != writing", "transport.held -= n", "writeDeadline");
 		assertThat(method(source, "static void applyOutputFlags(")).doesNotContain("Math.max");
+	}
+
+	@Test
+	void theSelectorOwnsDeadlineChecksAndPhysicalShutdownDisposal() throws Exception
+	{
+		String source = source();
+		assertThat(method(source, "List<Envelope> takeFrame(")).contains("synchronized (transport) { transport.readDeadline = 0; }");
+		assertThat(method(source, "long nextWaitMs(")).contains("writeDeadline", "readDeadline", "shutdownDeadline");
+		assertThat(method(source, "void run()")).contains("finally", "drop(key)");
+		assertThat(method(source, "void close(long budgetMs)")).contains("saveEnd", "thread.join", "unfinished saves");
 	}
 }

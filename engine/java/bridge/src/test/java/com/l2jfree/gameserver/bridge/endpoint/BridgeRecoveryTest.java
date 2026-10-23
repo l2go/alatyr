@@ -20,6 +20,61 @@ import org.junit.jupiter.api.Test;
 
 class BridgeRecoveryTest
 {
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "opening", "closing", "closed" })
+	void openingAndTerminalStatesRejectResumeWithoutChangingEpochOrFence(String state)
+	{
+		Object source = new Object();
+		BridgeRecovery recovery = state.equals("opening") ? new BridgeRecovery(source) : live(source);
+		if (state.equals("closing")) recovery.close();
+		if (state.equals("closed")) recovery.closed();
+		long fence = recovery.fence();
+		assertThat(recovery.resume(new Object(), 2)).isEqualTo(BridgeRecovery.Resume.CLOSED);
+		assertThat(recovery.epoch()).isEqualTo(1);
+		assertThat(recovery.fence()).isEqualTo(fence);
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "opening", "live", "detached", "closing", "closed" })
+	void staleLossAndGraceAreInertInEveryRecoveryState(String state)
+	{
+		Object source = new Object();
+		BridgeRecovery recovery = state.equals("opening") ? new BridgeRecovery(source) : live(source);
+		if (state.equals("detached")) recovery.detach(source, recovery.fence());
+		if (state.equals("closing")) recovery.close();
+		if (state.equals("closed")) recovery.closed();
+		long fence = recovery.fence();
+		assertThat(recovery.detach(new Object(), fence)).isZero();
+		assertThat(recovery.expireGrace(0)).isFalse();
+		assertThat(recovery.expireGrace(Long.MAX_VALUE)).isFalse();
+		assertThat(recovery.fence()).isEqualTo(fence);
+		assertThat(recovery.epoch()).isEqualTo(1);
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(longs = { 0, 1, 3, -1 })
+	void nonNextEpochsCannotConsumeTheRecoveryFence(long epoch)
+	{
+		BridgeRecovery recovery = live(new Object());
+		long fence = recovery.fence();
+		assertThat(recovery.resume(new Object(), epoch)).isEqualTo(BridgeRecovery.Resume.FRAME);
+		assertThat(recovery.fence()).isEqualTo(fence);
+		assertThat(recovery.epoch()).isEqualTo(1);
+	}
+
+	@Test
+	void theUnsignedEpochCannotWrapToZero() throws Exception
+	{
+		BridgeRecovery recovery = live(new Object());
+		var epoch = BridgeRecovery.class.getDeclaredField("epoch");
+		epoch.setAccessible(true);
+		epoch.setLong(recovery, -1L);
+		long fence = recovery.fence();
+		assertThat(recovery.resume(new Object(), 0)).isEqualTo(BridgeRecovery.Resume.FRAME);
+		assertThat(recovery.epoch()).isEqualTo(-1L);
+		assertThat(recovery.fence()).isEqualTo(fence);
+	}
+
 	@Test
 	void openingCannotDetachAndACompletedTokenCannotPublishTwice()
 	{
