@@ -55,10 +55,10 @@ func (*testState) Plan(wire.Record, int64) (*Action, wire.Reason) {
 	return &Action{Effective: 2, Local: true}, wire.ReasonNone
 }
 func (*testState) Validate(*Action, int64) wire.Reason       { return wire.ReasonNone }
-func (*testState) Start(*Action)                             {}
-func (*testState) Confirmed(*Action) bool                    { return false }
-func (*testState) Witness(*Action, Update) Witness           { return WitnessNone }
-func (*testState) CandidateValid(*Action) bool               { return false }
+func (*testState) Start(*Action) error                       { return nil }
+func (*testState) Confirmed(*Action) (bool, error)           { return false, nil }
+func (*testState) Witness(*Action, Update) (Witness, error)  { return WitnessNone, nil }
+func (*testState) CandidateValid(*Action) (bool, error)      { return false, nil }
 func (*testState) Proof(*Action, int64) (wire.Record, error) { return wire.Record{}, nil }
 func (*testState) Invalidate()                               {}
 func (*testState) Stop() *Step                               { return nil }

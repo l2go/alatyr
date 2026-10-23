@@ -105,7 +105,12 @@ func (s *game) service(ctx context.Context) {
 			continue
 		}
 		if ex.waiting {
-			if s.state.Confirmed(ex.action) {
+			confirmed, err := s.state.Confirmed(ex.action)
+			if err != nil {
+				s.fail(wire.CloseInternal)
+				return
+			}
+			if confirmed {
 				ex.waiting = false
 				ex.index++
 			} else if s.gate.now()-ex.helperAt >= s.gate.cfg.TargetWait.Milliseconds() {
@@ -154,12 +159,22 @@ func (s *game) service(ctx context.Context) {
 			continue
 		}
 		if ex.index == 0 && !ex.waiting {
-			s.state.Start(ex.action)
+			if err := s.state.Start(ex.action); err != nil {
+				s.fail(wire.CloseInternal)
+				return
+			}
 		}
 		step := ex.action.Steps[ex.index]
-		if step.Await && s.state.Confirmed(ex.action) {
-			ex.index++
-			continue
+		if step.Await {
+			confirmed, err := s.state.Confirmed(ex.action)
+			if err != nil {
+				s.fail(wire.CloseInternal)
+				return
+			}
+			if confirmed {
+				ex.index++
+				continue
+			}
 		}
 		// Confirmation is current world state, not a permanent receipt. Recheck
 		// even when a previously confirmed prelude was skipped on an earlier
@@ -168,15 +183,22 @@ func (s *game) service(ctx context.Context) {
 		for _, prior := range ex.action.Steps[:ex.index] {
 			requiresConfirmation = requiresConfirmation || prior.Await
 		}
-		if requiresConfirmation && !s.state.Confirmed(ex.action) {
-			o, err := s.attempts.Refuse(n, wire.ReasonTargetUnconfirmed)
+		if requiresConfirmation {
+			confirmed, err := s.state.Confirmed(ex.action)
 			if err != nil {
 				s.fail(wire.CloseInternal)
 				return
 			}
-			s.result(o.Record())
-			delete(s.actions, n)
-			continue
+			if !confirmed {
+				o, err := s.attempts.Refuse(n, wire.ReasonTargetUnconfirmed)
+				if err != nil {
+					s.fail(wire.CloseInternal)
+					return
+				}
+				s.result(o.Record())
+				delete(s.actions, n)
+				continue
+			}
 		}
 		if s.pacer != nil && !s.pacer.Ready(step, s.gate.now()) {
 			return
@@ -237,6 +259,9 @@ func (s *game) write(ctx context.Context, step Step) error {
 }
 func (s *game) observe(update Update) bool {
 	s.expire()
+	if s.closed {
+		return false
+	}
 	if update.Relocate {
 		var survivor uint64
 		for n, ex := range s.actions {
@@ -280,7 +305,12 @@ func (s *game) observe(update Update) bool {
 			if !ok || entry.Terminal || !s.attempts.Eligible(n, s.gate.now()) {
 				continue
 			}
-			switch s.state.Witness(ex.action, update) {
+			witness, err := s.state.Witness(ex.action, update)
+			if err != nil {
+				s.fail(wire.CloseInternal)
+				return false
+			}
+			switch witness {
 			case WitnessMatch:
 				if ex.action.AfterCheckpoint {
 					ex.candidate = s.gate.now()
@@ -345,7 +375,15 @@ func (s *game) expire() {
 			delete(s.actions, n)
 			continue
 		}
-		if ex.action.FullWindow && e.Contact && now >= e.Deadline && ex.hasCandidate && s.state.CandidateValid(ex.action) {
+		if ex.action.FullWindow && e.Contact && now >= e.Deadline && ex.hasCandidate {
+			valid, err := s.state.CandidateValid(ex.action)
+			if err != nil {
+				s.fail(wire.CloseInternal)
+				return
+			}
+			if !valid {
+				continue
+			}
 			// Commit at the original deadline even when a scheduler tick arrives late.
 			o, err := s.attempts.CommitWitness(n, ex.candidate, e.Deadline)
 			if err == nil {
@@ -419,7 +457,15 @@ func (s *game) commitReadyWitnesses() {
 		return
 	}
 	for n, ex := range s.actions {
-		if !ex.action.AfterCheckpoint || !ex.hasCandidate || !s.state.CandidateValid(ex.action) {
+		if !ex.action.AfterCheckpoint || !ex.hasCandidate {
+			continue
+		}
+		valid, err := s.state.CandidateValid(ex.action)
+		if err != nil {
+			s.fail(wire.CloseInternal)
+			return
+		}
+		if !valid {
 			continue
 		}
 		o, err := s.attempts.Done(n, s.gate.now())

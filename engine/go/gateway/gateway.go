@@ -779,6 +779,9 @@ func (s *game) receive(c *connection, r wire.Record) bool {
 }
 func (s *game) intent(c *connection, r wire.Record) {
 	s.expire()
+	if s.closed {
+		return
+	}
 	normalized := r
 	normalized.Unsupported = false
 	bytes, err := s.gate.cfg.Codec.Encode([]wire.Record{normalized})
