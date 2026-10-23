@@ -190,6 +190,9 @@ func (h HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err = upgrade(w, r, h.Gateway.cfg.FrameBytes, h.Gateway.cfg.Write, pending.attach)
 	close(pending.ready)
 	if err != nil {
+		// Cleanup belongs to this HTTP owner even if the connection loop already
+		// closed its reservation. Preserve only Close errors, not malformed input.
+		h.Gateway.closeError(pending.Close())
 		c.close()
 		select {
 		case c.game.input <- input{abort: true}:

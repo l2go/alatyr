@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -136,6 +137,58 @@ func TestCloseTracksLateHijackHandoff(t *testing.T) {
 		case <-conn.done:
 		default:
 			t.Fatal("late handoff did not close socket")
+		}
+	})
+}
+
+func TestFailedUpgradeRetainsSocketCloseError(t *testing.T) {
+	for _, failure := range []string{"deadline", "write", "flush"} {
+		t.Run(failure, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				g, err := New(testConfig(t))
+				if err != nil {
+					t.Fatal(err)
+				}
+				closeErr := errors.New("synthetic socket close failure")
+				ioErr := errors.New("synthetic handshake failure")
+				conn := &handshakeConn{memoryConn: &memoryConn{Reader: bytes.NewReader(nil)},
+					done: make(chan struct{}), closeErr: closeErr}
+				writer := handshakeWriter{ResponseRecorder: httptest.NewRecorder(), conn: conn}
+				switch failure {
+				case "deadline":
+					conn.deadlineErr = ioErr
+				case "write":
+					conn.writeErr = ioErr
+					writer.bufferSize = 1
+				case "flush":
+					conn.writeErr = ioErr
+				}
+				h := HTTP{Gateway: g, Config: HTTPConfig{LocalIdentity: "one", LocalAddress: "127.0.0.1:8080"}}
+				h.ServeHTTP(writer, handshakeRequest())
+				if err := g.Close(); !errors.Is(err, closeErr) || errors.Is(err, ioErr) {
+					t.Fatalf("Close = %v, want only socket cleanup error %v", err, closeErr)
+				}
+				if strings.Contains(writer.Body.String(), closeErr.Error()) || strings.Contains(writer.Body.String(), ioErr.Error()) {
+					t.Fatal("HTTP response exposed internal error")
+				}
+			})
+		})
+	}
+}
+
+func TestMalformedUpgradeDoesNotPoisonClose(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		g := newTestGateway(t, testConfig(t))
+		h := HTTP{Gateway: g, Config: HTTPConfig{LocalIdentity: "one", LocalAddress: "127.0.0.1:8080"}}
+		r := handshakeRequest()
+		r.Header.Del("Sec-WebSocket-Key")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+		}
+		if err := g.Close(); err != nil {
+			t.Fatalf("Close = %v after malformed input, want nil", err)
 		}
 	})
 }
