@@ -25,6 +25,29 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeOutcomeTest
 {
 	@Test
+	void identicalLearningMetadataDoesNotDuplicateCostButAChangedPlanIsIncomplete()
+	{
+		var player = BridgeTestPlayers.player();
+		Attempt attempt = new Attempt(player);
+		EffectLedger.open(attempt);
+		try
+		{
+			EffectLedger.expectLearningCost(player, 0, 10, 100, 1);
+			EffectLedger.expectLearningCost(player, 0, 10, 100, 1);
+			assertThat(attempt.hasLearningCost()).isTrue();
+			assertThat(attempt.isLedgerIncomplete()).isFalse();
+			assertThat(attempt.effects()).isEmpty();
+			EffectLedger.expectLearningCost(player, 0, 11, 100, 1);
+			assertThat(attempt.isLedgerIncomplete()).isTrue();
+			assertThat(BridgeOutcome.learn(attempt, 12, 1)).isEqualTo(BridgeOutcome.UNKNOWN);
+		}
+		finally
+		{
+			EffectLedger.close();
+		}
+	}
+
+	@Test
 	void aClassSwitchInvalidatesAllAttemptOutcomes()
 	{
 		var player = BridgeTestPlayers.player();
