@@ -29,6 +29,8 @@ final class BridgeAttemptSession
 	{
 		long n = intent.field(1).value().u();
 		long verb = intent.field(2).value().u();
+		long received = System.nanoTime();
+		long ttl = intent.field(4) == null ? 5000 : intent.field(4).value().u();
 		return accept(n, Codec.bridge().encode(java.util.List.of(intent)), () ->
 		{
 			if (client.isBridgeDisconnectRequested() || client.getState() != L2Client.GameClientState.IN_GAME
@@ -36,6 +38,10 @@ final class BridgeAttemptSession
 				return BridgeResults.encode(n, verb, 3, 1, null);
 			if (intent.field(3).value().u() != 1)
 				return BridgeResults.encode(n, verb, 3, 1, null);
+			if (ttl < 0 || ttl > 5000)
+				return BridgeResults.encode(n, verb, 3, 10, null);
+			if (System.nanoTime() - received >= ttl * 1_000_000L)
+				return BridgeResults.encode(n, verb, 3, 6, null);
 			try
 			{
 				com.l2jfree.gameserver.model.items.L2ItemInstance ground = null;
@@ -97,6 +103,10 @@ final class BridgeAttemptSession
 			catch (IllegalArgumentException | ArithmeticException invalid)
 			{
 				return BridgeResults.encode(n, verb, 3, 10, null);
+			}
+			catch (RuntimeException failure)
+			{
+				return BridgeResults.encode(n, verb, 4, 24, null);
 			}
 		});
 	}
