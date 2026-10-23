@@ -35,7 +35,7 @@
 </header>
 <main id="main">
 <article>
-<header class="article-head">
+<header class="article-head article-head--focus-right">
   <picture><source srcset="/alatyr/assets/img/covers/transaction.webp" type="image/webp"><img src="/alatyr/assets/img/covers/transaction.jpg" alt="" width="1600" height="667"></picture>
   <div class="wrap">
     <div class="crumbs"><a href="/alatyr/#notes">Reviving L2JFree</a> · Part 4</div>
@@ -77,7 +77,7 @@
 
 <h2>What it cost</h2>
 <ul>
-<li><strong>A save holds row locks longer.</strong> The whole save is one transaction, so its locks live until the commit. For one player's rows that is milliseconds, and nothing else writes those rows in the meantime.</li>
+<li><strong>A save holds row locks longer.</strong> The whole save is one transaction, so its locks live until the commit. The transaction covers only one player's rows, and nothing else writes those rows in the meantime.</li>
 <li><strong>Two write paths for items.</strong> The queue still serves writes outside a save. A queued write and a save of the same item are serialized by the row lock, and the queue rechecks the flags before it writes. That rule has to stay true as the code changes.</li>
 <li><strong>Implicit context.</strong> A thread-scoped transaction is invisible at the call site. Code that hands work to another thread leaves the transaction behind. This is the price of not rewriting every call; the Javadoc says it plainly, and saves run on one thread.</li>
 </ul>
