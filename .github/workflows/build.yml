@@ -86,14 +86,14 @@ jobs:
           GOWORK: "off"
         run: |
           set -euo pipefail
-          for module in protocol gateway bridge world; do
+          for module in protocol gateway bridge world worldbridge; do
             (cd "engine/go/$module" && go vet ./... && go test -race -count=1 -timeout=2m ./...)
           done
 
       - name: Check each module in the workspace
         run: |
           set -euo pipefail
-          for module in protocol gateway bridge world; do
+          for module in protocol gateway bridge world worldbridge; do
             (cd "engine/go/$module" && go test -count=1 -timeout=2m ./...)
           done
 
@@ -129,7 +129,7 @@ jobs:
           GOWORK: "off"
         run: |
           set -euo pipefail
-          for module in protocol gateway bridge world; do
+          for module in protocol gateway bridge world worldbridge; do
             (cd "engine/go/$module" && govulncheck -test ./...)
           done
 
@@ -157,6 +157,18 @@ jobs:
         run: |
           set -euo pipefail
           for target in FuzzStreamRead FuzzWebSocketRead; do
+            targets="$(go test -list "^$target$" .)"
+            printf '%s\n' "$targets" | grep -Fxq "$target"
+            go test -run='^$' -fuzz="^$target$" -fuzztime=5s -parallel=1 -timeout=2m .
+          done
+
+      - name: Check world translation fuzzing readiness
+        working-directory: engine/go/worldbridge
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          for target in FuzzNormalizeCommand FuzzParseHTML; do
             targets="$(go test -list "^$target$" .)"
             printf '%s\n' "$targets" | grep -Fxq "$target"
             go test -run='^$' -fuzz="^$target$" -fuzztime=5s -parallel=1 -timeout=2m .

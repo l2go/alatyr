@@ -89,6 +89,18 @@ func active(p *policy) {
 	p.FuzzTargets = []fuzzTarget{{".", "FuzzDecode"}}
 }
 
+func activeModule(t *testing.T, p *policy, name string) modulePolicy {
+	t.Helper()
+	for i := range p.Modules {
+		if p.Modules[i].Package == name {
+			p.Modules[i].Phase = "active"
+			return p.Modules[i]
+		}
+	}
+	t.Fatalf("missing module %s", name)
+	return modulePolicy{}
+}
+
 func expectRule(t *testing.T, err error, rule string) {
 	t.Helper()
 	if err == nil || !strings.Contains(err.Error(), rule) {
@@ -387,6 +399,7 @@ func TestScaffoldDependencyStillRejected(t *testing.T) {
 func TestWorldImportsAcrossBuildConstraints(t *testing.T) {
 	for _, test := range []struct{ file, body string }{
 		{"bad.go", "package world\nimport _ \"" + modulePrefix + "bridge\"\n"},
+		{"adapter.go", "package world\nimport _ \"" + modulePrefix + "worldbridge\"\n"},
 		{"bad_test.go", "package world_test\nimport _ \"example.org/foreign\"\n"},
 		{"tagged.go", "//go:build never_enabled\n\npackage world\nimport _ \"example.org/foreign\"\n"},
 		{"bad_plan9.go", "package world\nimport _ \"" + modulePrefix + "protocol\"\n"},
@@ -394,7 +407,7 @@ func TestWorldImportsAcrossBuildConstraints(t *testing.T) {
 	} {
 		t.Run(test.file, func(t *testing.T) {
 			root, p := fixture(t)
-			p.Modules[len(p.Modules)-1].Phase = "active"
+			activeModule(t, &p, "world")
 			writeFixture(t, root, "engine/go/world/"+test.file, source("AGPL-3.0-or-later", test.body))
 			expectRule(t, checkTree(root, p), "I-3")
 		})
@@ -404,7 +417,7 @@ func TestWorldModuleDirectives(t *testing.T) {
 	for _, directive := range []string{"require example.org/foreign v1.0.0", "replace example.org/foreign => ../bridge", "exclude example.org/foreign v1.0.0", "tool example.org/foreign/cmd/tool"} {
 		t.Run(strings.Fields(directive)[0], func(t *testing.T) {
 			root, p := fixture(t)
-			p.Modules[len(p.Modules)-1].Phase = "active"
+			activeModule(t, &p, "world")
 			writeFixture(t, root, "engine/go/world/go.mod", "module "+modulePrefix+"world\ngo "+goVersion+"\n"+directive+"\n")
 			expectRule(t, checkTree(root, p), "I-3")
 		})
@@ -412,10 +425,71 @@ func TestWorldModuleDirectives(t *testing.T) {
 }
 func TestWorldOwnSubpackages(t *testing.T) {
 	root, p := fixture(t)
-	p.Modules[len(p.Modules)-1].Phase = "active"
+	activeModule(t, &p, "world")
 	writeFixture(t, root, "engine/go/world/catalog/catalog.go", source("AGPL-3.0-or-later", "package catalog\nimport \"encoding/csv\"\nvar NewReader=csv.NewReader\n"))
 	writeFixture(t, root, "engine/go/world/doc_test.go", source("AGPL-3.0-or-later", "package world_test\nimport _ \""+modulePrefix+"world/catalog\"\n"))
 	if err := checkTree(root, p); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func adapterModule(t *testing.T, root string, p *policy) modulePolicy {
+	t.Helper()
+	m := activeModule(t, p, "worldbridge")
+	writeFixture(t, root, "engine/go/worldbridge/go.mod", "module "+modulePrefix+"worldbridge\n\ngo "+goVersion+"\nrequire (\n"+
+		modulePrefix+"bridge v0.0.0-20261023154142-3ca081d3eba3\n"+
+		modulePrefix+"protocol v0.0.0-20261023084050-3b52c8d267a0\n"+
+		modulePrefix+"world v0.0.0-20261023154142-3ca081d3eba3\n)\n")
+	return m
+}
+
+func TestWorldBridgeDependencyDirection(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		accepted   bool
+	}{
+		{"own and world", "package worldbridge\nimport ( _ \"" + modulePrefix + "world\"; _ \"" + modulePrefix + "bridge\"; _ \"" + modulePrefix + "protocol\" )\n", true},
+		{"gateway", "package worldbridge\nimport _ \"" + modulePrefix + "gateway\"\n", false},
+		{"tagged foreign", "//go:build never_enabled\n\npackage worldbridge\nimport _ \"example.org/foreign\"\n", false},
+		{"tagged invalid path", "//go:build never_enabled\n\npackage worldbridge\nimport _ \"" + modulePrefix + "world/../bridge\"\n", false},
+		{"test foreign", "package worldbridge_test\nimport _ \"example.org/foreign\"\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, p := fixture(t)
+			m := adapterModule(t, root, &p)
+			name := "probe.go"
+			if tc.name == "test foreign" {
+				name = "probe_test.go"
+			}
+			writeFixture(t, root, "engine/go/worldbridge/"+name, source("AGPL-3.0-or-later", tc.body))
+			err := checkWorldBridgeDeps(root, m)
+			if tc.accepted {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			expectRule(t, err, "I-3")
+		})
+	}
+}
+
+func TestWorldBridgeDependencyPins(t *testing.T) {
+	for _, directive := range []string{
+		"replace " + modulePrefix + "world => ../world",
+		"exclude " + modulePrefix + "world v0.0.0-20261023154142-3ca081d3eba3",
+		"tool example.org/foreign/cmd/tool",
+	} {
+		t.Run(strings.Fields(directive)[0], func(t *testing.T) {
+			root, p := fixture(t)
+			m := adapterModule(t, root, &p)
+			path := filepath.Join(root, "engine/go/worldbridge/go.mod")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeFixture(t, root, "engine/go/worldbridge/go.mod", string(data)+directive+"\n")
+			expectRule(t, checkWorldBridgeDeps(root, m), "I-3")
+		})
 	}
 }
