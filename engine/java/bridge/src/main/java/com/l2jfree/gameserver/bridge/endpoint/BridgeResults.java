@@ -23,6 +23,19 @@ final class BridgeResults
 		ArrayList<Field> fields = new ArrayList<>(List.of(Field.u(1, true, n), Field.u(2, true, stage),
 				Field.u(3, true, reason), Field.u(5, true, verb), Field.u(6, true, verb),
 				Field.u(7, true, stage == 3 || stage == 5 ? 0 : 2)));
+		long bridgeReason = switch ((int)reason)
+		{
+			case 1 -> 7;
+			case 7 -> 8;
+			case 10 -> 6;
+			case 24 -> 20;
+			default -> 0;
+		};
+		if (bridgeReason != 0)
+		{
+			fields.add(Field.data(64, true, "x.l2jfree/bridge".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+			fields.add(Field.u(65, true, bridgeReason));
+		}
 		if (stage == BridgeOutcome.DONE)
 		{
 			ArrayList<Value> effects = new ArrayList<>();

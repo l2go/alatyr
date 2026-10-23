@@ -12,6 +12,15 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeResultsTest
 {
 	@Test
+	void admissionRefusalsCarryThePairedBridgeReason()
+	{
+		var result = Codec.bridge().decode(BridgeResults.encode(1, 9, 3, 1, null)).get(0);
+		assertThat(result.field(64).value().data()).containsExactly("x.l2jfree/bridge".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		assertThat(result.field(65).value().u()).isEqualTo(7);
+		assertThat(result.field(7).value().u()).isZero();
+	}
+
+	@Test
 	void doneCarriesActualReceiptsAndUnknownNeverCarriesEffects()
 	{
 		var player = BridgeTestPlayers.player();

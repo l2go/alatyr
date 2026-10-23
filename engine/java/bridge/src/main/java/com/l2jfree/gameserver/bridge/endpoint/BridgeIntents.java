@@ -19,8 +19,8 @@ import java.util.LinkedHashMap;
 
 /**
  * Attempt numbers for one session. A repeated body is the stored attempt. A different body under the same number is
- * an error and does not replace it. Nothing is stored until the session is ready, and a number above the next one
- * closes the frame rules without moving the counter.
+ * an error and does not replace it. Pre-ready admission consumes a number and retains its final refusal without
+ * executing world work. A number above the next one closes the frame rules without moving the counter.
  */
 final class BridgeIntents
 {
