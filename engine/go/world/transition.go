@@ -42,26 +42,26 @@ type Intent struct {
 	Deadline Time
 }
 
-// Stage describes in-memory resolution. The zero value is Unknown.
+// Stage describes in-memory resolution. The zero value is StageUnknown.
 type Stage uint8
 
 const (
-	// Unknown means the intent has no proven terminal outcome.
-	Unknown Stage = iota
-	// Done means the promised in-memory transition was committed.
-	Done
-	// Refused means the intent was rejected without execution.
-	Refused
-	// Expired means the deadline prevented execution.
-	Expired
-	// Canceled means the intent was canceled.
-	Canceled
-	// Yielded means the intent relinquished execution to another intent.
-	Yielded
+	// StageUnknown means the intent has no proven terminal outcome.
+	StageUnknown Stage = iota
+	// StageDone means the promised in-memory transition was committed.
+	StageDone
+	// StageRefused means the intent was rejected without execution.
+	StageRefused
+	// StageExpired means the deadline prevented execution.
+	StageExpired
+	// StageCanceled means the intent was canceled.
+	StageCanceled
+	// StageYielded means the intent relinquished execution to another intent.
+	StageYielded
 )
 
 // Outcome describes a committed in-memory outcome, not storage durability.
-// A zero Intent means there is no intent outcome; a nonzero Intent with Unknown
+// A zero Intent means there is no intent outcome; a nonzero Intent with StageUnknown
 // means that particular intent has no proven terminal outcome.
 type Outcome struct {
 	Intent IntentID
@@ -399,7 +399,7 @@ func (s *state) command(owner Ref, verb Verb, f func()) {
 		s.batch.intent = Intent{ID: s.cause().Intent, Verb: verb}
 		f()
 		if s.batch.outcome.Intent == (IntentID{}) {
-			s.finish(Unknown)
+			s.finish(StageUnknown)
 		}
 	})
 }

@@ -95,7 +95,7 @@ func TestCommitLearningCommitAndDurability(t *testing.T) {
 					t.Fatalf("commit count: got %d, want 1", len(entries))
 				}
 				commit := entries[0]
-				if commit.Outcome.Intent == (IntentID{}) || commit.Outcome.Stage != Done || commit.Outcome.Intent.Owner != entry.Self.Entity {
+				if commit.Outcome.Intent == (IntentID{}) || commit.Outcome.Stage != StageDone || commit.Outcome.Intent.Owner != entry.Self.Entity {
 					t.Fatalf("commit result: got %+v, want done for %v", commit.Outcome, entry.Self.Entity)
 				}
 				var group *EffectGroup
@@ -124,7 +124,7 @@ func TestCommitLearningCommitAndDurability(t *testing.T) {
 				if store.saved.SP != 17 || !slices.Contains(store.saved.Skills, Skill{ID: 9202, Level: 1}) {
 					t.Fatalf("saved state: got %+v, want committed skill and SP", store.saved)
 				}
-				if commit.Outcome.Stage != Done {
+				if commit.Outcome.Stage != StageDone {
 					t.Fatal("durability rewrote immutable commit")
 				}
 			})
@@ -280,8 +280,8 @@ func TestCommitIncarnationAndDetachedValues(t *testing.T) {
 		if original.Groups[0].Cause.Rule == "changed" {
 			t.Fatal("group storage is shared")
 		}
-		cloned.Outcome.Stage = Refused
-		if original.Outcome.Stage != Done {
+		cloned.Outcome.Stage = StageRefused
+		if original.Outcome.Stage != StageDone {
 			t.Fatal("result storage is shared")
 		}
 	})
@@ -301,7 +301,7 @@ func TestCommitRandomSourceAndZeroValues(t *testing.T) {
 		t.Fatalf("zero Run: got %v, want ErrUninitialized", err)
 	}
 	var outcome Stage
-	if outcome != Unknown {
+	if outcome != StageUnknown {
 		t.Fatalf("zero outcome: got %v, want unknown", outcome)
 	}
 	if !reflect.DeepEqual(cloneCommit(Commit{}), Commit{}) {

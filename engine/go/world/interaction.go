@@ -39,19 +39,19 @@ func (w *World) Bypass(ctx context.Context, id int32, cmd string) error {
 	err := w.act(ctx, id, VerbChoose, func(s *state, p *player) {
 		if !p.validBypass(cmd) {
 			result = errors.New("world: choice not offered")
-			s.finish(Refused)
+			s.finish(StageRefused)
 			return
 		}
 		n, ok := s.npcs[p.lastFolk]
 		if !ok || !n.trainer() || !w.canInteract(p, n) || p.teleporting {
 			result = errors.New("world: trainer unavailable")
-			s.finish(Refused)
+			s.finish(StageRefused)
 			return
 		}
 		want := "npc_" + strconv.Itoa(int(n.id)) + "_SkillList"
 		if cmd != want {
 			result = errors.New("world: unsupported choice")
-			s.finish(Refused)
+			s.finish(StageRefused)
 			return
 		}
 		w.showSkillList(s, p, n)
@@ -95,13 +95,13 @@ func (w *World) Learn(ctx context.Context, id, skillID, level int32) error {
 		command = s.cause().Intent
 		if p.learningWrite {
 			result = ErrSaving
-			s.finish(Refused)
+			s.finish(StageRefused)
 			return
 		}
 		n, ok := s.npcs[p.lastFolk]
 		if !ok || !n.trainer() || !p.learning || !w.canInteract(p, n) || p.teleporting || !w.cat.CanTeach(n.tmpl.ID, p.char.ClassID) {
 			result = errors.New("world: trainer offer unavailable")
-			s.finish(Refused)
+			s.finish(StageRefused)
 			return
 		}
 		sk, known := w.cat.Skill(skillID, level)
@@ -114,12 +114,12 @@ func (w *World) Learn(ctx context.Context, id, skillID, level int32) error {
 		}
 		if !known || !available || !offered || !sk.Passive && sk.Type != "PDAM" {
 			result = errors.New("world: skill not offered")
-			s.finish(Refused)
+			s.finish(StageRefused)
 			return
 		}
 		if p.char.SP < cost {
 			result = errors.New("world: insufficient sp")
-			s.finish(Refused)
+			s.finish(StageRefused)
 			return
 		}
 		k := Skill{ID: skillID, Level: level}
@@ -132,7 +132,7 @@ func (w *World) Learn(ctx context.Context, id, skillID, level int32) error {
 			ResourceTransferred{Resource: Resource{Kind: ResourceSP}, From: ResourceLocation{Entity: p.ref(), Place: PlaceCharacter}, To: ResourceLocation{Place: PlaceLearning}, Amount: IntegerAmount(int64(cost)), FromBalance: Balance{Before: IntegerAmount(int64(oldSP)), After: IntegerAmount(int64(p.char.SP))}},
 			CapabilityChanged{Entity: p.ref(), Capability: CapabilitySkill, ID: skillID, Before: max(oldSkill, 0), After: level},
 		})
-		s.finish(Done)
+		s.finish(StageDone)
 		p.learningWrite = true
 		p.send(SelfChanged{})
 		w.showSkillList(s, p, n)

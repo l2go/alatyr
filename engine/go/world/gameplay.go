@@ -144,7 +144,7 @@ func (w *World) Teleport(ctx context.Context, id int32, to Point, revive bool) e
 	err := w.act(ctx, id, VerbTeleport, func(s *state, p *player) {
 		if p.teleporting || revive && !p.dead {
 			result = errors.New("world: invalid teleport state")
-			s.finish(Refused)
+			s.finish(StageRefused)
 			return
 		}
 		p.attackSeq++

@@ -100,7 +100,7 @@ func TestCommitRefusalAndSnapshot(t *testing.T) {
 			t.Fatalf("move: got %v, want ErrMove", err)
 		}
 		commits := log.read()
-		if len(commits) != 1 || commits[0].Outcome.Stage != Refused || len(commits[0].Groups) != 0 || commits[0].Outcome.Intent.Owner != entry.Self.Entity {
+		if len(commits) != 1 || commits[0].Outcome.Stage != StageRefused || len(commits[0].Groups) != 0 || commits[0].Outcome.Intent.Owner != entry.Self.Entity {
 			t.Fatalf("refusal: got %+v, want one owned refusal without effects", commits)
 		}
 	})
@@ -158,10 +158,10 @@ func TestCommitTerminalOutcomeIsFixedOnce(t *testing.T) {
 	var commits []Commit
 	w := New(nil, nil, WithCommits(func(c Commit) { commits = append(commits, c) }))
 	w.s.command(Ref{ID: 1, Gen: 1}, VerbLearn, func() {
-		w.s.finish(Done)
-		w.s.finish(Refused)
+		w.s.finish(StageDone)
+		w.s.finish(StageRefused)
 	})
-	if len(commits) != 1 || commits[0].Outcome.Stage != Done {
+	if len(commits) != 1 || commits[0].Outcome.Stage != StageDone {
 		t.Fatalf("outcome: got %+v, want one done outcome", commits)
 	}
 }

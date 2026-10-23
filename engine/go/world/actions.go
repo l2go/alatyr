@@ -14,7 +14,7 @@ func (w *World) act(ctx context.Context, id int32, verb Verb, f func(s *state, p
 		p, ok := s.players[id]
 		if !ok {
 			err = ErrNotPresent
-			s.finish(Refused)
+			s.finish(StageRefused)
 			return
 		}
 		f(s, p)

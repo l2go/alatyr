@@ -13,7 +13,7 @@
 // Event notifications. Each Commit contains an ordered set of EffectGroups.
 // Every group carries one Cause: an IntentID or a world Rule. An Outcome is
 // fixed with those groups in the owning loop; a zero Outcome.Intent means this
-// commit fixes no intent outcome. Unknown for a nonzero Intent is not success.
+// commit fixes no intent outcome. StageUnknown for a nonzero Intent is not success.
 // Starting an attack is not applying harm, and observing a refreshed snapshot
 // never proves execution of a command.
 //

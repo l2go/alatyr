@@ -193,7 +193,7 @@ func (w *World) Enter(ctx context.Context, c Character) (Entry, error) {
 		seen, validationErr := s.entryIDs(c)
 		if validationErr != nil {
 			result = validationErr
-			s.finish(Refused)
+			s.finish(StageRefused)
 			return
 		}
 		for id := range seen {
@@ -220,7 +220,7 @@ func (w *World) Enter(ctx context.Context, c Character) (Entry, error) {
 		s.players[c.ObjectID] = p
 		s.batch.cause.Intent.Owner = p.ref()
 		s.group([]Effect{ExistenceChanged{Entity: p.ref(), After: true}})
-		s.finish(Done)
+		s.finish(StageDone)
 		for _, message := range w.announcements {
 			p.send(Announcement{Text: message})
 		}
@@ -316,13 +316,13 @@ func (w *World) MoveTo(ctx context.Context, id int32, to Point) error {
 		p, ok := s.players[id]
 		if !ok {
 			result = ErrNotPresent
-			s.finish(Refused)
+			s.finish(StageRefused)
 			return
 		}
 		dx, dy := float64(to.X)-float64(p.pos.X), float64(to.Y)-float64(p.pos.Y)
 		if math.Hypot(dx, dy) > 9900 || p.dead || p.teleporting || p.sitting || p.moveSpeed() <= 0 {
 			result = ErrMove
-			s.finish(Refused)
+			s.finish(StageRefused)
 			return
 		}
 		if w.ground != nil {
@@ -349,12 +349,12 @@ func (w *World) leave(ctx context.Context, id int32, voluntary bool) error {
 		if p, ok := s.players[id]; ok {
 			if voluntary && time.Now().Before(s.stance[id]) {
 				result = ErrCombat
-				s.finish(Refused)
+				s.finish(StageRefused)
 				return
 			}
 			if p.learningWrite {
 				result = ErrSaving
-				s.finish(Refused)
+				s.finish(StageRefused)
 				return
 			}
 			c = w.selfOf(p).Char
@@ -379,7 +379,7 @@ func (w *World) leave(ctx context.Context, id int32, voluntary bool) error {
 			p.deliver(LeftWorld{ObjectID: id})
 			p.close()
 			s.group([]Effect{ExistenceChanged{Entity: p.ref(), Before: true}})
-			s.finish(Done)
+			s.finish(StageDone)
 			delete(s.players, id)
 			s.moving = slices.DeleteFunc(s.moving, func(moving int32) bool { return moving == id })
 			s.pending[id] = &pendingSave{char: c.Clone()}
@@ -390,7 +390,7 @@ func (w *World) leave(ctx context.Context, id int32, voluntary bool) error {
 		}
 		if pending.saving {
 			result = ErrSaving
-			s.finish(Refused)
+			s.finish(StageRefused)
 			return
 		}
 		pending.saving = true

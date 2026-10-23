@@ -26,7 +26,7 @@ func ExampleWorld_Enter() {
 		if c.Intent.Verb != world.VerbEnter {
 			return
 		}
-		fmt.Println("enter committed:", c.Outcome.Stage == world.Done)
+		fmt.Println("enter committed:", c.Outcome.Stage == world.StageDone)
 		for _, group := range c.Groups {
 			for _, effect := range group.Effects {
 				if e, ok := effect.(world.ExistenceChanged); ok {
@@ -68,7 +68,7 @@ func ExampleWorld_Learn() {
 		if c.Intent.Verb != world.VerbLearn {
 			return
 		}
-		fmt.Println("learn committed:", c.Outcome.Stage == world.Done)
+		fmt.Println("learn committed:", c.Outcome.Stage == world.StageDone)
 		for _, group := range c.Groups {
 			for _, effect := range group.Effects {
 				switch e := effect.(type) {
