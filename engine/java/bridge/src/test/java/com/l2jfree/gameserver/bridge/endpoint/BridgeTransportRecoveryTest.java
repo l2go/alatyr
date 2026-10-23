@@ -44,6 +44,169 @@ import io.netty.channel.embedded.EmbeddedChannel;
 class BridgeTransportRecoveryTest
 {
 	@Test
+	void aTeleportInsideTheActualEnterWorldDefersOpenedUntilTheQueuedCompletion() throws Exception
+	{
+		try (Fixture fixture = new Fixture(19992))
+		{
+			fixture.first.holdOpeningFacts = true;
+			var stable = new java.util.concurrent.atomic.AtomicBoolean(true);
+			doAnswer(call ->
+			{
+				if (!stable.get()) return false;
+				((Runnable)call.getArgument(0)).run(); return true;
+			}).when(fixture.player).captureBridgeScene(any(Runnable.class));
+			when(fixture.player.getInventory()).thenReturn(mock(com.l2jfree.gameserver.gameobjects.itemcontainer.PlayerInventory.class));
+			when(fixture.player.getInventory().getItems()).thenReturn(new com.l2jfree.gameserver.model.items.L2ItemInstance[0]);
+			when(fixture.player.getKnownList()).thenReturn(mock(com.l2jfree.gameserver.gameobjects.knownlist.PlayerKnownList.class));
+			when(fixture.player.getMacroses()).thenReturn(mock(com.l2jfree.gameserver.model.MacroList.class));
+			when(fixture.player.getFriendList()).thenReturn(mock(com.l2jfree.gameserver.model.L2FriendList.class));
+			when(fixture.player.getAllShortCuts()).thenReturn(new com.l2jfree.gameserver.model.L2ShortCut[0]);
+			when(fixture.player.getClassId()).thenReturn(com.l2jfree.gameserver.gameobjects.base.ClassId.HumanFighter);
+			when(fixture.player.getStatus().getCurrentHp()).thenReturn(10.0);
+			when(fixture.player.canReceiveAnnualPresent()).thenReturn(-1);
+			doAnswer(call -> { fixture.owner.sink.deliver(new SkillList(fixture.player), fixture.player); return null; })
+					.when(fixture.player).sendSkillList();
+			doAnswer(call ->
+			{
+				stable.set(false);
+				fixture.owner.sink.deliver(TeleportToLocation.forBridgeRelocation(fixture.player, 90, 91, 92, 0, 1), fixture.player);
+				fixture.owner.sink.ownTeleported(1);
+				return null;
+			}).when(fixture.player).teleToLocation(com.l2jfree.gameserver.model.mapregion.TeleportWhereType.Town);
+			doAnswer(call ->
+			{
+				assertThat(fixture.first.checkpoint).isNull();
+				assertThat(fixture.first.queued).isEmpty();
+				stable.set(true);
+				fixture.owner.sink.deliver(new UserInfo(fixture.player), fixture.player);
+				return null;
+			}).when(fixture.player).completeBridgeTeleport(1);
+			var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+			fixture.client.submit(() ->
+			{
+				try (var world = new OpeningWorld())
+				{
+					// The source handler itself chooses its town relocation while entering a stadium.
+					when(world.olympiad.playerInStadia(fixture.player)).thenReturn(true);
+					var packet = com.l2jfree.gameserver.network.packets.client.EnterWorld.forBridge();
+					packet.bindDirect(fixture.client);
+					packet.run();
+					assertThat(packet.failed()).isFalse();
+					assertThat(stable).isFalse();
+					fixture.owner.opened(BridgeFrames.accepted(fixture.id, 1));
+					assertThat(fixture.first.checkpoint).isNull();
+				}
+				catch (Throwable problem) { failure.set(problem); }
+			});
+			barrier(fixture.client);
+			barrier(fixture.client);
+			assertThat(failure.get()).isNull();
+			var records = fixture.drain(fixture.first);
+			assertThat(records.getFirst().type()).isEqualTo(Schemas.CHECKPOINT);
+			assertThat(records.get(records.size() - 2).field(3).value().u()).isEqualTo(1);
+			assertThat(records.getLast().type()).isEqualTo(Schemas.OPENED);
+			verify(fixture.player).completeBridgeTeleport(1);
+		}
+	}
+
+	/** Isolates only the unrelated process-wide world services; EnterWorld and its packet delivery are real. */
+	private static final class OpeningWorld implements AutoCloseable
+	{
+		private final List<org.mockito.MockedStatic<?>> mocks = new ArrayList<>();
+		final com.l2jfree.gameserver.model.olympiad.Olympiad olympiad;
+
+		OpeningWorld()
+		{
+			isolate(com.l2jfree.gameserver.instancemanager.InstanceManager.class);
+			isolate(com.l2jfree.gameserver.Announcements.class);
+			isolate(com.l2jfree.gameserver.model.sevensigns.SevenSigns.class);
+			isolate(com.l2jfree.gameserver.instancemanager.SiegeManager.class);
+			var quests = isolate(com.l2jfree.gameserver.instancemanager.QuestManager.class);
+			when(quests.getAllManagedScripts()).thenReturn(List.of());
+			isolate(com.l2jfree.gameserver.model.quest.Quest.class);
+			olympiad = isolate(com.l2jfree.gameserver.model.olympiad.Olympiad.class);
+			isolate(com.l2jfree.gameserver.instancemanager.DimensionalRiftManager.class);
+			isolate(com.l2jfree.gameserver.model.entity.Hero.class);
+			isolate(com.l2jfree.gameserver.model.restriction.ObjectRestrictions.class);
+			isolate(com.l2jfree.gameserver.instancemanager.CrownManager.class);
+			isolate(com.l2jfree.gameserver.instancemanager.PetitionManager.class);
+			isolate(com.l2jfree.gameserver.communitybbs.Manager.RegionBBSManager.class);
+			isolate(com.l2jfree.gameserver.gameobjects.instance.L2ClassMasterInstance.class);
+			isolate(com.l2jfree.gameserver.model.restriction.global.GlobalRestrictions.class);
+		}
+
+		private <T> T isolate(Class<T> type)
+		{
+			T service = mock(type);
+			mocks.add(mockStatic(type, call -> call.getMethod().getName().equals("getInstance")
+					? service : org.mockito.Answers.RETURNS_DEFAULTS.answer(call)));
+			return service;
+		}
+
+		@Override public void close()
+		{
+			for (int i = mocks.size() - 1; i >= 0; i--) mocks.get(i).close();
+		}
+	}
+
+	@Test
+	void villageRiseRunsTheSourceHandlerOnceAndRemainsSentUntilOwnCompletion() throws Exception
+	{
+		try (Fixture fixture = new Fixture(19990))
+		{
+			fixture.open();
+			var stable = new java.util.concurrent.atomic.AtomicBoolean(true);
+			doAnswer(call ->
+			{
+				if (!stable.get()) return false;
+				((Runnable)call.getArgument(0)).run(); return true;
+			}).when(fixture.player).captureBridgeScene(any(Runnable.class));
+			when(fixture.player.isDead()).thenReturn(true);
+			var result = new java.util.concurrent.atomic.AtomicReference<Envelope>();
+			// The completion was queued from inside the handler and runs after its Attempt closes.
+			doAnswer(call ->
+			{
+				assertThat(com.l2jfree.gameserver.network.bridge.EffectLedger.isActive()).isFalse();
+				stable.set(true);
+				fixture.owner.sink.deliver(new UserInfo(fixture.player), fixture.player);
+				return null;
+			}).when(fixture.player).completeBridgeTeleport(1);
+			fixture.client.submit(() ->
+			{
+				try (var restrictions = mockStatic(com.l2jfree.gameserver.model.restriction.global.GlobalRestrictions.class);
+						var castles = mockStatic(com.l2jfree.gameserver.instancemanager.CastleManager.class);
+						var regions = mockStatic(com.l2jfree.gameserver.instancemanager.MapRegionManager.class))
+				{
+					restrictions.when(() -> com.l2jfree.gameserver.model.restriction.global.GlobalRestrictions.canRequestRevive(fixture.player)).thenReturn(true);
+					var castle = mock(com.l2jfree.gameserver.instancemanager.CastleManager.class);
+					castles.when(com.l2jfree.gameserver.instancemanager.CastleManager::getInstance).thenReturn(castle);
+					var region = mock(com.l2jfree.gameserver.instancemanager.MapRegionManager.class);
+					regions.when(com.l2jfree.gameserver.instancemanager.MapRegionManager::getInstance).thenReturn(region);
+					var location = new com.l2jfree.gameserver.model.Location(90, 91, 92);
+					when(region.getTeleToLocation(fixture.player, com.l2jfree.gameserver.model.mapregion.TeleportWhereType.Town)).thenReturn(location);
+					doAnswer(call ->
+					{
+						stable.set(false);
+						fixture.owner.sink.deliver(TeleportToLocation.forBridgeRelocation(fixture.player, 90, 91, 92, 0, 1), fixture.player);
+						fixture.owner.sink.ownTeleported(1);
+						return null;
+					}).when(fixture.player).teleToLocation(location, true);
+					var attempt = BridgeExecution.run(fixture.client, com.l2jfree.gameserver.network.packets.client.RequestRestartPoint.forBridge());
+					int stage = BridgeOutcome.match(attempt, 9, 0, 0, 0);
+					result.set(Codec.bridge().decode(BridgeResults.encode(1, 9, stage, 0, attempt)).getFirst());
+				}
+			});
+			barrier(fixture.client);
+			barrier(fixture.client);
+			assertThat(result.get().field(2).value().u()).isEqualTo(1);
+			assertThat(result.get().field(7).value().u()).isEqualTo(1);
+			assertThat(fixture.drain(fixture.first).getLast().field(3).value().u()).isEqualTo(1);
+			verify(fixture.player).setIsPendingRevive(true);
+			verify(fixture.player).completeBridgeTeleport(1);
+		}
+	}
+
+	@Test
 	void relocationBeforeOpeningBeginReplacesBufferedFactsWithOneFreshSnapshot() throws Exception
 	{
 		try (Fixture fixture = new Fixture(19988))
