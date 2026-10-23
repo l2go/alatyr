@@ -70,7 +70,7 @@ class BridgeAttemptSessionTest
 				com.l2jfree.gameserver.bridge.wire.Field.u(1, true, 1),
 				com.l2jfree.gameserver.bridge.wire.Field.u(2, true, 9),
 				com.l2jfree.gameserver.bridge.wire.Field.u(3, true, 1),
-				com.l2jfree.gameserver.bridge.wire.Field.u(4, false, 0)));
+				com.l2jfree.gameserver.bridge.wire.Field.u(4, true, 0)));
 		session.accept(client, intent);
 		fifo.remove().run();
 		session.accept(client, intent);
