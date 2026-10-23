@@ -15,7 +15,7 @@ class BridgeOutcomeTest
 	@Test
 	void learningRequiresTheSelectedCostAndRejectsExtraOrMissingReceipts()
 	{
-		L2Player player = mock(L2Player.class);
+		L2Player player = BridgeTestPlayers.player();
 		Attempt attempt = new Attempt(player);
 		EffectLedger.open(attempt);
 		try
@@ -38,7 +38,7 @@ class BridgeOutcomeTest
 	@Test
 	void aTaxedPurchaseMatchesActualCoinWithoutAnObservedPrice()
 	{
-		L2Player player = mock(L2Player.class);
+		L2Player player = BridgeTestPlayers.player();
 		Attempt attempt = new Attempt(player);
 		EffectLedger.open(attempt);
 		try
@@ -58,7 +58,7 @@ class BridgeOutcomeTest
 	@Test
 	void anUnregisteredWhiteRefusalIsUnknownNotDoneOrRefused()
 	{
-		Attempt attempt = new Attempt(mock(L2Player.class));
+		Attempt attempt = new Attempt(BridgeTestPlayers.player());
 		attempt.addRefusal(279);
 		assertThat(BridgeOutcome.match(attempt, 7, 1060, 0, 2)).isEqualTo(BridgeOutcome.UNKNOWN);
 		assertThat(BridgeOutcome.match(attempt, 8, 1060, 70, 2)).isEqualTo(BridgeOutcome.UNKNOWN);
@@ -67,7 +67,7 @@ class BridgeOutcomeTest
 	@Test
 	void failureDominatesReceiptsAndMovementNeverGetsVacuousDone()
 	{
-		Attempt attempt = new Attempt(mock(L2Player.class));
+		Attempt attempt = new Attempt(BridgeTestPlayers.player());
 		assertThat(BridgeOutcome.match(attempt, 1, 0, 0, 0)).isEqualTo(BridgeOutcome.SENT);
 		attempt.markFailed();
 		assertThat(BridgeOutcome.match(attempt, 1, 0, 0, 0)).isEqualTo(BridgeOutcome.UNKNOWN);

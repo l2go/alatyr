@@ -18,7 +18,7 @@ class BridgeExecutionTest
 	@Test
 	void anExceptionAfterAReceiptIsUnknownAndClearsTheThreadLocal()
 	{
-		L2Player player = mock(L2Player.class);
+		L2Player player = BridgeTestPlayers.player();
 		L2Client client = mock(L2Client.class);
 		when(client.isBridge()).thenReturn(true);
 		when(client.getActiveChar()).thenReturn(player);
