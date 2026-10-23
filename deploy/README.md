@@ -33,10 +33,10 @@ Put these in an `.env` file in the `deploy` directory, or set them in the shell.
 
 The defaults are in [`engine/java/game/config`](../engine/java/game/config) (world) and [`engine/java/login/config`](../engine/java/login/config) (login). A file in the `config` volume overrides the keys it names in the default file of the same name; put only the changed keys in it. The server reads the files at start and warns about a key that no default file has, usually a typo.
 
-To triple the experience rate:
+To allow at most 50 players online:
 
 ```sh
-printf 'RateXp = 3.\n' | docker compose exec -T server tee /var/lib/l2jfree/config/rates.properties >/dev/null
+printf 'MaximumOnlineUsers = 50\n' | docker compose exec -T server tee /var/lib/l2jfree/config/server.properties >/dev/null
 docker compose restart server
 ```
 
