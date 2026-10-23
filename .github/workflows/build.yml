@@ -196,6 +196,8 @@ jobs:
           go test -run='^$' -fuzz='^FuzzDecodeProfile$' -fuzztime=10s -parallel=1 -timeout=2m ./profile
 
       - name: Check participant dictionary fuzzing readiness
+        # The seed corpus runs with the tests of every pull request; the search for new inputs runs on main.
+        if: github.event_name != 'pull_request'
         working-directory: engine/go/gateway
         env:
           GOWORK: "off"
