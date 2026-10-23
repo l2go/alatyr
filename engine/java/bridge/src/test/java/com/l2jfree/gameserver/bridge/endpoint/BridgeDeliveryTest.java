@@ -70,6 +70,31 @@ class BridgeDeliveryTest
 	}
 
 	@Test
+	void ownRelocationDiscardsTheOldSceneActorCacheBeforeMovementRefresh()
+	{
+		var actor = BridgeTestPlayers.player();
+		var view = mock(com.l2jfree.gameserver.gameobjects.view.PlayerView.class);
+		var appearance = mock(com.l2jfree.gameserver.gameobjects.appearance.PlayerAppearance.class);
+		when(actor.getObjectId()).thenReturn(70);
+		when(actor.getView()).thenReturn(view);
+		when(actor.getAppearance()).thenReturn(appearance);
+		when(appearance.getVisibleName()).thenReturn("Old scene actor");
+		when(view.getObjectId()).thenReturn(70);
+		when(view.getRunSpd()).thenReturn(120);
+		when(view.getMovementSpeedMultiplier()).thenReturn(1.0f);
+		sink.deliver(new CharInfo(actor), player);
+		sink.deliver(TeleportToLocation.forBridgeRelocation(player, 8, 9, 10, 0, 1), player);
+		when(actor.isRunning()).thenReturn(true);
+		sink.deliver(new ChangeMoveType(actor), player);
+		var refresh = records.getLast().getFirst();
+		assertThat(refresh.field(11)).isNull();
+		assertThat(refresh.field(12)).isNull();
+		assertThat(refresh.field(13)).isNull();
+		assertThat(refresh.field(15)).isNull();
+		verify(actor, never()).getStat();
+	}
+
+	@Test
 	void spokeFollowedByActionFailedIsDoneButNoticesNeverCertifyTalk()
 	{
 		L2Npc npc = mock(L2Npc.class);

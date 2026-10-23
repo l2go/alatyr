@@ -193,6 +193,8 @@ public final class BridgeSink implements ClientSink
 		final List<BridgeFact> facts = new ArrayList<>();
 		final List<Integer> messages = new ArrayList<>();
 		final Map<Integer, ActorView> changes = new HashMap<>();
+		boolean relocated;
+		int relocationOwner;
 
 		Stage(L2Player player) { this.player = player; }
 
@@ -208,6 +210,13 @@ public final class BridgeSink implements ClientSink
 			int id = rawId(fact);
 			if (id == 0)
 				return;
+			if (fact.kind() == 4 && fact.fields().stream().anyMatch(field -> field.number() == 67
+					&& ((BridgeValue.Flag)field.value()).value()))
+			{
+				relocated = true;
+				relocationOwner = id;
+				changes.keySet().removeIf(key -> key != id);
+			}
 			if (fact.kind() == 10)
 			{
 				changes.put(id, null);
@@ -233,7 +242,8 @@ public final class BridgeSink implements ClientSink
 
 		private ActorView view(int id)
 		{
-			return changes.containsKey(id) ? changes.get(id) : _actors.get(id);
+			return changes.containsKey(id) ? changes.get(id)
+					: relocated && id != relocationOwner ? null : _actors.get(id);
 		}
 
 		@Override
@@ -270,12 +280,13 @@ public final class BridgeSink implements ClientSink
 
 		void validateActors()
 		{
-			int count = _actors.size();
+			int count = relocated ? _actors.containsKey(relocationOwner) ? 1 : 0 : _actors.size();
 			for (var change : changes.entrySet())
 			{
-				if (change.getValue() == null && _actors.containsKey(change.getKey()))
+				boolean present = _actors.containsKey(change.getKey()) && (!relocated || change.getKey() == relocationOwner);
+				if (change.getValue() == null && present)
 					count--;
-				else if (change.getValue() != null && !_actors.containsKey(change.getKey()))
+				else if (change.getValue() != null && !present)
 					count++;
 			}
 			if (count > 4096)
@@ -284,6 +295,8 @@ public final class BridgeSink implements ClientSink
 
 		void commitActors()
 		{
+			if (relocated)
+				_actors.keySet().removeIf(key -> key != relocationOwner);
 			for (var change : changes.entrySet())
 				if (change.getValue() == null)
 					_actors.remove(change.getKey());
