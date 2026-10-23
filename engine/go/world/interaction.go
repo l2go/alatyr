@@ -26,9 +26,10 @@ func (w *World) talk(s *state, p *player, n *npc) {
 	}
 	w.tryAnimation(s, n, true, true)
 	if n.trainer() {
-		html, ok := w.cat.HTML(fmt.Sprintf("data/html/trainer/%d.htm", n.tmpl.ID))
+		page := fmt.Sprintf("data/html/trainer/%d.htm", n.tmpl.ID)
+		html, ok := w.cat.HTML(page)
 		if ok {
-			w.sendPage(s, p, n, strings.ReplaceAll(html, "%objectId%", strconv.Itoa(int(n.id))))
+			w.sendPage(s, p, n, page, strings.ReplaceAll(html, "%objectId%", strconv.Itoa(int(n.id))))
 		}
 	}
 }
@@ -173,9 +174,9 @@ func distance3DSq(a, b Point) float64 {
 	return dx*dx + dy*dy + dz*dz
 }
 
-func (w *World) sendPage(s *state, p *player, n *npc, html string) {
-	s.change(p.ref(), PropertyDialogue, LabelValue(p.dialogue), LabelValue(html))
-	p.dialogue = html
+func (w *World) sendPage(s *state, p *player, n *npc, page, html string) {
+	s.change(p.ref(), PropertyDialogue, LabelValue(p.dialogue), LabelValue(page))
+	p.dialogue = page
 	p.bypass, p.bypassPrefix = bypassCache(html)
 	s.group([]Effect{SpeechCompleted{Speaker: n.ref(), Listener: p.ref(), Text: html}})
 	p.send(DialoguePage{NPCID: n.id, HTML: html})

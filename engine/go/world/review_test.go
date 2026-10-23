@@ -6,6 +6,7 @@ package world
 import (
 	"math/rand/v2"
 	"reflect"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -14,6 +15,84 @@ import (
 type fixedRandomSource uint64
 
 func (r fixedRandomSource) Uint64() uint64 { return uint64(r) }
+
+func TestCommitDialogueUsesPageIdentity(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var log commitLog
+		w, _, ctx := startObservedWorld(t, &log)
+		entry := enterTest(t, w, ctx, syntheticCharacter(1))
+		teacher := objectOf(t, w, ctx, 9102)
+		log.reset()
+		if err := w.doCommand(ctx, 1, VerbAction, func(s *state) { w.talk(s, s.players[1], s.npcs[teacher]) }); err != nil {
+			t.Fatal(err)
+		}
+		var page string
+		var speech string
+		for _, commit := range log.read() {
+			for _, group := range commit.Groups {
+				for _, fact := range group.Facts {
+					if fact.Property == PropertyDialogue {
+						page, _ = fact.After.Label()
+					}
+				}
+				for _, effect := range group.Effects {
+					if e, ok := effect.(SpeechCompleted); ok {
+						speech = e.Text
+					}
+				}
+			}
+		}
+		if page != "data/html/trainer/9102.htm" || !strings.Contains(speech, "<") {
+			t.Fatalf("dialogue: got page %q, speech %q, want catalog path and HTML speech", page, speech)
+		}
+		if err := w.do(ctx, func(s *state) {
+			if got := s.players[1].dialogue; got != page {
+				t.Fatalf("cached page: got %q, want %q", got, page)
+			}
+		}); err != nil {
+			t.Fatal(err)
+		}
+		drainEvents(entry.Events)
+	})
+}
+
+func TestCommitAnimationIsOnlyNotification(t *testing.T) {
+	for _, force := range []bool{false, true} {
+		t.Run(map[bool]string{false: "ambient", true: "forced"}[force], func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				var log commitLog
+				w, _, ctx := startObservedWorld(t, &log)
+				entry := enterTest(t, w, ctx, syntheticCharacter(1))
+				teacher := objectOf(t, w, ctx, 9102)
+				drainEvents(entry.Events)
+				log.reset()
+				if err := w.do(ctx, func(s *state) {
+					n := s.npcs[teacher]
+					n.lastAnim = time.Now().Add(-time.Hour)
+					s.rule(RuleAI, func() {
+						if !w.tryAnimation(s, n, force, false) {
+							t.Fatal("expected animation to be shown")
+						}
+					})
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if got := log.read(); len(got) != 0 {
+					t.Fatalf("animation commits: got %+v, want no state change", got)
+				}
+				var found bool
+				for _, event := range drainEvents(entry.Events) {
+					if e, ok := event.(Animation); ok && e.ObjectID == teacher && e.Forced == force {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatal("missing animation notification")
+				}
+			})
+		})
+	}
+}
 
 func TestCommitDeferredRefusalHasNoOutcome(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {

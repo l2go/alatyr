@@ -189,11 +189,9 @@ const (
 	PropertyPeaceZone Property = "peace-zone"
 	// PropertyPvPZone is the PvP rule (IntValue 0/1).
 	PropertyPvPZone Property = "pvp-zone"
-	// PropertyAnimation is a forced ambient animation announcement (IntValue 0/1).
-	PropertyAnimation Property = "animation"
 	// PropertyGameClock is an accelerated clock minute (IntValue).
 	PropertyGameClock Property = "game-clock"
-	// PropertyDialogue is the current authored dialogue presentation (LabelValue).
+	// PropertyDialogue is the current authored page's catalog path (LabelValue).
 	PropertyDialogue Property = "dialogue"
 	// PropertyFollow is the followed incarnation (RefValue).
 	PropertyFollow Property = "follow"

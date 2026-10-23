@@ -341,7 +341,6 @@ func (w *World) tryAnimation(s *state, n *npc, force, init bool) bool {
 			s.rng.IntN(8)
 		}
 		w.broadcastToKnown(s, n, Animation{ObjectID: n.id, Forced: force})
-		s.group(nil, Fact{Subject: n.ref(), Property: PropertyAnimation, After: boolValue(force)})
 		lo, hi := minNPCAnim, maxNPCAnim
 		if n.mob() {
 			lo, hi = minMonsterAnim, maxMonsterAnim
