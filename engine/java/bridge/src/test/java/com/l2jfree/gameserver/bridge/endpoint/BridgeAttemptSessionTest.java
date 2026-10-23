@@ -27,7 +27,7 @@ class BridgeAttemptSessionTest
 	{
 		var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);
 		// Intent n1/rise/control1 plus essential U field99, encoded as an opaque receive fixture.
-		byte[] bytes = java.util.HexFormat.of().parseHex("0b09180128093801b80c01");
+		byte[] bytes = java.util.HexFormat.of().parseHex("0a09180128093801b80c01");
 		var intent = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(bytes).get(0);
 		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
 		ArrayList<byte[]> output = new ArrayList<>();
