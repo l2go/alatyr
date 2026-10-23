@@ -214,6 +214,17 @@ func TestEventOverflowIsBoundedAndInactiveFlushDoesNotPublish(t *testing.T) {
 	}
 }
 
+type unsupportedEvent struct{ ActionIgnored }
+
+func TestUnsupportedEventUsesStableError(t *testing.T) {
+	w := New(nil, nil)
+	p := &player{stream: newEventStream()}
+	p.deliver(w.s, unsupportedEvent{})
+	if !errors.Is(w.s.err, errUnsupportedEvent) || len(p.stream.events) != 0 {
+		t.Fatalf("unsupported event: got error %v and %d publications, want %v and 0 publications", w.s.err, len(p.stream.events), errUnsupportedEvent)
+	}
+}
+
 func TestEventSequenceExhaustionReturnsWorldError(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())

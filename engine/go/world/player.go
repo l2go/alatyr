@@ -15,6 +15,8 @@ import (
 	"github.com/l2go/alatyr/engine/go/world/stat"
 )
 
+var errUnsupportedEvent = errors.New("world: unsupported event")
+
 type player struct {
 	creature
 	char                       Character
@@ -165,7 +167,7 @@ func (p *player) deliver(s *state, e Event) {
 	s.eventSeq++
 	e = publishEvent(e, stamp{time: s.now(), seq: s.eventSeq})
 	if e == nil {
-		s.err = errors.New("world: unsupported event")
+		s.err = errUnsupportedEvent
 		return
 	}
 	select {
