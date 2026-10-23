@@ -329,6 +329,7 @@ code { font-family: var(--mono); font-size: .9em; }
 .article-head picture, .article-head img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
 /* On a phone the tall article header shows a strip about a quarter of the cover wide.
    A cover whose subject sits off centre names its focal point so the subject stays whole. */
+.article-head--focus-40 picture img { object-position: 40% 50%; }
 .article-head--focus-47 picture img { object-position: 47% 50%; }
 .article-head--focus-52 picture img { object-position: 52% 50%; }
 .article-head--focus-66 picture img { object-position: 66% 50%; }
