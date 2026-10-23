@@ -6,7 +6,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Changed
 
-- The repository moved from `l2go/l2jfree` to `l2go/alatyr`, and the project site moved to <https://l2go.github.io/alatyr/>. GitHub redirects the old repository address; the old site address does not. The image name `ghcr.io/l2go/l2jfree` and the Go module paths are unchanged.
+- The repository moved from `l2go/l2jfree` to `l2go/alatyr`, and the project site moved to <https://l2go.github.io/alatyr/>. GitHub redirects the old repository address; the old site address does not. The image name `ghcr.io/l2go/l2jfree` is unchanged. Go module paths moved to `github.com/l2go/alatyr/...`; consumers must update their imports and dependency pins (#303).
 
 ## [3.2.1]
 
