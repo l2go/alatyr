@@ -167,3 +167,88 @@ func TestExecuteExpiredCastKeepsIndependentQueuedAttack(t *testing.T) {
 		}
 	})
 }
+
+func TestLegacyCastFinalizerWithInvalidTarget(t *testing.T) {
+	for _, replaced := range []bool{false, true} {
+		t.Run(map[bool]string{false: "missing", true: "replaced"}[replaced], func(t *testing.T) {
+			for _, queued := range []bool{false, true} {
+				t.Run(map[bool]string{false: "idle", true: "queued move"}[queued], func(t *testing.T) {
+					synctest.Test(t, func(t *testing.T) {
+						var log commitLog
+						w, _, ctx := startObservedWorldWithCatalog(t, &log, syntheticCatalogWithCoolTime(t, 400*time.Millisecond))
+						entry, target := enterCastDeadlineTest(t, w, ctx)
+						if err := w.do(ctx, func(s *state) { w.clientStartAutoAttack(s, s.players[1]) }); err != nil {
+							t.Fatal(err)
+						}
+						if err := w.MagicSkillUse(ctx, 1, 9201, false, false); err != nil {
+							t.Fatal(err)
+						}
+						advanceVirtual(600 * time.Millisecond)
+						if events := drainEvents(entry.Events); !containsEvent(events, func(e SkillLaunched) bool { return e.CasterID == 1 && len(e.Targets) == 1 && e.Targets[0] == target.ID }) {
+							t.Fatalf("legacy launch: got %+v, want captured target", events)
+						}
+						before := captureTest(t, w, ctx, entry.Self.Entity)
+						advanceVirtual(100 * time.Millisecond)
+						var move Commit
+						if queued {
+							move = executeTest(t, w, ctx, Request{Owner: entry.Self.Entity, Verb: VerbMove, Position: Point{X: 1000}, Deadline: before.End.Time + Time(2*time.Second)})
+							if move.Outcome.Stage != StageUnknown {
+								t.Fatalf("queued move: got %+v, want unknown", move.Outcome)
+							}
+						}
+						if err := w.do(ctx, func(s *state) {
+							if replaced {
+								s.npcs[target.ID].generation++
+							} else {
+								delete(s.npcs, target.ID)
+							}
+							if p := s.players[1]; !p.casting || p.ai.deadline != 0 {
+								t.Errorf("legacy cast: got casting %v deadline %v, want true and no deadline", p.casting, p.ai.deadline)
+							}
+						}); err != nil {
+							t.Fatal(err)
+						}
+						log.reset()
+						drainEvents(entry.Events)
+						advanceVirtual(300 * time.Millisecond)
+						after := captureTest(t, w, ctx, entry.Self.Entity)
+						if after.CombatUntil != before.CombatUntil || after.Moving != queued {
+							t.Errorf("legacy cleanup: got stance %v moving %v, want %v %v", after.CombatUntil, after.Moving, before.CombatUntil, queued)
+						}
+						if err := w.do(ctx, func(s *state) {
+							p := s.players[1]
+							want := intentIdle
+							if queued {
+								want = intentMoveTo
+								if p.ai.cause != (Cause{Intent: move.Intent.ID}) || p.ai.deadline != move.Intent.Deadline {
+									t.Errorf("queued ownership: got %+v, want intent %v deadline %v", p.ai, move.Intent.ID, move.Intent.Deadline)
+								}
+							}
+							if p.casting || p.ai.intention != want || p.ai.next != nil || p.attacking != 0 {
+								t.Errorf("finalizer: got casting %v AI %+v attacking %v, want intention %v and no pending cast or attack", p.casting, p.ai, p.attacking, want)
+							}
+						}); err != nil {
+							t.Fatal(err)
+						}
+						events := drainEvents(entry.Events)
+						if containsEvent(events, func(e AttackStarted) bool { return e.AttackerID == 1 }) || containsEvent(events, func(e CombatStance) bool { return e.ObjectID == 1 && e.On }) {
+							t.Errorf("invalid legacy target started combat: %+v", events)
+						}
+						if queued && !containsEvent(events, func(e Moving) bool { return e.ObjectID == 1 && e.To == (Point{X: 1000}) }) {
+							t.Errorf("queued movement not delivered: %+v", events)
+						}
+						for _, commit := range log.read() {
+							for _, group := range commit.Groups {
+								for _, effect := range group.Effects {
+									if harm, ok := effect.(HarmApplied); ok && harm.Source == entry.Self.Entity {
+										t.Errorf("invalid legacy target applied harm: %+v", harm)
+									}
+								}
+							}
+						}
+					})
+				})
+			}
+		})
+	}
+}
