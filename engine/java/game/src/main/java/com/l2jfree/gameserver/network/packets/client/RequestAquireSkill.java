@@ -159,6 +159,7 @@ public class RequestAquireSkill extends L2ClientPacket
 					
 					if (player.getSp() >= _requiredSp)
 					{
+						com.l2jfree.gameserver.network.bridge.EffectLedger.expectLearningCost(player, 1, _requiredSp, costid, 1);
 						if (!player.destroyItemByItemId("Consume", costid, 1, trainer, false))
 						{
 							// Haven't spellbook
@@ -205,6 +206,7 @@ public class RequestAquireSkill extends L2ClientPacket
 						return;
 					}
 					
+					com.l2jfree.gameserver.network.bridge.EffectLedger.expectLearningCost(player, 2, 0, costid, 1);
 					if (!player.destroyItemByItemId("Consume", costid, 1, trainer, false))
 					{
 						// Does not have either Emergent Ability or Master Ability or Class specific Ability certificate
@@ -250,7 +252,10 @@ public class RequestAquireSkill extends L2ClientPacket
 					else if (Config.ALT_SP_BOOK_NEEDED)
 						spbId = SkillSpellbookTable.getInstance().getBookForSkill(skill);
 					
-					if (skill.getId() == L2Skill.SKILL_DIVINE_INSPIRATION || skill.getLevel() == 1 && spbId > -1)
+					boolean needsBook = skill.getId() == L2Skill.SKILL_DIVINE_INSPIRATION || skill.getLevel() == 1 && spbId > -1;
+					com.l2jfree.gameserver.network.bridge.EffectLedger.expectLearningCost(player, 0, _requiredSp,
+							needsBook ? spbId : 0, needsBook ? 1 : 0);
+					if (needsBook)
 					{
 						L2ItemInstance spb = player.getInventory().getItemByItemId(spbId);
 						
@@ -302,6 +307,7 @@ public class RequestAquireSkill extends L2ClientPacket
 				
 				if (player.getSp() >= _requiredSp)
 				{
+					com.l2jfree.gameserver.network.bridge.EffectLedger.expectLearningCost(player, 3, _requiredSp, costid, costcount);
 					if (!player.destroyItemByItemId("Consume", costid, costcount, trainer, false))
 					{
 						// Haven't spellbook
@@ -323,6 +329,7 @@ public class RequestAquireSkill extends L2ClientPacket
 			}
 			case 2:
 			{
+				com.l2jfree.gameserver.network.bridge.EffectLedger.expectLearningCost(player, 5, 0, 0, 0);
 				if (!player.isClanLeader())
 				{
 					requestFailed(SystemMessageId.ONLY_THE_CLAN_LEADER_IS_ENABLED);
@@ -399,6 +406,7 @@ public class RequestAquireSkill extends L2ClientPacket
 			}
 			case 4:
 			{
+				com.l2jfree.gameserver.network.bridge.EffectLedger.expectLearningCost(player, 5, 0, 0, 0);
 				_requiredSp = 0;
 				Quest[] qlst = trainer.getTemplate().getEventQuests(Quest.QuestEventType.ON_SKILL_LEARN);
 				if ((qlst != null) && qlst.length == 1)
@@ -446,6 +454,7 @@ public class RequestAquireSkill extends L2ClientPacket
 				
 				if (player.getSp() >= _requiredSp)
 				{
+					com.l2jfree.gameserver.network.bridge.EffectLedger.expectLearningCost(player, 4, _requiredSp, costid, costcount);
 					if (!player.destroyItemByItemId("Consume", costid, costcount, trainer, false))
 					{
 						// Haven't spellbook

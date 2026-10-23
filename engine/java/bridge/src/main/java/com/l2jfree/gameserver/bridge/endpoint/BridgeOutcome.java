@@ -62,4 +62,46 @@ final class BridgeOutcome
 		return count > 0 && total == (verb == 8 ? -count : count) && coins == (verb == 4 ? 0 : 1)
 				? DONE : UNKNOWN;
 	}
+
+	static int learn(Attempt attempt, int skill, int level)
+	{
+		if (attempt.isFailed() || attempt.isLedgerIncomplete() || !attempt.hasLearningCost())
+			return UNKNOWN;
+		int skills = 0;
+		int sp = 0;
+		long items = 0;
+		try
+		{
+			for (BridgeEffect effect : attempt.effects())
+			{
+				if (effect.kind() == BridgeEffect.SKILL && effect.skill() == skill
+						&& effect.oldValue() < level && effect.newValue() == level)
+				{
+					if (++skills != 1)
+						return UNKNOWN;
+				}
+				else if (effect.kind() == BridgeEffect.SP && effect.delta() == -attempt.learningSpCost()
+						&& effect.delta() < 0)
+				{
+					if (++sp != 1)
+						return UNKNOWN;
+				}
+				else if ((effect.kind() == BridgeEffect.ITEM && effect.item() == attempt.learningItemId()
+						&& effect.item() != 57) || (effect.kind() == BridgeEffect.COIN && attempt.learningItemId() == 57))
+				{
+					if (effect.delta() >= 0)
+						return UNKNOWN;
+					items = Math.addExact(items, effect.delta());
+				}
+				else
+					return UNKNOWN;
+			}
+		}
+		catch (ArithmeticException overflow)
+		{
+			return UNKNOWN;
+		}
+		return skills == 1 && sp == (attempt.learningSpCost() == 0 ? 0 : 1)
+				&& items == -attempt.learningItemCount() ? DONE : UNKNOWN;
+	}
 }

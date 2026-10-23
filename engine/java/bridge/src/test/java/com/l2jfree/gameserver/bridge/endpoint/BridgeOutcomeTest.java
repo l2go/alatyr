@@ -13,6 +13,29 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeOutcomeTest
 {
 	@Test
+	void learningRequiresTheSelectedCostAndRejectsExtraOrMissingReceipts()
+	{
+		L2Player player = mock(L2Player.class);
+		Attempt attempt = new Attempt(player);
+		EffectLedger.open(attempt);
+		try
+		{
+			EffectLedger.expectLearningCost(player, 0, 10, 100, 1);
+			EffectLedger.record(player, BridgeEffect.skill(12, 0, 1));
+			EffectLedger.record(player, BridgeEffect.sp(-10, 20, 10));
+			assertThat(BridgeOutcome.learn(attempt, 12, 1)).isEqualTo(BridgeOutcome.UNKNOWN);
+			EffectLedger.record(player, BridgeEffect.item(100, 70, -1));
+			assertThat(BridgeOutcome.learn(attempt, 12, 1)).isEqualTo(BridgeOutcome.DONE);
+			EffectLedger.record(player, BridgeEffect.target(7));
+			assertThat(BridgeOutcome.learn(attempt, 12, 1)).isEqualTo(BridgeOutcome.UNKNOWN);
+		}
+		finally
+		{
+			EffectLedger.close();
+		}
+	}
+
+	@Test
 	void aTaxedPurchaseMatchesActualCoinWithoutAnObservedPrice()
 	{
 		L2Player player = mock(L2Player.class);

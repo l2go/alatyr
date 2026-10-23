@@ -112,6 +112,27 @@ public final class Attempt
 	{
 		return Collections.unmodifiableList(_effects);
 	}
+
+	/** Immutable expected cost captured before the selected learning branch mutates the player. */
+	public boolean hasLearningCost()
+	{
+		return _cost != null && _player.getClassIndex() == _classIndex;
+	}
+
+	public int learningSpCost()
+	{
+		return _cost == null ? 0 : _cost._spCost;
+	}
+
+	public int learningItemId()
+	{
+		return _cost == null ? 0 : _cost._itemId;
+	}
+
+	public long learningItemCount()
+	{
+		return _cost == null ? 0 : _cost._itemCount;
+	}
 	
 	void add(L2Player owner, BridgeEffect effect)
 	{
