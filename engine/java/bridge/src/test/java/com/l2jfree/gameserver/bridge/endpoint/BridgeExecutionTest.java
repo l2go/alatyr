@@ -28,6 +28,26 @@ import com.l2jfree.gameserver.network.packets.L2ClientPacket;
 class BridgeExecutionTest
 {
 	@Test
+	void aMissingActionObjectReturnsUnknownWithoutInventingARefusal()
+	{
+		var player = BridgeTestPlayers.player();
+		var client = mock(L2Client.class);
+		when(client.isBridge()).thenReturn(true);
+		when(client.getActiveChar()).thenReturn(player);
+		try (var worlds = org.mockito.Mockito.mockStatic(com.l2jfree.gameserver.model.world.L2World.class))
+		{
+			var world = mock(com.l2jfree.gameserver.model.world.L2World.class);
+			worlds.when(com.l2jfree.gameserver.model.world.L2World::getInstance).thenReturn(world);
+			var attempt = BridgeExecution.run(client,
+					com.l2jfree.gameserver.network.packets.client.Action.forBridge(70));
+			assertThat(attempt.isFailed()).isFalse();
+			assertThat(attempt.effects()).isEmpty();
+			assertThat(BridgeOutcome.match(attempt, 5, 0, 70, 0)).isEqualTo(BridgeOutcome.UNKNOWN);
+			org.mockito.Mockito.verify(client).sendPacket(com.l2jfree.gameserver.network.packets.server.ActionFailed.STATIC_PACKET);
+		}
+	}
+
+	@Test
 	void gameGuardQueryExemptsBridgeButKeepsTheOrdinaryClientPath()
 	{
 		for (boolean bridge : new boolean[] { true, false })
