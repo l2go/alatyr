@@ -43,6 +43,128 @@ import io.netty.channel.embedded.EmbeddedChannel;
 /** Uses the real client FIFO and listener socket branches with isolated game state. */
 class BridgeTransportRecoveryTest
 {
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(booleans = { false, true })
+	void eofAndResumeAdoptionHaveOneOrderAndTheSurvivingGraceSaves(boolean eofFirst) throws Exception
+	{
+		try (Fixture fixture = new Fixture(eofFirst ? 20010 : 20012))
+		{
+			fixture.open();
+			var timer = new java.util.concurrent.atomic.AtomicReference<Runnable>();
+			doAnswer(call -> { timer.set(call.getArgument(0)); return null; })
+					.when(fixture.pool.pool).scheduleGeneral(any(Runnable.class), anyLong());
+			fixture.owner.detach(fixture.first);
+			Runnable originalGrace = timer.get();
+			var replacement = new BridgeLoopback.Transport(new byte[32]);
+			try (var gate = new FifoGate(fixture.client))
+			{
+				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+				assertThat(replacement.client).isNull();
+				if (!eofFirst)
+				{
+					gate.release();
+					barrier(fixture.client);
+					assertThat(fixture.owner.transport).isSameAs(replacement);
+					originalGrace.run();
+					barrier(fixture.client);
+					assertThat(fixture.client.isBridgeDisconnectRequested()).isFalse();
+				}
+				var socket = mock(SocketChannel.class);
+				when(socket.read(any(ByteBuffer.class))).thenReturn(-1);
+				fixture.loop.account();
+				fixture.loop.serve(key(socket, replacement, true));
+				verify(socket).close();
+				assertThat(replacement.disconnectStarted).isTrue();
+				assertThat(replacement.lost).isTrue();
+				assertThat(replacement.attemptFence.valid).isFalse();
+				gate.release();
+				barrier(fixture.client);
+				assertThat(fixture.owner.transport).isNull();
+				assertThat(fixture.owner.recovery.epoch()).isEqualTo(eofFirst ? 1 : 2);
+				if (eofFirst)
+				{
+					assertThat(replacement.client).isNull();
+					assertThat(replacement.attempts).isNull();
+					assertThat(timer.get()).isSameAs(originalGrace);
+				}
+				else
+					assertThat(timer.get()).isNotSameAs(originalGrace);
+				assertThat(fixture.client.isBridgeDisconnectRequested()).isFalse();
+				verify(fixture.player, never()).store(true, true);
+				timer.get().run();
+				barrier(fixture.client);
+				barrier(fixture.client);
+				assertThat(fixture.client.isBridgeDisconnectFinished()).isTrue();
+				verify(fixture.player).store(true, true);
+			}
+		}
+	}
+
+	@Test
+	void eofOnAPendingResumeCannotEvictTheStillLiveTransport() throws Exception
+	{
+		try (Fixture fixture = new Fixture(20014))
+		{
+			fixture.open();
+			try (var pending = new FifoGate(fixture.client))
+			{
+				var replacement = new BridgeLoopback.Transport(new byte[32]);
+				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+				var socket = mock(SocketChannel.class);
+				when(socket.read(any(ByteBuffer.class))).thenReturn(-1);
+				fixture.loop.account();
+				fixture.loop.serve(key(socket, replacement, true));
+				pending.release();
+				barrier(fixture.client);
+				assertThat(fixture.owner.transport).isSameAs(fixture.first);
+				assertThat(fixture.owner.recovery.epoch()).isEqualTo(1);
+				assertThat(fixture.first.lost).isFalse();
+				assertThat(fixture.first.attemptFence.valid).isTrue();
+				assertThat(replacement.client).isNull();
+				verify(fixture.player, never()).store(true, true);
+			}
+		}
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "lost", "closing", "terminal", "disconnectStarted" })
+	void aCancelledReplacementCannotConsumeTheEpochOrCancelGrace(String flag) throws Exception
+	{
+		try (Fixture fixture = new Fixture(20016))
+		{
+			fixture.open();
+			var timer = new java.util.concurrent.atomic.AtomicReference<Runnable>();
+			doAnswer(call -> { timer.set(call.getArgument(0)); return null; })
+					.when(fixture.pool.pool).scheduleGeneral(any(Runnable.class), anyLong());
+			fixture.owner.detach(fixture.first);
+			try (var gate = new FifoGate(fixture.client))
+			{
+				var replacement = new BridgeLoopback.Transport(new byte[32]);
+				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+				synchronized (replacement)
+				{
+					switch (flag)
+					{
+						case "lost" -> replacement.lost = true;
+						case "closing" -> replacement.closing = true;
+						case "terminal" -> replacement.terminal = true;
+						case "disconnectStarted" -> replacement.disconnectStarted = true;
+						default -> throw new AssertionError(flag);
+					}
+				}
+				gate.release();
+				barrier(fixture.client);
+				assertThat(fixture.owner.transport).isNull();
+				assertThat(replacement.client).isNull();
+				assertThat(fixture.owner.recovery.epoch()).isEqualTo(1);
+				timer.get().run();
+				barrier(fixture.client);
+				barrier(fixture.client);
+				verify(fixture.player).store(true, true);
+			}
+		}
+	}
+
 	@Test
 	void aDuplicateCaptureKeepsTheProducerAndTokenAfterBegin() throws Exception
 	{
@@ -707,6 +829,26 @@ class BridgeTransportRecoveryTest
 	{
 		return Envelope.of(Schemas.RESUME, List.of(Field.u(1, true, id), Field.u(2, true, epoch),
 				Field.data(3, true, new byte[32]), Field.data(4, true, Codec.profileName())));
+	}
+
+	private static final class FifoGate implements AutoCloseable
+	{
+		private final CountDownLatch released = new CountDownLatch(1);
+
+		FifoGate(L2Client client) throws Exception
+		{
+			var started = new CountDownLatch(1);
+			client.submit(() ->
+			{
+				started.countDown();
+				try { if (!released.await(5, TimeUnit.SECONDS)) throw new AssertionError("FIFO gate"); }
+				catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
+			});
+			assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+		}
+
+		void release() { released.countDown(); }
+		@Override public void close() { release(); }
 	}
 
 	private static void barrier(L2Client client) throws Exception

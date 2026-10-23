@@ -345,7 +345,10 @@ final class BridgeLoopback implements Runnable
 			if (owner == null || !admitting)
 				finishTerminal(transport, List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_CLOSED)));
 			else
+			{
+				owner.notePendingResume(transport, id, epoch);
 				client.submit(() -> owner.resume(transport, id, epoch));
+			}
 			selector.wakeup();
 			return;
 		}
@@ -771,9 +774,21 @@ final class BridgeLoopback implements Runnable
 
 	private void disconnectBound(Transport transport)
 	{
-		if (transport == null || transport.disconnectStarted)
+		if (transport == null)
 			return;
-		transport.disconnectStarted = true;
+		// An authenticated pending Resume has an owner, but no client binding or attempt table yet.
+		// Cancel under that owner's transition monitor so adoption and EOF have one order.
+		Session owner = transport.resumeOwner;
+		if (owner != null)
+		{
+			synchronized (owner)
+			{
+				if (!invalidateDisconnectedTransport(transport))
+					return;
+			}
+		}
+		else if (!invalidateDisconnectedTransport(transport))
+			return;
 		if (transport.session != null && !transport.terminal && !transport.awaitingResult
 				&& !transport.client.isBridgeDisconnectRequested())
 		{
@@ -786,6 +801,19 @@ final class BridgeLoopback implements Runnable
 			transport.attemptFence.closing = true;
 			transport.attemptFence.valid = false;
 			client.requestBridgeDisconnect();
+		}
+	}
+
+	private static boolean invalidateDisconnectedTransport(Transport transport)
+	{
+		synchronized (transport)
+		{
+			if (transport.disconnectStarted)
+				return false;
+			transport.disconnectStarted = true;
+			transport.lost = true;
+			transport.attemptFence.valid = false;
+			return true;
 		}
 	}
 
@@ -1000,6 +1028,24 @@ final class BridgeLoopback implements Runnable
 			}), settings.graceMs());
 		}
 
+		void notePendingResume(Transport replacement, long session, long epoch)
+		{
+			synchronized (this)
+			{
+				synchronized (replacement)
+				{
+					if (replacement.resumeOwner != null && replacement.resumeOwner != this)
+						throw WireException.frame();
+					if (replacement.resumeOwner == null)
+					{
+						replacement.resumeSession = session;
+						replacement.resumeEpoch = epoch;
+						replacement.resumeOwner = this;
+					}
+				}
+			}
+		}
+
 		void resume(Transport replacement, long session, long epoch)
 		{
 			if (session != id || client.isBridgeDisconnectRequested())
@@ -1010,6 +1056,11 @@ final class BridgeLoopback implements Runnable
 			BridgeRecovery.Resume decision;
 			synchronized (this)
 			{
+				synchronized (replacement)
+				{
+					if (replacement.lost || replacement.closing || replacement.terminal || replacement.disconnectStarted)
+						return; // Do not consume an epoch or invalidate the existing grace for a cancelled socket.
+				}
 				if (transport != null && (transport.terminal || transport.awaitingResult))
 					recovery.close();
 				decision = recovery.resume(replacement, epoch);
@@ -1297,6 +1348,9 @@ final class BridgeLoopback implements Runnable
 		long resultDeadline;
 		volatile boolean terminal;
 		boolean disconnectStarted;
+		volatile Session resumeOwner;
+		long resumeSession;
+		long resumeEpoch;
 		long readDeadline;
 		final long openingDeadline = System.nanoTime() + OPENING_NS;
 		volatile boolean opened;
