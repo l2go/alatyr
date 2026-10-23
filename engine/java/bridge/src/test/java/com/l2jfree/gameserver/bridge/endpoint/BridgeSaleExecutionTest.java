@@ -24,6 +24,7 @@ import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.Test;
 
 import com.l2jfree.gameserver.gameobjects.itemcontainer.PlayerInventory;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
@@ -35,6 +36,38 @@ import com.l2jfree.gameserver.network.packets.client.RequestSellItem;
 /** Exercises the existing sale handler; separate inventory tests prove mutation hook accounting. */
 class BridgeSaleExecutionTest
 {
+	@Test
+	void aSalePartDisappearingAfterValidationCannotProduceDone()
+	{
+		var player = BridgeTestPlayers.player();
+		int packetCap = com.l2jfree.Config.MAX_ITEM_IN_PACKET;
+		com.l2jfree.Config.MAX_ITEM_IN_PACKET = 1;
+		try
+		{
+			var client = mock(L2Client.class);
+			var inventory = mock(PlayerInventory.class);
+			var item = mock(L2ItemInstance.class);
+			when(client.isBridge()).thenReturn(true);
+			when(client.getActiveChar()).thenReturn(player);
+			when(player.isGM()).thenReturn(true);
+			when(player.getInventory()).thenReturn(inventory);
+			when(player.checkItemManipulation(70, 2, "sell")).thenReturn(item, null);
+			when(item.isSellable()).thenReturn(true);
+			when(item.getReferencePrice()).thenReturn(10);
+			var attempt = BridgeExecution.run(client, RequestSellItem.forBridge(0, 70, 1060, 2));
+			assertThat(attempt.isFailed()).isFalse();
+			assertThat(attempt.effects()).isEmpty();
+			assertThat(BridgeOutcome.match(attempt, 8, 1060, 70, 2)).isEqualTo(BridgeOutcome.UNKNOWN);
+			org.mockito.Mockito.verify(inventory, org.mockito.Mockito.never())
+					.destroyItem(eq("Sell"), eq(70), eq(2L), eq(player), any());
+			org.mockito.Mockito.verify(player).addAdena("Sell", 0L, null, false);
+		}
+		finally
+		{
+			com.l2jfree.Config.MAX_ITEM_IN_PACKET = packetCap;
+		}
+	}
+
 	@ParameterizedTest
 	@ValueSource(ints = { 0, 10 })
 	void actualSaleHandlerUsesTheDestroyedQuantityAndActualCoinReceipt(int referencePrice)
