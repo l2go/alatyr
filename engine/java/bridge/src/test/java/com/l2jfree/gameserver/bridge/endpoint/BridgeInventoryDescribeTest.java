@@ -109,10 +109,15 @@ class BridgeInventoryDescribeTest
 		assertThat(((BridgeValue.ListValue)BridgeTestFacts.field(sink.facts.get(1), 24).value()).items()).isEmpty();
 	}
 
-	@Test
-	void proposalDeliveryInsideAnAttemptCannotManufactureASpokenReceipt()
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(ints = { 0, 1, 2, 3 })
+	void proposalDeliveryInsideAnAttemptCannotManufactureASpokenReceipt(int panel)
 	{
 		var player = BridgeTestPlayers.player();
+		var quest = mock(com.l2jfree.gameserver.model.quest.Quest.class);
+		when(quest.getQuestIntId()).thenReturn(9);
+		when(quest.getName()).thenReturn("Fixture");
+		when(player.getAllActiveQuests()).thenReturn(new com.l2jfree.gameserver.model.quest.Quest[] { quest });
 		var client = mock(com.l2jfree.gameserver.network.L2Client.class);
 		when(client.isBridge()).thenReturn(true);
 		when(client.getActiveChar()).thenReturn(player);
@@ -123,13 +128,20 @@ class BridgeInventoryDescribeTest
 		com.l2jfree.gameserver.network.bridge.EffectLedger.open(attempt);
 		try
 		{
-			sink.deliver(new BuyList(List.of(item(1060, -1)), 1, 10), player);
-			sink.deliver(new SellList(player, mock(L2MerchantInstance.class)), player);
-			sink.deliver(new AcquireSkillList(AcquireSkillList.SkillType.Usual), player);
-			assertThat(records).hasSize(3);
+			com.l2jfree.gameserver.network.packets.L2ServerPacket packet = switch (panel)
+			{
+				case 0 -> new BuyList(List.of(item(1060, -1)), 1, 10);
+				case 1 -> new SellList(player, mock(L2MerchantInstance.class));
+				case 2 -> new AcquireSkillList(AcquireSkillList.SkillType.Usual);
+				default -> new com.l2jfree.gameserver.network.packets.server.QuestList(player);
+			};
+			sink.deliver(packet, player);
+			assertThat(records).hasSize(1);
+			assertThat(records.get(0).get(0).field(1).value().u()).isEqualTo(new long[] {12, 13, 22, 21}[panel]);
+			assertThat(records.get(0).get(0).field(68)).isNull();
 			assertThat(attempt.hasSpoken()).isFalse();
 			assertThat(attempt.effects()).isEmpty();
-			assertThat(BridgeOutcome.match(attempt, 5, 0, 70, 0)).isEqualTo(BridgeOutcome.UNKNOWN);
+			assertThat(BridgeOutcome.match(attempt, 6, 0, 70, 0)).isEqualTo(BridgeOutcome.UNKNOWN);
 		}
 		finally { com.l2jfree.gameserver.network.bridge.EffectLedger.close(); }
 	}
