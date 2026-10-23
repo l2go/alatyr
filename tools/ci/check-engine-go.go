@@ -127,7 +127,7 @@ func loadPolicy(path string) (policy, error) {
 		return p, errors.New("policy: invalid JSON")
 	}
 	var extra any
-	if dec.Decode(&extra) != io.EOF {
+	if !errors.Is(dec.Decode(&extra), io.EOF) {
 		return p, errors.New("policy: trailing JSON")
 	}
 	return p, validatePolicy(p)
@@ -494,7 +494,7 @@ func checkDependencyJSON(data []byte, module, dir string) error {
 			}
 		}
 		err := dec.Decode(&pkg)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil || len(pkg.Error) > 0 || len(pkg.DepsErrors) > 0 {
