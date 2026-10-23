@@ -187,6 +187,12 @@ func (w *World) teleport(s *state, p *player, to Point, revive bool) error {
 
 // Logout is the voluntary exit and refuses an active combat stance. Leave
 // remains the unconditional, retryable persistence path for disconnection.
+// Deprecated: use LogoutRef to check a captured incarnation as well.
 func (w *World) Logout(ctx context.Context, id int32) error {
-	return w.leave(ctx, id, true)
+	return w.leave(ctx, Ref{ID: id}, true, true)
+}
+
+// LogoutRef refuses an active combat stance and leaves only owner.
+func (w *World) LogoutRef(ctx context.Context, owner Ref) error {
+	return w.leave(ctx, owner, true, false)
 }

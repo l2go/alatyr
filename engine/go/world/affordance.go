@@ -13,7 +13,10 @@ import (
 
 // AffordancesChanged replaces the player's current dialogue and lesson choices.
 // Values retain their original identities and expiry during scene capture.
-type AffordancesChanged struct{ Affordances []Affordance }
+type AffordancesChanged struct {
+	stamp
+	Affordances []Affordance
+}
 
 func (AffordancesChanged) event() {}
 
@@ -35,12 +38,12 @@ func (w *World) issueChoices(s *state, p *player, n *npc) {
 	want := "npc_" + strconv.Itoa(int(n.id)) + "_SkillList"
 	if slices.Contains(p.bypass, want) {
 		a := s.nextAffordance(VerbChoose, n.ref())
+		a.Parameters = []Parameter{{Name: "action", Value: LabelValue(want)}}
 		if a.ID != 0 {
 			p.affordances = append(p.affordances, a)
 			s.change(p.ref(), PropertyAffordance, UintValue(0), UintValue(a.ID))
 		}
 	}
-	p.send(AffordancesChanged{Affordances: cloneAffordances(p.affordances)})
 }
 
 func (w *World) issueLessons(s *state, p *player, n *npc, skills []catalog.SkillLearn) {
@@ -51,11 +54,11 @@ func (w *World) issueLessons(s *state, p *player, n *npc, skills []catalog.Skill
 			break
 		}
 		a.Params = []Parameter{{Name: "skill", Value: IntValue(int64(k.SkillID))}, {Name: "level", Value: IntValue(int64(k.Level))}}
+		a.Parameters = slices.Clone(a.Params)
 		a.Cost = []Cost{{Resource: Resource{Kind: ResourceSP}, Quantity: int64(k.SP)}}
 		p.affordances = append(p.affordances, a)
 		s.change(p.ref(), PropertyAffordance, UintValue(0), UintValue(a.ID))
 	}
-	p.send(AffordancesChanged{Affordances: cloneAffordances(p.affordances)})
 }
 
 func (p *player) affordance(id uint64) (Affordance, bool) {
@@ -75,18 +78,27 @@ func (s *state) clearAffordances(p *player) {
 }
 
 func affordanceSkill(a Affordance, k Skill) bool {
-	if len(a.Params) != 2 {
+	if len(a.Parameters) != 2 {
 		return false
 	}
-	id, idOK := a.Params[0].Value.Integer()
-	level, levelOK := a.Params[1].Value.Integer()
+	id, idOK := a.Parameters[0].Value.Integer()
+	level, levelOK := a.Parameters[1].Value.Integer()
 	return idOK && levelOK && id == int64(k.ID) && level == int64(k.Level)
+}
+
+func affordanceAction(a Affordance, action string) bool {
+	if len(a.Parameters) != 1 || a.Parameters[0].Name != "action" {
+		return false
+	}
+	label, ok := a.Parameters[0].Value.Label()
+	return ok && label == action
 }
 
 func cloneAffordances(values []Affordance) []Affordance {
 	out := slices.Clone(values)
 	for i := range out {
 		out[i].Params = slices.Clone(out[i].Params)
+		out[i].Parameters = slices.Clone(out[i].Parameters)
 		out[i].Cost = slices.Clone(out[i].Cost)
 	}
 	return out

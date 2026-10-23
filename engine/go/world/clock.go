@@ -19,6 +19,7 @@ func (w *World) GameTime() int32 {
 
 // GameClock announces a game-clock hour boundary and its time multiplier.
 type GameClock struct {
+	stamp
 	Minute     int32
 	Multiplier int32
 }

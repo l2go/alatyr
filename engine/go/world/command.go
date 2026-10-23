@@ -6,6 +6,7 @@ package world
 import (
 	"context"
 	"math"
+	"strconv"
 	"time"
 )
 
@@ -164,6 +165,10 @@ func (w *World) execute(s *state, p *player, req Request) *Skill {
 			return nil
 		}
 		if req.Verb == VerbChoose {
+			if !affordanceAction(a, "npc_"+strconv.Itoa(int(n.id))+"_SkillList") {
+				s.resolve(StageRefused, ReasonInvalid)
+				return nil
+			}
 			w.showSkillList(s, p, n)
 			if s.err == nil {
 				s.finish(StageDone)

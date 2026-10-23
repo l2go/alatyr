@@ -9,21 +9,33 @@ import (
 	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
 
-// Events describe world state. They are not a wire format or command receipt.
 // NPCSeen supplies a detached NPC observation, not proof of creation.
-type NPCSeen struct{ NPC NPCView }
+type NPCSeen struct {
+	stamp
+	NPC NPCView
+}
 
 // PlayerSeen supplies a detached player observation.
-type PlayerSeen struct{ Player Self }
+type PlayerSeen struct {
+	stamp
+	Player Self
+}
 
 // ObjectGone removes an object from the observer's scene, not necessarily existence.
-type ObjectGone struct{ ObjectID int32 }
+type ObjectGone struct {
+	stamp
+	ObjectID int32
+}
 
 // SelfChanged supplies refreshed self state, not a command outcome.
-type SelfChanged struct{ Self Self }
+type SelfChanged struct {
+	stamp
+	Self Self
+}
 
 // PositionObserved supplies an authoritative position without claiming a correction occurred.
 type PositionObserved struct {
+	stamp
 	ObjectID int32
 	Pos      Point
 	Heading  int32
@@ -31,21 +43,27 @@ type PositionObserved struct {
 
 // TargetChosen announces an actor's selected target to its observers.
 type TargetChosen struct {
+	stamp
 	ObjectID, TargetID int32
 	Pos                Point
 }
 
 // TargetDetails supplies target details to the selecting player.
-type TargetDetails struct{ TargetID, LevelDifference int32 }
+type TargetDetails struct {
+	stamp
+	TargetID, LevelDifference int32
+}
 
 // TargetCleared announces removal of an actor's selected target.
 type TargetCleared struct {
+	stamp
 	ObjectID int32
 	Pos      Point
 }
 
 // Vitals supplies current resource balances, not resource deltas.
 type Vitals struct {
+	stamp
 	ObjectID            int32
 	HP, MP, CP          float64
 	MaxHP, MaxMP, MaxCP int32
@@ -53,6 +71,7 @@ type Vitals struct {
 
 // AttackStarted announces a calculated swing before any scheduled harm is applied.
 type AttackStarted struct {
+	stamp
 	AttackerID, TargetID int32
 	Damage               int32
 	Critical, Miss       bool
@@ -61,6 +80,7 @@ type AttackStarted struct {
 
 // DamageNotice describes calculated damage; cancellation may still prevent application.
 type DamageNotice struct {
+	stamp
 	AttackerID, TargetID int32
 	Damage               float64
 	Critical, Miss       bool
@@ -68,46 +88,56 @@ type DamageNotice struct {
 
 // CombatStance announces whether an actor is in combat.
 type CombatStance struct {
+	stamp
 	ObjectID int32
 	On       bool
 }
 
 // GaitChanged announces walking or running.
 type GaitChanged struct {
+	stamp
 	ObjectID int32
 	Running  bool
 }
 
 // PostureChanged announces sitting or standing.
 type PostureChanged struct {
+	stamp
 	ObjectID int32
 	Sitting  bool
 	Pos      Point
 }
 
 // Died announces an actor's death.
-type Died struct{ ObjectID int32 }
+type Died struct {
+	stamp
+	ObjectID int32
+}
 
 // Animation announces an ambient authored animation.
 type Animation struct {
+	stamp
 	ObjectID int32
 	Forced   bool
 }
 
 // Following announces an actor moving toward another object.
 type Following struct {
+	stamp
 	ObjectID, TargetID, Distance int32
 	From, To                     Point
 }
 
 // ZoneChanged supplies the world's rules at an actor's position.
 type ZoneChanged struct {
+	stamp
 	ObjectID int32
 	Zone     catalog.ZoneState
 }
 
 // Teleported announces relocation before Appear completes it.
 type Teleported struct {
+	stamp
 	ObjectID int32
 	Pos      Point
 	Heading  int32
@@ -116,25 +146,44 @@ type Teleported struct {
 }
 
 // Revived announces revival at the current position, not return to a start point.
-type Revived struct{ ObjectID int32 }
+type Revived struct {
+	stamp
+	ObjectID int32
+}
 
-// DialoguePage supplies an authored dialogue presentation, not permission to execute its text.
+// DialoguePage supplies an authored page and its detached issued authority.
+// Dialogue.HTML is presentation, not permission to execute arbitrary text.
 type DialoguePage struct {
+	stamp
+	Dialogue Dialogue
+	// NPCID and HTML retain the legacy presentation fields.
 	NPCID int32
 	HTML  string
 }
 
 // LearnList supplies available trainer lessons, not learning outcomes.
 type LearnList struct {
-	NPCID  int32
-	Skills []catalog.SkillLearn
+	stamp
+	Dialogue Dialogue
+	Skills   []catalog.SkillLearn
+	// NPCID retains the legacy trainer identity.
+	NPCID int32
 }
 
-// SkillsShown supplies the full effective skill list.
-type SkillsShown struct{ Skills []Skill }
+// SkillsShown supplies effective skills and their detached runtime availability.
+// Complete is false when a skill's catalog source is missing.
+type SkillsShown struct {
+	stamp
+	// Skills retains the legacy list of effective skill identities.
+	Skills []Skill
+	// Known carries the detached source availability of those same skills.
+	Known    []KnownSkill
+	Complete bool
+}
 
 // SkillCast announces the start of a cast, not its outcome.
 type SkillCast struct {
+	stamp
 	CasterID, TargetID, SkillID, Level int32
 	HitTime, Reuse                     int32
 	From, TargetPos                    Point
@@ -142,31 +191,41 @@ type SkillCast struct {
 
 // SkillLaunched announces the cast's observed targets, not applied harm.
 type SkillLaunched struct {
+	stamp
 	CasterID, SkillID, Level int32
 	Targets                  []int32
 }
 
 // SkillCanceled announces cancellation of a cast.
-type SkillCanceled struct{ ObjectID int32 }
+type SkillCanceled struct {
+	stamp
+	ObjectID int32
+}
 
 // SkillReuse supplies the remaining reuse interval.
 type SkillReuse struct {
+	stamp
 	SkillID               int32
 	RemainingMilliseconds int64
 }
 
 // Rewarded announces awarded XP and SP, not total balances.
 type Rewarded struct {
+	stamp
 	ObjectID int32
 	XP       int64
 	SP       int32
 }
 
 // LevelChanged announces the old and new character level.
-type LevelChanged struct{ ObjectID, Before, After int32 }
+type LevelChanged struct {
+	stamp
+	ObjectID, Before, After int32
+}
 
 // ItemDropped supplies a ground item observation, which may be late visibility.
 type ItemDropped struct {
+	stamp
 	ObjectID, TemplateID int32
 	Pos                  Point
 	Count                int64
@@ -176,6 +235,7 @@ type ItemDropped struct {
 
 // ItemPicked announces pickup before insertion into inventory, not a transfer receipt.
 type ItemPicked struct {
+	stamp
 	PlayerID, ObjectID int32
 	Pos                Point
 }
@@ -188,16 +248,22 @@ type ItemChange struct {
 
 // InventoryChanged supplies inventory row changes and current load.
 type InventoryChanged struct {
+	stamp
 	Changes []ItemChange
 	Load    int64
 }
 
 // ActionIgnored is housekeeping for requests that did not start work. It
 // does not prove a refusal or the outcome of an earlier protected action.
-type ActionIgnored struct{}
+type ActionIgnored struct {
+	stamp
+}
 
 // Announcement supplies an authored system notice, not a typed refusal.
-type Announcement struct{ Text string }
+type Announcement struct {
+	stamp
+	Text string
+}
 
 func (Announcement) event() {}
 
@@ -235,30 +301,141 @@ func (ItemPicked) event()       {}
 func (InventoryChanged) event() {}
 func (ActionIgnored) event()    {}
 
-func cloneEvent(e Event) Event {
+// publishEvent stamps and detaches one known event in a single value copy.
+// Its closed type switch keeps publication explicit when an event is added.
+func publishEvent(e Event, at stamp) Event {
 	switch value := e.(type) {
-	case AffordancesChanged:
-		value.Affordances = cloneAffordances(value.Affordances)
+	case Announcement:
+		value.stamp = at
 		return value
-	case SelfChanged:
-		value.Self.Char = value.Self.Char.Clone()
+	case NPCSeen:
+		value.stamp = at
 		return value
 	case PlayerSeen:
+		value.stamp = at
 		value.Player.Char = value.Player.Char.Clone()
 		return value
-	case SkillsShown:
-		value.Skills = slices.Clone(value.Skills)
+	case ObjectGone:
+		value.stamp = at
+		return value
+	case SelfChanged:
+		value.stamp = at
+		value.Self.Char = value.Self.Char.Clone()
+		return value
+	case PositionObserved:
+		value.stamp = at
+		return value
+	case TargetChosen:
+		value.stamp = at
+		return value
+	case TargetDetails:
+		value.stamp = at
+		return value
+	case TargetCleared:
+		value.stamp = at
+		return value
+	case Vitals:
+		value.stamp = at
+		return value
+	case AttackStarted:
+		value.stamp = at
+		return value
+	case DamageNotice:
+		value.stamp = at
+		return value
+	case CombatStance:
+		value.stamp = at
+		return value
+	case GaitChanged:
+		value.stamp = at
+		return value
+	case PostureChanged:
+		value.stamp = at
+		return value
+	case Died:
+		value.stamp = at
+		return value
+	case Animation:
+		value.stamp = at
+		return value
+	case Following:
+		value.stamp = at
+		return value
+	case ZoneChanged:
+		value.stamp = at
+		return value
+	case Teleported:
+		value.stamp = at
+		return value
+	case Revived:
+		value.stamp = at
+		return value
+	case DialoguePage:
+		value.stamp = at
+		value.Dialogue = cloneDialogue(value.Dialogue)
 		return value
 	case LearnList:
+		value.stamp = at
+		value.Dialogue = cloneDialogue(value.Dialogue)
 		value.Skills = slices.Clone(value.Skills)
 		return value
+	case SkillsShown:
+		value.stamp = at
+		value.Skills = slices.Clone(value.Skills)
+		value.Known = slices.Clone(value.Known)
+		for i := range value.Known {
+			value.Known[i].Disabled = value.Known[i].ReuseUntil > at.time
+		}
+		return value
+	case SkillCast:
+		value.stamp = at
+		return value
 	case SkillLaunched:
+		value.stamp = at
 		value.Targets = slices.Clone(value.Targets)
 		return value
+	case SkillCanceled:
+		value.stamp = at
+		return value
+	case SkillReuse:
+		value.stamp = at
+		return value
+	case Rewarded:
+		value.stamp = at
+		return value
+	case LevelChanged:
+		value.stamp = at
+		return value
+	case ItemDropped:
+		value.stamp = at
+		return value
+	case ItemPicked:
+		value.stamp = at
+		return value
 	case InventoryChanged:
+		value.stamp = at
 		value.Changes = slices.Clone(value.Changes)
 		return value
+	case ActionIgnored:
+		value.stamp = at
+		return value
+	case Moving:
+		value.stamp = at
+		return value
+	case Stopped:
+		value.stamp = at
+		return value
+	case LeftWorld:
+		value.stamp = at
+		return value
+	case GameClock:
+		value.stamp = at
+		return value
+	case AffordancesChanged:
+		value.stamp = at
+		value.Affordances = cloneAffordances(value.Affordances)
+		return value
 	default:
-		return e
+		return nil // Unsupported concrete source type; delivery stops the world.
 	}
 }

@@ -160,7 +160,7 @@ func TestExecuteChooseCommitsIssuedList(t *testing.T) {
 					}
 				}
 				events := drainEvents(entry.Events)
-				if !containsEvent(events, func(e LearnList) bool { return e.NPCID == teacher.ID && len(e.Skills) == tc.count }) {
+				if !containsEvent(events, func(e LearnList) bool { return e.Dialogue.Speaker == teacher && len(e.Skills) == tc.count }) {
 					t.Fatalf("lesson list: got %+v, want %d lessons", events, tc.count)
 				}
 				if !containsEvent(events, func(e AffordancesChanged) bool { return len(e.Affordances) == tc.count }) {
@@ -395,7 +395,7 @@ func TestExecuteLearnUsesAffordanceAndSeparateDurability(t *testing.T) {
 				if sp.Amount != IntegerAmount(lesson.Cost[0].Quantity) || len(log.writes) != 1 || log.writes[0].Intent != commit.Intent.ID || (log.writes[0].Err != nil) != failed {
 					t.Fatalf("cost/durability: got %+v %+v", sp, log.writes)
 				}
-				if err := w.Leave(ctx, 1); err != nil {
+				if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 					t.Fatal(err)
 				}
 				if store.saved.SP != 17 || !slices.Contains(store.saved.Skills, Skill{ID: 9202, Level: 1}) {
@@ -494,7 +494,7 @@ func TestExecuteMovementDeadlineStopsAtBoundary(t *testing.T) {
 					stops = append(stops, e)
 				}
 			}
-			if !slices.Equal(stops, []Stopped{want}) {
+			if len(stops) != 1 || stops[0].ObjectID != want.ObjectID || stops[0].Pos != want.Pos || stops[0].Heading != want.Heading || stops[0].Seq() == 0 || stops[0].Time() < move.Intent.Deadline {
 				t.Errorf("%s deadline stop: got %+v, want exactly %+v", name, stops, want)
 			}
 		}

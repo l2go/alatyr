@@ -86,7 +86,7 @@ func TestEnterMoveLeaveSave(t *testing.T) {
 		if _, ok := (<-entry.Events).(world.Stopped); !ok {
 			t.Fatal("missing stop")
 		}
-		if err = w.Leave(ctx, 1); err != nil {
+		if err = w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 		left := false
@@ -147,24 +147,33 @@ func TestFailedSaveCanRetry(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		w := world.New(cat, store)
-		go w.Run(ctx)
+		runDone := make(chan error, 1)
+		go func() { runDone <- w.Run(ctx) }()
+		defer func() {
+			cancel()
+			if err := <-runDone; err != nil {
+				t.Errorf("Run: got %v, want nil", err)
+			}
+		}()
 		c := ready()
-		if _, err := w.Enter(ctx, c); err != nil {
+		entry, err := w.Enter(ctx, c)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if err := w.Leave(ctx, c.ObjectID); err == nil {
+		if err := w.LeaveRef(ctx, entry.Self.Entity); err == nil {
 			t.Fatal("save failure lost")
 		}
 		if _, err := w.Enter(ctx, c); !errors.Is(err, world.ErrPresent) {
 			t.Fatal("unsaved character re-entered")
 		}
-		if err := w.Leave(ctx, c.ObjectID); err != nil {
+		if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := w.Enter(ctx, c); err != nil {
+		entry, err = w.Enter(ctx, c)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if err := w.Leave(ctx, c.ObjectID); err != nil {
+		if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -195,14 +204,22 @@ func TestConcurrentLeaveCannotOverlapSaves(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		w := world.New(cat, store)
-		go w.Run(ctx)
-		if _, err := w.Enter(ctx, ready()); err != nil {
+		runDone := make(chan error, 1)
+		go func() { runDone <- w.Run(ctx) }()
+		defer func() {
+			cancel()
+			if err := <-runDone; err != nil {
+				t.Errorf("Run: got %v, want nil", err)
+			}
+		}()
+		entry, err := w.Enter(ctx, ready())
+		if err != nil {
 			t.Fatal(err)
 		}
 		done := make(chan error, 1)
-		go func() { done <- w.Leave(ctx, 1) }()
+		go func() { done <- w.LeaveRef(ctx, entry.Self.Entity) }()
 		<-store.started
-		if err := w.Leave(ctx, 1); !errors.Is(err, world.ErrSaving) {
+		if err := w.LeaveRef(ctx, entry.Self.Entity); !errors.Is(err, world.ErrSaving) {
 			t.Fatal(err)
 		}
 		if _, err := w.Enter(ctx, ready()); !errors.Is(err, world.ErrPresent) {

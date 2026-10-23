@@ -43,9 +43,11 @@ type Coverage struct {
 
 // Marker bounds an atomic scene capture. Sequence is the source commitment
 // boundary, not a new publication. End.Ready requires all domain coverage and
-// completion of the current relocation. Capture does not allocate new intents.
+// completion of the current relocation. Seq is the last event publication,
+// independent of Sequence. Capture does not allocate new intents or events.
 type Marker struct {
 	Sequence uint64
+	Seq      uint64
 	Time     Time
 	Fence    Fence
 	Ready    bool
@@ -150,7 +152,7 @@ func (w *World) Subscribe(ctx context.Context, owner Ref) (Scene, Subscription, 
 
 func (w *World) capture(s *state, p *player) Scene {
 	now := time.Now()
-	marker := Marker{Sequence: s.commitSeq, Time: s.at(now), Fence: p.fence}
+	marker := Marker{Sequence: s.commitSeq, Seq: s.eventSeq, Time: s.at(now), Fence: p.fence}
 	scene := Scene{Begin: marker, Self: w.selfOf(p), Target: s.ref(p.target), CombatUntil: s.at(s.stance[p.id])}
 	scene.Moving = p.move != nil
 	if scene.Moving {
@@ -195,14 +197,9 @@ func (w *World) capture(s *state, p *player) Scene {
 		inventoryComplete = inventoryComplete && r != (Ref{}) && known
 		scene.Inventory = append(scene.Inventory, Carried{Entity: r, Item: it})
 	}
-	skillsComplete := true
-	for _, k := range p.shownSkills() {
-		sk, known := w.cat.Skill(k.ID, k.Level)
-		skillsComplete = skillsComplete && known
-		r := p.reuse[k.ID]
-		scene.Skills = append(scene.Skills, KnownSkill{Skill: k, Passive: sk.Passive, Disabled: r.until.After(now), ReuseUntil: s.at(r.until)})
-	}
-	scene.Dialogue = Dialogue{Speaker: p.dialogueSpeaker, Page: p.dialogue, HTML: p.dialogueHTML, Affordances: cloneAffordances(p.affordances)}
+	var skillsComplete bool
+	scene.Skills, skillsComplete = w.knownSkills(s, p, now)
+	scene.Dialogue = w.dialogueOf(p)
 	dialogueComplete := p.dialogue == "" || p.dialogueSpeaker != (Ref{}) && p.dialogueHTML != ""
 	scene.Coverage = []Coverage{
 		{Domain: DomainSelf, Complete: true},
@@ -221,4 +218,25 @@ func (w *World) capture(s *state, p *player) Scene {
 	}
 	scene.End = marker
 	return scene
+}
+
+func (w *World) knownSkills(s *state, p *player, now time.Time) ([]KnownSkill, bool) {
+	var skills []KnownSkill
+	complete := true
+	for _, k := range p.shownSkills() {
+		sk, known := w.cat.Skill(k.ID, k.Level)
+		complete = complete && known
+		r := p.reuse[k.ID]
+		skills = append(skills, KnownSkill{Skill: k, Passive: sk.Passive, Disabled: r.until.After(now), ReuseUntil: s.at(r.until)})
+	}
+	return skills, complete
+}
+
+func (w *World) dialogueOf(p *player) Dialogue {
+	return Dialogue{Speaker: p.dialogueSpeaker, Page: p.dialogue, HTML: p.dialogueHTML, Affordances: cloneAffordances(p.affordances)}
+}
+
+func cloneDialogue(d Dialogue) Dialogue {
+	d.Affordances = cloneAffordances(d.Affordances)
+	return d
 }

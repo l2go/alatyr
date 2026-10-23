@@ -78,8 +78,11 @@ func (w *World) showSkillList(s *state, p *player, n *npc) {
 			skills = append(skills, k)
 		}
 	}
-	p.send(LearnList{NPCID: n.id, Skills: skills})
 	w.issueLessons(s, p, n, skills)
+	if !p.slow {
+		p.send(LearnList{NPCID: n.id, Dialogue: w.dialogueOf(p), Skills: slices.Clone(skills)})
+		p.send(AffordancesChanged{Affordances: cloneAffordances(p.affordances)})
+	}
 }
 
 // Learn reserves a trainer offer and spends SP in the loop. PutSkill executes
@@ -204,8 +207,11 @@ func (w *World) sendPage(s *state, p *player, n *npc, page, html string) {
 	p.dialogueSpeaker = n.ref()
 	p.bypass, p.bypassPrefix = bypassCache(html)
 	s.group([]Effect{SpeechCompleted{Speaker: n.ref(), Listener: p.ref(), Text: html}})
-	p.send(DialoguePage{NPCID: n.id, HTML: html})
 	w.issueChoices(s, p, n)
+	if !p.slow {
+		p.send(DialoguePage{NPCID: n.id, HTML: html, Dialogue: w.dialogueOf(p)})
+		p.send(AffordancesChanged{Affordances: cloneAffordances(p.affordances)})
+	}
 }
 
 func bypassCache(html string) (exact, prefix []string) {
