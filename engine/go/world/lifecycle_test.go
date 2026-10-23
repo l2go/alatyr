@@ -97,7 +97,14 @@ func TestLearningStoreDoesNotBlockLoopOrOverlapLeave(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		w := New(cat, store)
-		go w.Run(ctx)
+		runDone := make(chan error, 1)
+		go func() { runDone <- w.Run(ctx) }()
+		defer func() {
+			cancel()
+			if err := <-runDone; err != nil {
+				t.Errorf("Run: got %v, want nil", err)
+			}
+		}()
 		entry := enterTest(t, w, ctx, syntheticCharacter(1))
 		drainEvents(entry.Events)
 		teacher := objectOf(t, w, ctx, 9102)
@@ -111,14 +118,14 @@ func TestLearningStoreDoesNotBlockLoopOrOverlapLeave(t *testing.T) {
 		if _, err := w.Snapshot(ctx, 1); err != nil {
 			t.Fatal("store blocked loop")
 		}
-		if err := w.Leave(ctx, 1); !errors.Is(err, ErrSaving) {
+		if err := w.Leave(ctx, entry.Self.Entity); !errors.Is(err, ErrSaving) {
 			t.Fatal("Leave overlaps skill write")
 		}
 		close(store.release)
 		if err := <-done; err != nil {
 			t.Fatal(err)
 		}
-		if err := w.Leave(ctx, 1); err != nil {
+		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -138,7 +145,7 @@ func TestFailedLearningWriteRemainsSaveable(t *testing.T) {
 		if w.Learn(ctx, 1, 9202, 1) == nil {
 			t.Fatal("write failure hidden")
 		}
-		if err := w.Leave(ctx, 1); err != nil {
+		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 		if store.saved.SP != 17 || !slices.Contains(store.saved.Skills, Skill{ID: 9202, Level: 1}) {

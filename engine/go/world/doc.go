@@ -47,6 +47,13 @@
 // Subscribe replaces an observation stream and captures the same incarnation
 // atomically; it cannot restore a departed character or a stopped world.
 // Subscription.End distinguishes overflow, leave, stop and replacement.
+// Run stamps each delivered Event with Time and a world-wide Seq. The latter
+// is independent of Commit.Sequence; Scene markers retain both boundaries.
+// Pages and lesson lists carry their own detached Dialogue and affordances.
+// SkillsShown carries detached effective skills and runtime reuse availability.
+// Delayed reading never borrows authority from a later Capture.
+// Leave and Logout check a captured Ref in the same turn as departure. Only
+// that incarnation can retry its pending detached save; Store is unchanged.
 //
 // Fence identifies relocation, independently of Ref.Gen and session epochs.
 // Execute with VerbAppear requires the current Fence; legacy Appear trusts its

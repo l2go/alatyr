@@ -44,11 +44,12 @@ func ExampleWorld_Enter() {
 		}
 	}()
 	c := world.Character{ObjectID: 1, Account: "example", Name: "Walker", ClassID: 0, Level: 1, CurHP: 50, CurMP: 20, CurCP: 10}
-	if _, err := w.Enter(ctx, c); err != nil {
+	entry, err := w.Enter(ctx, c)
+	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	if err := w.Leave(ctx, c.ObjectID); err != nil {
+	if err := w.Leave(ctx, entry.Self.Entity); err != nil {
 		fmt.Println(err)
 	}
 	// Output:
@@ -129,7 +130,7 @@ findTeacher:
 		fmt.Println(err)
 		return
 	}
-	if err := w.Leave(ctx, c.ObjectID); err != nil {
+	if err := w.Leave(ctx, entry.Self.Entity); err != nil {
 		fmt.Println(err)
 	}
 	// Output:

@@ -369,8 +369,9 @@ func (w *World) tickBroadcast(s *state) {
 			w.statusInfo(s, a)
 		}
 		if m&broadcastSkillList != 0 {
-			if p, ok := a.(*player); ok {
-				p.send(SkillsShown{Skills: p.shownSkills()})
+			if p, ok := a.(*player); ok && !p.slow {
+				skills, complete := w.knownSkills(s, p, time.Now())
+				p.send(SkillsShown{Skills: skills, Complete: complete})
 			}
 		}
 	}

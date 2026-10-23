@@ -70,8 +70,8 @@ func (w *World) submit(ctx context.Context, f func(*state)) error {
 	select {
 	case w.cmds <- func(s *state) {
 		f(s)
-		result = s.err
 		w.flush(s)
+		result = s.err
 		close(done)
 	}:
 	case <-w.stopped:
@@ -152,11 +152,13 @@ type state struct {
 	err                                                             error
 	commandSeq, commitSeq                                           uint64
 	affordanceSeq                                                   uint64
+	eventSeq                                                        uint64
 	batch                                                           *commitBatch
 	observe                                                         func(Commit)
 }
 
 type pendingSave struct {
+	owner  Ref
 	char   Character
 	saving bool
 }
@@ -200,7 +202,7 @@ func (w *World) flush(s *state) {
 			if _, ok := e.(SelfChanged); ok {
 				e = SelfChanged{Self: w.selfOf(p)}
 			}
-			p.deliver(e)
+			p.deliver(s, e)
 		}
 		p.outbox = nil
 	}

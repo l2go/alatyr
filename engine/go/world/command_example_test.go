@@ -37,7 +37,7 @@ func ExampleWorld_Execute() {
 		return
 	}
 	defer func() {
-		if err := w.Leave(ctx, 1); err != nil {
+		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
 			fmt.Println(err)
 		}
 	}()

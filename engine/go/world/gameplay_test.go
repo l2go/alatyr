@@ -170,10 +170,16 @@ func startTestWorld(t *testing.T, cat *catalog.Catalog, options ...Option) (*Wor
 	t.Helper()
 	store := &testStore{}
 	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(cancel)
 	w := New(cat, store, options...)
 	w.s.rng = rand.New(rand.NewPCG(1, 2))
-	go w.Run(ctx)
+	done := make(chan error, 1)
+	go func() { done <- w.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Run: got %v, want nil", err)
+		}
+	})
 	return w, store, ctx
 }
 func enterTest(t *testing.T, w *World, ctx context.Context, c Character) Entry {
@@ -228,7 +234,7 @@ func TestCombatDeathDecayRespawn(t *testing.T) {
 		if !containsEvent(got, func(e Rewarded) bool { return e.XP == 10 && e.SP == 2 }) {
 			t.Fatal("damage-share reward")
 		}
-		if w.Logout(ctx, 1) == nil {
+		if w.Logout(ctx, entry.Self.Entity) == nil {
 			t.Fatal("combat allowed voluntary logout")
 		}
 		var drop ItemDropped
@@ -259,7 +265,7 @@ func TestCombatDeathDecayRespawn(t *testing.T) {
 		if !containsEvent(got, func(e ObjectGone) bool { return e.ObjectID == mob }) || !containsEvent(got, func(e NPCSeen) bool { return e.NPC.Template.ID == 9101 && e.NPC.ObjectID != mob && !e.NPC.Dead }) {
 			t.Fatal("corpse decay or fresh respawn")
 		}
-		if err := w.Leave(ctx, 1); err != nil {
+		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 		if store.saved.Exp != 10 || store.saved.SP != 22 {
@@ -318,7 +324,9 @@ func TestTrainerLearningAndPassiveStats(t *testing.T) {
 		w.Action(ctx, 1, teacher)
 		w.Action(ctx, 1, teacher)
 		page := drainEvents(entry.Events)
-		if !containsEvent(page, func(e DialoguePage) bool { return strings.Contains(e.HTML, fmt.Sprintf("npc_%d_SkillList", teacher)) }) {
+		if !containsEvent(page, func(e DialoguePage) bool {
+			return strings.Contains(e.Dialogue.HTML, fmt.Sprintf("npc_%d_SkillList", teacher))
+		}) {
 			t.Fatal("authored trainer page not loaded")
 		}
 		choice := fmt.Sprintf("npc_%d_SkillList", teacher)
@@ -345,7 +353,7 @@ func TestTrainerLearningAndPassiveStats(t *testing.T) {
 		if w.Learn(ctx, 1, 9202, 1) == nil {
 			t.Fatal("duplicate learning charged")
 		}
-		if err := w.Leave(ctx, 1); err != nil {
+		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 		if store.saved.SP != 17 || !slices.Contains(store.saved.Skills, Skill{ID: 9202, Level: 1}) {
@@ -401,8 +409,10 @@ func TestStaleAttackAndCastCannotHitAfterLeave(t *testing.T) {
 		mob := objectOf(t, w, ctx, 9101)
 		w.Action(ctx, 1, mob)
 		w.MagicSkillUse(ctx, 1, 9201, false, true)
-		w.Leave(ctx, 1)
-		enterTest(t, w, ctx, c)
+		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
+			t.Fatal(err)
+		}
+		entry = enterTest(t, w, ctx, c)
 		advanceVirtual(700 * time.Millisecond)
 		w.do(ctx, func(s *state) {
 			if s.npcs[mob].hp != 70 {
@@ -410,8 +420,10 @@ func TestStaleAttackAndCastCannotHitAfterLeave(t *testing.T) {
 			}
 		})
 		w.AttackRequest(ctx, 1, mob)
-		w.Leave(ctx, 1)
-		enterTest(t, w, ctx, c)
+		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
+			t.Fatal(err)
+		}
+		entry = enterTest(t, w, ctx, c)
 		advanceVirtual(700 * time.Millisecond)
 		w.do(ctx, func(s *state) {
 			if s.npcs[mob].hp != 70 {

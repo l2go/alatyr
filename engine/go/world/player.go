@@ -44,11 +44,31 @@ type player struct {
 	learningWrite              bool
 }
 
-// Event is a state notification, not an applied-effect receipt.
-type Event interface{ event() }
+// Event is a state notification, not an applied-effect receipt. Run assigns
+// Time and Seq at publication, before the consumer reads it. Seq is a strictly
+// increasing world-wide delivery sequence, independent of Commit.Sequence.
+// Events embedded in Scene observations are state, not publications: their
+// Time and Seq are zero. The same is true of caller-constructed values.
+type Event interface {
+	event()
+	Time() Time
+	Seq() uint64
+}
+
+type stamp struct {
+	time Time
+	seq  uint64
+}
+
+// Time returns monotonic world time at publication.
+func (s stamp) Time() Time { return s.time }
+
+// Seq returns the source-assigned publication sequence; zero is unpublished.
+func (s stamp) Seq() uint64 { return s.seq }
 
 // Moving announces an authoritative movement destination.
 type Moving struct {
+	stamp
 	ObjectID int32
 	From, To Point
 }
@@ -57,6 +77,7 @@ func (Moving) event() {}
 
 // Stopped announces the end of movement at an authoritative position.
 type Stopped struct {
+	stamp
 	ObjectID int32
 	Pos      Point
 	Heading  int32
@@ -65,7 +86,10 @@ type Stopped struct {
 func (Stopped) event() {}
 
 // LeftWorld announces departure before the character is saved.
-type LeftWorld struct{ ObjectID int32 }
+type LeftWorld struct {
+	stamp
+	ObjectID int32
+}
 
 func (LeftWorld) event() {}
 
@@ -126,11 +150,24 @@ func (p *player) close(reason CloseReason) {
 		p.stream.close(reason)
 	}
 }
-func (p *player) deliver(e Event) {
-	if p.slow {
+func (p *player) deliver(s *state, e Event) {
+	if p.slow || s.err != nil {
 		return
 	}
-	e = cloneEvent(e)
+	if len(p.stream.events) == cap(p.stream.events) {
+		p.close(CloseOverflow)
+		return
+	}
+	if s.eventSeq == ^uint64(0) {
+		s.err = ErrExhausted
+		return
+	}
+	s.eventSeq++
+	e = publishEvent(e, stamp{time: s.now(), seq: s.eventSeq})
+	if e == nil {
+		s.err = errors.New("world: unsupported event")
+		return
+	}
 	select {
 	case p.stream.events <- e:
 	default:
@@ -353,65 +390,87 @@ func (w *World) MoveTo(ctx context.Context, id int32, to Point) error {
 	return result
 }
 
-// Leave removes the character and closes events before saving on the caller.
-// A failed save leaves a detached pending snapshot; another Leave retries it.
-func (w *World) Leave(ctx context.Context, id int32) error {
-	return w.leave(ctx, id, false)
+// RefusalError reports a refused operation on a captured incarnation.
+// Reason is machine-readable; callers can inspect it with errors.As.
+type RefusalError struct {
+	Owner  Ref
+	Reason Reason
 }
-func (w *World) leave(ctx context.Context, id int32, voluntary bool) error {
+
+// Error describes the refusal without replacing its typed Reason.
+func (e *RefusalError) Error() string { return "world: operation refused: " + string(e.Reason) }
+
+// Leave removes only owner and closes its events before saving on the caller.
+// A failed save leaves a detached snapshot that only the same Ref can retry.
+// A different live or pending incarnation returns a RefusalError with ReasonStale.
+// Repeating a successful departure is harmless while the identity remains absent.
+func (w *World) Leave(ctx context.Context, owner Ref) error {
+	return w.leave(ctx, owner, false)
+}
+func (w *World) leave(ctx context.Context, owner Ref, voluntary bool) error {
+	id := owner.ID
 	var c Character
 	var pending *pendingSave
 	var result error
-	err := w.doCommand(ctx, id, VerbLeave, func(s *state) {
-		if p, ok := s.players[id]; ok {
-			if voluntary && time.Now().Before(s.stance[id]) {
-				result = ErrCombat
-				s.finish(StageRefused)
+	err := w.submit(ctx, func(s *state) {
+		s.command(owner, VerbLeave, func() {
+			p := s.players[id]
+			previous := s.pending[id]
+			if owner.ID <= 0 || owner.Gen == 0 || p != nil && p.ref() != owner || previous != nil && previous.owner != owner {
+				result = &RefusalError{Owner: owner, Reason: ReasonStale}
+				s.resolve(StageRefused, ReasonStale)
 				return
 			}
-			if p.learningWrite {
+			if p != nil {
+				if voluntary && time.Now().Before(s.stance[id]) {
+					result = ErrCombat
+					s.finish(StageRefused)
+					return
+				}
+				if p.learningWrite {
+					result = ErrSaving
+					s.finish(StageRefused)
+					return
+				}
+				c = w.selfOf(p).Char
+				p.attackSeq++
+				p.castSeq++
+				s.setAttacking(p.base(), 0)
+				s.setBool(p.ref(), PropertyCasting, &p.casting, false)
+				s.change(p.ref(), PropertyMovement, boolValue(p.move != nil), IntValue(0))
+				p.move = nil
+				p.regenOn = false
+				if !p.teleporting {
+					w.decayPlayer(s, p)
+				}
+				p.teleporting = true
+				s.change(p.ref(), PropertyCombatUntil, TimeValue(s.at(s.stance[id])), TimeValue(0))
+				delete(s.stance, id)
+				c.LastAccess = time.Now().UnixMilli()
+				for _, e := range p.outbox {
+					p.deliver(s, e)
+				}
+				p.outbox = nil
+				p.deliver(s, LeftWorld{ObjectID: id})
+				p.close(CloseLeave)
+				s.group([]Effect{ExistenceChanged{Entity: p.ref(), Before: true}})
+				s.finish(StageDone)
+				delete(s.players, id)
+				s.moving = slices.DeleteFunc(s.moving, func(moving int32) bool { return moving == id })
+				s.pending[id] = &pendingSave{owner: owner, char: c.Clone()}
+			}
+			pending = s.pending[id]
+			if pending == nil {
+				return
+			}
+			if pending.saving {
 				result = ErrSaving
 				s.finish(StageRefused)
 				return
 			}
-			c = w.selfOf(p).Char
-			p.attackSeq++
-			p.castSeq++
-			s.setAttacking(p.base(), 0)
-			s.setBool(p.ref(), PropertyCasting, &p.casting, false)
-			s.change(p.ref(), PropertyMovement, boolValue(p.move != nil), IntValue(0))
-			p.move = nil
-			p.regenOn = false
-			if !p.teleporting {
-				w.decayPlayer(s, p)
-			}
-			p.teleporting = true
-			s.change(p.ref(), PropertyCombatUntil, TimeValue(s.at(s.stance[id])), TimeValue(0))
-			delete(s.stance, id)
-			c.LastAccess = time.Now().UnixMilli()
-			for _, e := range p.outbox {
-				p.deliver(e)
-			}
-			p.outbox = nil
-			p.deliver(LeftWorld{ObjectID: id})
-			p.close(CloseLeave)
-			s.group([]Effect{ExistenceChanged{Entity: p.ref(), Before: true}})
-			s.finish(StageDone)
-			delete(s.players, id)
-			s.moving = slices.DeleteFunc(s.moving, func(moving int32) bool { return moving == id })
-			s.pending[id] = &pendingSave{char: c.Clone()}
-		}
-		pending = s.pending[id]
-		if pending == nil {
-			return
-		}
-		if pending.saving {
-			result = ErrSaving
-			s.finish(StageRefused)
-			return
-		}
-		pending.saving = true
-		c = pending.char.Clone()
+			pending.saving = true
+			c = pending.char.Clone()
+		})
 	})
 	if err != nil {
 		return err
