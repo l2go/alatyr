@@ -17,5 +17,9 @@ import com.l2jfree.gameserver.gameobjects.L2Player;
 /** Describes only fields exposed by the same packet to this receiver. */
 public interface SemanticPacket
 {
+	/**
+	 * Runs on the sender's thread under the sink monitor, which may be entered while any game lock is held.
+	 * Reads only state read by this packet's writeImpl and must not acquire locks.
+	 */
 	void describe(FactSink sink, L2Player receiver);
 }

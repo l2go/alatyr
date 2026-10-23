@@ -75,6 +75,11 @@ public final class BridgeSink implements ClientSink
 		return true;
 	}
 	
+	/**
+	 * Runs under a leaf sink monitor, possibly inside any game lock held by the sender. The only permitted
+	 * nested monitors are transport for outbound queue operations and, on failure, the client's _bridgeLife.
+	 * Neither path may call back into packet delivery; describers must not acquire locks.
+	 */
 	@Override
 	public synchronized void deliver(L2ServerPacket packet, L2Player player)
 	{
