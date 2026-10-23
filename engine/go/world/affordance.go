@@ -53,8 +53,7 @@ func (w *World) issueLessons(s *state, p *player, n *npc, skills []catalog.Skill
 		if a.ID == 0 {
 			break
 		}
-		a.Params = []Parameter{{Name: "skill", Value: IntValue(int64(k.SkillID))}, {Name: "level", Value: IntValue(int64(k.Level))}}
-		a.Parameters = slices.Clone(a.Params)
+		a.Parameters = []Parameter{{Name: "skill", Value: IntValue(int64(k.SkillID))}, {Name: "level", Value: IntValue(int64(k.Level))}}
 		a.Cost = []Cost{{Resource: Resource{Kind: ResourceSP}, Quantity: int64(k.SP)}}
 		p.affordances = append(p.affordances, a)
 		s.change(p.ref(), PropertyAffordance, UintValue(0), UintValue(a.ID))
@@ -97,7 +96,6 @@ func affordanceAction(a Affordance, action string) bool {
 func cloneAffordances(values []Affordance) []Affordance {
 	out := slices.Clone(values)
 	for i := range out {
-		out[i].Params = slices.Clone(out[i].Params)
 		out[i].Parameters = slices.Clone(out[i].Parameters)
 		out[i].Cost = slices.Clone(out[i].Cost)
 	}

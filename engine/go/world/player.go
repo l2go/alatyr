@@ -402,37 +402,19 @@ type RefusalError struct {
 // Error describes the refusal without replacing its typed Reason.
 func (e *RefusalError) Error() string { return "world: operation refused: " + string(e.Reason) }
 
-// Leave removes the current incarnation of id before saving on the caller.
-// This trusted-host API does not fence a caller's captured incarnation.
-// Deprecated: use LeaveRef to leave only a captured incarnation.
-func (w *World) Leave(ctx context.Context, id int32) error {
-	return w.leave(ctx, Ref{ID: id}, false, true)
-}
-
 // LeaveRef removes only owner and closes its events before saving on the caller.
 // A failed save leaves a detached snapshot that only the same Ref can retry.
 // A different live or pending incarnation returns a RefusalError with ReasonStale.
 // Repeating a successful departure is harmless while the identity remains absent.
 func (w *World) LeaveRef(ctx context.Context, owner Ref) error {
-	return w.leave(ctx, owner, false, false)
+	return w.leave(ctx, owner, false)
 }
-func (w *World) leave(ctx context.Context, owner Ref, voluntary, current bool) error {
+func (w *World) leave(ctx context.Context, owner Ref, voluntary bool) error {
 	id := owner.ID
 	var c Character
 	var pending *pendingSave
 	var result error
 	err := w.submit(ctx, func(s *state) {
-		// Legacy ID calls intentionally choose the current owner in this same
-		// turn. They never perform a separate capture followed by removal.
-		if current {
-			owner = s.ref(id)
-			if previous := s.pending[id]; previous != nil {
-				owner = previous.owner
-			}
-			if owner.Gen == 0 {
-				return
-			}
-		}
 		s.command(owner, VerbLeave, func() {
 			p := s.players[id]
 			previous := s.pending[id]

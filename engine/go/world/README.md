@@ -64,10 +64,10 @@ caller-constructed events are not publications and have zero event markers.
 `DialoguePage` and `LearnList` retain their own detached `Dialogue` and original
 affordances; `SkillsShown.Known` retains skill completeness and runtime availability.
 Consumers do not pair these queued sources with a later capture.
-Legacy `DialoguePage.NPCID`/`HTML`, `LearnList.NPCID`, and `SkillsShown.Skills`
-remain available with their original types. `Affordance.Parameters` is the full
-issued parameter set. `Params` retains the legacy lesson projection and remains
-empty for Choose; the new `action` parameter does not change that old shape.
+`Affordance.Parameters` is the complete issued parameter set for choices and
+lessons. Choose includes an `action` label; a lesson includes `skill` and `level`.
+Consumers read lesson costs and capabilities from the issued affordances rather
+than a separate skill-list projection.
 
 `Execute` accepts a `Request` with captured `Ref` values, an exact skill level
 and an optional monotonic deadline. It returns the same source `Commit` that
@@ -118,9 +118,8 @@ outside the loop. A failed save can be retried only by the same incarnation;
 re-entry is blocked until it succeeds. A different live or pending incarnation
 returns `RefusalError` with `ReasonStale`, inspectable with `errors.As`.
 `LogoutRef` takes the same `Ref` and also checks combat stance atomically with
-departure. `Leave` and `Logout` retain the trusted-host ID APIs; they intentionally
-choose the current live or pending incarnation in one owning-loop turn, not a
-captured caller's incarnation. Use the Ref variants for captured ownership.
+departure. Both operations require a captured incarnation; there is no ID-only
+departure API.
 An accepted command completes even if its caller cancels in flight.
 Leave all characters before cancelling Run; shutdown does not implicitly save.
 

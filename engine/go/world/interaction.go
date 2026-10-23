@@ -80,13 +80,13 @@ func (w *World) showSkillList(s *state, p *player, n *npc) {
 	}
 	w.issueLessons(s, p, n, skills)
 	if !p.slow {
-		p.send(LearnList{NPCID: n.id, Dialogue: w.dialogueOf(p), Skills: slices.Clone(skills)})
+		p.send(LearnList{Dialogue: w.dialogueOf(p)})
 		p.send(AffordancesChanged{Affordances: cloneAffordances(p.affordances)})
 	}
 }
 
 // Learn reserves a trainer offer and spends SP in the loop. PutSkill executes
-// on the caller; a failed write retains the learned skill for Leave to save.
+// on the caller; a failed write retains the learned skill for LeaveRef to save.
 // A host whose Store lacks PutSkill cannot learn a skill.
 func (w *World) Learn(ctx context.Context, id, skillID, level int32) error {
 	if _, ok := w.skillStore(); !ok {
@@ -209,7 +209,7 @@ func (w *World) sendPage(s *state, p *player, n *npc, page, html string) {
 	s.group([]Effect{SpeechCompleted{Speaker: n.ref(), Listener: p.ref(), Text: html}})
 	w.issueChoices(s, p, n)
 	if !p.slow {
-		p.send(DialoguePage{NPCID: n.id, HTML: html, Dialogue: w.dialogueOf(p)})
+		p.send(DialoguePage{Dialogue: w.dialogueOf(p)})
 		p.send(AffordancesChanged{Affordances: cloneAffordances(p.affordances)})
 	}
 }

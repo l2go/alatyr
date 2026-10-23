@@ -160,7 +160,9 @@ func TestExecuteChooseCommitsIssuedList(t *testing.T) {
 					}
 				}
 				events := drainEvents(entry.Events)
-				if !containsEvent(events, func(e LearnList) bool { return e.Dialogue.Speaker == teacher && len(e.Skills) == tc.count }) {
+				if !containsEvent(events, func(e LearnList) bool {
+					return e.Dialogue.Speaker == teacher && len(e.Dialogue.Affordances) == tc.count
+				}) {
 					t.Fatalf("lesson list: got %+v, want %d lessons", events, tc.count)
 				}
 				if !containsEvent(events, func(e AffordancesChanged) bool { return len(e.Affordances) == tc.count }) {

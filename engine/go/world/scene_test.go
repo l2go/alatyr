@@ -61,7 +61,7 @@ func TestCaptureReadsEverySourceWithoutEffects(t *testing.T) {
 		if got := drainEvents(subscription.Events); len(got) != 0 {
 			t.Fatalf("new stream replayed notifications: %+v", got)
 		}
-		fresh.Dialogue.Affordances[0].Params = []Parameter{{Name: "changed"}}
+		fresh.Dialogue.Affordances[0].Parameters = []Parameter{{Name: "changed"}}
 		fresh.Inventory[0].Item.Count = 77
 		fresh.Self.Char.Items[0].Count = 88
 		fresh.Objects[0].Entity.Gen = 0

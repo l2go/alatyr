@@ -336,7 +336,7 @@ func TestTrainerLearningAndPassiveStats(t *testing.T) {
 		if err := w.Bypass(ctx, 1, choice); err != nil {
 			t.Fatal(err)
 		}
-		if !containsEvent(drainEvents(entry.Events), func(e LearnList) bool { return len(e.Skills) == 2 }) {
+		if !containsEvent(drainEvents(entry.Events), func(e LearnList) bool { return len(e.Dialogue.Affordances) == 2 }) {
 			t.Fatal("skill tree offer")
 		}
 		before, _ := w.Snapshot(ctx, 1)
