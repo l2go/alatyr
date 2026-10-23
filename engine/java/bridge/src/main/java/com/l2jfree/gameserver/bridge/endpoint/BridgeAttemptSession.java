@@ -53,6 +53,7 @@ final class BridgeAttemptSession
 				return BridgeResults.encode(n, verb, 3, 10, null);
 			if (System.nanoTime() - received >= ttl * 1_000_000L)
 				return BridgeResults.encode(n, verb, 3, 6, null);
+			boolean started = false;
 			try
 			{
 				com.l2jfree.gameserver.model.items.L2ItemInstance ground = null;
@@ -82,6 +83,7 @@ final class BridgeAttemptSession
 				final var source = ground;
 				final int takenItem = source == null ? 0 : source.getItemId();
 				final long takenCount = source == null ? 0 : source.getCount();
+				started = true;
 				var attempt = BridgeExecution.run(client, packet, active ->
 				{
 					if (source == null || BridgeOutcome.match(active, 4, takenItem, source.getObjectId(), takenCount) == BridgeOutcome.DONE)
@@ -113,7 +115,7 @@ final class BridgeAttemptSession
 			}
 			catch (IllegalArgumentException | ArithmeticException invalid)
 			{
-				return BridgeResults.encode(n, verb, 3, 10, null);
+				return BridgeResults.encode(n, verb, started ? 4 : 3, started ? 24 : 10, null);
 			}
 			catch (RuntimeException failure)
 			{
@@ -140,6 +142,8 @@ final class BridgeAttemptSession
 			if (result != null)
 				outbound.accept(result);
 		}
+		else if (decision.kind == BridgeIntents.Kind.UNRECOVERABLE)
+			outbound.accept(BridgeResults.encode(n, 0, 5, 20, null));
 		else if (decision.kind == BridgeIntents.Kind.ACCEPTED)
 		{
 			submit.accept(() ->

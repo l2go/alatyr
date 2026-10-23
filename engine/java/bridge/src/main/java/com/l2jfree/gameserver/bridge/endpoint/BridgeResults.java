@@ -29,6 +29,7 @@ final class BridgeResults
 			case 7 -> 8;
 			case 10 -> 6;
 			case 24 -> 20;
+			case 20 -> 21;
 			default -> 0;
 		};
 		if (bridgeReason != 0)

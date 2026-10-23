@@ -69,6 +69,7 @@ final class BridgeOutcome
 			return UNKNOWN;
 		int skills = 0;
 		int sp = 0;
+		int coins = 0;
 		long items = 0;
 		try
 		{
@@ -90,6 +91,8 @@ final class BridgeOutcome
 						&& effect.item() != 57) || (effect.kind() == BridgeEffect.COIN && attempt.learningItemId() == 57))
 				{
 					if (effect.delta() >= 0)
+						return UNKNOWN;
+					if (effect.kind() == BridgeEffect.COIN && ++coins != 1)
 						return UNKNOWN;
 					items = Math.addExact(items, effect.delta());
 				}

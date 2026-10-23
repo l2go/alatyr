@@ -11,6 +11,27 @@ import org.junit.jupiter.api.Test;
 class BridgeAttemptSessionTest
 {
 	@Test
+	void anEvictedResultReturnsUnrecoverableWithoutWorldWork()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> output = new ArrayList<>();
+		BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, output::add);
+		session.ready();
+		for (int n = 1; n <= BridgeIntents.COMPLETED_CAP + 1; n++)
+		{
+			session.accept(n, new byte[] { 1 }, () -> new byte[] { 1 });
+			fifo.remove().run();
+		}
+		assertThat(session.accept(1, new byte[] { 1 }, () -> { throw new AssertionError("world"); }).kind)
+				.isEqualTo(BridgeIntents.Kind.UNRECOVERABLE);
+		var result = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(output.get(output.size() - 1)).get(0);
+		assertThat(result.field(2).value().u()).isEqualTo(5);
+		assertThat(result.field(3).value().u()).isEqualTo(20);
+		assertThat(result.field(65).value().u()).isEqualTo(21);
+		assertThat(fifo).isEmpty();
+	}
+
+	@Test
 	void reorderedFieldsReplayTheSamePendingAttempt()
 	{
 		var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);

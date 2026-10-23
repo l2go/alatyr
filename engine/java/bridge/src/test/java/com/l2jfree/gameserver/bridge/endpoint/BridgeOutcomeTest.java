@@ -13,6 +13,26 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeOutcomeTest
 {
 	@Test
+	void learningCoinCostRequiresOneExactReceipt()
+	{
+		var player = BridgeTestPlayers.player();
+		Attempt attempt = new Attempt(player);
+		EffectLedger.open(attempt);
+		try
+		{
+			EffectLedger.expectLearningCost(player, 0, 0, 57, 10);
+			EffectLedger.record(player, BridgeEffect.skill(12, 0, 1));
+			EffectLedger.record(player, BridgeEffect.coin(-4));
+			EffectLedger.record(player, BridgeEffect.coin(-6));
+			assertThat(BridgeOutcome.learn(attempt, 12, 1)).isEqualTo(BridgeOutcome.UNKNOWN);
+		}
+		finally
+		{
+			EffectLedger.close();
+		}
+	}
+
+	@Test
 	void committedMultisellMarksTheOwnerLedgerIncompleteAndUnknown()
 	{
 		var player = BridgeTestPlayers.player();
