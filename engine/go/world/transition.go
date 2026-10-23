@@ -195,6 +195,7 @@ func (PresenceChanged) effect() {}
 // Fact records a source-authored observation, not an outcome inferred from a
 // refresh notification. Ordinary state (position, posture, target, zone) is
 // separate from the kernel effects used to account for resources and harm.
+// A zero Subject identifies the world itself, for example its game clock.
 type Fact struct {
 	Subject       Ref
 	Property      Property
@@ -386,9 +387,9 @@ func (s *state) source(cause Cause, f func()) {
 		return
 	}
 	s.commitSeq++
-	t := Commit{Sequence: s.commitSeq, Time: s.now(), Intent: b.intent, Outcome: b.outcome, Groups: b.groups}
+	c := Commit{Sequence: s.commitSeq, Time: s.now(), Intent: b.intent, Outcome: b.outcome, Groups: b.groups}
 	if s.observe != nil {
-		s.observe(cloneCommit(t))
+		s.observe(cloneCommit(c))
 	}
 }
 func (s *state) command(owner Ref, verb Verb, f func()) {
@@ -433,13 +434,13 @@ func (s *state) finish(stage Stage) {
 	}
 	s.batch.outcome = Outcome{Intent: s.batch.intent.ID, Stage: stage}
 }
-func cloneCommit(t Commit) Commit {
-	t.Groups = slices.Clone(t.Groups)
-	for i := range t.Groups {
-		t.Groups[i].Effects = slices.Clone(t.Groups[i].Effects)
-		t.Groups[i].Facts = slices.Clone(t.Groups[i].Facts)
+func cloneCommit(c Commit) Commit {
+	c.Groups = slices.Clone(c.Groups)
+	for i := range c.Groups {
+		c.Groups[i].Effects = slices.Clone(c.Groups[i].Effects)
+		c.Groups[i].Facts = slices.Clone(c.Groups[i].Facts)
 	}
-	return t
+	return c
 }
 func (s *state) itemTransfer(p *player, item Ref, resource Resource, from ResourceLocation, quantity, before, after int64) {
 	s.group([]Effect{ResourceTransferred{Resource: resource, From: from, To: ResourceLocation{Entity: p.ref(), Item: item, Place: PlaceInventory}, Amount: IntegerAmount(quantity),
