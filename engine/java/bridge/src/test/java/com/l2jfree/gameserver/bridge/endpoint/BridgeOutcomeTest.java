@@ -13,6 +13,16 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeOutcomeTest
 {
 	@Test
+	void aClassSwitchInvalidatesAllAttemptOutcomes()
+	{
+		var player = BridgeTestPlayers.player();
+		Attempt attempt = new Attempt(player);
+		org.mockito.Mockito.when(player.getClassIndex()).thenReturn(1);
+		assertThat(attempt.isLedgerIncomplete()).isTrue();
+		assertThat(BridgeOutcome.match(attempt, 9, 0, 0, 0)).isEqualTo(BridgeOutcome.UNKNOWN);
+	}
+
+	@Test
 	void learningCoinCostRequiresOneExactReceipt()
 	{
 		var player = BridgeTestPlayers.player();

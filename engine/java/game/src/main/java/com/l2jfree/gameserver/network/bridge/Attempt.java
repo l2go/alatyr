@@ -80,7 +80,7 @@ public final class Attempt
 	
 	public boolean isLedgerIncomplete()
 	{
-		return _incomplete;
+		return _incomplete || _player.getClassIndex() != _classIndex;
 	}
 
 	void markIncomplete(L2Player owner)
