@@ -50,6 +50,8 @@ class BridgeResultsTest
 		{
 			EffectLedger.record(player, BridgeEffect.item(1060, 70, 2));
 			EffectLedger.record(player, BridgeEffect.coin(-13));
+			assertThat(BridgeResults.encode(1, 7, 2, 0, attempt)).containsExactly(
+					java.util.HexFormat.of().parseHex("0c1f180128023800580768077802aa08100a180129c810398c0149040418024919"));
 			var done = Codec.bridge().decode(BridgeResults.encode(1, 7, 2, 0, attempt)).get(0);
 			assertThat(done.field(66).value().items()).hasSize(2);
 			assertThat(done.field(2).value().u()).isEqualTo(2);
