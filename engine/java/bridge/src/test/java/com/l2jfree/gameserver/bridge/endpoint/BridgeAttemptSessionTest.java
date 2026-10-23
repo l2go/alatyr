@@ -23,6 +23,34 @@ import org.junit.jupiter.api.Test;
 class BridgeAttemptSessionTest
 {
 	@Test
+	void queuedClosingRetainsItsFinalReasonWithoutBindingWorldWork()
+	{
+		var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> output = new ArrayList<>();
+		BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, output::add);
+		session.ready();
+		var intent = com.l2jfree.gameserver.bridge.wire.Envelope.of(
+				com.l2jfree.gameserver.bridge.wire.Schemas.INTENT, java.util.List.of(
+				com.l2jfree.gameserver.bridge.wire.Field.u(1, true, 1),
+				com.l2jfree.gameserver.bridge.wire.Field.u(2, true, 9),
+				com.l2jfree.gameserver.bridge.wire.Field.u(3, true, 1)));
+		session.accept(client, intent);
+		org.mockito.Mockito.when(client.isBridgeDisconnectRequested()).thenReturn(true);
+		fifo.remove().run();
+		session.accept(client, intent);
+		assertThat(output).hasSize(2);
+		assertThat(output.get(1)).containsExactly(output.get(0));
+		var result = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(output.get(0)).get(0);
+		assertThat(result.field(2).value().u()).isEqualTo(3);
+		assertThat(result.field(3).value().u()).isEqualTo(16);
+		assertThat(result.field(7).value().u()).isZero();
+		assertThat(result.field(65).value().u()).isEqualTo(10);
+		org.mockito.Mockito.verify(client, org.mockito.Mockito.never()).getActiveChar();
+		assertThat(fifo).isEmpty();
+	}
+
+	@Test
 	void anUnknownEssentialIntentIsRetainedAndNeverRunsWorldWork()
 	{
 		var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);

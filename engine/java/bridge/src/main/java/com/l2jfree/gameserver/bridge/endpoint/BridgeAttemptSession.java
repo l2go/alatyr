@@ -74,7 +74,9 @@ final class BridgeAttemptSession
 
 	private byte[] execute(L2Client client, Envelope intent, long n, long verb, long received, long ttl)
 		{
-			if (client.isBridgeDisconnectRequested() || client.getState() != L2Client.GameClientState.IN_GAME
+			if (client.isBridgeDisconnectRequested())
+				return BridgeResults.encode(n, verb, 3, 16, null);
+			if (client.getState() != L2Client.GameClientState.IN_GAME
 					|| client.getActiveChar() == null)
 				return BridgeResults.encode(n, verb, 3, 1, null);
 			if (intent.field(3).value().u() != 1)

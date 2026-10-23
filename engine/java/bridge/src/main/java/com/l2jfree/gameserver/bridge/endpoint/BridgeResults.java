@@ -41,6 +41,7 @@ final class BridgeResults
 		long bridgeReason = switch ((int)reason)
 		{
 			case 1 -> 7;
+			case 16 -> 10;
 			case 7 -> 8;
 			case 10 -> 6;
 			case 24 -> 20;
