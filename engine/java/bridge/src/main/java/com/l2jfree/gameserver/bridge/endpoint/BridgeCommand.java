@@ -1,0 +1,103 @@
+package com.l2jfree.gameserver.bridge.endpoint;
+
+import com.l2jfree.gameserver.bridge.wire.Envelope;
+import com.l2jfree.gameserver.bridge.wire.Field;
+import com.l2jfree.gameserver.bridge.wire.Value;
+import com.l2jfree.gameserver.network.L2Client;
+import com.l2jfree.gameserver.network.packets.L2ClientPacket;
+import com.l2jfree.gameserver.network.packets.client.Action;
+import com.l2jfree.gameserver.network.packets.client.AttackRequest;
+import com.l2jfree.gameserver.network.packets.client.MoveBackwardToLocation;
+import com.l2jfree.gameserver.network.packets.client.RequestAquireSkill;
+import com.l2jfree.gameserver.network.packets.client.RequestBuyItem;
+import com.l2jfree.gameserver.network.packets.client.RequestBypassToServer;
+import com.l2jfree.gameserver.network.packets.client.RequestMagicSkillUse;
+import com.l2jfree.gameserver.network.packets.client.RequestRestartPoint;
+import com.l2jfree.gameserver.network.packets.client.RequestSellItem;
+
+/** Validates the known payload before creating a direct packet. */
+final class BridgeCommand
+{
+	private BridgeCommand()
+	{
+	}
+
+	static L2ClientPacket packet(L2Client client, Envelope intent)
+	{
+		int verb = Math.toIntExact(intent.field(2).value().u());
+		return switch (verb)
+		{
+			case 1 -> {
+				Value at = required(intent, 11);
+				yield MoveBackwardToLocation.forBridge(client.getActiveChar(), at.x(), at.y(), at.z());
+			}
+			case 3 -> AttackRequest.forBridge(positive(intent, 64));
+			case 5 -> Action.forBridge(positive(intent, 64));
+			case 6 -> RequestBypassToServer.forBridge(new String(required(intent, 68).data(), java.nio.charset.StandardCharsets.UTF_8));
+			case 7 -> RequestBuyItem.forBridge(integer(intent, 14), positive(intent, 66), positiveCount(intent));
+			case 8 -> {
+				int object = positive(intent, 64);
+				int item = positive(intent, 66);
+				var owned = client.getActiveChar().getInventory().getItemByObjectId(object);
+				if (owned == null || owned.getItemId() != item)
+					throw new IllegalArgumentException("owned item");
+				yield RequestSellItem.forBridge(integer(intent, 14), object, item, positiveCount(intent));
+			}
+			case 9 -> RequestRestartPoint.forBridge();
+			case 12, 13 -> {
+				Value skill = required(intent, 18);
+				int id = skillNumber(skill, 1);
+				int level = skillNumber(skill, 2);
+				if (verb == 13)
+					yield RequestAquireSkill.forBridge(id, level, integer(intent, 14));
+				if (client.getActiveChar().getSkillLevel(id) != level)
+					throw new IllegalArgumentException("skill level");
+				Field force = intent.field(19);
+				yield RequestMagicSkillUse.forBridge(id, force != null && force.value().u() != 0);
+			}
+			default -> throw new IllegalArgumentException("verb");
+		};
+	}
+
+	static Value required(Envelope intent, int field)
+	{
+		Field value = intent.field(field);
+		if (value == null)
+			throw new IllegalArgumentException("payload");
+		return value.value();
+	}
+
+	static int integer(Envelope intent, int field)
+	{
+		return Math.toIntExact(required(intent, field).s());
+	}
+
+	static int positive(Envelope intent, int field)
+	{
+		int value = integer(intent, field);
+		if (value <= 0)
+			throw new IllegalArgumentException("identifier");
+		return value;
+	}
+
+	private static long positiveCount(Envelope intent)
+	{
+		long count = required(intent, 16).s();
+		if (count <= 0)
+			throw new IllegalArgumentException("count");
+		return count;
+	}
+
+	private static int skillNumber(Value skill, int number)
+	{
+		for (Field field : skill.fields())
+			if (field.number() == number)
+			{
+				int value = Math.toIntExact(field.value().s());
+				if (value <= 0)
+					throw new IllegalArgumentException("skill");
+				return value;
+			}
+		throw new IllegalArgumentException("skill");
+	}
+}
