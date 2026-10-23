@@ -10,14 +10,17 @@ import (
 	"strings"
 )
 
+// SkillState classifies a skill's effect on its target.
 type SkillState int8
 
+// Skill states.
 const (
 	SkillOffensive SkillState = -1
 	SkillNeutral   SkillState = 0
 	SkillPositive  SkillState = 1
 )
 
+// Skill is one level of an authored skill from the stat XML.
 type Skill struct {
 	ID, Level                             int32
 	DisplayID                             int32
@@ -47,9 +50,14 @@ type Skill struct {
 	Funcs                                 []ItemFunc
 }
 
-func (s Skill) Toggle() bool    { return s.Operate == "OP_TOGGLE" }
+// Toggle reports whether the skill switches on and off.
+func (s Skill) Toggle() bool { return s.Operate == "OP_TOGGLE" }
+
+// Offensive reports whether the skill is offensive.
 func (s Skill) Offensive() bool { return s.State == SkillOffensive }
-func (s Skill) NotDone() bool   { return s.Type == "NOTDONE" || s.Target == "TARGET_NONE" }
+
+// NotDone reports whether the skill is unimplemented or has no target.
+func (s Skill) NotDone() bool { return s.Type == "NOTDONE" || s.Target == "TARGET_NONE" }
 
 type skillLevels struct {
 	levels   map[int32]Skill

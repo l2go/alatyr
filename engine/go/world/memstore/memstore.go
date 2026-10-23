@@ -5,11 +5,24 @@ package memstore
 
 import (
 	"context"
-	"github.com/l2go/alatyr/engine/go/world"
 	"slices"
 	"sync"
+
+	"github.com/l2go/alatyr/engine/go/world"
 )
 
+// Store keeps detached character snapshots in memory. The zero value is empty
+// and ready to use.
+type Store struct {
+	mu    sync.Mutex
+	chars []world.Character
+}
+
+// New returns an empty Store.
+func New() *Store { return &Store{} }
+
+// Characters returns detached copies of the account's characters in the order
+// they were first stored. It never fails.
 func (s *Store) Characters(_ context.Context, account string) ([]world.Character, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -22,6 +35,8 @@ func (s *Store) Characters(_ context.Context, account string) ([]world.Character
 	return out, nil
 }
 
+// PutCharacter stores a detached copy of c, replacing any character with the
+// same ObjectID. It never fails.
 func (s *Store) PutCharacter(_ context.Context, c world.Character) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -33,6 +48,9 @@ func (s *Store) PutCharacter(_ context.Context, c world.Character) error {
 	return nil
 }
 
+// PutSkill records skill k for the stored character objectID, replacing a
+// skill with the same ID. A character that has not been stored is ignored.
+// It never fails.
 func (s *Store) PutSkill(_ context.Context, objectID int32, k world.Skill) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -48,10 +66,3 @@ func (s *Store) PutSkill(_ context.Context, objectID int32, k world.Skill) error
 	c.Skills = append(c.Skills, k)
 	return nil
 }
-
-type Store struct {
-	mu    sync.Mutex
-	chars []world.Character
-}
-
-func New() *Store { return &Store{} }
