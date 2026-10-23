@@ -238,7 +238,7 @@ class BridgeTransportRecoveryTest
 			barrier(fixture.client);
 			barrier(fixture.client);
 			assertThat(result.get().field(2).value().u()).isEqualTo(1);
-			assertThat(result.get().field(7).value().u()).isEqualTo(1);
+			assertThat(result.get().field(7).value().u()).isEqualTo(2);
 			assertThat(fixture.drain(fixture.first).getLast().field(3).value().u()).isEqualTo(1);
 			verify(fixture.player).setIsPendingRevive(true);
 			verify(fixture.player).completeBridgeTeleport(1);
