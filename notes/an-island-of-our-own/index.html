@@ -35,17 +35,17 @@
 </header>
 <main id="main">
 <article>
-<header class="article-head">
+<header class="article-head article-head--focus-40">
   <picture><source srcset="/alatyr/assets/img/covers/island.webp" type="image/webp"><img src="/alatyr/assets/img/covers/island.jpg" alt="" width="1600" height="667"></picture>
   <div class="wrap">
     <div class="crumbs"><a href="/alatyr/#notes">Reviving L2JFree</a> · Part 3</div>
     <h1>An island of our own</h1>
     <p class="dek">Version 3.2 deleted 17,129 files of a game world the project had not written and shipped a small one that it had: a village, a meadow, and a Go tool that checks every word of it.</p>
-    <div class="byline"><time datetime="2026-10-16">16 October 2026</time> · 9 min read</div>
+    <div class="byline"><time datetime="2026-10-16">16 October 2026</time> · 10 min read</div>
   </div>
 </header>
 <div class="prose">
-<p>Three days after 3.1.1, the server stopped shipping a world it had not written. Version 3.2.0, released on 15 October 2026, removed 17,129 files from the repository, the image, and the release archive: 15,868 HTML pages, 511 XML files, 449 Python scripts, 176 Java scripts, and the tables around them, 679,692 lines in all. In their place the image carries 28 files. They describe one island.</p>
+<p>Three days after 3.1.1, the server stopped shipping a world it had not written. Version 3.2.0, released on 15 October 2026, stopped shipping the inherited world in the image and the release archive. Removing its datapack from the repository deleted 17,129 files: 15,869 HTML pages, 511 XML files, 449 Python scripts, 176 Java scripts, and the files around them, 679,692 lines of text in all. In their place the image carries 28 files. They describe one island.</p>
 
 <h2>The problem</h2>
 <p>A game server is two things. The engine is code: it speaks the protocol, moves characters, resolves a hit. The world is data: who stands where, what they sell, what they say, what a wolf drops. In L2J the world came as a <em>datapack</em>, a directory that grew next to the engine for nine years.</p>
@@ -60,14 +60,15 @@
 <h2>The decision</h2>
 <p>A world is a directory. It holds <code>world.properties</code>, a <code>catalog/</code> of tables loaded into the database at start, and <code>data/</code> for the files the engine reads as they are. The engine is told one path and reads nothing else. The first line it logs about the world says whose it is:</p>
 <pre class="code"><code>World id=buyan-okolitsa version=3.2.0 license=CC-BY-SA-4.0 expected scripts=0</code></pre>
-<p>Before the engine could be given a new world, it had to survive having none. The empty-world job in CI starts the image on a directory with nothing in it, and the server now reaches readiness and says, one line per part, what is missing:</p>
+<p>Before the engine could be given a new world, it had to survive having none. The empty-world job in CI starts the image on a world directory that holds only an identity file and an empty catalog, and the server now reaches readiness and says, one line per part, what is missing:</p>
 <pre class="code"><code>World has no skills
 World has no armor
 World has no weapons
 World has no doors
 World has no zones
 World has no scripts</code></pre>
-<p>There are 34 such lines on an empty start. Each one used to be an assumption. A merchant failed in a world without castles, entering the world failed without a dimensional rift, and an hourly task looked for a door that was not there. Each became a defect of its own and was fixed as one (<a href="https://github.com/l2go/alatyr/pull/242">#242</a>, <a href="https://github.com/l2go/alatyr/pull/251">#251</a>, <a href="https://github.com/l2go/alatyr/pull/253">#253</a>, <a href="https://github.com/l2go/alatyr/pull/259">#259</a>, <a href="https://github.com/l2go/alatyr/pull/257">#257</a>). A world that is missing entirely, as a directory, still stops the start, and the log names the configuration key and the path.</p>
+<p>There are 34 such lines on an empty start. Readiness was not the whole story, though. When clients began to play the new world, systems that had always found their data failed without it: a merchant in a world without castles, entering the world without a dimensional rift, an hourly task looking for a door that was not there. Each became a defect of its own and was fixed as one (<a href="https://github.com/l2go/alatyr/pull/242">#242</a>, <a href="https://github.com/l2go/alatyr/pull/251">#251</a>, <a href="https://github.com/l2go/alatyr/pull/253">#253</a>, <a href="https://github.com/l2go/alatyr/pull/259">#259</a>, <a href="https://github.com/l2go/alatyr/pull/257">#257</a>). A world that is missing entirely, as a directory, still stops the start, and the log names the configuration key and the path.</p>
+<p>Two other paths were open. Keeping the inherited world in releases until a replacement was ready would have preserved the breadth of the game, but every release until then would have shipped content the project could not vouch for. A generated test world could have exercised the loader and the gameplay paths without ever becoming a playable release. The project used one small authored world for both instead: a world players can enter and the pipeline can hunt in. That gave it a publishable world at once, at the cost of replacing a broad game with one village, one meadow, and a short loop of play.</p>
 
 <h2>An island</h2>
 <p>In Pushkin's <em>Tale of Tsar Saltan</em>, ships sail past the island of Buyan on their way to Saltan's kingdom. On the island a squirrel cracks golden nuts with emerald kernels, and the shells are cast into coin.</p>
@@ -201,7 +202,7 @@ heal    ← skill 2031, power                 data/stats/skills/seed.xml</code><
 <tbody>
 <tr><td><code>engine/java/</code></td><td>The server</td><td>GPL-3.0-or-later</td></tr>
 <tr><td><code>tools/world/</code></td><td>The world tool</td><td>AGPL-3.0-or-later</td></tr>
-<tr><td><code>world/</code></td><td>Okolitsa</td><td>CC BY-SA 4.0</td></tr>
+<tr><td><code>world/</code></td><td>Okolitsa</td><td>CC BY-SA 4.0; its format definitions stay GPL-3.0-or-later</td></tr>
 </tbody></table></div>
 
 <h2>A test that hunts</h2>
@@ -217,14 +218,14 @@ heal    ← skill 2031, power                 data/stats/skills/seed.xml</code><
 </ol>
 <p>The pipeline runs one session, then 24 at once, on every merge. A mismatch fails the session with the step, the expected value, and the actual one.</p>
 <p>The first thing it found was that killing a monster gave no experience. The method that should have recorded who dealt how much damage notified quests and stopped there, so when the monster died the reward code found nobody to pay. For as long as nothing in the pipeline had killed anything, nothing had noticed.</p>
-<p>The fix became a rule for who earns what (<a href="https://github.com/l2go/alatyr/pull/263">#263</a>). Experience and SP follow the HP each player or party actually took off the monster. Items follow the same contribution, weighted by level: a player needs 10% of the total to take part, and one who did 60% takes the items. A party shares experience, SP, and coins equally. Only those alive and in range when the monster dies are paid.</p>
+<p>The fix became a rule for who earns what (<a href="https://github.com/l2go/alatyr/pull/263">#263</a>). Experience and SP follow the HP each player or party actually took off the monster, and the members of a party share theirs equally. Ordinary coins and items follow the same contribution by solo player or party, weighted by level. Sides with at least 10% of the total weight qualify; if none reaches that, sides with at least half the largest weight qualify instead. A side with at least 60% takes the ordinary items; otherwise each item is drawn among the qualifying sides by weight. A party shares coins with a rotating remainder, and its items follow the party's loot rules. Only those alive and in range when the monster dies are paid.</p>
 <p>The rest of what the test found was in the test. Twenty-four clients at once against one server are a small distributed system, and the client had the bugs of one (<a href="https://github.com/l2go/alatyr/pull/257">#257</a>):</p>
 <ul>
 <li><strong>A timeout in the middle of a packet.</strong> When a read timed out with half a frame in hand, the client dropped those bytes, and the next read started in the middle of a packet. It now keeps them and continues the frame.</li>
 <li><strong>Two hunters, one beast.</strong> A monster wanders up to 200 units each way from its spawn. The foragers' spawns are 240 apart. Two neighbours could stand on the same spot, and two sessions would walk to the same one. Each beast is now claimed in a registry shared by the whole launch before anyone walks to it, and released when it dies or leaves view.</li>
 <li><strong>A first target that came back.</strong> The launch checks at the end that every session had a first target of its own. A released beast could become another session's first target, so the check would fail by chance, some day, on someone else's pull request. First targets are now remembered for the whole launch.</li>
 </ul>
-<p>On the commit that became 3.2.0, all 24 sessions finished the hunt in 120 seconds, and the server log of the run had no warning and no error. The job fails if it has either.</p>
+<p>On the commit that became 3.2.0, all 24 sessions finished the hunt in 120 seconds, and the application log of the run had no WARN or ERROR entry. The job fails on either, and on uncaught exceptions and failed scripts; it does not look at the logging library's own start-up status lines.</p>
 
 <h2>What it cost</h2>
 <ul>
@@ -240,11 +241,12 @@ heal    ← skill 2031, power                 data/stats/skills/seed.xml</code><
 <li>A step of the <code>world</code> job fails if the inherited datapack, its script list, or game data outside <code>world/</code> reappears in the tree.</li>
 <li><code>world check</code> runs on every pull request: the rendered world must equal a fresh render, and every text must be ASCII.</li>
 <li>The image job compares the world inside the image with the repository, 28 files by SHA-256.</li>
-<li>The empty-world job starts the image with no world and expects it to reach readiness.</li>
-<li>The seed-world job sends one client, then 24, through the hunt, and fails on any warning or error in the server log.</li>
+<li>The empty-world job starts the image with an identity file and an empty catalog and expects readiness, and separately checks that a missing catalog directory stops the start.</li>
+<li>The seed-world job sends one client, then 24, through the hunt, and rejects application WARN or ERROR entries, uncaught exceptions, and failed scripts.</li>
 <li>The image job still restarts the server, restores a backup into a clean stack, and upgrades the published image in place, on the new world.</li>
 </ul>
-<p>Pushkin's ships only sail past Buyan. This server drops anchor there. The island is small: two people, seventy-two beasts, six things to buy. But every file on it was written for it, every word on it can be renamed in one place, and on every merge twenty-four players go out to hunt on it.</p>
+<p>Pushkin's ships only sail past Buyan. This server drops anchor there. The island is small: two people, seventy-two beasts, six things to buy. Its game content is original, every word on it can be renamed in one place, and on every merge twenty-four players go out to hunt on it and come back to find what they earned. That is a checkpoint to grow the world from, not proof that every path through it has been tested.</p>
+<div class="aside"><strong>Update, 23 October 2026.</strong> Since 3.2.1, vitality, an experience bonus inherited from the old game, is off by default, so a new character earns exactly the experience and SP the world records. The repository has also gained Go modules beside the Java engine, each with its own license file: <code>engine/go/protocol/</code> under Apache-2.0, and <code>engine/go/gateway/</code>, <code>engine/go/bridge/</code>, and <code>engine/go/world/</code> under AGPL-3.0-or-later. The image does not carry them.</div>
 </div>
 <nav class="series" aria-label="Series">
 <a href="/alatyr/notes/one-process-hard-boundaries/"><small>Previous</small><span>One process, hard boundaries</span></a>
