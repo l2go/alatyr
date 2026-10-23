@@ -24,6 +24,16 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeResultsTest
 {
 	@Test
+	void anUnmatchedOutcomeEncodesAValidUnknownResult()
+	{
+		var result = Codec.bridge().decode(BridgeResults.encode(1, 7, 4, 0, null)).get(0);
+		assertThat(result.field(2).value().u()).isEqualTo(4);
+		assertThat(result.field(3).value().u()).isEqualTo(24);
+		assertThat(result.field(65).value().u()).isEqualTo(20);
+		assertThat(result.field(66)).isNull();
+	}
+
+	@Test
 	void unknownVerbPreservesRequestedButHasNoEffectiveVerb()
 	{
 		var result = Codec.bridge().decode(BridgeResults.encode(1, 99, 3, 10, null)).get(0);
