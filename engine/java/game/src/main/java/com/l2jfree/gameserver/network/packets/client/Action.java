@@ -35,6 +35,17 @@ public final class Action extends L2ClientPacket
 	//	private int					_originY;
 	//	private int					_originZ;
 	private boolean _shift;
+
+	/** Creates one direct action without reading a client-protocol buffer. */
+	public static Action forBridge(int objectId)
+	{
+		if (objectId <= 0)
+			throw new IllegalArgumentException("objectId");
+		Action packet = new Action();
+		packet._objectId = objectId;
+		packet._shift = false;
+		return packet;
+	}
 	
 	@Override
 	protected void readImpl()

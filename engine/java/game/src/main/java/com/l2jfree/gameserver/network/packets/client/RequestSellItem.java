@@ -50,6 +50,17 @@ public class RequestSellItem extends L2ClientPacket
 	
 	private int _listId;
 	private Item[] _items = null;
+
+	/** Creates one sale line; the wrapper verifies ownership and template identity before binding. */
+	public static RequestSellItem forBridge(int listId, int objectId, int itemId, long count)
+	{
+		if (Config.MAX_ITEM_IN_PACKET < 1 || objectId <= 0 || itemId <= 0 || count <= 0)
+			throw new IllegalArgumentException("cart");
+		RequestSellItem packet = new RequestSellItem();
+		packet._listId = listId;
+		packet._items = new Item[] { packet.new Item(objectId, itemId, count) };
+		return packet;
+	}
 	
 	/**
 	 * packet type id 0x1e

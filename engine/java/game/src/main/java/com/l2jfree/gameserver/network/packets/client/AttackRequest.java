@@ -35,6 +35,16 @@ public class AttackRequest extends L2ClientPacket
 	private static final String _C__ATTACKREQUEST = "[C] 01 AttackRequest c[ddddc]";
 	
 	private int _objectId;
+
+	/** Creates one direct attack request; the existing target-selection path is unchanged. */
+	public static AttackRequest forBridge(int objectId)
+	{
+		if (objectId <= 0)
+			throw new IllegalArgumentException("objectId");
+		AttackRequest packet = new AttackRequest();
+		packet._objectId = objectId;
+		return packet;
+	}
 	
 	/*
 	    private int _originX;

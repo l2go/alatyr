@@ -103,6 +103,17 @@ public class RequestBuyItem extends L2ClientPacket
 		}
 	}
 	
+	/** Creates the single-line cart while preserving the configured packet-count gate. */
+	public static RequestBuyItem forBridge(int listId, int itemId, long count)
+	{
+		if (Config.MAX_ITEM_IN_PACKET < 1 || itemId <= 0 || count <= 0)
+			throw new IllegalArgumentException("cart");
+		RequestBuyItem packet = new RequestBuyItem();
+		packet._listId = listId;
+		packet._items = new Item[] { packet.new Item(itemId, count) };
+		return packet;
+	}
+
 	@Override
 	protected void runImpl()
 	{

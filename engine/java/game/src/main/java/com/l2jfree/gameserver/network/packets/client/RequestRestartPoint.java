@@ -45,6 +45,15 @@ public class RequestRestartPoint extends L2ClientPacket
 	
 	protected int _requestedPointType;
 	protected boolean _continuation;
+
+	/** Creates the village-return request, never an arbitrary restart point. */
+	public static RequestRestartPoint forBridge()
+	{
+		RequestRestartPoint packet = new RequestRestartPoint();
+		packet._requestedPointType = 0;
+		packet._continuation = false;
+		return packet;
+	}
 	
 	/**
 	 * packet type id 0x6d

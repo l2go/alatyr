@@ -57,6 +57,19 @@ public class RequestAquireSkill extends L2ClientPacket
 	private int _id;
 	private int _level;
 	private int _skillType;
+
+	/** Creates one explicitly typed learning request with the same numeric bounds as the handler. */
+	public static RequestAquireSkill forBridge(int skillId, int level, int trainingType)
+	{
+		if (skillId < 1 || skillId > 32000 || level < 1 || level > 1000
+				|| (trainingType != 0 && trainingType != 1 && trainingType != 2 && trainingType != 4 && trainingType != 6))
+			throw new IllegalArgumentException("skill");
+		RequestAquireSkill packet = new RequestAquireSkill();
+		packet._id = skillId;
+		packet._level = level;
+		packet._skillType = trainingType;
+		return packet;
+	}
 	
 	/**
 	 * packet type id 0x6c

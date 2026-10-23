@@ -48,6 +48,18 @@ public class RequestBypassToServer extends L2ClientPacket
 	
 	// S
 	private String _command;
+
+	/** Uses only the saved internal action; it does not accept participant dialogue text. */
+	public static RequestBypassToServer forBridge(String savedAction)
+	{
+		if (savedAction == null || savedAction.isEmpty() || savedAction.indexOf('\0') >= 0
+				|| savedAction.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 4096
+				|| !java.nio.charset.StandardCharsets.UTF_8.newEncoder().canEncode(savedAction))
+			throw new IllegalArgumentException("savedAction");
+		RequestBypassToServer packet = new RequestBypassToServer();
+		packet._command = savedAction;
+		return packet;
+	}
 	
 	@Override
 	protected void readImpl()
