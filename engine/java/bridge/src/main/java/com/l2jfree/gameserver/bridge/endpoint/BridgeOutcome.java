@@ -33,7 +33,7 @@ final class BridgeOutcome
 		if (verb == 1 || verb == 3 || verb == 9 || verb == 12)
 			return SENT;
 		if (verb == 5 || verb == 6)
-			return attempt.hasSpoken() && attempt.effects().isEmpty() ? DONE : UNKNOWN;
+			return attempt.hasSpoken(object) && attempt.effects().isEmpty() ? DONE : UNKNOWN;
 		if (verb == 2 || verb == 10)
 			return attempt.effects().size() == 1 && attempt.effects().get(0).kind() == BridgeEffect.TARGET
 					&& attempt.effects().get(0).target() == object ? DONE : UNKNOWN;

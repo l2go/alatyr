@@ -38,6 +38,7 @@ public final class Attempt
 	private boolean _failed;
 	private boolean _incomplete;
 	private boolean _spoke;
+	private int _spokenNpc;
 	private Cost _cost;
 	
 	public Attempt(L2Player player)
@@ -97,6 +98,20 @@ public final class Attempt
 	public void markSpoken()
 	{
 		_spoke = true;
+	}
+
+	public boolean hasSpoken(int npcId)
+	{
+		return _spoke && _spokenNpc == npcId;
+	}
+
+	void noteSpoken(L2Player owner, int npcId)
+	{
+		if (owner == _player && npcId > 0)
+		{
+			_spoke = true;
+			_spokenNpc = npcId;
+		}
 	}
 	
 	public void addRefusal(int systemMessageId)

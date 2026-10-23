@@ -25,6 +25,37 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeOutcomeTest
 {
 	@Test
+	void synchronousDialogueFromTheTargetNpcSurvivesAFWithoutAcceptingOtherPanels()
+	{
+		var player = BridgeTestPlayers.player();
+		var npc = org.mockito.Mockito.mock(com.l2jfree.gameserver.gameobjects.L2Npc.class);
+		org.mockito.Mockito.when(npc.getObjectId()).thenReturn(70);
+		org.mockito.Mockito.when(player.getLastFolkNPC()).thenReturn(npc);
+		org.mockito.Mockito.when(player.getTarget()).thenReturn(npc);
+		var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);
+		org.mockito.Mockito.when(client.isBridge()).thenReturn(true);
+		org.mockito.Mockito.when(client.getActiveChar()).thenReturn(player);
+		var sink = new BridgeSink(records -> { });
+		sink.attach(client);
+		Attempt attempt = new Attempt(player);
+		EffectLedger.open(attempt);
+		try
+		{
+			sink.deliver(new com.l2jfree.gameserver.network.packets.server.NpcHtmlMessage(71, "other"), player);
+			assertThat(BridgeOutcome.match(attempt, 5, 0, 70, 0)).isEqualTo(BridgeOutcome.UNKNOWN);
+			sink.deliver(new com.l2jfree.gameserver.network.packets.server.NpcHtmlMessage(70, "dialogue"), player);
+			sink.deliver(com.l2jfree.gameserver.network.packets.server.ActionFailed.STATIC_PACKET, player);
+			assertThat(BridgeOutcome.match(attempt, 5, 0, 70, 0)).isEqualTo(BridgeOutcome.DONE);
+			assertThat(BridgeOutcome.match(attempt, 6, 0, 70, 0)).isEqualTo(BridgeOutcome.DONE);
+			assertThat(BridgeOutcome.match(attempt, 5, 0, 71, 0)).isEqualTo(BridgeOutcome.UNKNOWN);
+		}
+		finally
+		{
+			EffectLedger.close();
+		}
+	}
+
+	@Test
 	void identicalLearningMetadataDoesNotDuplicateCostButAChangedPlanIsIncomplete()
 	{
 		var player = BridgeTestPlayers.player();

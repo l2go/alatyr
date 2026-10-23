@@ -49,6 +49,17 @@ public final class EffectLedger
 	{
 		ACTIVE.remove();
 	}
+
+	/** Attributes only synchronous dialogue from the owner's currently observed NPC. */
+	public static void spoken(L2Player owner, int npcId)
+	{
+		Attempt attempt = ACTIVE.get();
+		if (attempt == null || owner != attempt.player() || npcId <= 0)
+			return;
+		var npc = owner.getLastFolkNPC();
+		if (npc != null && owner.getTarget() == npc && npc.getObjectId() == npcId)
+			attempt.noteSpoken(owner, npcId);
+	}
 	
 	public static void record(L2Player owner, BridgeEffect effect)
 	{
