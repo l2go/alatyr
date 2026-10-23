@@ -14,7 +14,7 @@
 
 /* SITE */
 
-  Last update: 2026-10-13
+  Last update: 2026-10-23
   Standards: HTML5, CSS3, a strict Content Security Policy
   Typeface: Cinzel, SIL Open Font License
   Banner art: generated with AI
@@ -29,5 +29,5 @@
 /* TRADEMARKS */
 
   Lineage II and NCSOFT are trademarks or registered trademarks of
-  NCSOFT Corporation. L2JFree is an independent, non-commercial
-  open-source project, not affiliated with, endorsed, or sponsored by NCSOFT.
+  NCSOFT Corporation. Alatyr, formerly L2JFree, is an independent,
+  non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT.

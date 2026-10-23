@@ -15,7 +15,7 @@ document.documentElement.classList.add("js");
     "  __|___|__| |__|___|__",
   ].join("\n");
   console.log("%c" + citadel, gold);
-  console.log("%cL2JFREE — a Lineage II server, revived.\n" +
+  console.log("%cALATYR — a Lineage II server, revived.\n" +
     "24 people built it. 24 days rebuilt it. 24 clients play it on every merge.\n" +
     "Curious? Type 42 on the page, or read /alatyr/numbers/\n" +
     "Source: https://github.com/l2go/alatyr", soft);
