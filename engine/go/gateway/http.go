@@ -176,7 +176,7 @@ func (h HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Reserve before upgrade/Welcome; failed upgrades release their reservation.
-	pending := &deferredTransport{ready: make(chan struct{}), done: make(chan struct{})}
+	pending := &deferredTransport{ready: make(chan struct{}), done: make(chan struct{}), closeError: h.Gateway.closeError}
 	c, _, err := h.Gateway.bind(r.Context(), identity, pending, true)
 	if err != nil {
 		status := http.StatusUnauthorized
@@ -186,13 +186,8 @@ func (h HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "participant unavailable", status)
 		return
 	}
-	transport, err := upgrade(w, r, h.Gateway.cfg.FrameBytes, h.Gateway.cfg.Write)
-	pending.mu.Lock()
-	pending.transport = transport
-	if pending.closed && transport != nil {
-		h.Gateway.closeError(transport.Close())
-	}
-	pending.mu.Unlock()
+	defer h.Gateway.wg.Done()
+	err = upgrade(w, r, h.Gateway.cfg.FrameBytes, h.Gateway.cfg.Write, pending.attach)
 	close(pending.ready)
 	if err != nil {
 		c.close()
@@ -211,12 +206,24 @@ func (h HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // A reservation cannot start its Hello clock before the HTTP upgrade finishes.
 type deferredTransport struct {
-	done      chan struct{}
-	once      sync.Once
-	mu        sync.Mutex
-	ready     chan struct{}
-	transport Transport
-	closed    bool
+	done       chan struct{}
+	once       sync.Once
+	mu         sync.Mutex
+	ready      chan struct{}
+	transport  Transport
+	closed     bool
+	closeError func(error)
+}
+
+func (d *deferredTransport) attach(t Transport) bool {
+	d.mu.Lock()
+	d.transport = t
+	closed := d.closed
+	d.mu.Unlock()
+	if closed {
+		d.closeError(t.Close())
+	}
+	return !closed
 }
 
 func (d *deferredTransport) get(deadline time.Time) (Transport, error) {
@@ -254,6 +261,9 @@ func (d *deferredTransport) Close() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.closed {
+		if d.transport != nil {
+			return d.transport.Close()
+		}
 		return nil
 	}
 	d.closed = true
@@ -265,13 +275,15 @@ func (d *deferredTransport) Close() error {
 }
 
 type socket struct {
-	conn  net.Conn
-	r     *bufio.Reader
-	mu    sync.Mutex
-	limit int
+	conn      net.Conn
+	r         *bufio.Reader
+	mu        sync.Mutex
+	limit     int
+	closeOnce sync.Once
+	closeErr  error
 }
 
-func upgrade(w http.ResponseWriter, r *http.Request, limit int, timeout time.Duration) (Transport, error) {
+func upgrade(w http.ResponseWriter, r *http.Request, limit int, timeout time.Duration, attach func(Transport) bool) error {
 	hasToken := func(value, want string) bool {
 		for _, v := range strings.Split(value, ",") {
 			if strings.EqualFold(strings.TrimSpace(v), want) {
@@ -282,33 +294,39 @@ func upgrade(w http.ResponseWriter, r *http.Request, limit int, timeout time.Dur
 	}
 	key := r.Header.Values("Sec-WebSocket-Key")
 	if r.Method != "GET" || !hasToken(r.Header.Get("Connection"), "upgrade") || !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") || r.Header.Get("Sec-WebSocket-Version") != "13" || len(key) != 1 {
-		return nil, ErrFrame
+		return ErrFrame
 	}
 	raw, err := base64.StdEncoding.DecodeString(key[0])
 	if err != nil || len(raw) != 16 {
-		return nil, ErrFrame
+		return ErrFrame
 	}
 	hj, ok := w.(http.Hijacker)
 	if !ok {
-		return nil, ErrFrame
+		return ErrFrame
 	}
 	conn, rw, err := hj.Hijack()
 	if err != nil {
-		return nil, err
+		return err
+	}
+	// Transfer ownership before any handshake I/O. The reader and writer still
+	// wait for ready, but shutdown can now close the hijacked socket immediately.
+	s := &socket{conn: conn, r: rw.Reader, limit: limit}
+	if !attach(s) {
+		return net.ErrClosed
 	}
 	sum := sha1.Sum([]byte(key[0] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 	accept := base64.StdEncoding.EncodeToString(sum[:])
 	err = conn.SetWriteDeadline(time.Now().Add(timeout))
 	if err != nil {
-		return nil, errors.Join(err, conn.Close())
+		return err
 	}
 	if _, err = rw.WriteString("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n\r\n"); err == nil {
 		err = rw.Flush()
 	}
 	if err != nil {
-		return nil, errors.Join(err, conn.Close())
+		return err
 	}
-	return &socket{conn: conn, r: rw.Reader, limit: limit}, nil
+	return nil
 }
 func (s *socket) Read(deadline time.Time) ([]byte, error) {
 	if s.limit < 1 {
@@ -423,4 +441,7 @@ func (s *socket) Write(b []byte, t time.Time) error {
 	}
 	return s.write(2, b, t)
 }
-func (s *socket) Close() error { return s.conn.Close() }
+func (s *socket) Close() error {
+	s.closeOnce.Do(func() { s.closeErr = s.conn.Close() })
+	return s.closeErr
+}

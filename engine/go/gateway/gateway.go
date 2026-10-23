@@ -314,6 +314,11 @@ func (g *Gateway) bind(ctx context.Context, identity string, t Transport, provis
 	}
 	c.writerDone = make(chan struct{})
 	g.wg.Add(2)
+	if provisional {
+		// The HTTP owner spans Hijack, handshake I/O, and transport handoff.
+		// Register under the admission lock, before Close can start Wait.
+		g.wg.Add(1)
+	}
 	g.mu.Unlock()
 	go func() { defer g.wg.Done(); c.writeLoop() }()
 	go func() { defer g.wg.Done(); c.readLoop() }()
