@@ -18,7 +18,8 @@ import static org.mockito.Mockito.when;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.l2jfree.gameserver.datatables.ItemTable;
 import com.l2jfree.gameserver.datatables.TradeListTable;
@@ -35,8 +36,9 @@ import com.l2jfree.gameserver.network.packets.client.RequestBuyItem;
 /** Runs the existing purchase handler with isolated world dependencies, without transport recovery. */
 class BridgePurchaseExecutionTest
 {
-	@Test
-	void liveDuplicateRunsTheActualPurchaseHandlerOnce()
+	@ParameterizedTest
+	@ValueSource(booleans = { true, false })
+	void liveDuplicateRunsTheActualPurchaseHandlerOnce(boolean enoughCoin)
 	{
 		var player = BridgeTestPlayers.player();
 		int packetCap = com.l2jfree.Config.MAX_ITEM_IN_PACKET;
@@ -61,8 +63,9 @@ class BridgePurchaseExecutionTest
 		when(list.getPriceForItemId(1060)).thenReturn(5L);
 		when(player.reduceAdena(eq("Buy"), eq(10L), any(), eq(false))).thenAnswer(call ->
 		{
-			EffectLedger.record(player, BridgeEffect.coin(-10));
-			return true;
+			if (enoughCoin)
+				EffectLedger.record(player, BridgeEffect.coin(-10));
+			return enoughCoin;
 		});
 		when(inventory.addItem(eq("Buy"), eq(1060), eq(2L), eq(player), any())).thenAnswer(call ->
 		{
@@ -100,9 +103,10 @@ class BridgePurchaseExecutionTest
 			assertThat(output).hasSize(2);
 			assertThat(output.get(1)).containsExactly(output.get(0));
 			var result = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(output.get(0)).get(0);
-			assertThat(result.field(2).value().u()).isEqualTo(2);
+			assertThat(result.field(2).value().u()).isEqualTo(enoughCoin ? 2 : 4);
 			org.mockito.Mockito.verify(player).reduceAdena("Buy", 10L, null, false);
-			org.mockito.Mockito.verify(inventory).addItem("Buy", 1060, 2L, player, null);
+			org.mockito.Mockito.verify(inventory, org.mockito.Mockito.times(enoughCoin ? 1 : 0))
+					.addItem("Buy", 1060, 2L, player, null);
 		}
 		}
 		finally
