@@ -708,6 +708,9 @@ public abstract class Inventory extends ItemContainer
 			}
 			
 			removeItem(item);
+			// Drop is outside the receipt profile; never certify an incomplete owner mutation.
+			if (this instanceof PlayerInventory inventory)
+				com.l2jfree.gameserver.network.bridge.EffectLedger.incomplete(inventory.getOwner());
 			item.setOwnerId(process, 0, actor, reference);
 			item.setLocation(ItemLocation.VOID);
 			item.setLastChange(L2ItemInstance.REMOVED);
@@ -756,6 +759,8 @@ public abstract class Inventory extends ItemContainer
 					GMAudit.auditGMAction(actor, "dropitem", command, params);
 				}
 				
+				if (this instanceof PlayerInventory inventory)
+					com.l2jfree.gameserver.network.bridge.EffectLedger.incomplete(inventory.getOwner());
 				item.changeCount(process, -count, actor, reference);
 				item.setLastChange(L2ItemInstance.MODIFIED);
 				item.updateDatabase();

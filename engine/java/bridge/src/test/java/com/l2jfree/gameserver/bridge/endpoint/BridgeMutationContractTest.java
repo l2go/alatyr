@@ -62,6 +62,18 @@ class BridgeMutationContractTest
 	}
 
 	@Test
+	void dropPathsInvalidateUnrepresentedOwnerReceiptsBeforeCallbacks() throws Exception
+	{
+		String inventory = source("gameobjects/itemcontainer/Inventory.java");
+		int whole = inventory.indexOf("public L2ItemInstance dropItem(String process, L2ItemInstance item");
+		int partial = inventory.indexOf("public L2ItemInstance dropItem(String process, int objectId");
+		assertThat(inventory.indexOf("EffectLedger.incomplete(inventory.getOwner())", whole))
+				.isBetween(whole, inventory.indexOf("item.setOwnerId(process, 0", whole));
+		assertThat(inventory.indexOf("EffectLedger.incomplete(inventory.getOwner())", partial))
+				.isBetween(partial, inventory.indexOf("item.changeCount(process, -count", partial));
+	}
+
+	@Test
 	void actorHooksPrecedeCallbacksAndLearningCostsPrecedeConsumption() throws Exception
 	{
 		String creature = source("gameobjects/L2Creature.java");
