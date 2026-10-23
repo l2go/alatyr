@@ -14,7 +14,6 @@
  */
 package com.l2jfree.gameserver.bridge.endpoint;
 
-import java.util.List;
 package com.l2jfree.gameserver.bridge.wire;
 
 import java.nio.CharBuffer;
