@@ -153,6 +153,12 @@ public final class BridgeAdmission
 		return SESSIONS.size();
 	}
 
+	static L2Client session(long id)
+	{
+		L2Client client = SESSIONS.get(id);
+		return client == null || client.isBridgeDisconnectRequested() ? null : client;
+	}
+
 	static long newSession(L2Client client)
 	{
 		for (int attempt = 0; attempt < 8; attempt++)

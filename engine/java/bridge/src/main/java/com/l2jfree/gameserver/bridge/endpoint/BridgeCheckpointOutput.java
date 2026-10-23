@@ -28,6 +28,8 @@ final class BridgeCheckpointOutput
 {
 	private final ArrayDeque<byte[]> frames = new ArrayDeque<>();
 	private int remaining;
+	private final byte[] end;
+	private boolean endAllowed;
 
 	BridgeCheckpointOutput(List<Envelope> snapshot, long epoch, List<byte[]> results, Envelope opened)
 	{
@@ -45,7 +47,8 @@ final class BridgeCheckpointOutput
 				throw new IllegalArgumentException("checkpoint byte capacity");
 			add(frame);
 		}
-		append(BridgeFrames.checkpoint(Schemas.END, epoch, true));
+		end = encode(BridgeFrames.checkpoint(Schemas.END, epoch, true));
+		add(end);
 		for (byte[] result : results)
 		{
 			List<Envelope> decoded = Codec.bridge().decode(result);
@@ -61,7 +64,7 @@ final class BridgeCheckpointOutput
 	byte[] next(int available)
 	{
 		byte[] frame = frames.peek();
-		if (frame == null || frame.length > available)
+		if (frame == null || frame.length > available || frame == end && !endAllowed)
 			return null;
 		frames.remove();
 		remaining -= frame.length;
@@ -71,6 +74,17 @@ final class BridgeCheckpointOutput
 	boolean finished()
 	{
 		return frames.isEmpty();
+	}
+
+	boolean waitingForEnd()
+	{
+		return frames.peek() == end && !endAllowed;
+	}
+
+	/** Only a fresh FIFO relocation check may grant the terminal ready tail. */
+	void allowEnd()
+	{
+		endAllowed = true;
 	}
 
 	int remainingBytes()

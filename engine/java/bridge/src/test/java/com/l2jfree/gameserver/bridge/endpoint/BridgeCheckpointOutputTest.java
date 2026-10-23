@@ -39,6 +39,7 @@ class BridgeCheckpointOutputTest
 					BridgeField.text(12, "x".repeat(2048), 4)), i, 0, 2, "objects"));
 		var opened = BridgeFrames.accepted(7, 2).get(2);
 		var output = new BridgeCheckpointOutput(facts, 2, List.of(BridgeResults.transportLost(1, 7)), opened);
+		output.allowEnd();
 		assertThat(output.remainingBytes()).isGreaterThan(BridgeLoopback.OUT_QUEUE_BYTES);
 		ArrayDeque<byte[]> queue = new ArrayDeque<>();
 		var delivered = new ArrayList<Envelope>();
@@ -63,6 +64,18 @@ class BridgeCheckpointOutputTest
 		assertThat(delivered.get(802).type()).isEqualTo(Schemas.RESULT);
 		assertThat(delivered.get(803).type()).isEqualTo(Schemas.OPENED);
 		assertThat(output.remainingBytes()).isZero();
+	}
+
+	@Test
+	void readyTailWaitsForAnExplicitFreshRelocationGrant()
+	{
+		var output = new BridgeCheckpointOutput(List.of(), 2, List.of(), null);
+		assertThat(output.next(BridgeLoopback.OUT_QUEUE_BYTES)).isNotNull();
+		assertThat(output.waitingForEnd()).isTrue();
+		assertThat(output.next(BridgeLoopback.OUT_QUEUE_BYTES)).isNull();
+		output.allowEnd();
+		assertThat(output.next(BridgeLoopback.OUT_QUEUE_BYTES)).isNotNull();
+		assertThat(output.finished()).isTrue();
 	}
 
 	@Test

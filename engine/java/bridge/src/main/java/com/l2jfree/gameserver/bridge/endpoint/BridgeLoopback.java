@@ -63,6 +63,7 @@ final class BridgeLoopback implements Runnable
 	private final GameServerContext context;
 	private final DefaultEventLoopGroup virtualChannels;
 	private final List<L2Client> clients = new CopyOnWriteArrayList<>();
+	private final java.util.concurrent.ConcurrentMap<L2Client, Session> sessions = new java.util.concurrent.ConcurrentHashMap<>();
 	private final byte[] fullBye;
 	private volatile boolean admitting = true;
 	private volatile Consumer<L2Client> beforeWatch;
@@ -127,6 +128,7 @@ final class BridgeLoopback implements Runnable
 	{
 		clients.removeIf(L2Client::isBridgeDisconnectFinished);
 		BridgeAdmission.reapSessions();
+		sessions.keySet().removeIf(L2Client::isBridgeDisconnectFinished);
 	}
 
 	private boolean disconnectsFinished()
@@ -317,6 +319,19 @@ final class BridgeLoopback implements Runnable
 		if (transport.closing || transport.terminal)
 			return;
 		BridgeReply reply = transport.dialogue.accept(records);
+		if (reply.resume != null)
+		{
+			long id = reply.resume.field(1).value().u();
+			long epoch = reply.resume.field(2).value().u();
+			L2Client client = BridgeAdmission.session(id);
+			Session owner = client == null ? null : sessions.get(client);
+			if (owner == null || !admitting)
+				finishTerminal(transport, List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_CLOSED)));
+			else
+				client.submit(() -> owner.resume(transport, id, epoch));
+			selector.wakeup();
+			return;
+		}
 		if (reply.admit)
 		{
 			try
@@ -351,10 +366,12 @@ final class BridgeLoopback implements Runnable
 		{
 			for (Envelope intent : records)
 			{
+				if (transport.session != null && (transport.session.transport != transport || transport.lost))
+					return;
 				if (transport.attempts == null)
 					transport.attempts = new BridgeAttemptSession(work -> transport.client.submit(work),
 							result -> offer(transport, streamFrame(result)));
-				var decision = transport.attempts.accept(transport.client, intent);
+				var decision = transport.attempts.accept(transport.client, intent, transport.attemptFence);
 				if (decision.kind == BridgeIntents.Kind.FRAME)
 				{
 					finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
@@ -384,13 +401,16 @@ final class BridgeLoopback implements Runnable
 			throw new IllegalStateException("already admitted");
 
 		transport.holdOpeningFacts = true;
-		BridgeSink sink = new BridgeSink(records -> fromSink(transport, records));
+		Session owner = new Session(transport);
+		BridgeSink sink = owner.sink;
 		LocalChannel channel = new LocalChannel();
 		virtualChannels.register(channel).syncUninterruptibly();
 		L2Client client = L2Client.forBridge(context.getNetworkServer(), channel,
 				InetAddress.getByAddress(new byte[] { 127, 0, 0, 1 }), sink);
 		sink.attach(client);
 		transport.client = client;
+		owner.attach(client);
+		sessions.put(client, owner);
 		Consumer<L2Client> gate = beforeWatch;
 		if (gate != null)
 			gate.accept(client);
@@ -401,7 +421,7 @@ final class BridgeLoopback implements Runnable
 			return;
 		}
 		BridgeAdmission.schedule(client, LoginLink.getInstance(), reply.account, reply.character,
-				records -> enqueue(transport, records));
+				owner::opened);
 	}
 
 	/** The disconnect save owns the terminal bye. A late bye is dropped once that bye is claimed. */
@@ -458,7 +478,9 @@ final class BridgeLoopback implements Runnable
 				finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)));
 			else if (!transport.closing && !transport.terminal && !transport.awaitingResult)
 			{
-				if (transport.readDeadline != 0 && now - transport.readDeadline >= 0)
+				if (transport.checkpointDeadline != 0 && now - transport.checkpointDeadline >= 0)
+					failSlow(transport);
+				else if (transport.readDeadline != 0 && now - transport.readDeadline >= 0)
 					finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
 				else if (!transport.opened && now - transport.openingDeadline >= 0)
 					finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)));
@@ -557,7 +579,7 @@ final class BridgeLoopback implements Runnable
 
 		synchronized (transport)
 		{
-			if (transport.closing)
+			if (transport.closing || transport.lost)
 				return;
 			if (transport.held + bytes.length > OUT_QUEUE_BYTES)
 			{
@@ -571,6 +593,9 @@ final class BridgeLoopback implements Runnable
 
 	private static void failSlow(Transport transport)
 	{
+		transport.lost = transport.session != null;
+		if (transport.lost)
+			transport.attemptFence.valid = false;
 		byte[] bye = frame(List.of(BridgeFrames.bye(BridgeFrames.BYE_SLOW)));
 		if (transport.held + bye.length <= OUT_QUEUE_BYTES)
 		{
@@ -623,6 +648,8 @@ final class BridgeLoopback implements Runnable
 					deadline = transport.opened ? 0 : transport.openingDeadline;
 					if (transport.readDeadline != 0)
 						deadline = deadline == 0 ? transport.readDeadline : Math.min(deadline, transport.readDeadline);
+					if (transport.checkpointDeadline != 0)
+						deadline = deadline == 0 ? transport.checkpointDeadline : Math.min(deadline, transport.checkpointDeadline);
 				}
 			}
 			wait = Math.min(wait, selectTimeout(now, deadline));
@@ -660,6 +687,7 @@ final class BridgeLoopback implements Runnable
 			return;
 
 		Transport transport = (Transport) key.attachment();
+		pumpCheckpoint(transport);
 		flush(transport, (SocketChannel) key.channel());
 		boolean close;
 		synchronized (transport)
@@ -717,9 +745,286 @@ final class BridgeLoopback implements Runnable
 		if (transport == null || transport.disconnectStarted)
 			return;
 		transport.disconnectStarted = true;
+		if (transport.session != null && !transport.terminal
+				&& !transport.client.isBridgeDisconnectRequested())
+		{
+			transport.session.detach(transport);
+			return;
+		}
 		L2Client client = transport.client;
 		if (client != null)
 			client.requestBridgeDisconnect();
+	}
+
+	/** Only queue operations occur under this monitor; relocation checks are queued after it is released. */
+	private void pumpCheckpoint(Transport transport)
+	{
+		boolean finish = false;
+		boolean ready = false;
+		BridgeRecovery.Checkpoint token = null;
+		synchronized (transport)
+		{
+			if (transport.lost || transport.closing || transport.checkpoint == null)
+				return;
+			byte[] frame;
+			while ((frame = transport.checkpoint.next(OUT_QUEUE_BYTES - transport.held)) != null)
+			{
+				transport.queued.add(frame);
+				transport.held += frame.length;
+			}
+			if (transport.checkpoint.waitingForEnd() && !transport.endScheduled)
+			{
+				transport.endScheduled = true;
+				finish = true;
+				token = transport.token;
+			}
+			if (transport.checkpoint.finished())
+			{
+				transport.checkpoint = null;
+				transport.opened = true;
+				transport.checkpointDeadline = 0;
+				ready = true;
+				while (!transport.afterCheckpoint.isEmpty())
+					transport.queued.add(transport.afterCheckpoint.remove());
+			}
+		}
+		if (finish)
+		{
+			var expected = token;
+			transport.client.submit(() -> transport.session.finishCheckpoint(transport, expected));
+		}
+		if (ready)
+			transport.attempts.ready(transport.attemptFence);
+	}
+
+	/** One game session owns the sink and attempts across successive sockets. */
+	private final class Session
+	{
+		volatile Transport transport;
+		final BridgeRecovery recovery;
+		final BridgeSink sink;
+		BridgeAttemptSession attempts;
+		L2Client client;
+		volatile long id;
+
+		Session(Transport initial)
+		{
+			transport = initial;
+			recovery = new BridgeRecovery(initial);
+			sink = new BridgeSink(this::publish);
+			sink.afterTeleport(this::captureCheckpoint);
+		}
+
+		void attach(L2Client value)
+		{
+			client = value;
+			attempts = new BridgeAttemptSession(client::submit, this::publishResult);
+			attempts.bindFence(transport.attemptFence);
+			transport.session = this;
+			transport.attempts = attempts;
+		}
+
+		void opened(List<Envelope> records)
+		{
+			Envelope accepted = records.stream().filter(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.OPENED
+					&& record.field(1).value().u() == 1).findFirst().orElse(null);
+			if (accepted == null)
+			{
+				if (!records.isEmpty())
+				{
+					finishTerminal(transport, records);
+					client.requestBridgeDisconnect();
+				}
+				return;
+			}
+			id = accepted.field(2).value().u();
+			captureCheckpoint();
+		}
+
+		void publish(List<Envelope> records)
+		{
+			Transport current = transport;
+			if (current == null)
+				return;
+			boolean terminal = records.stream().anyMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.BYE);
+			synchronized (current)
+			{
+				if (!terminal && (current.lost || current.closing))
+					return;
+				boolean relocation = records.stream().anyMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.FACT
+						&& record.field(67) != null && record.field(67).value().u() == 1);
+				if (relocation)
+				{
+					current.attemptFence.ready = false;
+					current.checkpointDeadline = System.nanoTime() + OPENING_NS;
+				}
+				if (relocation && current.checkpoint != null)
+				{
+					current.checkpoint.cancel();
+					current.checkpoint = null;
+					current.token = null;
+					current.endScheduled = false;
+					while (!current.afterCheckpoint.isEmpty())
+						current.queued.add(current.afterCheckpoint.remove());
+				}
+				if (!terminal && current.holdOpeningFacts && records.stream().allMatch(record ->
+						record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.RESULT))
+					return;
+				if (!terminal && current.checkpoint != null)
+				{
+					byte[] bytes = frame(records);
+					if (bytes.length > OUT_QUEUE_BYTES - current.held)
+						failSlow(current);
+					else
+					{
+						current.afterCheckpoint.add(bytes);
+						current.held += bytes.length;
+					}
+					selector.wakeup();
+					return;
+				}
+			}
+			fromSink(current, records);
+		}
+
+		void publishResult(byte[] result)
+		{
+			publish(Codec.bridge().decode(result));
+		}
+
+		void detach(Transport source)
+		{
+			long generation;
+			synchronized (source)
+			{
+				source.lost = true;
+				source.attemptFence.valid = false;
+				if (source.checkpoint != null)
+					source.checkpoint.cancel();
+				source.checkpoint = null;
+				source.queued.clear();
+				source.afterCheckpoint.clear();
+				source.writing = null;
+				source.held = 0;
+					source.checkpointDeadline = 0;
+			}
+			generation = recovery.detach(source, source.fence);
+			if (generation == 0)
+			{
+				if (id == 0)
+					client.requestBridgeDisconnect();
+				return;
+			}
+			transport = null;
+			attempts.detach();
+			com.l2jfree.gameserver.ThreadPoolManager.getInstance().scheduleGeneral(() -> client.submit(() ->
+			{
+				if (recovery.expireGrace(generation))
+					client.requestBridgeDisconnect();
+			}), settings.graceMs());
+		}
+
+		void resume(Transport replacement, long session, long epoch)
+		{
+			if (session != id || client.isBridgeDisconnectRequested())
+			{
+				finishTerminal(replacement, List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_CLOSED)));
+				return;
+			}
+			var decision = recovery.resume(replacement, epoch);
+			if (decision == BridgeRecovery.Resume.REPLAY)
+			{
+				if (replacement.checkpoint == null)
+					enqueue(replacement, List.of(BridgeFrames.accepted(id, epoch).get(2)));
+				return;
+			}
+			if (decision != BridgeRecovery.Resume.ACCEPTED)
+			{
+				finishTerminal(replacement, List.of(decision == BridgeRecovery.Resume.CLOSED
+						? BridgeFrames.openedRefused(BridgeFrames.REASON_CLOSED) : BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
+				return;
+			}
+			Transport old = transport;
+			if (old != null)
+			{
+				synchronized (old) { old.lost = true; old.attemptFence.valid = false; armClose(old); }
+				attempts.detach();
+			}
+			transport = replacement;
+			replacement.client = client;
+			replacement.session = this;
+			replacement.attempts = attempts;
+			replacement.fence = recovery.fence();
+			replacement.holdOpeningFacts = true;
+			replacement.attemptFence.ready = false;
+			attempts.resume(epoch, this::publishResult, replacement.attemptFence);
+			captureCheckpoint();
+		}
+
+		void captureCheckpoint()
+		{
+			Transport current = transport;
+			if (id == 0 || current == null || current.lost || client.isBridgeDisconnectRequested())
+				return;
+			var player = client.getActiveChar();
+			if (player == null)
+				return;
+			var token = recovery.beginCheckpoint();
+			attempts.checkpoint();
+			synchronized (current)
+			{
+				current.attemptFence.ready = false;
+				if (current.checkpointDeadline == 0)
+					current.checkpointDeadline = System.nanoTime() + OPENING_NS;
+			}
+			long epoch = recovery.epoch();
+			var retained = attempts.retainedResults();
+			player.captureBridgeScene(() ->
+			{
+				synchronized (sink)
+				{
+					var capture = sink.snapshot(epoch, true);
+					if (!capture.ready())
+						return;
+					synchronized (current)
+					{
+						if (current.lost || current.closing)
+							return;
+						current.openingFacts.clear();
+						current.openingFactBytes = 0;
+						current.holdOpeningFacts = false;
+						current.checkpoint = new BridgeCheckpointOutput(capture.records(), epoch, retained,
+								BridgeFrames.accepted(id, epoch).get(2));
+						current.token = token;
+						current.endScheduled = false;
+					}
+				}
+			});
+			selector.wakeup();
+		}
+
+		void finishCheckpoint(Transport current, BridgeRecovery.Checkpoint expected)
+		{
+			var player = client.getActiveChar();
+			if (player == null || current != transport)
+				return;
+			boolean[] granted = { false };
+			player.captureBridgeScene(() ->
+			{
+				synchronized (current)
+				{
+					if (!current.lost && current.checkpoint != null && expected != null && expected.equals(current.token)
+							&& current.checkpoint.waitingForEnd())
+					{
+						current.checkpoint.allowEnd();
+						granted[0] = true;
+					}
+				}
+			});
+			if (granted[0])
+				recovery.finishCheckpoint(expected);
+			selector.wakeup();
+		}
 	}
 
 	private void drop(SelectionKey key)
@@ -872,6 +1177,15 @@ final class BridgeLoopback implements Runnable
 		boolean opened;
 		L2Client client;
 		BridgeAttemptSession attempts;
+		Session session;
+		volatile boolean lost;
+		final BridgeAttemptSession.Fence attemptFence = new BridgeAttemptSession.Fence();
+		long fence = 1;
+		long checkpointDeadline;
+		BridgeCheckpointOutput checkpoint;
+		BridgeRecovery.Checkpoint token;
+		boolean endScheduled;
+		final ArrayDeque<byte[]> afterCheckpoint = new ArrayDeque<>();
 
 		Transport(byte[] secret)
 		{

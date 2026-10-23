@@ -48,6 +48,12 @@ final class BridgeDialogue
 		Envelope first = records.get(0);
 		if (!bound)
 			return firstFrame(records, first);
+		if (first.type() == Schemas.RESUME && records.size() == 1)
+		{
+			if (!MessageDigest.isEqual(secret, first.field(3).value().data()))
+				return fail(BridgeFrames.BYE_AUTH);
+			return BridgeReply.resume(first);
+		}
 		
 		if (first.type() == Schemas.PING && records.size() == 1)
 			return BridgeReply.of(List.of(BridgeFrames.pong(first.field(1).value().u())), false);
@@ -74,8 +80,7 @@ final class BridgeDialogue
 		if (first.type() == Schemas.RESUME)
 		{
 			bound = true;
-			closed = true;
-			return BridgeReply.of(List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_CLOSED)), true);
+			return BridgeReply.resume(first);
 		}
 		
 		String account = new String(first.field(5).value().data(), StandardCharsets.UTF_8);
