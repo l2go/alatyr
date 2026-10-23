@@ -120,7 +120,7 @@ jobs:
       - name: Lint the changed workflows
         run: |
           set -euo pipefail
-          actionlint .github/workflows/build.yml .github/workflows/docs-links.yml
+          actionlint .github/workflows/build.yml .github/workflows/docs-links.yml .github/workflows/public-text.yml
 
       - name: Check module vulnerabilities
         env:
