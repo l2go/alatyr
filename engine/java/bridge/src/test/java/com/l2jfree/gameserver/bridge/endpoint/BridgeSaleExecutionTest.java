@@ -40,6 +40,10 @@ class BridgeSaleExecutionTest
 	void actualSaleHandlerUsesTheDestroyedQuantityAndActualCoinReceipt(int referencePrice)
 	{
 		var player = BridgeTestPlayers.player();
+		int packetCap = com.l2jfree.Config.MAX_ITEM_IN_PACKET;
+		com.l2jfree.Config.MAX_ITEM_IN_PACKET = 1;
+		try
+		{
 		L2Client client = mock(L2Client.class);
 		PlayerInventory inventory = mock(PlayerInventory.class);
 		L2ItemInstance item = mock(L2ItemInstance.class);
@@ -69,5 +73,10 @@ class BridgeSaleExecutionTest
 		assertThat(attempt.effects()).hasSize(referencePrice == 0 ? 1 : 2);
 		if (referencePrice != 0)
 			assertThat(attempt.effects().get(1).delta()).isEqualTo(10);
+		}
+		finally
+		{
+			com.l2jfree.Config.MAX_ITEM_IN_PACKET = packetCap;
+		}
 	}
 }

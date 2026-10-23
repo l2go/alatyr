@@ -39,6 +39,10 @@ class BridgePurchaseExecutionTest
 	void liveDuplicateRunsTheActualPurchaseHandlerOnce()
 	{
 		var player = BridgeTestPlayers.player();
+		int packetCap = com.l2jfree.Config.MAX_ITEM_IN_PACKET;
+		com.l2jfree.Config.MAX_ITEM_IN_PACKET = 1;
+		try
+		{
 		var client = mock(L2Client.class);
 		var inventory = mock(PlayerInventory.class);
 		var template = mock(L2Item.class);
@@ -99,6 +103,11 @@ class BridgePurchaseExecutionTest
 			assertThat(result.field(2).value().u()).isEqualTo(2);
 			org.mockito.Mockito.verify(player).reduceAdena("Buy", 10L, null, false);
 			org.mockito.Mockito.verify(inventory).addItem("Buy", 1060, 2L, player, null);
+		}
+		}
+		finally
+		{
+			com.l2jfree.Config.MAX_ITEM_IN_PACKET = packetCap;
 		}
 	}
 }

@@ -33,6 +33,7 @@ class BridgeInventoryReceiptTest
 		var player = BridgeTestPlayers.player();
 		L2ItemInstance item = mock(L2ItemInstance.class, CALLS_REAL_METHODS);
 		doReturn(1060).when(item).getItemId();
+		doReturn(Integer.valueOf(70)).when(item).getObjectId();
 		doReturn(true).when(item).isStackable();
 		doNothing().when(item).updateDatabase();
 		item.setCount(Integer.MAX_VALUE - 2L);
