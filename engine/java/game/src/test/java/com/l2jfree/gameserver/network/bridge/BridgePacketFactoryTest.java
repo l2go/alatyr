@@ -27,6 +27,21 @@ import com.l2jfree.gameserver.network.packets.client.RequestRestartPoint;
 class BridgePacketFactoryTest
 {
 	@Test
+	void moveFactoryRejectsSaturatingBodyHeightRestoration()
+	{
+		var actor = com.l2jfree.gameserver.gameobjects.HuntTestPlayers.mockPlayer();
+		var template = org.mockito.Mockito.mock(com.l2jfree.gameserver.gameobjects.templates.L2PlayerTemplate.class);
+		org.mockito.Mockito.when(actor.getTemplate()).thenReturn(template);
+		org.mockito.Mockito.when(template.getCollisionHeight()).thenReturn(0.5);
+		assertThatThrownBy(() -> com.l2jfree.gameserver.network.packets.client.MoveBackwardToLocation
+				.forBridge(actor, 1, 2, Integer.MAX_VALUE)).isInstanceOf(IllegalArgumentException.class);
+		assertThat(com.l2jfree.gameserver.network.packets.client.MoveBackwardToLocation.forBridge(actor, 1, 2, 10))
+				.isNotNull();
+		assertThat(com.l2jfree.gameserver.network.packets.client.MoveBackwardToLocation.forBridge(actor, 1, 2, -10))
+				.isNotNull();
+	}
+
+	@Test
 	void factoriesRejectInvalidFieldsBeforeBinding()
 	{
 		assertThatThrownBy(() -> Action.forBridge(0)).isInstanceOf(IllegalArgumentException.class);

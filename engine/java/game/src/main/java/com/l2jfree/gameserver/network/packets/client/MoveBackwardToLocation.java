@@ -44,8 +44,10 @@ public final class MoveBackwardToLocation extends L2ClientPacket
 			throw new IllegalArgumentException("actor");
 		double height = actor.getTemplate().getCollisionHeight();
 		double floor = bodyZ >= 0 ? Math.ceil(bodyZ - height) : Math.floor(bodyZ - height);
+		double restored = floor + height;
 		if (!Double.isFinite(height) || !Double.isFinite(floor) || floor < Integer.MIN_VALUE
-				|| floor > Integer.MAX_VALUE || (int)(floor + height) != bodyZ)
+				|| floor > Integer.MAX_VALUE || restored < Integer.MIN_VALUE || restored > Integer.MAX_VALUE
+				|| (int)restored != bodyZ)
 			throw new IllegalArgumentException("bodyZ");
 		MoveBackwardToLocation packet = new MoveBackwardToLocation();
 		packet._targetX = x;
