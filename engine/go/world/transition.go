@@ -319,9 +319,6 @@ type Affordance struct {
 	ID     uint64
 	Verb   Verb
 	Target Ref
-	// Params retains legacy lesson parameters; choices leave it empty.
-	// Deprecated: use Parameters for the complete issued parameter set.
-	Params []Parameter
 	// Parameters contains the issued parameters for dialogue and lessons.
 	Parameters []Parameter
 	Cost       []Cost

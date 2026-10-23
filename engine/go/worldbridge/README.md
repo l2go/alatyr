@@ -13,6 +13,9 @@ the world's in-memory commitment. Numeric stage values are not interchangeable.
 Translation rejects incomplete essential data and checks sizes without
 truncation. Dialogue text is not executable authority. Only issued affordances
 can authorize a dialogue choice or lesson, and their original expiry is retained.
+Choices bind to an affordance's explicit `action` parameter, not just its target.
+Pages, lessons and skills use the event-owned source even if a later scene has
+changed. An affordance refresh does not repeat speech or lesson proposals.
 Trade and quest state is known empty only when the world declares those mechanics
 absent. Money is classified by the authored catalog's `asset` consumption type,
 not a fixed item ID; distinct asset rows cannot be collapsed into one purse.

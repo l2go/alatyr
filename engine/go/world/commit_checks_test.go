@@ -222,7 +222,7 @@ func TestCommitCleanupAndAmbientOutcomes(t *testing.T) {
 						t.Fatal(err)
 					}
 				case "leave":
-					if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
+					if err := w.Leave(ctx, entry.Self.Entity); err != nil {
 						t.Fatal(err)
 					}
 				case "death":

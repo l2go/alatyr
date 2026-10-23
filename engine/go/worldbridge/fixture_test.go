@@ -38,12 +38,12 @@ func fixture() (translator, world.Scene) {
 	return translator{catalog: c}, s
 }
 func choiceScene(s world.Scene) world.Scene {
-	s.Dialogue = world.Dialogue{Speaker: s.Objects[0].Entity, Page: "lesson.htm", HTML: "<html><body><a action=\"bypass -h npc_2_SkillList\">Learn</a></body></html>", Affordances: []world.Affordance{{ID: 10, Verb: world.VerbChoose, Target: s.Objects[0].Entity, Issued: world.Time(2 * time.Millisecond), Expires: world.Time(time.Minute + 2*time.Millisecond)}}}
+	s.Dialogue = world.Dialogue{Speaker: s.Objects[0].Entity, Page: "lesson.htm", HTML: "<html><body><a action=\"bypass -h npc_2_SkillList\">Learn</a></body></html>", Affordances: []world.Affordance{{ID: 10, Verb: world.VerbChoose, Target: s.Objects[0].Entity, Parameters: []world.Parameter{{Name: "action", Value: world.LabelValue("npc_2_SkillList")}}, Issued: world.Time(2 * time.Millisecond), Expires: world.Time(time.Minute + 2*time.Millisecond)}}}
 	return s
 }
 func lessonScene(s world.Scene) world.Scene {
 	s = choiceScene(s)
-	s.Dialogue.Affordances = []world.Affordance{{ID: 11, Verb: world.VerbLearn, Target: s.Objects[0].Entity, Issued: world.Time(3 * time.Millisecond), Expires: world.Time(time.Minute + 3*time.Millisecond), Params: []world.Parameter{{Name: "skill", Value: world.IntValue(301)}, {Name: "level", Value: world.IntValue(1)}}, Cost: []world.Cost{{Resource: world.Resource{Kind: world.ResourceSP}, Quantity: 10}}}}
+	s.Dialogue.Affordances = []world.Affordance{{ID: 11, Verb: world.VerbLearn, Target: s.Objects[0].Entity, Issued: world.Time(3 * time.Millisecond), Expires: world.Time(time.Minute + 3*time.Millisecond), Parameters: []world.Parameter{{Name: "skill", Value: world.IntValue(301)}, {Name: "level", Value: world.IntValue(1)}}, Cost: []world.Cost{{Resource: world.Resource{Kind: world.ResourceSP}, Quantity: 10}}}}
 	return s
 }
 func command(verb uint64) bridge.Command {

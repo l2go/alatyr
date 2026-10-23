@@ -156,27 +156,18 @@ type Revived struct {
 type DialoguePage struct {
 	stamp
 	Dialogue Dialogue
-	// NPCID and HTML retain the legacy presentation fields.
-	NPCID int32
-	HTML  string
 }
 
 // LearnList supplies available trainer lessons, not learning outcomes.
 type LearnList struct {
 	stamp
 	Dialogue Dialogue
-	Skills   []catalog.SkillLearn
-	// NPCID retains the legacy trainer identity.
-	NPCID int32
 }
 
 // SkillsShown supplies effective skills and their detached runtime availability.
 // Complete is false when a skill's catalog source is missing.
 type SkillsShown struct {
 	stamp
-	// Skills retains the legacy list of effective skill identities.
-	Skills []Skill
-	// Known carries the detached source availability of those same skills.
 	Known    []KnownSkill
 	Complete bool
 }
@@ -377,11 +368,9 @@ func publishEvent(e Event, at stamp) Event {
 	case LearnList:
 		value.stamp = at
 		value.Dialogue = cloneDialogue(value.Dialogue)
-		value.Skills = slices.Clone(value.Skills)
 		return value
 	case SkillsShown:
 		value.stamp = at
-		value.Skills = slices.Clone(value.Skills)
 		value.Known = slices.Clone(value.Known)
 		for i := range value.Known {
 			value.Known[i].Disabled = value.Known[i].ReuseUntil > at.time

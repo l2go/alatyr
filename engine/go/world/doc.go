@@ -52,10 +52,10 @@
 // Pages and lesson lists carry their own detached Dialogue and affordances.
 // SkillsShown carries detached effective skills and runtime reuse availability.
 // Delayed reading never borrows authority from a later Capture.
-// LeaveRef and LogoutRef check a captured Ref in the same turn as departure. Only
+// Leave and Logout check a captured Ref in the same turn as departure. Only
 // that incarnation can retry its pending detached save; Store is unchanged.
-// Leave and Logout retain the trusted-host ID APIs. Legacy event fields and
-// Affordance.Params retain their shape; Parameters is the complete issued set.
+// Departure always requires a captured incarnation. Parameters is the complete
+// issued parameter set; lesson capabilities and costs have one source, Affordance.
 //
 // Fence identifies relocation, independently of Ref.Gen and session epochs.
 // Execute with VerbAppear requires the current Fence; legacy Appear trusts its
