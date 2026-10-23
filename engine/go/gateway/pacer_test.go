@@ -52,15 +52,15 @@ type budgetCommandState struct {
 func (s *budgetCommandState) Plan(wire.Record, int64) (*Action, wire.Reason) {
 	return &Action{Effective: 1, Steps: []Step{{Value: "walk"}}}, wire.ReasonNone
 }
-func (s *budgetCommandState) Start(*Action) {}
+func (s *budgetCommandState) Start(*Action) error { return nil }
 func (s *budgetCommandState) Validate(*Action, int64) wire.Reason {
 	s.validations++
 	s.order = append(s.order, "validate")
 	return wire.ReasonNone
 }
-func (s *budgetCommandState) Confirmed(*Action) bool {
+func (s *budgetCommandState) Confirmed(*Action) (bool, error) {
 	s.order = append(s.order, "confirmed")
-	return s.confirmed
+	return s.confirmed, nil
 }
 func (s *budgetCommandState) Apply(u Update, now int64) (Observation, error) {
 	s.updates++

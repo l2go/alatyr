@@ -593,6 +593,9 @@ func (s *game) run(ctx context.Context) {
 			return
 		}
 		s.service(ctx)
+		if s.closed {
+			return
+		}
 	}
 }
 func (s *game) checkpoint(c *connection, welcome *wire.Record, hold bool) bool {
@@ -779,6 +782,9 @@ func (s *game) receive(c *connection, r wire.Record) bool {
 }
 func (s *game) intent(c *connection, r wire.Record) {
 	s.expire()
+	if s.closed {
+		return
+	}
 	normalized := r
 	normalized.Unsupported = false
 	bytes, err := s.gate.cfg.Codec.Encode([]wire.Record{normalized})

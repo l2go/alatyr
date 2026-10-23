@@ -110,13 +110,21 @@ type State interface {
 	// Validate rechecks a captured plan immediately before pacing and contact.
 	Validate(*Action, int64) wire.Reason
 	// Start is called by the loop before the first step of a plan.
-	Start(*Action)
+	// Invalid adapter values return an error; the runtime closes the participant
+	// with an internal reason without logging the value or error text.
+	Start(*Action) error
 	// Confirmed rechecks a helper's current target before an effect is written.
-	Confirmed(*Action) bool
+	// Invalid adapter values return an error, not false; the runtime closes the
+	// participant with an internal reason without logging the value or error text.
+	Confirmed(*Action) (bool, error)
 	// Witness is called by the loop for eligible actions on observed facts.
-	Witness(*Action, Update) Witness
+	// Invalid adapter values return an error, not WitnessNone; the runtime closes
+	// the participant with an internal reason without logging the value or error text.
+	Witness(*Action, Update) (Witness, error)
 	// CandidateValid is called before committing a retained witness.
-	CandidateValid(*Action) bool
+	// Invalid adapter values return an error, not false; the runtime closes the
+	// participant with an internal reason without logging the value or error text.
+	CandidateValid(*Action) (bool, error)
 	// Proof supplies the retained or current fact when a candidate commits.
 	Proof(*Action, int64) (wire.Record, error)
 	// Invalidate retires references and offers when the projection relocates.
