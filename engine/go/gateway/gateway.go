@@ -593,6 +593,9 @@ func (s *game) run(ctx context.Context) {
 			return
 		}
 		s.service(ctx)
+		if s.closed {
+			return
+		}
 	}
 }
 func (s *game) checkpoint(c *connection, welcome *wire.Record, hold bool) bool {
