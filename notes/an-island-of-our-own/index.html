@@ -60,7 +60,7 @@
 <h2>The decision</h2>
 <p>A world is a directory. It holds <code>world.properties</code>, a <code>catalog/</code> of tables loaded into the database at start, and <code>data/</code> for the files the engine reads as they are. The engine is told one path and reads nothing else. The first line it logs about the world says whose it is:</p>
 <pre class="code"><code>World id=buyan-okolitsa version=3.2.0 license=CC-BY-SA-4.0 expected scripts=0</code></pre>
-<p>Before the engine could be given a new world, it had to survive having none. The empty-world job in CI starts the image on a world directory that holds only an identity file and an empty catalog, and the server now reaches readiness and says, one line per part, what is missing:</p>
+<p>Before the engine could be given a new world, it had to survive having none. In 3.2.0 an empty-world job in CI started the image on a world directory that held only an identity file and an empty catalog; the server reaches readiness there and says, one line per part, what is missing:</p>
 <pre class="code"><code>World has no skills
 World has no armor
 World has no weapons
@@ -241,12 +241,12 @@ heal    ← skill 2031, power                 data/stats/skills/seed.xml</code><
 <li>A step of the <code>world</code> job fails if the inherited datapack, its script list, or game data outside <code>world/</code> reappears in the tree.</li>
 <li><code>world check</code> runs on every pull request: the rendered world must equal a fresh render, and every text must be ASCII.</li>
 <li>The image job compares the world inside the image with the repository, 28 files by SHA-256.</li>
-<li>The empty-world job starts the image with an identity file and an empty catalog and expects readiness, and separately checks that a missing catalog directory stops the start.</li>
+<li>In 3.2.0, the empty-world job started the image with an identity file and an empty catalog, expected readiness, and separately checked that a missing catalog directory stops the start.</li>
 <li>In 3.2.0, the seed-world job sent one client, then 24, through the hunt and rejected application WARN or ERROR entries, uncaught exceptions, and failed scripts.</li>
 <li>The image job still restarts the server, restores a backup into a clean stack, and upgrades the published image in place, on the new world.</li>
 </ul>
 <p>Pushkin's ships only sail past Buyan. This server drops anchor there. The island is small: two people, seventy-two beasts, six things to buy. Its game content is original, every word on it can be renamed in one place, and in 3.2.0 every merge sent twenty-four players out to hunt on it and back to find what they earned. That was a checkpoint to grow the world from, not proof that every path through it has been tested.</p>
-<div class="aside"><strong>Update, 23 October 2026.</strong> Since 3.2.1, vitality, an experience bonus inherited from the old game, is off by default, so a new character earns exactly the experience and SP the world records. The repository has also gained Go modules beside the Java engine, each with its own license file: <code>engine/go/protocol/</code> under Apache-2.0, and <code>engine/go/gateway/</code>, <code>engine/go/bridge/</code>, and <code>engine/go/world/</code> under AGPL-3.0-or-later. The image does not carry them. The hunt no longer runs on every merge: the seed-world job was retired as legacy, and the gameplay loop will be checked in a different form. Every merge still starts the image, plays 24 client sessions, and rehearses a restart, a restore, and, when the previous image can be pulled, an upgrade.</div>
+<div class="aside"><strong>Update, 23 October 2026.</strong> Since 3.2.1, vitality, an experience bonus inherited from the old game, is off by default, so a new character earns exactly the experience and SP the world records. The repository has also gained Go modules beside the Java engine, each with its own license file: <code>engine/go/protocol/</code> under Apache-2.0, and <code>engine/go/gateway/</code>, <code>engine/go/bridge/</code>, and <code>engine/go/world/</code> under AGPL-3.0-or-later. The image does not carry them. The hunt and the empty-world start no longer run on every merge: both jobs were retired as legacy, and the gameplay loop will be checked in a different form. Every merge still starts the image, plays 24 client sessions, and rehearses a restart, a restore, and, when the previous image can be pulled, an upgrade.</div>
 </div>
 <nav class="series" aria-label="Series">
 <a href="/alatyr/notes/one-process-hard-boundaries/"><small>Previous</small><span>One process, hard boundaries</span></a>
