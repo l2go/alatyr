@@ -424,6 +424,26 @@ public class PlayerStat extends PlayableStat
 	@Override
 	public final void setSp(int value)
 	{
+		if (getActiveChar().isBridgeSession())
+		{
+			synchronized (_bridgeSpLock)
+			{
+				int before = getSp();
+				setSpValue(value);
+				int after = getSp();
+				if (before != after && com.l2jfree.gameserver.network.bridge.EffectLedger.isActive())
+					com.l2jfree.gameserver.network.bridge.EffectLedger.record(getActiveChar(),
+							com.l2jfree.gameserver.network.bridge.BridgeEffect.sp((long)after - before, before, after));
+			}
+			return;
+		}
+		setSpValue(value);
+	}
+
+	private final Object _bridgeSpLock = new Object();
+
+	private void setSpValue(int value)
+	{
 		if (getActiveChar().isSubClassActive())
 			getActiveChar().getSubClasses().get(getActiveChar().getClassIndex()).setSp(value);
 		else

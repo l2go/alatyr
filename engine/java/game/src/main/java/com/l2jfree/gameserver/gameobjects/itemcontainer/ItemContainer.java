@@ -207,7 +207,7 @@ public abstract class ItemContainer
 		if (olditem != null && olditem.isStackable())
 		{
 			long count = item.getCount();
-			olditem.changeCount(process, count, actor, reference);
+			changeCountWithReceipt(olditem, process, count, actor, reference);
 			olditem.setLastChange(L2ItemInstance.MODIFIED);
 			
 			// And destroys the item
@@ -259,7 +259,7 @@ public abstract class ItemContainer
 		// If stackable item is found in inventory just add to current quantity
 		if (item != null && item.isStackable())
 		{
-			item.changeCount(process, count, actor, reference);
+			changeCountWithReceipt(item, process, count, actor, reference);
 			item.setLastChange(L2ItemInstance.MODIFIED);
 			// Updates database
 			if (itemId == PlayerInventory.ADENA_ID && count < 10000 * Config.RATE_DROP_ADENA)
@@ -408,7 +408,7 @@ public abstract class ItemContainer
 			{
 				if (sourceitem.getCount() > count) // If possible, only update counts
 				{
-					sourceitem.changeCount(process, -count, actor, reference);
+					changeCountWithReceipt(sourceitem, process, -count, actor, reference);
 					sourceitem.setLastChange(L2ItemInstance.MODIFIED);
 				}
 				else
@@ -421,7 +421,7 @@ public abstract class ItemContainer
 				
 				if (targetitem != null) // If possible, only update counts
 				{
-					targetitem.changeCount(process, count, actor, reference);
+					target.changeCountWithReceipt(targetitem, process, count, actor, reference);
 					targetitem.setLastChange(L2ItemInstance.MODIFIED);
 				}
 				else
@@ -473,7 +473,7 @@ public abstract class ItemContainer
 			// Adjust item quantity
 			if (item.getCount() > count)
 			{
-				item.changeCount(process, -count, actor, reference);
+				changeCountWithReceipt(item, process, -count, actor, reference);
 				item.setLastChange(L2ItemInstance.MODIFIED);
 				
 				// don't update often for untraced items
@@ -560,7 +560,18 @@ public abstract class ItemContainer
 	 */
 	protected synchronized void addItem(L2ItemInstance item)
 	{
-		_items.add(item);
+		if (!(this instanceof PlayerInventory) || !((PlayerInventory)this).getOwner().isBridgeSession())
+		{
+			_items.add(item);
+			return;
+		}
+		if (_items.add(item))
+		{
+			synchronized (item)
+			{
+				recordReceipt(item, item.getCount());
+			}
+		}
 	}
 	
 	/**
@@ -569,7 +580,41 @@ public abstract class ItemContainer
 	 */
 	protected synchronized boolean removeItem(L2ItemInstance item)
 	{
-		return _items.remove(item);
+		if (!(this instanceof PlayerInventory) || !((PlayerInventory)this).getOwner().isBridgeSession())
+			return _items.remove(item);
+		if (!_items.remove(item))
+			return false;
+		synchronized (item)
+		{
+			recordReceipt(item, -item.getCount());
+		}
+		return true;
+	}
+
+	private void changeCountWithReceipt(L2ItemInstance item, String process, long count, L2Player actor, L2Object reference)
+	{
+		if (!(this instanceof PlayerInventory) || !((PlayerInventory)this).getOwner().isBridgeSession())
+		{
+			item.changeCount(process, count, actor, reference);
+			return;
+		}
+		synchronized (item)
+		{
+			long before = item.getCount();
+			item.changeCount(process, count, actor, reference);
+			recordReceipt(item, item.getCount() - before);
+		}
+	}
+
+	private void recordReceipt(L2ItemInstance item, long delta)
+	{
+		if (delta == 0 || !(this instanceof PlayerInventory)
+				|| !com.l2jfree.gameserver.network.bridge.EffectLedger.isActive())
+			return;
+		L2Player owner = ((PlayerInventory)this).getOwner();
+		com.l2jfree.gameserver.network.bridge.EffectLedger.record(owner, item.getItemId() == PlayerInventory.ADENA_ID
+				? com.l2jfree.gameserver.network.bridge.BridgeEffect.coin(delta)
+				: com.l2jfree.gameserver.network.bridge.BridgeEffect.item(item.getItemId(), item.getObjectId(), delta));
 	}
 
 	/** Coordinates a prepared exchange with additions and removals in this container. */
