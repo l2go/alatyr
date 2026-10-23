@@ -52,6 +52,24 @@ class BridgeDeliveryTest
 	}
 
 	@Test
+	void checkpointCaptureReservesSequenceAndKeepsTheOriginalHistoryTime()
+	{
+		sink.deliver(new NpcSay(70, 0, 1, "An observation"), player);
+		long original = records.get(0).get(0).field(3).value().s();
+		var snapshot = sink.snapshot(2, false);
+		assertThat(snapshot.ready()).isFalse();
+		assertThat(snapshot.records()).hasSize(1);
+		var history = snapshot.records().get(0);
+		assertThat(history.field(1).value().u()).isEqualTo(19);
+		assertThat(history.field(2).value().u()).isEqualTo(2);
+		assertThat(history.field(4).value().u()).isEqualTo(2);
+		assertThat(history.field(28).value().items().get(0).fields().get(0).value().s()).isEqualTo(original);
+		sink.deliver(new NpcSay(70, 0, 1, "A later observation"), player);
+		assertThat(records.get(1).get(0).field(2).value().u()).isEqualTo(3);
+		assertThat(records.get(1).get(0).field(4).value().u()).isEqualTo(2);
+	}
+
+	@Test
 	void spokeFollowedByActionFailedIsDoneButNoticesNeverCertifyTalk()
 	{
 		L2Npc npc = mock(L2Npc.class);

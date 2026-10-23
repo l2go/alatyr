@@ -52,6 +52,9 @@ public final class BridgeSink implements ClientSink
 	private long _sequence;
 	private boolean _failed;
 	private final Map<Integer, ActorView> _actors = new HashMap<>();
+	private final BridgeProjection _projection = new BridgeProjection();
+	private long _epoch = 1;
+	private Runnable _afterTeleport;
 
 	private record ActorView(Map<Integer, BridgeField> fields, Long run, Long walk) {}
 	
@@ -67,6 +70,29 @@ public final class BridgeSink implements ClientSink
 			throw new IllegalArgumentException("client");
 		
 		_client = client;
+	}
+
+	void afterTeleport(Runnable continuation)
+	{
+		_afterTeleport = continuation;
+	}
+
+	record Capture(List<Envelope> records, boolean ready) {
+		Capture { records = List.copyOf(records); }
+	}
+
+	/** Copies state and reserves its sequence range under one leaf monitor, without consulting the model. */
+	synchronized Capture snapshot(long epoch, boolean completeObjects)
+	{
+		_epoch = epoch;
+		if (completeObjects)
+			_projection.completeObjects();
+		var result = new ArrayList<Envelope>();
+		long ms = Math.max(0, (System.nanoTime() - _born) / 1_000_000);
+		var snapshot = _projection.capture(ms);
+		for (BridgeFact fact : snapshot.facts())
+			result.add(SemanticFacts.envelope(fact, _sequence = Math.incrementExact(_sequence), ms, _epoch, domain(fact.kind())));
+		return new Capture(result, snapshot.ready());
 	}
 	
 	@Override
@@ -98,12 +124,14 @@ public final class BridgeSink implements ClientSink
 			long sequence = _sequence;
 			for (BridgeFact fact : stage.facts)
 				records.add(SemanticFacts.envelope(fact, sequence = Math.incrementExact(sequence),
-						stage.ms, 1, domain(fact.kind())));
+						stage.ms, _epoch, domain(fact.kind())));
 			// Validate every observation before any delivery or receipt becomes visible.
 			Codec codec = Codec.bridge();
 			for (Envelope record : records)
 				codec.encode(List.of(record));
 			stage.validateActors();
+			for (int i = 0; i < stage.facts.size(); i++)
+				_projection.observe(stage.facts.get(i), _sequence + i + 1, stage.ms);
 			if (_outbound != null)
 				for (Envelope record : records)
 					_outbound.accept(List.of(record));
@@ -280,6 +308,8 @@ public final class BridgeSink implements ClientSink
 			L2Player player = client.getActiveChar();
 			if (player != null)
 				player.completeBridgeTeleport(generation);
+			if (_afterTeleport != null)
+				_afterTeleport.run();
 		});
 	}
 }
