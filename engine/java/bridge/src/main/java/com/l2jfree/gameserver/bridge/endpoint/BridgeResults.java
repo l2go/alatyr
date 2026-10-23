@@ -21,7 +21,7 @@ final class BridgeResults
 	static byte[] encode(long n, long verb, int stage, long reason, Attempt attempt)
 	{
 		ArrayList<Field> fields = new ArrayList<>(List.of(Field.u(1, true, n), Field.u(2, true, stage),
-				Field.u(3, true, reason), Field.u(5, true, verb), Field.u(6, true, verb),
+				Field.u(3, true, reason), Field.u(5, true, verb), Field.u(6, true, knownVerb(verb) ? verb : 0),
 				Field.u(7, true, stage == 3 || stage == 5 ? 0 : 2)));
 		long bridgeReason = switch ((int)reason)
 		{
@@ -73,5 +73,10 @@ final class BridgeResults
 		if (encoded.length > 8192)
 			return encode(n, verb, BridgeOutcome.UNKNOWN, 24, null);
 		return encoded;
+	}
+
+	private static boolean knownVerb(long verb)
+	{
+		return verb >= 1 && verb <= 10 || verb == 12 || verb == 13;
 	}
 }

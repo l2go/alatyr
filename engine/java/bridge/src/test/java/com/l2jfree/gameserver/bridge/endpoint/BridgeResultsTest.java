@@ -12,6 +12,14 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeResultsTest
 {
 	@Test
+	void unknownVerbPreservesRequestedButHasNoEffectiveVerb()
+	{
+		var result = Codec.bridge().decode(BridgeResults.encode(1, 99, 3, 10, null)).get(0);
+		assertThat(result.field(5).value().u()).isEqualTo(99);
+		assertThat(result.field(6).value().u()).isZero();
+	}
+
+	@Test
 	void admissionRefusalsCarryThePairedBridgeReason()
 	{
 		var result = Codec.bridge().decode(BridgeResults.encode(1, 9, 3, 1, null)).get(0);

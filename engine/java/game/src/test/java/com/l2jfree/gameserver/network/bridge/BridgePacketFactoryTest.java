@@ -32,6 +32,8 @@ class BridgePacketFactoryTest
 	void eachFactoryReturnsANewUnexecutedPacket()
 	{
 		assertThat(Action.forBridge(1)).isNotSameAs(Action.forBridge(1));
+		assertThat(com.l2jfree.gameserver.network.packets.client.EnterWorld.forBridge())
+				.isNotSameAs(com.l2jfree.gameserver.network.packets.client.EnterWorld.forBridge());
 		assertThat(AttackRequest.forBridge(1).failed()).isFalse();
 		assertThat(RequestMagicSkillUse.forBridge(1, true).failed()).isFalse();
 		assertThat(RequestRestartPoint.forBridge()).isNotSameAs(RequestRestartPoint.forBridge());

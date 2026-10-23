@@ -79,6 +79,12 @@ import com.l2jfree.gameserver.network.packets.server.UserInfo;
 
 public class EnterWorld extends L2ClientPacket
 {
+	/** Creates the payload-free service packet for direct bridge admission. */
+	public static EnterWorld forBridge()
+	{
+		return new EnterWorld();
+	}
+
 	private static final String _C__ENTERWORLD = "[C] 11 EnterWorld c[bddddbdcccccccccccccccccccc] (unk)";
 	
 	@Override
