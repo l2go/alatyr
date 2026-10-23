@@ -6,18 +6,19 @@ package profile
 import (
 	"bytes"
 	"errors"
-	"github.com/l2go/alatyr/engine/go/bridge/internal/fixtures"
-	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"math"
 	"reflect"
 	"testing"
+
+	"github.com/l2go/alatyr/engine/go/bridge/internal/fixtures"
+	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
 
 func newCodec(t testing.TB) *Codec {
 	t.Helper()
-	c, e := NewProfileCodec()
-	if e != nil {
-		t.Fatal(e)
+	c, err := NewProfileCodec()
+	if err != nil {
+		t.Fatal(err)
 	}
 	return c
 }
@@ -28,36 +29,36 @@ func TestSharedProfileVectors(t *testing.T) {
 		t.Run(v.ID, func(t *testing.T) {
 			data := fixtures.Bytes(t, v)
 			var rs []wire.Record
-			var e error
+			var err error
 			if v.Transport == "stream" {
-				rs, e = c.Read(bytes.NewReader(data))
+				rs, err = c.Read(bytes.NewReader(data))
 			} else {
-				rs, e = c.Decode(data)
+				rs, err = c.Decode(data)
 			}
 			if v.Expected != "ok" {
 				want := wire.ErrFrame
 				if v.Expected == "unsupported" {
 					want = wire.ErrUnsupported
 				}
-				if !errors.Is(e, want) || rs != nil {
-					t.Fatalf("category/atomicity: %v", e)
+				if !errors.Is(err, want) || rs != nil {
+					t.Fatalf("category/atomicity: %v", err)
 				}
 				return
 			}
-			if e != nil || len(rs) != 1 {
-				t.Fatalf("decode: %v", e)
+			if err != nil || len(rs) != 1 {
+				t.Fatalf("decode: %v", err)
 			}
 			decoded[v.ID] = rs[0]
 			var out bytes.Buffer
 			if v.Transport == "stream" {
-				e = c.Write(&out, rs)
+				err = c.Write(&out, rs)
 			} else {
 				var b []byte
-				b, e = c.Encode(rs)
+				b, err = c.Encode(rs)
 				out.Write(b)
 			}
-			if e != nil || !bytes.Equal(data, out.Bytes()) {
-				t.Fatalf("canonical input changed: %v", e)
+			if err != nil || !bytes.Equal(data, out.Bytes()) {
+				t.Fatalf("canonical input changed: %v", err)
 			}
 		})
 	}
@@ -83,49 +84,49 @@ func TestSharedProfileVectors(t *testing.T) {
 	}
 }
 func TestHistoricalVectors(t *testing.T) {
-	c, e := wire.New(Limits(), NeutralRegistry())
-	if e != nil {
-		t.Fatal(e)
+	c, err := wire.New(Limits(), NeutralRegistry())
+	if err != nil {
+		t.Fatal(err)
 	}
 	vectors := fixtures.Load(t, false)
 	for _, v := range vectors {
 		t.Run(v.ID, func(t *testing.T) {
 			b := fixtures.Bytes(t, v)
 			var rs []wire.Record
-			var e error
+			var err error
 			if v.ID == "V17" || v.ID == "V21" {
-				rs, e = c.Read(bytes.NewReader(b))
+				rs, err = c.Read(bytes.NewReader(b))
 			} else {
-				rs, e = c.Decode(b)
+				rs, err = c.Decode(b)
 			}
 			switch v.ID {
 			case "V11":
-				if !errors.Is(e, wire.ErrUnsupported) {
-					t.Fatal(e)
+				if !errors.Is(err, wire.ErrUnsupported) {
+					t.Fatal(err)
 				}
 				return
 			case "V12", "V13", "V18", "V19", "V20", "V21":
-				if !errors.Is(e, wire.ErrFrame) || rs != nil {
-					t.Fatal(e)
+				if !errors.Is(err, wire.ErrFrame) || rs != nil {
+					t.Fatal(err)
 				}
 				return
 			case "V10":
-				if e != nil || len(rs) != 0 {
-					t.Fatal(e)
+				if err != nil || len(rs) != 0 {
+					t.Fatal(err)
 				}
 				return
 			case "V06":
-				if e != nil || len(rs) != 1 || !rs[0].Unsupported {
-					t.Fatal(e)
+				if err != nil || len(rs) != 1 || !rs[0].Unsupported {
+					t.Fatal(err)
 				}
 				return
 			}
-			if e != nil {
-				t.Fatal(e)
+			if err != nil {
+				t.Fatal(err)
 			}
-			encoded, e := c.Encode(rs)
-			if e != nil {
-				t.Fatal(e)
+			encoded, err := c.Encode(rs)
+			if err != nil {
+				t.Fatal(err)
 			}
 			if v.ID == "V05" {
 				if !bytes.Equal(encoded, fixtures.Bytes(t, vectors[2])) {
@@ -157,9 +158,9 @@ func TestProfileCategoryOrder(t *testing.T) {
 	generation := registry[wire.Fact][66]
 	generation.Nonzero = false
 	registry[wire.Fact][66] = generation
-	raw, e := wire.New(Limits(), registry)
-	if e != nil {
-		t.Fatal(e)
+	raw, err := wire.New(Limits(), registry)
+	if err != nil {
+		t.Fatal(err)
 	}
 	cases := []struct {
 		name string
@@ -205,22 +206,22 @@ func TestProfileCategoryOrder(t *testing.T) {
 	}{"namespace before unknown", wrongNamespace, wire.ErrFrame})
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			data, e := raw.Encode([]wire.Record{tc.r})
-			if e != nil {
-				t.Fatal("test generator", e)
+			data, err := raw.Encode([]wire.Record{tc.r})
+			if err != nil {
+				t.Fatal("test generator", err)
 			}
-			if rs, e := c.Decode(data); !errors.Is(e, tc.want) || rs != nil {
-				t.Fatalf("decode got %v want %v", e, tc.want)
+			if rs, err := c.Decode(data); !errors.Is(err, tc.want) || rs != nil {
+				t.Fatalf("decode got %v want %v", err, tc.want)
 			}
-			if _, e := c.Encode([]wire.Record{tc.r}); !errors.Is(e, tc.want) {
-				t.Fatalf("encode got %v want %v", e, tc.want)
+			if _, err := c.Encode([]wire.Record{tc.r}); !errors.Is(err, tc.want) {
+				t.Fatalf("encode got %v want %v", err, tc.want)
 			}
 		})
 	}
 	// A valid first record cannot escape a bad second record.
 	good, _ := c.Encode([]wire.Record{{Type: wire.Ping, Fields: []wire.Field{wire.U(1, true, 1)}}})
 	bad, _ := raw.Encode([]wire.Record{cases[0].r})
-	if rs, e := c.Decode(append(good, bad...)); e == nil || rs != nil {
+	if rs, err := c.Decode(append(good, bad...)); err == nil || rs != nil {
 		t.Fatal("partial frame")
 	}
 }
@@ -240,34 +241,34 @@ func TestAllLegalReasonPairs(t *testing.T) {
 				stage = 5
 			}
 			r := result(stage, core, delivery, ptr(code), nil, false)
-			b, e := c.Encode([]wire.Record{r})
-			if e != nil {
-				t.Fatalf("pair %d/%d: %v", code, core, e)
+			b, err := c.Encode([]wire.Record{r})
+			if err != nil {
+				t.Fatalf("pair %d/%d: %v", code, core, err)
 			}
-			if _, e = c.Decode(b); e != nil {
-				t.Fatal(e)
+			if _, err = c.Decode(b); err != nil {
+				t.Fatal(err)
 			}
 		}
 	}
 	for _, v := range []uint64{0, 1, math.MaxUint64} {
 		r := wire.Record{Type: wire.Ping, Fields: []wire.Field{wire.U(1, true, v)}}
-		b, e := c.Encode([]wire.Record{r})
-		if e != nil {
-			t.Fatal(e)
+		b, err := c.Encode([]wire.Record{r})
+		if err != nil {
+			t.Fatal(err)
 		}
-		rs, e := c.Decode(b)
-		if e != nil || U(rs[0], 1) != v {
+		rs, err := c.Decode(b)
+		if err != nil || U(rs[0], 1) != v {
 			t.Fatal("unsigned extreme")
 		}
 	}
 	for _, v := range []int64{math.MinInt64, math.MaxInt64} {
 		r := wire.Record{Type: wire.Intent, Fields: []wire.Field{wire.U(1, true, 1), wire.U(2, true, 1), wire.U(3, true, 1), wire.S(16, true, v)}}
-		b, e := c.Encode([]wire.Record{r})
-		if e != nil {
-			t.Fatal(e)
+		b, err := c.Encode([]wire.Record{r})
+		if err != nil {
+			t.Fatal(err)
 		}
-		rs, e := c.Decode(b)
-		if e != nil || S(rs[0], 16) != v {
+		rs, err := c.Decode(b)
+		if err != nil || S(rs[0], 16) != v {
 			t.Fatal("signed extreme")
 		}
 	}
@@ -286,21 +287,21 @@ func FuzzDecodeProfile(f *testing.F) {
 			}
 			return c.Decode(b)
 		}
-		rs, e := decode()
+		rs, err := decode()
 		again, e2 := decode()
-		category := func(e error) int {
-			if e == nil {
+		category := func(err error) int {
+			if err == nil {
 				return 0
 			}
-			if errors.Is(e, wire.ErrUnsupported) {
+			if errors.Is(err, wire.ErrUnsupported) {
 				return 1
 			}
 			return 2
 		}
-		if category(e) != category(e2) || !reflect.DeepEqual(rs, again) {
+		if category(err) != category(e2) || !reflect.DeepEqual(rs, again) {
 			t.Fatal("unstable parser")
 		}
-		if e != nil {
+		if err != nil {
 			if rs != nil {
 				t.Fatal("partial application")
 			}
@@ -314,16 +315,16 @@ func FuzzDecodeProfile(f *testing.F) {
 				return
 			}
 		}
-		canon, e := c.Encode(rs)
-		if e != nil {
-			t.Fatal(e)
+		canon, err := c.Encode(rs)
+		if err != nil {
+			t.Fatal(err)
 		}
-		round, e := c.Decode(canon)
-		if e != nil {
-			t.Fatal(e)
+		round, err := c.Decode(canon)
+		if err != nil {
+			t.Fatal(err)
 		}
-		final, e := c.Encode(round)
-		if e != nil || !bytes.Equal(canon, final) {
+		final, err := c.Encode(round)
+		if err != nil || !bytes.Equal(canon, final) {
 			t.Fatal("unstable canonical form")
 		}
 	})

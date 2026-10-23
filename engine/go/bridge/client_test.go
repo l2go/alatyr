@@ -7,14 +7,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/l2go/alatyr/engine/go/bridge/profile"
-	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"net"
 	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/l2go/alatyr/engine/go/bridge/profile"
+	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
 
 type endpoint struct {
@@ -108,9 +109,9 @@ func openTest(t *testing.T, cfg Config) *Client {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	c, s, e := Open(ctx, cfg, Identity{"guest", "Guest"})
-	if e != nil {
-		t.Fatal(e)
+	c, s, err := Open(ctx, cfg, Identity{"guest", "Guest"})
+	if err != nil {
+		t.Fatal(err)
 	}
 	if !s.Ready || s.GatewayEpoch != 1 || s.FenceSeq != 1 || len(s.Facts) != 1 {
 		t.Fatal("initial snapshot")
@@ -153,9 +154,9 @@ func TestHandoffProofAndOrder(t *testing.T) {
 		e.close()
 	})
 	c := openTest(t, cfg)
-	n, e := c.Write(context.Background(), walk(100))
-	if e != nil || n != 1 {
-		t.Fatal(n, e)
+	n, err := c.Write(context.Background(), walk(100))
+	if err != nil || n != 1 {
+		t.Fatal(n, err)
 	}
 	<-received
 	select {
@@ -168,11 +169,11 @@ func TestHandoffProofAndOrder(t *testing.T) {
 	if u.Kind != LiveBatch || len(u.Batch.Records) != 1 || len(u.Batch.Receipts) != 1 || u.Batch.Receipts[0].Key != 100 || u.Batch.Receipts[0].Stage != wire.StageSent || len(u.Batch.ReceivedAt) != 1 {
 		t.Fatal("proof batch", u)
 	}
-	if e = c.Close(); e != nil {
-		t.Fatal(e)
+	if err = c.Close(); err != nil {
+		t.Fatal(err)
 	}
-	if e = c.Close(); e != nil {
-		t.Fatal("idempotent close", e)
+	if err = c.Close(); err != nil {
+		t.Fatal("idempotent close", err)
 	}
 	wait()
 }
@@ -191,32 +192,32 @@ func TestResumeIsCheckpointNotReplay(t *testing.T) {
 		},
 	)
 	c := openTest(t, cfg)
-	if n, e := c.Write(context.Background(), walk(9)); n != 1 || e != nil {
-		t.Fatal(n, e)
+	if n, err := c.Write(context.Background(), walk(9)); n != 1 || err != nil {
+		t.Fatal(n, err)
 	}
 	close(handoff)
 	if u := nextUpdate(t, c); u.Kind != Detached {
 		t.Fatal(u)
 	}
-	if n, e := c.Write(context.Background(), walk(10)); n != 0 || e == nil {
+	if n, err := c.Write(context.Background(), walk(10)); n != 0 || err == nil {
 		t.Fatal("detached write")
 	}
-	rec, e := c.Resume(context.Background())
-	if e != nil {
-		t.Fatal(e)
+	rec, err := c.Resume(context.Background())
+	if err != nil {
+		t.Fatal(err)
 	}
 	if rec.Snapshot.GatewayEpoch != 2 || len(rec.Receipts) != 1 || !rec.Receipts[0].Replay || rec.Receipts[0].Key != 9 {
 		t.Fatal("recovery", rec)
 	}
-	if n, e := c.Write(context.Background(), walk(10)); n != 2 || e != nil {
-		t.Fatal(n, e)
+	if n, err := c.Write(context.Background(), walk(10)); n != 2 || err != nil {
+		t.Fatal(n, err)
 	}
 	u := nextUpdate(t, c)
 	if len(u.Batch.Receipts) != 1 || u.Batch.Receipts[0].Replay {
 		t.Fatal(u)
 	}
-	if e = c.Close(); e != nil {
-		t.Fatal(e)
+	if err = c.Close(); err != nil {
+		t.Fatal(err)
 	}
 	wait()
 	if dials.Load() != 2 {
@@ -233,12 +234,11 @@ func TestLostResumeConfirmationFailsClosed(t *testing.T) {
 	if u := nextUpdate(t, c); u.Kind != Detached {
 		t.Fatal(u)
 	}
-	_, e := c.Resume(context.Background())
-	var f *Error
-	if !errors.As(e, &f) || f.Kind != RemoteCloseUnconfirmed {
-		t.Fatal(e)
+	_, err := c.Resume(context.Background())
+	if f, ok := errors.AsType[*Error](err); !ok || f.Kind != RemoteCloseUnconfirmed {
+		t.Fatal(err)
 	}
-	if _, e = c.Resume(context.Background()); e == nil {
+	if _, err = c.Resume(context.Background()); err == nil {
 		t.Fatal("guessed next epoch")
 	}
 	c.Close()
@@ -252,13 +252,13 @@ func TestParallelWriterRejectedBeforeRegistration(t *testing.T) {
 	cfg, _, wait := testConfig(t, func(e endpoint) { e.handshake(1, 1); <-allowRead; e.read(); e.close() })
 	c := openTest(t, cfg)
 	done := make(chan response, 1)
-	go func() { n, e := c.Write(context.Background(), walk(1)); done <- response{n: n, err: e} }()
+	go func() { n, err := c.Write(context.Background(), walk(1)); done <- response{n: n, err: err} }()
 	deadline := time.Now().Add(time.Second)
 	for !c.writeBusy.Load() && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	if n, e := c.Write(context.Background(), walk(2)); n != 0 || e == nil {
-		t.Fatal("second writer admitted", n, e)
+	if n, err := c.Write(context.Background(), walk(2)); n != 0 || err == nil {
+		t.Fatal("second writer admitted", n, err)
 	}
 	close(allowRead)
 	r := <-done
@@ -273,15 +273,15 @@ func TestCloseInterruptsPartialWrite(t *testing.T) {
 	cfg, _, wait := testConfig(t, func(e endpoint) { e.handshake(1, 1); <-release })
 	c := openTest(t, cfg)
 	done := make(chan response, 1)
-	go func() { n, e := c.Write(context.Background(), walk(1)); done <- response{n: n, err: e} }()
+	go func() { n, err := c.Write(context.Background(), walk(1)); done <- response{n: n, err: err} }()
 	deadline := time.Now().Add(time.Second)
 	for !c.writeBusy.Load() && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
 	start := time.Now()
-	e := c.Close()
-	if time.Since(start) > time.Second || e == nil {
-		t.Fatal("close budget or false remote success", e)
+	err := c.Close()
+	if time.Since(start) > time.Second || err == nil {
+		t.Fatal("close budget or false remote success", err)
 	}
 	r := <-done
 	if r.err == nil {
@@ -296,9 +296,9 @@ func TestCanceledWritePreservesRegisteredNumber(t *testing.T) {
 	c := openTest(t, cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
 	defer cancel()
-	n, e := c.Write(ctx, walk(1))
-	if n != 1 || e == nil {
-		t.Fatal("ambiguous write lost number", n, e)
+	n, err := c.Write(ctx, walk(1))
+	if n != 1 || err == nil {
+		t.Fatal("ambiguous write lost number", n, err)
 	}
 	if u := nextUpdate(t, c); u.Kind != Detached {
 		t.Fatal(u)
@@ -330,8 +330,8 @@ func TestCommandBoundsAndMatchingReceipt(t *testing.T) {
 	}
 	c := Command{Key: 1, Verb: 7, Payload: []wire.Field{wire.S(14, true, 1), wire.S(16, true, 2), wire.S(66, true, 1060)}}
 	r := Receipt{Requested: 7, Effective: 7, Stage: wire.StageDone, Effects: []wire.Value{{Fields: []wire.Field{wire.U(1, true, 1), wire.S(2, true, 1060), wire.S(3, true, 70), wire.S(4, true, 2)}}, {Fields: []wire.Field{wire.U(1, true, 2), wire.S(4, true, -13)}}}}
-	if e := checkReceipt(r, c); e != nil {
-		t.Fatal(e)
+	if err := checkReceipt(r, c); err != nil {
+		t.Fatal(err)
 	}
 	r.Effects[0].Fields[3] = wire.S(4, true, 3)
 	if checkReceipt(r, c) == nil {
@@ -340,8 +340,8 @@ func TestCommandBoundsAndMatchingReceipt(t *testing.T) {
 }
 func TestConfigurationAndProposalAge(t *testing.T) {
 	for _, address := range []string{"localhost:9016", "0.0.0.0:9016", "127.0.0.1:0", "127.0.0.1:65536", "[::1]:9016"} {
-		_, e := normalize(Config{Endpoint: address, Secret: [32]byte{1}}, Identity{"guest", "Guest"})
-		if e == nil {
+		_, err := normalize(Config{Endpoint: address, Secret: [32]byte{1}}, Identity{"guest", "Guest"})
+		if err == nil {
 			t.Fatal(address)
 		}
 	}
@@ -368,12 +368,12 @@ func TestPortContracts(t *testing.T) {
 			}
 		}
 	}
-	data, e := os.ReadFile("testdata/contracts.json")
-	if e != nil {
-		t.Fatal(e)
+	data, err := os.ReadFile("testdata/contracts.json")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if e = json.Unmarshal(data, &file); e != nil {
-		t.Fatal(e)
+	if err = json.Unmarshal(data, &file); err != nil {
+		t.Fatal(err)
 	}
 	if file.Version != 1 || len(file.Scenarios) == 0 {
 		t.Fatal("contracts")
@@ -434,8 +434,8 @@ func TestPortContracts(t *testing.T) {
 					cmd.Payload = []wire.Field{wire.S(14, true, 0), wire.Obj(18, true, []wire.Field{wire.S(1, true, 1), wire.S(2, true, 1)})}
 				}
 			}
-			if _, e = c.Write(context.Background(), cmd); e != nil {
-				t.Fatal(e)
+			if _, err = c.Write(context.Background(), cmd); err != nil {
+				t.Fatal(err)
 			}
 			u := nextUpdate(t, c)
 			if len(u.Batch.Receipts) != 1 || uint64(u.Batch.Receipts[0].Stage) != scenario.Stage || uint64(u.Batch.Receipts[0].Reason) != scenario.Reason || uint64(u.Batch.Receipts[0].Delivery) != scenario.Delivery {

@@ -5,6 +5,7 @@ package bridge
 
 import (
 	"encoding/json"
+	"errors"
 	"go/parser"
 	"go/token"
 	"io"
@@ -20,21 +21,21 @@ func TestDependencyBoundary(t *testing.T) {
 	const own = "github.com/l2go/alatyr/engine/go/bridge"
 	const protocol = "github.com/l2go/alatyr/engine/go/protocol"
 	const version = "v0.0.0-20261023084050-3b52c8d267a0"
-	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, e error) error {
-		if e != nil {
-			return e
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
 		if d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return nil
 		}
-		f, e := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
-		if e != nil {
-			return e
+		f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
 		}
 		for _, im := range f.Imports {
-			p, e := strconv.Unquote(im.Path.Value)
-			if e != nil {
-				return e
+			p, err := strconv.Unquote(im.Path.Value)
+			if err != nil {
+				return err
 			}
 			if strings.Contains(strings.Split(p, "/")[0], ".") && !strings.HasPrefix(p, own+"/") && !strings.HasPrefix(p, protocol+"/") && p != own && p != protocol {
 				t.Errorf("import outside bridge boundary: %s", p)
@@ -49,12 +50,12 @@ func TestDependencyBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := exec.Command("go", "list", "-deps", "-test", "-json", "./...")
-	out, e := cmd.StdoutPipe()
-	if e != nil {
-		t.Fatal(e)
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if e = cmd.Start(); e != nil {
-		t.Fatal(e)
+	if err = cmd.Start(); err != nil {
+		t.Fatal(err)
 	}
 	dec := json.NewDecoder(out)
 	count := 0
@@ -68,13 +69,13 @@ func TestDependencyBoundary(t *testing.T) {
 				Replace       json.RawMessage
 			}
 		}
-		e = dec.Decode(&p)
-		if e == io.EOF {
+		err = dec.Decode(&p)
+		if errors.Is(err, io.EOF) {
 			break
 		}
-		if e != nil {
+		if err != nil {
 			cmd.Wait()
-			t.Fatal(e)
+			t.Fatal(err)
 		}
 		if p.Standard {
 			continue
@@ -97,8 +98,8 @@ func TestDependencyBoundary(t *testing.T) {
 			t.Errorf("module outside bridge boundary: %s", p.Module.Path)
 		}
 	}
-	if e = cmd.Wait(); e != nil {
-		t.Fatal(e)
+	if err = cmd.Wait(); err != nil {
+		t.Fatal(err)
 	}
 	if count == 0 {
 		t.Fatal("protocol dependency not inspected")

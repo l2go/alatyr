@@ -6,8 +6,6 @@ package bridge
 import (
 	"context"
 	"errors"
-	"github.com/l2go/alatyr/engine/go/bridge/profile"
-	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"math"
 	"net"
 	"strings"
@@ -15,6 +13,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/l2go/alatyr/engine/go/bridge/profile"
+	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
 
 func TestRelocationBreaksProofAndWaitsForCheckpoint(t *testing.T) {
@@ -30,8 +31,8 @@ func TestRelocationBreaksProofAndWaitsForCheckpoint(t *testing.T) {
 		e.close()
 	})
 	c := openTest(t, cfg)
-	if _, e := c.Write(context.Background(), walk(1)); e != nil {
-		t.Fatal(e)
+	if _, err := c.Write(context.Background(), walk(1)); err != nil {
+		t.Fatal(err)
 	}
 	unproven := nextUpdate(t, c)
 	if len(unproven.Batch.Receipts) != 0 || profile.U(unproven.Batch.Records[0], 2) != 2 {
@@ -41,7 +42,7 @@ func TestRelocationBreaksProofAndWaitsForCheckpoint(t *testing.T) {
 	if len(corrected.Batch.Records) != 1 || profile.U(corrected.Batch.Records[0], 66) != 4 {
 		t.Fatal(corrected)
 	}
-	if n, e := c.Write(context.Background(), walk(2)); n != 0 || e == nil {
+	if n, err := c.Write(context.Background(), walk(2)); n != 0 || err == nil {
 		t.Fatal("command before ready")
 	}
 	close(checkpoint)
@@ -69,8 +70,8 @@ func TestProofExpiryKeepsOriginalReceiveTime(t *testing.T) {
 	})
 	cfg.Now = func() time.Time { return base.Add(time.Duration(elapsed.Load())) }
 	c := openTest(t, cfg)
-	if _, e := c.Write(context.Background(), walk(1)); e != nil {
-		t.Fatal(e)
+	if _, err := c.Write(context.Background(), walk(1)); err != nil {
+		t.Fatal(err)
 	}
 	<-gotFact
 	elapsed.Store(int64(6 * time.Second))
@@ -180,8 +181,8 @@ func TestOpenRefusalAndInvalidLimits(t *testing.T) {
 			if err == nil || c != nil {
 				t.Fatal("invalid opening published client")
 			}
-			var typed *Error
-			if !errors.As(err, &typed) {
+			typed, ok := errors.AsType[*Error](err)
+			if !ok {
 				t.Fatal("untyped error")
 			}
 			if mode == "refused" && (typed.Kind != OpenRefused || typed.Code != 11) {
@@ -193,7 +194,7 @@ func TestOpenRefusalAndInvalidLimits(t *testing.T) {
 }
 func TestBoundedOwnerAndSequenceValidation(t *testing.T) {
 	c := &Client{cfg: Config{Now: time.Now}, codec: mustCodec(t)}
-	o := &owner{c: c, phase: 1, epoch: 1, next: 1, seq: 4, self: 7, entries: map[uint64]*entry{}}
+	o := &owner{c: c, phase: phaseLive, epoch: 1, next: 1, seq: 4, self: 7, entries: map[uint64]*entry{}}
 	if o.validateFrame([]wire.Record{rawFact(4, 1, 2)}) == nil {
 		t.Fatal("repeated sequence")
 	}
@@ -218,13 +219,13 @@ func TestBoundedOwnerAndSequenceValidation(t *testing.T) {
 	if o.enqueue(Batch{Records: []wire.Record{r}}, 1) {
 		t.Fatal("backlog cap")
 	}
-	o.phase = 2
+	o.phase = phaseDetached
 	op := operation{ctx: context.Background(), command: walk(1), reply: make(chan response, 1)}
 	o.write(op)
 	if (<-op.reply).n != 0 {
 		t.Fatal("detached registration")
 	}
-	o.phase = 1
+	o.phase = phaseLive
 	o.ready = true
 	o.next = 0
 	o.write(op)
@@ -243,24 +244,24 @@ func TestBoundedOwnerAndSequenceValidation(t *testing.T) {
 }
 func mustCodec(t *testing.T) *profile.Codec {
 	t.Helper()
-	c, e := profile.NewProfileCodec()
-	if e != nil {
-		t.Fatal(e)
+	c, err := profile.NewProfileCodec()
+	if err != nil {
+		t.Fatal(err)
 	}
 	return c
 }
 func TestReceiptCacheConflictAndNoInventedFacts(t *testing.T) {
-	o := &owner{c: &Client{cfg: Config{Now: time.Now}}, phase: 1, epoch: 1, entries: map[uint64]*entry{1: {command: walk(10), n: 1, epoch: 1}}}
+	o := &owner{c: &Client{cfg: Config{Now: time.Now}}, phase: phaseLive, epoch: 1, entries: map[uint64]*entry{1: {command: walk(10), n: 1, epoch: 1}}}
 	first := sent(1, 1)
-	copy := first
-	o.entries[1].result = &copy
-	if e := o.validateFrame([]wire.Record{first}); e != nil {
-		t.Fatal(e)
+	retained := first
+	o.entries[1].result = &retained
+	if err := o.validateFrame([]wire.Record{first}); err != nil {
+		t.Fatal(err)
 	}
 	reordered := sent(1, 1)
 	reordered.Fields[0], reordered.Fields[1] = reordered.Fields[1], reordered.Fields[0]
-	if e := o.validateFrame([]wire.Record{reordered}); e != nil {
-		t.Fatal("field order changed duplicate meaning", e)
+	if err := o.validateFrame([]wire.Record{reordered}); err != nil {
+		t.Fatal("field order changed duplicate meaning", err)
 	}
 	other := sent(1, 1)
 	other.Fields[1] = wire.U(2, true, 4)
@@ -272,8 +273,8 @@ func TestReceiptCacheConflictAndNoInventedFacts(t *testing.T) {
 	if o.validateFrame([]wire.Record{first, other}) == nil {
 		t.Fatal("conflicting results in one frame")
 	}
-	if e := o.apply(event{records: []wire.Record{first}, at: time.Now()}); e != nil {
-		t.Fatal(e)
+	if err := o.apply(event{records: []wire.Record{first}, at: time.Now()}); err != nil {
+		t.Fatal(err)
 	}
 	if len(o.queue) != 1 || len(o.queue[0].u.Batch.Records) != 0 || len(o.queue[0].u.Batch.Receipts) != 1 {
 		t.Fatal("receipt fabricated facts")
@@ -307,15 +308,15 @@ func TestConfirmedResumeCanRecoverAgain(t *testing.T) {
 	cfg, dials, wait := testConfig(t, func(e endpoint) { e.handshake(1, 1) }, func(e endpoint) { e.read(); e.send(cp(1, 2, 0)) }, func(e endpoint) { e.handshake(3, 2); e.close() })
 	c := openTest(t, cfg)
 	nextUpdate(t, c)
-	if _, e := c.Resume(context.Background()); e == nil {
+	if _, err := c.Resume(context.Background()); err == nil {
 		t.Fatal("partial checkpoint returned success")
 	}
 	if u := nextUpdate(t, c); u.Kind != Detached {
 		t.Fatal(u)
 	}
-	rec, e := c.Resume(context.Background())
-	if e != nil || rec.Snapshot.GatewayEpoch != 3 {
-		t.Fatal("confirmed epoch lost", rec, e)
+	rec, err := c.Resume(context.Background())
+	if err != nil || rec.Snapshot.GatewayEpoch != 3 {
+		t.Fatal("confirmed epoch lost", rec, err)
 	}
 	c.Close()
 	wait()
@@ -336,23 +337,23 @@ func TestResumeDialFailureDoesNotGuessOrRefreshEpoch(t *testing.T) {
 	}
 	c := openTest(t, cfg)
 	nextUpdate(t, c)
-	if _, e := c.Resume(context.Background()); e == nil {
+	if _, err := c.Resume(context.Background()); err == nil {
 		t.Fatal("dial failure ignored")
 	}
-	rec, e := c.Resume(context.Background())
-	if e != nil || rec.Snapshot.GatewayEpoch != 2 {
-		t.Fatal("unsent resume consumed epoch", rec, e)
+	rec, err := c.Resume(context.Background())
+	if err != nil || rec.Snapshot.GatewayEpoch != 2 {
+		t.Fatal("unsent resume consumed epoch", rec, err)
 	}
 	c.Close()
 	wait()
 }
 
 func TestCompletedCacheNeverEvictsPending(t *testing.T) {
-	o := &owner{c: &Client{cfg: Config{Now: time.Now}}, phase: 1, epoch: 1, entries: map[uint64]*entry{1000: {command: walk(1000), n: 1000, epoch: 1}}}
+	o := &owner{c: &Client{cfg: Config{Now: time.Now}}, phase: phaseLive, epoch: 1, entries: map[uint64]*entry{1000: {command: walk(1000), n: 1000, epoch: 1}}}
 	for n := uint64(1); n <= 65; n++ {
 		o.entries[n] = &entry{command: walk(n), n: n, epoch: 1}
-		if e := o.apply(event{records: []wire.Record{sent(n, 1)}, at: time.Now()}); e != nil {
-			t.Fatal(e)
+		if err := o.apply(event{records: []wire.Record{sent(n, 1)}, at: time.Now()}); err != nil {
+			t.Fatal(err)
 		}
 	}
 	if len(o.completed) != 64 || len(o.entries) != 65 || o.entries[1] != nil || o.entries[1000] == nil || o.entries[1000].result != nil {
@@ -371,22 +372,21 @@ func TestProcessSessionCapBeforeDial(t *testing.T) {
 		called = true
 		return nil, errors.New("must not dial")
 	}}
-	_, _, e := Open(context.Background(), cfg, Identity{"guest", "Guest"})
-	var typed *Error
-	if !errors.As(e, &typed) || typed.Kind != Capacity || called || sessions.Load() != 64 {
-		t.Fatal("session cap after allocation", e)
+	_, _, err := Open(context.Background(), cfg, Identity{"guest", "Guest"})
+	if typed, ok := errors.AsType[*Error](err); !ok || typed.Kind != Capacity || called || sessions.Load() != 64 {
+		t.Fatal("session cap after allocation", err)
 	}
 }
 
 func TestNewGenerationInvalidatesOlderCheckpoint(t *testing.T) {
-	o := &owner{c: &Client{cfg: Config{Now: time.Now}}, phase: 1, epoch: 1, self: 7, g: 4, ready: true, entries: map[uint64]*entry{}}
+	o := &owner{c: &Client{cfg: Config{Now: time.Now}}, phase: phaseLive, epoch: 1, self: 7, g: 4, ready: true, entries: map[uint64]*entry{}}
 	apply := func(rs ...wire.Record) {
 		t.Helper()
-		if e := o.validateFrame(rs); e != nil {
-			t.Fatal(e)
+		if err := o.validateFrame(rs); err != nil {
+			t.Fatal(err)
 		}
-		if e := o.apply(event{records: rs, at: time.Now()}); e != nil {
-			t.Fatal(e)
+		if err := o.apply(event{records: rs, at: time.Now()}); err != nil {
+			t.Fatal(err)
 		}
 	}
 	apply(cp(1, 1, 0))

@@ -25,6 +25,8 @@ import (
 
 var sessions atomic.Int32
 
+// Client is one bridge/1 session with the world endpoint. A single owner
+// goroutine serializes all protocol work; methods are safe for concurrent use.
 type Client struct {
 	cfg                   Config
 	codec                 *profile.Codec
@@ -41,8 +43,30 @@ type response struct {
 	recovery Recovery
 	err      error
 }
+
+// opKind is the caller request an operation carries to the owner.
+type opKind uint8
+
+const (
+	opWrite  opKind = iota + 1 // Write: submit one command
+	opResume                   // Resume: reopen a detached session
+)
+
+// phase is the owner's view of the session lifecycle.
+type phase uint8
+
+const (
+	phaseOpening  phase = iota // handshake until the first complete checkpoint
+	phaseLive                  // commands may be written
+	phaseDetached              // the transport is gone; Resume may reopen it
+	phaseRecovery              // Resume is replaying retained results
+)
+
+// An operation and an outgoing write carry the caller's context to the owner
+// and its workers. The context is request-scoped, as in http.Request: it
+// bounds that one request and is not retained after the reply.
 type operation struct {
-	kind    uint8
+	kind    opKind
 	ctx     context.Context
 	command Command
 	reply   chan response
@@ -76,7 +100,7 @@ type pendingUpdate struct {
 }
 type owner struct {
 	c                                     *Client
-	phase                                 uint8 // 0 opening, 1 live, 2 detached, 3 recovery
+	phase                                 phase
 	conn                                  *transport.Conn
 	cancel                                context.CancelFunc
 	workers                               sync.WaitGroup
@@ -113,9 +137,9 @@ func normalize(cfg Config, id Identity) (Config, error) {
 	if cfg.Endpoint == "" {
 		cfg.Endpoint = "127.0.0.1:9016"
 	}
-	host, port, e := net.SplitHostPort(cfg.Endpoint)
+	host, port, err := net.SplitHostPort(cfg.Endpoint)
 	p, pe := strconv.Atoi(port)
-	if e != nil || pe != nil || host != "127.0.0.1" || p < 1 || p > 65535 || cfg.Secret == [32]byte{} {
+	if err != nil || pe != nil || host != "127.0.0.1" || p < 1 || p > 65535 || cfg.Secret == [32]byte{} {
 		return cfg, failure(ConfigError)
 	}
 	if cfg.ResumeBudget == 0 {
@@ -138,17 +162,19 @@ func normalize(cfg Config, id Identity) (Config, error) {
 	return cfg, nil
 }
 
+// Open dials the endpoint, opens a session for id and returns the client with
+// its opening checkpoint. A process holds at most 64 open clients.
 func Open(ctx context.Context, cfg Config, id Identity) (*Client, Snapshot, error) {
-	cfg, e := normalize(cfg, id)
-	if e != nil {
-		return nil, Snapshot{}, e
+	cfg, err := normalize(cfg, id)
+	if err != nil {
+		return nil, Snapshot{}, err
 	}
 	if sessions.Add(1) > 64 {
 		sessions.Add(-1)
 		return nil, Snapshot{}, failure(Capacity)
 	}
-	codec, e := profile.NewProfileCodec()
-	if e != nil {
+	codec, err := profile.NewProfileCodec()
+	if err != nil {
 		sessions.Add(-1)
 		return nil, Snapshot{}, failure(ConfigError)
 	}
@@ -163,6 +189,9 @@ func Open(ctx context.Context, cfg Config, id Identity) (*Client, Snapshot, erro
 	}
 	return c, r.recovery.Snapshot, nil
 }
+
+// Updates returns the channel of live batches and lifecycle changes. The last
+// value is a Closed update, after which the channel is closed.
 func (c *Client) Updates() <-chan Update { return c.updates }
 func (c *Client) wait(op operation) response {
 	select {
@@ -191,15 +220,19 @@ func (c *Client) wait(op operation) response {
 		}
 	}
 }
+
+// Write hands one command to the endpoint and returns its attempt number. Only
+// one Write may be in progress; a concurrent call fails with StateError. A
+// failure after handoff does not mean the command had no effect.
 func (c *Client) Write(ctx context.Context, command Command) (uint64, error) {
 	if !c.writeBusy.CompareAndSwap(false, true) {
 		return 0, failure(StateError)
 	}
 	defer c.writeBusy.Store(false)
-	if e := validateCommand(command); e != nil {
-		return 0, e
+	if err := validateCommand(command); err != nil {
+		return 0, err
 	}
-	op := operation{kind: 1, ctx: ctx, command: command, reply: make(chan response, 1)}
+	op := operation{kind: opWrite, ctx: ctx, command: command, reply: make(chan response, 1)}
 	select {
 	case c.requests <- op:
 	case <-ctx.Done():
@@ -212,12 +245,16 @@ func (c *Client) Write(ctx context.Context, command Command) (uint64, error) {
 	r := c.wait(op)
 	return r.n, r.err
 }
+
+// Resume reopens a detached session within Config.ResumeBudget and returns the
+// restored checkpoint and retained receipts. Only one Resume may be in
+// progress, and it fails with StateError unless the session is detached.
 func (c *Client) Resume(ctx context.Context) (Recovery, error) {
 	if !c.resumeBusy.CompareAndSwap(false, true) {
 		return Recovery{}, failure(StateError)
 	}
 	defer c.resumeBusy.Store(false)
-	op := operation{kind: 2, ctx: ctx, reply: make(chan response, 1)}
+	op := operation{kind: opResume, ctx: ctx, reply: make(chan response, 1)}
 	select {
 	case c.requests <- op:
 	case <-ctx.Done():
@@ -230,7 +267,14 @@ func (c *Client) Resume(ctx context.Context) (Recovery, error) {
 	r := c.wait(op)
 	return r.recovery, r.err
 }
-func (c *Client) Close() error { c.closing.Do(func() { close(c.stop) }); <-c.done; return c.closeErr }
+
+// Close stops the client, waits for its owner to finish and returns
+// RemoteCloseUnconfirmed if the endpoint did not confirm the closure.
+func (c *Client) Close() error {
+	c.closing.Do(func() { close(c.stop) })
+	<-c.done
+	return c.closeErr
+}
 func (o *owner) reply(op *operation, r response) {
 	if op != nil {
 		op.reply <- r
@@ -243,7 +287,7 @@ func (o *owner) launch(op *operation, first wire.Record) {
 	o.handshakeCtx = cancel
 	o.handshake = op
 	o.barrier = o.c.cfg.Now().Add(10 * time.Second)
-	if o.phase == 3 {
+	if o.phase == phaseRecovery {
 		budget := o.detached.Add(o.c.cfg.ResumeBudget)
 		if budget.Before(o.barrier) {
 			o.barrier = budget
@@ -257,8 +301,8 @@ func (o *owner) launch(op *operation, first wire.Record) {
 	o.workers.Add(1)
 	go func() {
 		defer o.workers.Done()
-		conn, e := o.c.cfg.DialContext(ctx, "tcp4", o.c.cfg.Endpoint)
-		ev := event{token: token, conn: conn, err: e, records: []wire.Record{first}}
+		conn, err := o.c.cfg.DialContext(ctx, "tcp4", o.c.cfg.Endpoint)
+		ev := event{token: token, conn: conn, err: err, records: []wire.Record{first}}
 		select {
 		case o.c.events <- ev:
 		case <-ctx.Done():
@@ -286,14 +330,14 @@ func (o *owner) attach(raw net.Conn, first []wire.Record) {
 	go func() {
 		defer o.workers.Done()
 		for {
-			rs, n, e := conn.Read()
-			ev := event{token: token, records: rs, bytes: n, at: o.c.cfg.Now(), err: e}
+			rs, n, err := conn.Read()
+			ev := event{token: token, records: rs, bytes: n, at: o.c.cfg.Now(), err: err}
 			select {
 			case o.c.events <- ev:
 			case <-ctx.Done():
 				return
 			}
-			if e != nil {
+			if err != nil {
 				return
 			}
 		}
@@ -314,13 +358,13 @@ func (o *owner) attach(raw net.Conn, first []wire.Record) {
 				case job = <-writeq:
 				}
 			}
-			e := conn.Write(job.ctx, job.records)
+			err := conn.Write(job.ctx, job.records)
 			select {
-			case o.c.events <- event{token: token, written: true, closeWrite: job.closeWrite, op: job.op, err: e}:
+			case o.c.events <- event{token: token, written: true, closeWrite: job.closeWrite, op: job.op, err: err}:
 			case <-ctx.Done():
 				return
 			}
-			if e != nil {
+			if err != nil {
 				return
 			}
 		}
@@ -337,7 +381,7 @@ func (o *owner) readBound() {
 			deadline = t
 		}
 	}
-	if o.phase == 0 || o.phase == 3 {
+	if o.phase == phaseOpening || o.phase == phaseRecovery {
 		add(o.barrier)
 	}
 	add(o.checkpoint)
@@ -362,7 +406,7 @@ func (o *owner) drop() {
 }
 func (o *owner) detachment(k FailureKind) {
 	o.drop()
-	o.phase = 2
+	o.phase = phaseDetached
 	o.ready = false
 	o.detached = o.c.cfg.Now()
 	o.queue = nil
@@ -484,7 +528,7 @@ func (o *owner) run(first operation, id Identity) {
 			o.finish(StateError, false)
 			return
 		case <-handshakeCancel:
-			if o.phase == 3 && !o.confirmed {
+			if o.phase == phaseRecovery && !o.confirmed {
 				o.finish(RemoteCloseUnconfirmed, false)
 				return
 			}
@@ -508,14 +552,14 @@ func (o *owner) run(first operation, id Identity) {
 				o.reply(&op, response{err: failure(Timeout)})
 				continue
 			}
-			if op.kind == 1 {
+			if op.kind == opWrite {
 				o.write(op)
 			} else {
-				if o.phase != 2 || o.session == 0 || o.epoch == math.MaxUint64 || o.c.cfg.Now().Sub(o.detached) >= o.c.cfg.ResumeBudget {
+				if o.phase != phaseDetached || o.session == 0 || o.epoch == math.MaxUint64 || o.c.cfg.Now().Sub(o.detached) >= o.c.cfg.ResumeBudget {
 					o.reply(&op, response{err: failure(StateError)})
 					continue
 				}
-				o.phase = 3
+				o.phase = phaseRecovery
 				o.epoch++
 				o.launch(&op, wire.Record{Type: profile.Resume, Fields: []wire.Field{wire.U(1, true, o.session), wire.U(2, true, o.epoch), wire.Data(3, true, string(o.c.cfg.Secret[:])), wire.Data(4, true, profile.Name)}})
 			}
@@ -526,7 +570,7 @@ func (o *owner) run(first operation, id Identity) {
 				}
 				continue
 			}
-			if o.phase == 2 {
+			if o.phase == phaseDetached {
 				if ev.conn != nil {
 					ev.conn.Close()
 				}
@@ -546,7 +590,7 @@ func (o *owner) run(first operation, id Identity) {
 					o.finish(Protocol, false)
 					return
 				}
-				if o.phase == 0 {
+				if o.phase == phaseOpening {
 					kind := Transport
 					if o.conn == nil {
 						kind = DialError
@@ -556,10 +600,10 @@ func (o *owner) run(first operation, id Identity) {
 					o.finish(kind, false)
 					return
 				}
-				if o.phase == 3 && !o.confirmed {
+				if o.phase == phaseRecovery && !o.confirmed {
 					if o.conn == nil {
 						o.epoch--
-						o.phase = 2
+						o.phase = phaseDetached
 						o.handshakeCtx()
 						o.handshakeCtx = nil
 						o.reply(o.handshake, response{err: failure(DialError)})
@@ -570,8 +614,7 @@ func (o *owner) run(first operation, id Identity) {
 					return
 				}
 				kind := Transport
-				var ne net.Error
-				if errors.As(ev.err, &ne) && ne.Timeout() {
+				if ne, ok := errors.AsType[net.Error](ev.err); ok && ne.Timeout() {
 					kind = Timeout
 				}
 				o.detachment(kind)
@@ -584,30 +627,30 @@ func (o *owner) run(first operation, id Identity) {
 				}
 				continue
 			}
-			if e := o.validateFrame(ev.records); e != nil {
-				o.setProtocol(e)
-				if errorKind(e) == Capacity && o.phase == 1 {
+			if err := o.validateFrame(ev.records); err != nil {
+				o.setProtocol(err)
+				if errorKind(err) == Capacity && o.phase == phaseLive {
 					o.detachment(Capacity)
 					continue
 				}
-				o.finish(errorKind(e), false)
+				o.finish(errorKind(err), false)
 				return
 			}
-			if e := o.apply(ev); e != nil {
-				o.setProtocol(e)
-				if errorKind(e) == Capacity && o.phase == 1 {
+			if err := o.apply(ev); err != nil {
+				o.setProtocol(err)
+				if errorKind(err) == Capacity && o.phase == phaseLive {
 					o.detachment(Capacity)
 					continue
 				}
-				o.finish(errorKind(e), false)
+				o.finish(errorKind(err), false)
 				return
 			}
 		case <-tick.C:
 			now := o.c.cfg.Now()
-			if o.phase == 0 || o.phase == 3 {
+			if o.phase == phaseOpening || o.phase == phaseRecovery {
 				if !now.Before(o.barrier) {
 					k := Timeout
-					if o.phase == 3 && !o.confirmed {
+					if o.phase == phaseRecovery && !o.confirmed {
 						k = RemoteCloseUnconfirmed
 					}
 					o.finish(k, false)
@@ -615,7 +658,7 @@ func (o *owner) run(first operation, id Identity) {
 				}
 				continue
 			}
-			if o.phase == 2 {
+			if o.phase == phaseDetached {
 				if now.Sub(o.detached) >= o.c.cfg.ResumeBudget {
 					o.finish(RemoteCloseUnconfirmed, false)
 					return
@@ -654,21 +697,20 @@ func (o *owner) run(first operation, id Identity) {
 		}
 	}
 }
-func (o *owner) setProtocol(e error) {
+func (o *owner) setProtocol(err error) {
 	o.protocolKind = wire.CloseFrameError
-	if errors.Is(e, wire.ErrUnsupported) {
+	if errors.Is(err, wire.ErrUnsupported) {
 		o.protocolKind = wire.CloseUnsupported
 	}
 }
-func errorKind(e error) FailureKind {
-	var typed *Error
-	if errors.As(e, &typed) {
+func errorKind(err error) FailureKind {
+	if typed, ok := errors.AsType[*Error](err); ok {
 		return typed.Kind
 	}
 	return Protocol
 }
 func (o *owner) write(op operation) {
-	if o.phase != 1 || !o.ready || o.active != nil || o.next == 0 {
+	if o.phase != phaseLive || !o.ready || o.active != nil || o.next == 0 {
 		o.reply(&op, response{err: failure(StateError)})
 		return
 	}
@@ -702,8 +744,8 @@ func (o *owner) write(op operation) {
 		}
 	}
 	r := commandRecord(op.command, o.next, o.epoch, ttl)
-	data, e := o.c.codec.Encode([]wire.Record{r})
-	if e != nil || len(data) > 4096 {
+	data, err := o.c.codec.Encode([]wire.Record{r})
+	if err != nil || len(data) > 4096 {
 		kind := Protocol
 		if len(data) > 4096 {
 			kind = Capacity
@@ -711,8 +753,8 @@ func (o *owner) write(op operation) {
 		o.reply(&op, response{err: failure(kind)})
 		return
 	}
-	own, e := o.c.codec.Decode(data)
-	if e != nil {
+	own, err := o.c.codec.Decode(data)
+	if err != nil {
 		o.reply(&op, response{err: failure(Protocol)})
 		return
 	}
@@ -773,14 +815,14 @@ func (o *owner) validateFrame(rs []wire.Record) error {
 	seq := o.seq
 	inCheckpoint := o.inCheckpoint
 	ended := o.ended
-	phase := o.phase
+	current := o.phase
 	checkpointBytes := o.checkpointBytes
 	results := map[uint64]wire.Record{}
 	for _, r := range rs {
 		switch r.Type {
 		case wire.Ping, wire.Pong, wire.Bye:
 		case profile.Opened:
-			if phase != 0 && phase != 3 {
+			if current != phaseOpening && current != phaseRecovery {
 				return wire.ErrFrame
 			}
 			if profile.U(r, 1) == 2 && len(rs) != 1 {
@@ -789,13 +831,13 @@ func (o *owner) validateFrame(rs []wire.Record) error {
 			if profile.U(r, 1) == 1 && (!ended || inCheckpoint || profile.U(r, 2) == 0 || profile.U(r, 4) != o.epoch || o.session != 0 && profile.U(r, 2) != o.session) {
 				return wire.ErrFrame
 			}
-			phase = 1
+			current = phaseLive
 		case wire.Checkpoint:
 			if profile.U(r, 2) != o.epoch {
 				return wire.ErrFrame
 			}
 			if wire.CheckpointPhase(profile.U(r, 1)) == wire.CheckpointBegin {
-				if inCheckpoint || ended && (phase == 0 || phase == 3) {
+				if inCheckpoint || ended && (current == phaseOpening || current == phaseRecovery) {
 					return wire.ErrFrame
 				}
 				inCheckpoint = true
@@ -808,7 +850,7 @@ func (o *owner) validateFrame(rs []wire.Record) error {
 				ended = true
 			}
 		case wire.Fact:
-			if (phase == 0 || phase == 3) && !inCheckpoint && !ended {
+			if (current == phaseOpening || current == phaseRecovery) && !inCheckpoint && !ended {
 				return wire.ErrFrame
 			}
 			if inCheckpoint {
@@ -832,14 +874,14 @@ func (o *owner) validateFrame(rs []wire.Record) error {
 				return wire.ErrFrame
 			}
 		case wire.Result:
-			if phase == 0 || phase == 3 && !ended {
+			if current == phaseOpening || current == phaseRecovery && !ended {
 				return wire.ErrFrame
 			}
 			e := o.entries[profile.U(r, 1)]
 			if e == nil {
 				return wire.ErrFrame
 			}
-			receipt := decodeReceipt(r, e, o.c.cfg.Now(), phase == 3)
+			receipt := decodeReceipt(r, e, o.c.cfg.Now(), current == phaseRecovery)
 			if r.EncodedBytes > 8192 || len(receipt.Effects) > 64 {
 				return wire.ErrFrame
 			}
@@ -968,7 +1010,7 @@ func (o *owner) apply(ev event) error {
 				o.checkpointGeneration = o.g
 				o.ready = false
 				o.checkpoint = o.c.cfg.Now().Add(10 * time.Second)
-				if o.phase == 3 {
+				if o.phase == phaseRecovery {
 					o.confirmed = true
 				}
 				o.readBound()
@@ -987,11 +1029,11 @@ func (o *owner) apply(ev event) error {
 				}
 				o.snap.Ready = o.ready
 				o.snap.FenceSeq = o.seq
-				if o.phase == 1 {
+				if o.phase == phaseLive {
 					o.readBound()
 				}
 			}
-			if o.phase == 1 {
+			if o.phase == phaseLive {
 				if !o.enqueue(Batch{Records: []wire.Record{r}, ReceivedAt: []time.Time{ev.at}, Snapshot: true}, r.EncodedBytes) {
 					return failure(Capacity)
 				}
@@ -1001,7 +1043,7 @@ func (o *owner) apply(ev event) error {
 			if o.inCheckpoint {
 				o.checkpointBytes += r.EncodedBytes
 			}
-			if (o.phase == 0 || o.phase == 3) && o.inCheckpoint {
+			if (o.phase == phaseOpening || o.phase == phaseRecovery) && o.inCheckpoint {
 				if r.EncodedBytes > 2097152-o.snap.EncodedBytes || len(o.snap.Facts) >= 65536 {
 					return failure(Capacity)
 				}
@@ -1064,18 +1106,18 @@ func (o *owner) apply(ev event) error {
 			}
 		case wire.Result:
 			e := o.entries[profile.U(r, 1)]
-			replay := o.phase == 3 || e.result != nil
+			replay := o.phase == phaseRecovery || e.result != nil
 			receipt := decodeReceipt(r, e, ev.at, replay)
 			if e.result == nil {
-				copy := r
-				e.result = &copy
+				result := r
+				e.result = &result
 				o.completed = append(o.completed, e.n)
 				if len(o.completed) > 64 {
 					delete(o.entries, o.completed[0])
 					o.completed = o.completed[1:]
 				}
 			}
-			if o.phase == 3 {
+			if o.phase == phaseRecovery {
 				o.replay = append(o.replay, receipt)
 			} else if !replay {
 				if len(o.proof.Records) > 0 && ev.at.Before(o.proofDeadline) {
@@ -1105,7 +1147,7 @@ func (o *owner) apply(ev event) error {
 			}
 			o.session = profile.U(r, 2)
 			o.confirmed = true
-			o.phase = 1
+			o.phase = phaseLive
 			o.ready = true
 			o.lastPing = o.c.cfg.Now()
 			o.readBound()
