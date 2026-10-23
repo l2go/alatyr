@@ -607,6 +607,7 @@ public class PlayerInventory extends Inventory
 	/** Publishes item rows already committed by a multisell JDBC transaction. */
 	public void publishCommittedMultisell(Map<L2ItemInstance, Long> finalCounts, List<L2ItemInstance> products)
 	{
+		com.l2jfree.gameserver.network.bridge.EffectLedger.incomplete(getOwner());
 		synchronized (itemSetLock())
 		{
 			for (L2ItemInstance item : finalCounts.keySet())

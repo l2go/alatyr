@@ -3971,8 +3971,6 @@ public abstract class L2Creature extends L2Object
 	
 	/** L2Charcater targeted by the L2Creature */
 	private L2Object _target = null;
-	private final Object _bridgeTargetLock = new Object();
-	private final Object _bridgeSkillLock = new Object();
 
 	private void recordSkillReceipt(L2Skill previous, L2Skill current)
 	{
@@ -4546,14 +4544,11 @@ public abstract class L2Creature extends L2Object
 		
 		if (this instanceof L2Player && ((L2Player)this).isBridgeSession())
 		{
-			synchronized (_bridgeTargetLock)
-			{
 				L2Object previous = _target;
 				_target = newTarget;
 				if (previous != newTarget && com.l2jfree.gameserver.network.bridge.EffectLedger.isActive())
 					com.l2jfree.gameserver.network.bridge.EffectLedger.record((L2Player)this,
 							com.l2jfree.gameserver.network.bridge.BridgeEffect.target(newTarget == null ? 0 : newTarget.getObjectId()));
-			}
 		}
 		else
 			_target = newTarget;
@@ -5769,11 +5764,8 @@ public abstract class L2Creature extends L2Object
 		final L2Skill oldSkill;
 		if (this instanceof L2Player && ((L2Player)this).isBridgeSession())
 		{
-			synchronized (_bridgeSkillLock)
-			{
 				oldSkill = _skills.put(newSkill.getId(), newSkill);
 				recordSkillReceipt(oldSkill, newSkill);
-			}
 		}
 		else
 			oldSkill = _skills.put(newSkill.getId(), newSkill);
@@ -5817,11 +5809,8 @@ public abstract class L2Creature extends L2Object
 		final L2Skill oldSkill;
 		if (this instanceof L2Player && ((L2Player)this).isBridgeSession())
 		{
-			synchronized (_bridgeSkillLock)
-			{
 				oldSkill = _skills.remove(skill.getId());
 				recordSkillReceipt(oldSkill, null);
-			}
 		}
 		else
 			oldSkill = _skills.remove(skill.getId());

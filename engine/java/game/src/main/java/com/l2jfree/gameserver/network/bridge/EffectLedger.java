@@ -57,6 +57,14 @@ public final class EffectLedger
 			return;
 		attempt.add(owner, effect);
 	}
+
+	/** Marks an owner mutation path whose complete receipt set is not represented by this profile. */
+	public static void incomplete(L2Player owner)
+	{
+		Attempt attempt = ACTIVE.get();
+		if (attempt != null)
+			attempt.markIncomplete(owner);
+	}
 	
 	public static void expectLearningCost(L2Player owner, int branch, int spCost, int itemId, long itemCount)
 	{

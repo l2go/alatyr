@@ -233,7 +233,9 @@ public abstract class ItemContainer
 			item.setLastChange((L2ItemInstance.ADDED));
 			
 			// Add item in inventory
+			long addedCount = item.getCount();
 			addItem(item);
+			recordReceipt(item, addedCount);
 			
 			// Updates database
 			item.updateDatabase();
@@ -293,6 +295,7 @@ public abstract class ItemContainer
 				
 				// Add item in inventory
 				addItem(item);
+				recordReceipt(item, template.isStackable() ? count : 1);
 				// Updates database
 				item.updateDatabase();
 				
@@ -336,6 +339,7 @@ public abstract class ItemContainer
 		
 		// Add item in inventory and equip it if necessary (item location defined)
 		addItem(item);
+		recordReceipt(item, 1);
 		
 		// Calculate the weight loaded by player
 		refreshWeight();
@@ -400,7 +404,8 @@ public abstract class ItemContainer
 			// If possible, move entire item object
 			if (sourceitem.getCount() == count && targetitem == null)
 			{
-				removeItem(sourceitem);
+				if (removeItem(sourceitem))
+					recordReceipt(sourceitem, -count);
 				target.addItem(process, sourceitem, actor, reference);
 				targetitem = sourceitem;
 			}
@@ -414,7 +419,8 @@ public abstract class ItemContainer
 				else
 				// Otherwise destroy old item
 				{
-					removeItem(sourceitem);
+					if (removeItem(sourceitem))
+						recordReceipt(sourceitem, -count);
 					sourceitem.setLastChange(L2ItemInstance.REMOVED);
 					ItemTable.getInstance().destroyItem(process, sourceitem, actor, reference);
 				}
@@ -493,6 +499,7 @@ public abstract class ItemContainer
 			boolean removed = removeItem(item);
 			if (!removed)
 				return null;
+			recordReceipt(item, -count);
 			
 			ItemTable.getInstance().destroyItem(process, item, actor, reference);
 			item.updateDatabase();
@@ -560,18 +567,7 @@ public abstract class ItemContainer
 	 */
 	protected synchronized void addItem(L2ItemInstance item)
 	{
-		if (!(this instanceof PlayerInventory) || !((PlayerInventory)this).getOwner().isBridgeSession())
-		{
-			_items.add(item);
-			return;
-		}
-		if (_items.add(item))
-		{
-			synchronized (item)
-			{
-				recordReceipt(item, item.getCount());
-			}
-		}
+		_items.add(item);
 	}
 	
 	/**
@@ -580,30 +576,14 @@ public abstract class ItemContainer
 	 */
 	protected synchronized boolean removeItem(L2ItemInstance item)
 	{
-		if (!(this instanceof PlayerInventory) || !((PlayerInventory)this).getOwner().isBridgeSession())
-			return _items.remove(item);
-		if (!_items.remove(item))
-			return false;
-		synchronized (item)
-		{
-			recordReceipt(item, -item.getCount());
-		}
-		return true;
+		return _items.remove(item);
 	}
 
 	private void changeCountWithReceipt(L2ItemInstance item, String process, long count, L2Player actor, L2Object reference)
 	{
-		if (!(this instanceof PlayerInventory) || !((PlayerInventory)this).getOwner().isBridgeSession())
-		{
-			item.changeCount(process, count, actor, reference);
-			return;
-		}
-		synchronized (item)
-		{
-			long before = item.getCount();
-			item.changeCount(process, count, actor, reference);
-			recordReceipt(item, item.getCount() - before);
-		}
+		long before = item.getCount();
+		item.changeCount(process, count, actor, reference);
+		recordReceipt(item, item.getCount() - before);
 	}
 
 	private void recordReceipt(L2ItemInstance item, long delta)

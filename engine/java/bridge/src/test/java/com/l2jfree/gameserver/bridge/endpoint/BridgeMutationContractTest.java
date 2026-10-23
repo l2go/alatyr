@@ -21,10 +21,29 @@ class BridgeMutationContractTest
 		String container = source("gameobjects/itemcontainer/ItemContainer.java");
 		assertThat(container).contains("changeCountWithReceipt(olditem", "changeCountWithReceipt(item",
 				"changeCountWithReceipt(sourceitem", "target.changeCountWithReceipt(targetitem",
-				"recordReceipt(item, item.getCount())", "recordReceipt(item, -item.getCount())",
+				"recordReceipt(item, -count)", "recordReceipt(sourceitem, -count)",
 				"item.getItemId() == PlayerInventory.ADENA_ID", "((PlayerInventory)this).getOwner()");
 		assertThat(source("gameobjects/stat/PlayerStat.java")).contains("int before = getSp()",
 				"int after = getSp()", "BridgeEffect.sp((long)after - before, before, after)");
+	}
+
+	@Test
+	void ledgerHooksAcquireNoLocksAndMembershipCountsAreParameters() throws Exception
+	{
+		String container = source("gameobjects/itemcontainer/ItemContainer.java");
+		String hooks = container.substring(container.indexOf("private void changeCountWithReceipt"),
+				container.indexOf("/** Coordinates a prepared exchange"));
+		assertThat(hooks).contains("recordReceipt(L2ItemInstance item, long delta)")
+				.doesNotContain("synchronized", ".lock(", "new Lock");
+		assertThat(source("network/bridge/EffectLedger.java"))
+				.doesNotContain("synchronized", ".lock(", "new Lock");
+		assertThat(source("gameobjects/L2Creature.java"))
+				.doesNotContain("_bridgeTargetLock", "_bridgeSkillLock");
+		assertThat(source("gameobjects/stat/PlayerStat.java")).doesNotContain("_bridgeSpLock");
+		String inventory = source("gameobjects/itemcontainer/PlayerInventory.java");
+		int publish = inventory.indexOf("public void publishCommittedMultisell");
+		assertThat(inventory.indexOf("EffectLedger.incomplete(getOwner())", publish))
+				.isBetween(publish, inventory.indexOf("item.setCount(after)", publish));
 	}
 
 	@Test

@@ -13,6 +13,35 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeOutcomeTest
 {
 	@Test
+	void committedMultisellMarksTheOwnerLedgerIncompleteAndUnknown()
+	{
+		var player = BridgeTestPlayers.player();
+		var inventory = new com.l2jfree.gameserver.gameobjects.itemcontainer.PlayerInventory(player)
+		{
+			@Override
+			public void refreshWeight()
+			{
+				// The fixture exercises publication, not the player's weight callbacks.
+			}
+		};
+		Attempt attempt = new Attempt(player);
+		EffectLedger.open(attempt);
+		try
+		{
+			EffectLedger.record(player, BridgeEffect.item(1060, 70, 2));
+			EffectLedger.record(player, BridgeEffect.coin(-13));
+			assertThat(BridgeOutcome.match(attempt, 7, 1060, 0, 2)).isEqualTo(BridgeOutcome.DONE);
+			inventory.publishCommittedMultisell(java.util.Map.of(), java.util.List.of());
+			assertThat(attempt.isLedgerIncomplete()).isTrue();
+			assertThat(BridgeOutcome.match(attempt, 7, 1060, 0, 2)).isEqualTo(BridgeOutcome.UNKNOWN);
+		}
+		finally
+		{
+			EffectLedger.close();
+		}
+	}
+
+	@Test
 	void partialSalesAndPaidZeroRemainUnknown()
 	{
 		var player = BridgeTestPlayers.player();

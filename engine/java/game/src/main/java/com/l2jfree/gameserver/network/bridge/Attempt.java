@@ -82,6 +82,12 @@ public final class Attempt
 	{
 		return _incomplete;
 	}
+
+	void markIncomplete(L2Player owner)
+	{
+		if (owner == _player)
+			_incomplete = true;
+	}
 	
 	public boolean hasSpoken()
 	{
