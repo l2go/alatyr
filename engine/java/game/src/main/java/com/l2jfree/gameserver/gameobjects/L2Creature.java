@@ -3970,7 +3970,8 @@ public abstract class L2Creature extends L2Object
 	protected MoveData _move;
 	
 	/** L2Charcater targeted by the L2Creature */
-	private L2Object _target = null;
+	private volatile L2Object _target = null;
+	private final Object _bridgeTargetLock = new Object();
 
 	private void recordSkillReceipt(L2Skill previous, L2Skill current)
 	{
@@ -4542,16 +4543,17 @@ public abstract class L2Creature extends L2Object
 			newTarget.getKnownList().addKnownObject(this);
 		}
 		
-		if (this instanceof L2Player && ((L2Player)this).isBridgeSession())
+		L2Player owner = this instanceof L2Player player && player.isBridgeSession() ? player : null;
+		int targetId = newTarget == null ? 0 : newTarget.getObjectId();
+		synchronized (_bridgeTargetLock)
 		{
 			L2Object previous = _target;
 			_target = newTarget;
-			if (previous != newTarget && com.l2jfree.gameserver.network.bridge.EffectLedger.isActive())
-				com.l2jfree.gameserver.network.bridge.EffectLedger.record((L2Player)this,
-						com.l2jfree.gameserver.network.bridge.BridgeEffect.target(newTarget == null ? 0 : newTarget.getObjectId()));
+			L2Object current = _target;
+			if (owner != null && previous != current && com.l2jfree.gameserver.network.bridge.EffectLedger.isActive())
+				com.l2jfree.gameserver.network.bridge.EffectLedger.record(owner,
+						com.l2jfree.gameserver.network.bridge.BridgeEffect.target(targetId));
 		}
-		else
-			_target = newTarget;
 	}
 	
 	/**

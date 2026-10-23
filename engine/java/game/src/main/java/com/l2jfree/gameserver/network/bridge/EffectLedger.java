@@ -76,6 +76,14 @@ public final class EffectLedger
 		if (attempt != null)
 			attempt.markIncomplete(owner);
 	}
+
+	/** A direct storage mutation without an owner cannot certify an active attempt. */
+	public static void incompleteUnattributedMutation()
+	{
+		Attempt attempt = ACTIVE.get();
+		if (attempt != null)
+			attempt.markIncomplete(attempt.player());
+	}
 	
 	public static void expectLearningCost(L2Player owner, int branch, int spCost, int itemId, long itemCount)
 	{

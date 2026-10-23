@@ -38,7 +38,8 @@ public class CreatureStat
 	// Data Field
 	protected final L2Creature _activeChar;
 	private long _exp = 0;
-	private int _sp = 0;
+	private volatile int _sp = 0;
+	private final Object _bridgeStatLock = new Object();
 	private byte _level = 1;
 	
 	// =========================================================
@@ -476,7 +477,18 @@ public class CreatureStat
 	
 	public void setSp(int value)
 	{
-		_sp = value;
+		com.l2jfree.gameserver.gameobjects.L2Player owner =
+				_activeChar instanceof com.l2jfree.gameserver.gameobjects.L2Player player && player.isBridgeSession()
+						? player : null;
+		synchronized (_bridgeStatLock)
+		{
+			int before = _sp;
+			_sp = value;
+			int after = _sp;
+			if (owner != null && before != after && com.l2jfree.gameserver.network.bridge.EffectLedger.isActive())
+				com.l2jfree.gameserver.network.bridge.EffectLedger.record(owner,
+						com.l2jfree.gameserver.network.bridge.BridgeEffect.sp((long)after - before, before, after));
+		}
 	}
 	
 	/** Return the STR of the L2Creature (base+modifier). */
