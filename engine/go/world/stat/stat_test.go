@@ -4,9 +4,10 @@
 package stat
 
 import (
-	"github.com/l2go/alatyr/engine/go/world/catalog"
 	"math"
 	"testing"
+
+	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
 
 func TestOrderedFunctionsAndBase(t *testing.T) {

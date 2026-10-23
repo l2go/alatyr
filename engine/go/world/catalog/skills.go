@@ -8,6 +8,8 @@ import (
 	"slices"
 )
 
+// SkillLearn is one row of a class skill tree: skill level Level of SkillID
+// for SP, from character level MinLevel.
 type SkillLearn struct{ SkillID, Level, MinLevel, SP int32 }
 
 func (c *Catalog) sortSkillTree() {
@@ -18,6 +20,9 @@ func (c *Catalog) sortSkillTree() {
 	}
 }
 
+// AvailableSkills returns the tree rows a character of class and level may learn
+// next: level 1 of an unknown skill or the level after the known one. known
+// returns the current level of a skill, or less than 1 if it is unknown.
 func (c *Catalog) AvailableSkills(class, level int32, known func(id int32) int32) []SkillLearn {
 	var out []SkillLearn
 	for _, s := range c.tree(class) {
@@ -35,6 +40,8 @@ func (c *Catalog) AvailableSkills(class, level int32, known func(id int32) int32
 	return out
 }
 
+// MinLevelForNewSkill returns the lowest character level above level at which
+// class's tree offers a skill with a nonzero cost, or 0 if there is none.
 func (c *Catalog) MinLevelForNewSkill(class, level int32) int32 {
 	least := int32(0)
 	for _, s := range c.tree(class) {

@@ -8,13 +8,20 @@ import (
 	"slices"
 )
 
+// MaxDropChance is the chance of a certain drop, in millionths. Larger authored
+// chances count as certain when a category selects its drop.
 const MaxDropChance = 1000000
 
+// Drop is one possible item of a category: between Min and Max of ItemID with
+// Chance in millionths.
 type Drop struct {
 	ItemID   int32
 	Min, Max int64
 	Chance   int32
 }
+
+// DropCategory groups the drops of one NPC that share Type. Chance is the sum of
+// its drops' authored chances; Drops are ordered by descending chance.
 type DropCategory struct {
 	Type     int32
 	Drops    []*Drop
@@ -22,6 +29,9 @@ type DropCategory struct {
 	balanced int32
 }
 
+// DropOne selects at most one drop, weighting each by its chance capped at
+// MaxDropChance. intN must return a uniform value in [0, n). It returns nil for
+// an empty category.
 func (c *DropCategory) DropOne(intN func(n int) int) *Drop {
 	if c.balanced <= 0 {
 		return nil
@@ -36,6 +46,8 @@ func (c *DropCategory) DropOne(intN func(n int) int) *Drop {
 	}
 	return nil
 }
+
+// DropCategories returns copies of NPC template npc's drop categories.
 func (c *Catalog) DropCategories(npc int32) []*DropCategory {
 	var out []*DropCategory
 	for _, cat := range c.drops[npc] {
@@ -76,6 +88,8 @@ func (c *Catalog) buildDrops(rows []dropRow) {
 		cat.balanced += min(d.Chance, MaxDropChance)
 	}
 }
+
+// Stackable reports whether instances of the item merge into one stack.
 func (t ItemTemplate) Stackable() bool {
 	return t.ConsumeType == "asset" || t.ConsumeType == "stackable"
 }

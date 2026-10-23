@@ -13,12 +13,17 @@ import (
 	"time"
 )
 
+// Journal operations.
 const (
-	Create = "CREATE"
-	Change = "CHANGE"
-	Delete = "DELETE"
+	Create = "CREATE" // an item instance was created
+	Change = "CHANGE" // an item's count changed
+	Delete = "DELETE" // an item instance was removed
 )
 
+// Entry is one journal record. Op is Create, Change or Delete; Process names
+// the gameplay process, such as Loot, Pickup or Decay. Player and Ref name the
+// owner and the reference, or Null. EtcType selects silent consumables and is
+// not written.
 type Entry struct {
 	Op, Process string
 	ObjectID    int32
@@ -30,18 +35,24 @@ type Entry struct {
 	EtcType     string
 }
 
+// Null marks an absent player or reference.
 const Null = "null"
 
+// Log writes entries as journal lines and serializes concurrent writes.
 type Log struct {
 	mu  sync.Mutex
 	w   io.Writer
 	now func() time.Time
 }
 
+// Discard is a Log that records nothing.
 var Discard = &Log{}
 
+// New returns a Log that writes to w and stamps lines with now.
 func New(w io.Writer, now func() time.Time) *Log { return &Log{w: w, now: now} }
 
+// Open creates path's directory if needed, opens path for appending and
+// returns a Log over it. The caller closes the returned file.
 func Open(path string) (*Log, *os.File, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, nil, err
@@ -61,15 +72,20 @@ func silent(e Entry) bool {
 	return e.Process == "Consume"
 }
 
+// Write appends one line for e. Consumables (shots, arrows, bolts, herbs) and
+// the Consume process are skipped, and a nil Log records nothing. The journal
+// is diagnostic: a write error is dropped so that it cannot stop gameplay.
 func (l *Log) Write(e Entry) {
 	if l == nil || l.w == nil || silent(e) {
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	io.WriteString(l.w, Line(l.now(), e))
+	_, _ = io.WriteString(l.w, Line(l.now(), e))
 }
 
+// Line formats e as one CRLF-terminated journal line at t in UTC, with
+// millisecond precision. A positive enchant level prefixes the item name.
 func Line(t time.Time, e Entry) string {
 	t = t.UTC()
 	item := e.Item

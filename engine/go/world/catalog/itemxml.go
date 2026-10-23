@@ -3,6 +3,9 @@
 
 package catalog
 
+// ItemFunc is one stat function of an item or skill: Op applies Value to Stat
+// in Order. Conditional marks a function that could not be parsed and is never
+// applied. Cond, if set, must hold for the function to apply.
 type ItemFunc struct {
 	Stat        string
 	Op          string
@@ -12,6 +15,7 @@ type ItemFunc struct {
 	Cond        *Cond
 }
 
+// ItemFuncs returns a copy of item id's stat functions.
 func (c *Catalog) ItemFuncs(id int32) []ItemFunc { return cloneFuncs(c.itemFuncs[id]) }
 
 func cloneFuncs(in []ItemFunc) []ItemFunc {
