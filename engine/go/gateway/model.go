@@ -32,10 +32,38 @@ type Transport interface {
 // Await pauses after a selection helper until
 // State.Confirmed is true. Interferes names evidence classes affected by IO.
 type Step struct {
-	Value      any
-	Await      bool
+	// Value belongs to the adapter and is checked before use.
+	Value any
+	// Await requires current target confirmation after this helper.
+	Await bool
+	// Interferes lists evidence classes this write may contaminate.
 	Interferes []string
+	// N identifies the participant attempt; zero identifies system service.
+	N uint64
+	// Index is the zero-based index in the captured plan.
+	Index int
+	// Role distinguishes helper, effect, and system writes. The runtime sets it.
+	Role StepRole
+	// ContactMS starts the original evidence window in session time; zero for system writes.
+	ContactMS int64
+	// DeadlineMS ends that window, exclusively; zero for system writes.
+	DeadlineMS int64
+	// QueueTTLMS is the remaining queue budget, reduced immediately before Write.
+	// Nil selects the backend's default for system writes.
+	QueueTTLMS *uint64
 }
+
+// StepRole is local correlation metadata, never a participant wire field.
+type StepRole uint8
+
+const (
+	// StepSystem carries no participant outcome authority.
+	StepSystem StepRole = iota
+	// StepHelper is a target prelude, not the participant effect.
+	StepHelper
+	// StepEffect is a captured participant effect.
+	StepEffect
+)
 
 // Action is an immutable captured plan supplied by State.Plan.
 type Action struct {
@@ -73,10 +101,41 @@ type Update struct {
 	Value    any
 	Relocate bool
 	Service  []Step
+	// ReceivedMS is the original live receive time in session-relative milliseconds.
+	// Nil retains the legacy actor-time convention for direct local adapters.
+	ReceivedMS *int64
 }
 
 // Observation contains independently owned facts in backend receive order.
-type Observation struct{ Facts []wire.Record }
+type Observation struct {
+	// Facts is the owned public projection in backend receive order.
+	Facts []wire.Record
+	// Failures applies asynchronous refusals even when Facts is empty. It cannot
+	// complete an attempt; Done remains exclusively a State.Witness decision.
+	Failures []Failure
+	// WorldClosed ends the scope and closes its world. It excludes Detached.
+	WorldClosed bool
+	// Detached ends the scope but retains the raw session for explicit recovery.
+	// Worlds supplying it must implement Detacher and stop their scope pump.
+	Detached bool
+}
+
+// Failure is a typed asynchronous outcome for an existing participant attempt.
+// Text, when present, is bounded host-owned explanation, never backend payload.
+type Failure struct {
+	// N identifies an existing participant attempt, never a raw bridge number.
+	N uint64
+	// Reason selects a typed failure, not a success or delivery assertion.
+	Reason wire.Reason
+	// Text is an optional bounded explanation owned by the trusted adapter.
+	Text string
+}
+
+// Detacher separates scope termination from closing the retained raw session.
+// Detach stops and joins the scope pump without executing or repeating commands.
+type Detacher interface {
+	Detach() error
+}
 
 // Snapshot is a bounded current projection, not a history of outcomes.
 // Domains names incomplete domains when Ready is false.
@@ -158,7 +217,7 @@ type Identity struct{ Act bool }
 
 // Config sets policy, capacities, and deadlines. New rejects missing limits;
 // the zero value is not a usable configuration. All times passed to State and
-// Pacer are monotonic milliseconds since New, never participant wall clocks.
+// Pacer are monotonic milliseconds since Origin, never participant wall clocks.
 // Now and Ticks default to time.Now and time.NewTicker. Custom implementations
 // must use the same clock and be safe for concurrent use. Diagnostic must not block.
 // Shutdown defaults to one second and bounds how long Close waits for owners.
@@ -234,6 +293,9 @@ type Config struct {
 	// Now is the concurrency-safe clock used for session-relative milliseconds.
 	// Nil defaults to time.Now; custom Now and Ticks must use the same clock.
 	Now func() time.Time
+	// Origin is the shared origin for adapter receive times and runtime deadlines.
+	// Zero selects Now at construction; explicit origins must not be in the future.
+	Origin time.Time
 	// Ticks creates the session ticker and its stop function. Nil defaults to
 	// time.NewTicker; a custom implementation must be concurrency-safe.
 	Ticks func(time.Duration) (<-chan time.Time, func())

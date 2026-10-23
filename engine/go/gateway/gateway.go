@@ -153,7 +153,12 @@ func New(c Config) (*Gateway, error) {
 	if _, err := rand.Read(seed[:]); err != nil {
 		return nil, err
 	}
-	return &Gateway{start: c.Now(), cfg: c, games: map[string]*game{}, opening: map[string]bool{}, prefix: binary.LittleEndian.Uint32(seed[:]), stop: make(chan struct{}), done: make(chan struct{})}, nil
+	if c.Origin.IsZero() {
+		c.Origin = c.Now()
+	} else if c.Origin.After(c.Now()) {
+		return nil, wire.ErrConfig
+	}
+	return &Gateway{start: c.Origin, cfg: c, games: map[string]*game{}, opening: map[string]bool{}, prefix: binary.LittleEndian.Uint32(seed[:]), stop: make(chan struct{}), done: make(chan struct{})}, nil
 }
 
 // Close stops admission, cancels owners, and joins session, opening, and transport
@@ -529,6 +534,9 @@ func (s *game) drop(c *connection, reason wire.CloseReason) {
 	c.wake()
 }
 func (s *game) fail(reason wire.CloseReason) {
+	s.endScope(reason, false)
+}
+func (s *game) endScope(reason wire.CloseReason, detached bool) {
 	if s.closed {
 		return
 	}
@@ -544,7 +552,18 @@ func (s *game) fail(reason wire.CloseReason) {
 	for _, c := range s.connections() {
 		s.drop(c, reason)
 	}
-	s.worldOnce.Do(func() { s.gate.closeError(s.world.Close()) })
+	s.worldOnce.Do(func() {
+		if detached {
+			world, ok := s.world.(Detacher)
+			if !ok {
+				s.gate.closeError(s.world.Close())
+				return
+			}
+			s.gate.closeError(world.Detach())
+			return
+		}
+		s.gate.closeError(s.world.Close())
+	})
 }
 func (s *game) run(ctx context.Context) {
 	if s.cancel != nil {
