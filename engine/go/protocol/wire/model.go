@@ -1,161 +1,341 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 l2go
 
-// Package wire implements bounded, extensible binary frames.
 package wire
 
 import "errors"
 
+// Record kinds. An even kind is essential: a receiver that does not know it
+// rejects the frame. An odd kind may be skipped by a receiver that does not
+// know it.
 const (
-	Ping       uint64 = 1
-	Hello      uint64 = 2
-	Pong       uint64 = 3
-	Welcome    uint64 = 4
-	Checkpoint uint64 = 6
-	Fact       uint64 = 8
-	Intent     uint64 = 10
-	Result     uint64 = 12
-	Control    uint64 = 14
-	Bye        uint64 = 16
+	Ping       uint64 = 1  // liveness probe; answered by Pong
+	Hello      uint64 = 2  // participant opening: version range, meaning, kind, mode
+	Pong       uint64 = 3  // answer to Ping
+	Welcome    uint64 = 4  // world acceptance of a Hello
+	Checkpoint uint64 = 6  // begin or end of a projection snapshot
+	Fact       uint64 = 8  // observation within a projection epoch
+	Intent     uint64 = 10 // participant request with an attempt number
+	Result     uint64 = 12 // outcome of an Intent
+	Control    uint64 = 14 // control ownership change
+	Bye        uint64 = 16 // closing record with a CloseReason
 )
 
+// Stage is how far an attempt got. The zero value is not a valid stage.
 type Stage uint64
 
+// Stages of an attempt.
 const (
-	Sent Stage = iota + 1
-	Done
-	Refused
-	Unknown
-	Unrecoverable
+	StageSent          Stage = iota + 1 // delivered locally or to the world; no proof of effect yet
+	StageDone                           // effect witnessed by the world
+	StageRefused                        // not executed; Reason says why
+	StageUnknown                        // may or may not have taken effect
+	StageUnrecoverable                  // number below the session floor; the outcome is no longer known
 )
 
+// Reason explains a Result or a refusal. ReasonNone is used only with
+// StageSent and StageDone.
 type Reason uint64
 
+// Reasons carried by a Result.
 const (
-	None Reason = iota
-	NotReady
-	Watch
-	StaleControl
-	StaleTarget
-	StaleOffer
-	QueueExpired
-	Rate
-	Busy
-	UnknownEssential
-	Invalid
-	NoAction
-	NotAlive
-	SkillUnknown
-	SkillPassive
-	SkillDisabled
-	World
-	Timeout
-	WorldClosed
-	Interrupted
-	TooOld
-	OutOfOrder
-	DuplicateMismatch
-	TargetUnconfirmed
-	BackendError
+	ReasonNone Reason = iota
+	ReasonNotReady
+	ReasonWatch // the connection only observes
+	ReasonStaleControl
+	ReasonStaleTarget
+	ReasonStaleOffer
+	ReasonQueueExpired
+	ReasonRate
+	ReasonBusy
+	ReasonUnknownEssential
+	ReasonInvalid
+	ReasonNoAction
+	ReasonNotAlive
+	ReasonSkillUnknown
+	ReasonSkillPassive
+	ReasonSkillDisabled
+	ReasonWorld // refused by the world's own rules
+	ReasonTimeout
+	ReasonWorldClosed
+	ReasonInterrupted
+	ReasonTooOld
+	ReasonOutOfOrder
+	ReasonDuplicateMismatch
+	ReasonTargetUnconfirmed
+	ReasonBackendError
 )
 
+// Delivery says where an attempt was delivered.
 type Delivery uint64
 
+// Deliveries of an attempt.
 const (
-	NoDelivery Delivery = iota
-	Local
-	Backend
-	Partial
+	DeliveryNone    Delivery = iota // not delivered
+	DeliveryLocal                   // completed locally, without the world
+	DeliveryBackend                 // delivered to the world
+	DeliveryPartial                 // delivery was interrupted
 )
 
+// CloseReason is the reason carried by a Bye record.
 type CloseReason uint64
 
+// Reasons for closing a connection.
 const (
-	Normal CloseReason = iota
-	Unsupported
-	FrameError
-	SlowConsumer
-	Full
-	Auth
-	Origin
-	Internal
-	ClosedWorld
+	CloseNormal CloseReason = iota
+	CloseUnsupported
+	CloseFrameError
+	CloseSlowConsumer
+	CloseFull
+	CloseAuth
+	CloseOrigin
+	CloseInternal
+	CloseWorldClosed
 )
 
+// Participant is the kind of participant declared in a Hello.
+type Participant uint64
+
+// Participant kinds.
 const (
-	Person       uint64 = 1
-	Bot          uint64 = 2
-	Agent        uint64 = 3
-	Act          uint64 = 1
-	Observe      uint64 = 2
-	Begin        uint64 = 1
-	End          uint64 = 2
-	TakeControl  uint64 = 1
-	Granted      uint64 = 2
-	Lost         uint64 = 3
-	Resync       uint64 = 4
-	Authored     uint64 = 1
-	System       uint64 = 2
-	Player       uint64 = 3
-	Unclassified uint64 = 4
+	ParticipantPerson Participant = iota + 1
+	ParticipantBot
+	ParticipantAgent
 )
 
+// Mode is the mode requested in a Hello and granted in a Welcome.
+type Mode uint64
+
+// Connection modes.
+const (
+	ModeAct     Mode = iota + 1 // may send intents
+	ModeObserve                 // receives facts only
+)
+
+// CheckpointPhase marks the start or end of a Checkpoint.
+type CheckpointPhase uint64
+
+// Checkpoint phases.
+const (
+	CheckpointBegin CheckpointPhase = iota + 1
+	CheckpointEnd
+)
+
+// ControlOp is the operation carried by a Control record.
+type ControlOp uint64
+
+// Control operations.
+const (
+	ControlTake    ControlOp = iota + 1 // participant asks for control
+	ControlGranted                      // world grants control with an epoch and next attempt number
+	ControlLost                         // control moved away
+	ControlResync                       // participant asks to repair an incomplete projection
+)
+
+// Provenance says who authored a text.
+type Provenance uint64
+
+// Text provenances.
+const (
+	ProvenanceAuthored Provenance = iota + 1 // written by the world's authors
+	ProvenanceSystem                         // generated by the system
+	ProvenancePlayer                         // written by a participant
+	ProvenanceUnclassified
+)
+
+// Deprecated names. They keep existing callers building while they move to
+// the typed names above, and will be removed in a later major version.
+const (
+	// Deprecated: Use StageSent.
+	Sent = StageSent
+	// Deprecated: Use StageDone.
+	Done = StageDone
+	// Deprecated: Use StageRefused.
+	Refused = StageRefused
+	// Deprecated: Use StageUnknown.
+	Unknown = StageUnknown
+	// Deprecated: Use StageUnrecoverable.
+	Unrecoverable = StageUnrecoverable
+	// Deprecated: Use ReasonNone.
+	None = ReasonNone
+	// Deprecated: Use ReasonNotReady.
+	NotReady = ReasonNotReady
+	// Deprecated: Use ReasonWatch.
+	Watch = ReasonWatch
+	// Deprecated: Use ReasonStaleControl.
+	StaleControl = ReasonStaleControl
+	// Deprecated: Use ReasonStaleTarget.
+	StaleTarget = ReasonStaleTarget
+	// Deprecated: Use ReasonStaleOffer.
+	StaleOffer = ReasonStaleOffer
+	// Deprecated: Use ReasonQueueExpired.
+	QueueExpired = ReasonQueueExpired
+	// Deprecated: Use ReasonRate.
+	Rate = ReasonRate
+	// Deprecated: Use ReasonBusy.
+	Busy = ReasonBusy
+	// Deprecated: Use ReasonUnknownEssential.
+	UnknownEssential = ReasonUnknownEssential
+	// Deprecated: Use ReasonInvalid.
+	Invalid = ReasonInvalid
+	// Deprecated: Use ReasonNoAction.
+	NoAction = ReasonNoAction
+	// Deprecated: Use ReasonNotAlive.
+	NotAlive = ReasonNotAlive
+	// Deprecated: Use ReasonSkillUnknown.
+	SkillUnknown = ReasonSkillUnknown
+	// Deprecated: Use ReasonSkillPassive.
+	SkillPassive = ReasonSkillPassive
+	// Deprecated: Use ReasonSkillDisabled.
+	SkillDisabled = ReasonSkillDisabled
+	// Deprecated: Use ReasonWorld.
+	World = ReasonWorld
+	// Deprecated: Use ReasonTimeout.
+	Timeout = ReasonTimeout
+	// Deprecated: Use ReasonWorldClosed.
+	WorldClosed = ReasonWorldClosed
+	// Deprecated: Use ReasonInterrupted.
+	Interrupted = ReasonInterrupted
+	// Deprecated: Use ReasonTooOld.
+	TooOld = ReasonTooOld
+	// Deprecated: Use ReasonOutOfOrder.
+	OutOfOrder = ReasonOutOfOrder
+	// Deprecated: Use ReasonDuplicateMismatch.
+	DuplicateMismatch = ReasonDuplicateMismatch
+	// Deprecated: Use ReasonTargetUnconfirmed.
+	TargetUnconfirmed = ReasonTargetUnconfirmed
+	// Deprecated: Use ReasonBackendError.
+	BackendError = ReasonBackendError
+	// Deprecated: Use DeliveryNone.
+	NoDelivery = DeliveryNone
+	// Deprecated: Use DeliveryLocal.
+	Local = DeliveryLocal
+	// Deprecated: Use DeliveryBackend.
+	Backend = DeliveryBackend
+	// Deprecated: Use DeliveryPartial.
+	Partial = DeliveryPartial
+	// Deprecated: Use CloseNormal.
+	Normal = CloseNormal
+	// Deprecated: Use CloseUnsupported.
+	Unsupported = CloseUnsupported
+	// Deprecated: Use CloseFrameError.
+	FrameError = CloseFrameError
+	// Deprecated: Use CloseSlowConsumer.
+	SlowConsumer = CloseSlowConsumer
+	// Deprecated: Use CloseFull.
+	Full = CloseFull
+	// Deprecated: Use CloseAuth.
+	Auth = CloseAuth
+	// Deprecated: Use CloseOrigin.
+	Origin = CloseOrigin
+	// Deprecated: Use CloseInternal.
+	Internal = CloseInternal
+	// Deprecated: Use CloseWorldClosed.
+	ClosedWorld = CloseWorldClosed
+	// Deprecated: Use ParticipantPerson.
+	Person = uint64(ParticipantPerson)
+	// Deprecated: Use ParticipantBot.
+	Bot = uint64(ParticipantBot)
+	// Deprecated: Use ParticipantAgent.
+	Agent = uint64(ParticipantAgent)
+	// Deprecated: Use ModeAct.
+	Act = uint64(ModeAct)
+	// Deprecated: Use ModeObserve.
+	Observe = uint64(ModeObserve)
+	// Deprecated: Use CheckpointBegin.
+	Begin = uint64(CheckpointBegin)
+	// Deprecated: Use CheckpointEnd.
+	End = uint64(CheckpointEnd)
+	// Deprecated: Use ControlTake.
+	TakeControl = uint64(ControlTake)
+	// Deprecated: Use ControlGranted.
+	Granted = uint64(ControlGranted)
+	// Deprecated: Use ControlLost.
+	Lost = uint64(ControlLost)
+	// Deprecated: Use ControlResync.
+	Resync = uint64(ControlResync)
+	// Deprecated: Use ProvenanceAuthored.
+	Authored = uint64(ProvenanceAuthored)
+	// Deprecated: Use ProvenanceSystem.
+	System = uint64(ProvenanceSystem)
+	// Deprecated: Use ProvenancePlayer.
+	Player = uint64(ProvenancePlayer)
+	// Deprecated: Use ProvenanceUnclassified.
+	Unclassified = uint64(ProvenanceUnclassified)
+)
+
+// Errors returned by the codec.
 var (
-	ErrFrame       = errors.New("invalid frame")
+	// ErrFrame reports a malformed or out-of-bounds frame.
+	ErrFrame = errors.New("invalid frame")
+	// ErrUnsupported reports an essential meaning the receiver does not know.
 	ErrUnsupported = errors.New("unsupported essential meaning")
-	ErrConfig      = errors.New("invalid limits or schema")
+	// ErrConfig reports invalid limits or an invalid schema.
+	ErrConfig = errors.New("invalid limits or schema")
 )
 
 type missingRequired struct{ depth int }
 
 func (e *missingRequired) Error() string { return "missing required field" }
 
+// Type is the encoding of a field on the wire.
 type Type uint8
 
+// Field encodings.
 const (
-	Unsigned Type = iota
-	Signed
-	LengthDelimited
-	Fixed64
+	Unsigned        Type = iota // unsigned varint
+	Signed                      // zigzag varint
+	LengthDelimited             // length-prefixed bytes
+	Fixed64                     // eight bytes
 )
 
+// Shape is the meaning of a field value, checked against its Spec.
 type Shape uint8
 
+// Field shapes.
 const (
-	UInt Shape = iota
-	Int
-	Bool
-	String
-	Identifier
-	Bytes
-	Object
-	List
-	Position
-	Language
-	Fixed
+	UInt       Shape = iota // unsigned integer
+	Int                     // signed integer
+	Bool                    // 0 or 1
+	String                  // UTF-8 text
+	Identifier              // UTF-8 text without NUL, bounded by IdentifierBytes
+	Bytes                   // opaque bytes
+	Object                  // nested fields described by a Schema
+	List                    // repeated values described by an element Spec
+	Position                // three signed 32-bit coordinates
+	Language                // language tag
+	Fixed                   // eight opaque bytes
 )
 
-// Limits are supplied by a profile. The format itself has no deployment defaults.
+// Limits bound every frame a Codec reads or writes. A profile supplies them;
+// the format itself has no deployment defaults.
 type Limits struct {
 	FrameBytes, StringBytes, ListItems, Depth, Records, Fields int
 	IdentifierBytes, WorldBytes, ClientBytes                   int
 }
 
+// Spec describes one field: its shape, whether a receiver must understand it
+// and whether it must be present, and the bounds its value must satisfy.
 type Spec struct {
 	Shape               Shape
 	Essential, Required bool
-	Nonzero             bool
-	Bits                int
-	MaxBytes            int
-	Enum                []uint64
-	Object              Schema
-	Element             *Spec
+	Nonzero             bool     // UInt or Bool must not be zero
+	Bits                int      // width limit for UInt and Int; 0 means 64
+	MaxBytes            int      // byte limit for text and bytes; 0 means the Limits default
+	Enum                []uint64 // allowed UInt values; nil allows any
+	Object              Schema   // fields of an Object
+	Element             *Spec    // element of a List
 }
+
+// Schema maps field numbers to their Spec.
 type Schema map[uint32]Spec
+
+// Registry maps record kinds to their Schema.
 type Registry map[uint64]Schema
 
-// Value preserves field presence through the containing Fields slice.
-// Empty lists and empty objects remain present even when their slice is empty.
+// Value holds a decoded field value. Only the member that matches the field's
+// Shape is set. Field presence is carried by the containing Fields slice, so
+// an empty list or object stays present even when its slice is empty.
 type Value struct {
 	U      uint64
 	S      int64
@@ -165,15 +345,21 @@ type Value struct {
 	XYZ    [3]int32
 	Fixed  [8]byte
 }
+
+// Field is one numbered field of a record or object.
 type Field struct {
 	Number    uint32
 	Essential bool
 	Type      Type
 	Value     Value
 }
+
+// Record is one record of a frame.
 type Record struct {
-	Type        uint64
-	Fields      []Field
+	Type   uint64
+	Fields []Field
+	// Unsupported reports that the record carried an essential field the
+	// receiver does not know; only Fact and Intent records may.
 	Unsupported bool
 	// EncodedBytes is receive-side metadata, including skipped fields. It is not
 	// serialized, and lets admission bound a record before retaining its payload.
@@ -183,6 +369,7 @@ type Record struct {
 	UnsupportedHash [32]byte
 }
 
+// Find returns the value of field n and whether it is present.
 func Find(fields []Field, n uint32) (Value, bool) {
 	for _, f := range fields {
 		if f.Number == n {
@@ -191,28 +378,77 @@ func Find(fields []Field, n uint32) (Value, bool) {
 	}
 	return Value{}, false
 }
-func U(n uint32, e bool, x uint64) Field { return Field{n, e, Unsigned, Value{U: x}} }
-func S(n uint32, e bool, x int64) Field  { return Field{n, e, Signed, Value{S: x}} }
-func Data(n uint32, e bool, x string) Field {
-	return Field{n, e, LengthDelimited, Value{Data: []byte(x)}}
-}
-func Obj(n uint32, e bool, x []Field) Field   { return Field{n, e, LengthDelimited, Value{Fields: x}} }
-func Items(n uint32, e bool, x []Value) Field { return Field{n, e, LengthDelimited, Value{Items: x}} }
-func At(n uint32, e bool, x, y, z int32) Field {
-	return Field{n, e, LengthDelimited, Value{XYZ: [3]int32{x, y, z}}}
+
+// U returns an unsigned field n; essential marks whether a receiver must understand it.
+func U(n uint32, essential bool, x uint64) Field {
+	return Field{Number: n, Essential: essential, Type: Unsigned, Value: Value{U: x}}
 }
 
-func Required(shape Shape) Spec  { return Spec{Shape: shape, Essential: true, Required: true} }
+// S returns a signed field n.
+func S(n uint32, essential bool, x int64) Field {
+	return Field{Number: n, Essential: essential, Type: Signed, Value: Value{S: x}}
+}
+
+// Data returns a text or bytes field n.
+func Data(n uint32, essential bool, x string) Field {
+	return Field{Number: n, Essential: essential, Type: LengthDelimited, Value: Value{Data: []byte(x)}}
+}
+
+// Obj returns an object field n with nested fields x.
+func Obj(n uint32, essential bool, x []Field) Field {
+	return Field{Number: n, Essential: essential, Type: LengthDelimited, Value: Value{Fields: x}}
+}
+
+// Items returns a list field n with elements x.
+func Items(n uint32, essential bool, x []Value) Field {
+	return Field{Number: n, Essential: essential, Type: LengthDelimited, Value: Value{Items: x}}
+}
+
+// At returns a position field n.
+func At(n uint32, essential bool, x, y, z int32) Field {
+	return Field{Number: n, Essential: essential, Type: LengthDelimited, Value: Value{XYZ: [3]int32{x, y, z}}}
+}
+
+// Required returns an essential field that must be present.
+func Required(shape Shape) Spec { return Spec{Shape: shape, Essential: true, Required: true} }
+
+// Essential returns a field that a receiver must understand if it is present.
 func Essential(shape Shape) Spec { return Spec{Shape: shape, Essential: true} }
-func Optional(shape Shape) Spec  { return Spec{Shape: shape} }
 
-func TextSchema() Schema {
-	return Schema{1: Required(String), 2: {Shape: UInt, Essential: true, Required: true, Enum: []uint64{Authored, System, Player, Unclassified}}, 3: Optional(Language)}
+// Optional returns a field that a receiver may skip.
+func Optional(shape Shape) Spec { return Spec{Shape: shape} }
+
+// enum returns a required unsigned field limited to values.
+func enum[T ~uint64](values ...T) Spec {
+	s := Required(UInt)
+	for _, v := range values {
+		s.Enum = append(s.Enum, uint64(v))
+	}
+	return s
 }
 
-// Envelopes leaves profile payloads and advertised limits to the caller.
+// span returns every value from first to last inclusive.
+func span[T ~uint64](first, last T) []T {
+	out := make([]T, 0, last-first+1)
+	for v := first; v <= last; v++ {
+		out = append(out, v)
+	}
+	return out
+}
+
+// TextSchema returns the schema of a text object: the text, its Provenance and
+// an optional language tag.
+func TextSchema() Schema {
+	return Schema{
+		1: Required(String),
+		2: enum(span(ProvenanceAuthored, ProvenanceUnclassified)...),
+		3: Optional(Language),
+	}
+}
+
+// Envelopes returns the registry of the session records. Profile payloads and
+// the advertised limits object come from the caller.
 func Envelopes(advertised Schema, bounds Limits) Registry {
-	enum := func(values ...uint64) Spec { s := Required(UInt); s.Enum = values; return s }
 	text := Optional(Object)
 	text.Object = TextSchema()
 	ident := Required(Identifier)
@@ -224,22 +460,37 @@ func Envelopes(advertised Schema, bounds Limits) Registry {
 	domains := Essential(List)
 	el := Required(Identifier)
 	domains.Element = &el
+	modes := enum(ModeAct, ModeObserve)
 	return Registry{
-		Ping: {1: Required(UInt)}, Pong: {1: Required(UInt)},
-		Hello:      {1: Required(UInt), 2: Required(UInt), 3: ident, 4: enum(Person, Bot, Agent), 5: enum(Act, Observe), 6: client},
-		Welcome:    {1: Required(UInt), 2: ident, 3: world, 4: Required(UInt), 5: enum(Act, Observe), 6: Required(UInt), 7: limits},
-		Checkpoint: {1: enum(Begin, End), 2: Required(UInt), 3: Required(Bool), 4: domains},
+		Ping:       {1: Required(UInt)},
+		Pong:       {1: Required(UInt)},
+		Hello:      {1: Required(UInt), 2: Required(UInt), 3: ident, 4: enum(span(ParticipantPerson, ParticipantAgent)...), 5: modes, 6: client},
+		Welcome:    {1: Required(UInt), 2: ident, 3: world, 4: Required(UInt), 5: modes, 6: Required(UInt), 7: limits},
+		Checkpoint: {1: enum(CheckpointBegin, CheckpointEnd), 2: Required(UInt), 3: Required(Bool), 4: domains},
 		Fact:       {1: Required(UInt), 2: Required(UInt), 3: Required(Int), 4: Required(UInt), 5: ident, 6: Required(Bool)},
 		Intent:     {1: Required(UInt), 2: Required(UInt), 3: Required(UInt), 4: Essential(UInt)},
-		Result:     {1: Required(UInt), 2: enum(1, 2, 3, 4, 5), 3: enum(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24), 4: text, 5: Required(UInt), 6: Required(UInt), 7: enum(0, 1, 2, 3)},
-		Control:    {1: enum(TakeControl, Granted, Lost, Resync), 2: Essential(UInt), 3: Essential(UInt)},
-		Bye:        {1: enum(0, 1, 2, 3, 4, 5, 6, 7, 8), 2: text},
+		Result: {
+			1: Required(UInt),
+			2: enum(span(StageSent, StageUnrecoverable)...),
+			3: enum(span(ReasonNone, ReasonBackendError)...),
+			4: text,
+			5: Required(UInt),
+			6: Required(UInt),
+			7: enum(span(DeliveryNone, DeliveryPartial)...),
+		},
+		Control: {1: enum(span(ControlTake, ControlResync)...), 2: Essential(UInt), 3: Essential(UInt)},
+		Bye:     {1: enum(span(CloseNormal, CloseWorldClosed)...), 2: text},
 	}
 }
 
-// UnsupportedRecord preserves only the validated numeric envelope kind, so a
-// transport can close an unsupported close record without a recursive reply.
+// UnsupportedRecord is returned by Decode for a known record that carries an
+// essential meaning the receiver does not understand. It keeps only the
+// validated record kind, so a transport can answer an unsupported Bye without
+// replying recursively. It matches ErrUnsupported with errors.Is.
 type UnsupportedRecord struct{ Type uint64 }
 
+// Error returns the text of ErrUnsupported.
 func (e *UnsupportedRecord) Error() string { return ErrUnsupported.Error() }
+
+// Unwrap returns ErrUnsupported.
 func (e *UnsupportedRecord) Unwrap() error { return ErrUnsupported }
