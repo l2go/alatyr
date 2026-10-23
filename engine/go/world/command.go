@@ -96,8 +96,13 @@ func (w *World) execute(s *state, p *player, req Request) *Skill {
 			s.finish(StageDone)
 		}
 	case VerbAttack:
+		t, ok := s.actor(req.Target.ID)
+		if !ok || t.base().ref() != req.Target {
+			s.resolve(StageRefused, ReasonStale)
+			return nil
+		}
 		n, ok := s.npcs[req.Target.ID]
-		if !ok || n.ref() != req.Target || !n.mob() || n.dead || p.dead || p.teleporting || !p.known[n.id] || p.lastTarget == n.id && time.Since(p.lastTargetAt) < retargetBlocking {
+		if !ok || !n.mob() || n.dead || p.dead || p.teleporting || !p.known[n.id] || p.lastTarget == n.id && time.Since(p.lastTargetAt) < retargetBlocking {
 			s.resolve(StageRefused, ReasonState)
 			return nil
 		}
@@ -111,8 +116,13 @@ func (w *World) execute(s *state, p *player, req Request) *Skill {
 		}
 		w.setIntention(s, p, order{intent: intentPickUp, object: g.id, target: g.ref()})
 	case VerbTalk:
+		t, ok := s.actor(req.Target.ID)
+		if !ok || t.base().ref() != req.Target {
+			s.resolve(StageRefused, ReasonStale)
+			return nil
+		}
 		n, ok := s.npcs[req.Target.ID]
-		if !ok || n.ref() != req.Target || !n.npcInstance() || p.dead || p.teleporting || !p.known[n.id] || p.sitting {
+		if !ok || !n.npcInstance() || p.dead || p.teleporting || !p.known[n.id] || p.sitting {
 			s.resolve(StageRefused, ReasonState)
 			return nil
 		}
@@ -121,9 +131,14 @@ func (w *World) execute(s *state, p *player, req Request) *Skill {
 			s.finish(StageDone)
 		}
 	case VerbCast:
+		t, ok := s.actor(req.Target.ID)
+		if !ok || t.base().ref() != req.Target {
+			s.resolve(StageRefused, ReasonStale)
+			return nil
+		}
 		sk, ok := w.cat.Skill(req.Skill.ID, req.Skill.Level)
 		_, targetOK := w.skillTarget(s, p, sk, req.Target.ID)
-		if !ok || p.skillLevel(sk.ID) != sk.Level || !w.validCast(p, sk) || !targetOK || s.ref(req.Target.ID) != req.Target {
+		if !ok || p.skillLevel(sk.ID) != sk.Level || !w.validCast(p, sk) || !targetOK {
 			s.resolve(StageRefused, ReasonState)
 			return nil
 		}

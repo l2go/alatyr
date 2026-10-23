@@ -108,6 +108,63 @@ func TestExecuteRefusalAndDeadline(t *testing.T) {
 	}
 }
 
+func TestExecuteTargetRefusalReasons(t *testing.T) {
+	for _, verb := range []Verb{VerbAttack, VerbTalk, VerbCast} {
+		t.Run(string(verb), func(t *testing.T) {
+			for _, tc := range []struct {
+				name    string
+				stale   bool
+				missing bool
+				dead    bool
+				reason  Reason
+			}{
+				{"stale incarnation", true, false, false, ReasonStale},
+				{"missing target", false, true, false, ReasonStale},
+				{"dead owner", false, false, true, ReasonState},
+				{"stale before state", true, false, true, ReasonStale},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					synctest.Test(t, func(t *testing.T) {
+						var log commitLog
+						w, _, ctx := startObservedWorld(t, &log)
+						c := syntheticCharacter(1)
+						c.Skills = []Skill{{ID: 9201, Level: 1}}
+						entry := enterTest(t, w, ctx, c)
+						templateID := int32(9101)
+						if verb == VerbTalk {
+							templateID = 9102
+						}
+						target := refTest(t, w, ctx, objectOf(t, w, ctx, templateID))
+						if tc.stale {
+							target.Gen++
+						}
+						if tc.missing {
+							target.ID = 98765
+						}
+						if tc.dead {
+							if err := w.do(ctx, func(s *state) { s.players[1].dead = true }); err != nil {
+								t.Fatal(err)
+							}
+						}
+						drainEvents(entry.Events)
+						log.reset()
+						commit := executeTest(t, w, ctx, Request{Owner: entry.Self.Entity, Verb: verb, Target: target, Skill: c.Skills[0]})
+						if commit.Outcome.Stage != StageRefused || commit.Outcome.Reason != tc.reason || len(commit.Groups) != 0 {
+							t.Fatalf("refusal: got %+v, want refused/%s without groups", commit, tc.reason)
+						}
+						if events := drainEvents(entry.Events); len(events) != 0 {
+							t.Fatalf("refusal notifications: got %+v, want none", events)
+						}
+						if got := log.read(); len(got) != 1 || !reflect.DeepEqual(got[0], commit) {
+							t.Fatalf("observer: got %+v, want returned refusal %+v", got, commit)
+						}
+					})
+				})
+			}
+		})
+	}
+}
+
 func TestExecuteQueuedCastExpiresWithoutResource(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var log commitLog
