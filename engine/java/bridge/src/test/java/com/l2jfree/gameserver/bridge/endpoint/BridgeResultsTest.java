@@ -28,9 +28,35 @@ class BridgeResultsTest
 	{
 		var result = Codec.bridge().decode(BridgeResults.encode(1, 7, 4, 0, null)).get(0);
 		assertThat(result.field(2).value().u()).isEqualTo(4);
-		assertThat(result.field(3).value().u()).isEqualTo(24);
-		assertThat(result.field(65).value().u()).isEqualTo(20);
+		assertThat(result.field(3).value().u()).isEqualTo(17);
+		assertThat(result.field(7).value().u()).isEqualTo(2);
+		assertThat(result.field(64)).isNull();
+		assertThat(result.field(65)).isNull();
 		assertThat(result.field(66)).isNull();
+	}
+
+	@Test
+	void failedAndIncompleteOutcomesRetainTheBackendReason()
+	{
+		for (boolean failed : new boolean[] { true, false })
+		{
+			var player = BridgeTestPlayers.player();
+			Attempt attempt = new Attempt(player);
+			if (failed)
+				attempt.markFailed();
+			else
+			{
+				EffectLedger.open(attempt);
+				try { EffectLedger.incomplete(player); }
+				finally { EffectLedger.close(); }
+			}
+			var result = Codec.bridge().decode(BridgeResults.encode(1, 7, 4, 0, attempt)).get(0);
+			assertThat(result.field(2).value().u()).isEqualTo(4);
+			assertThat(result.field(3).value().u()).isEqualTo(24);
+			assertThat(result.field(7).value().u()).isEqualTo(2);
+			assertThat(result.field(65).value().u()).isEqualTo(20);
+			assertThat(result.field(66)).isNull();
+		}
 	}
 
 	@Test
