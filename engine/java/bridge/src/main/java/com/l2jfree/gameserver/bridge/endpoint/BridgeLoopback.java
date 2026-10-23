@@ -878,6 +878,7 @@ final class BridgeLoopback implements Runnable
 		volatile Transport transport;
 		// A pending Close can receive only the save outcome, without becoming the session transport.
 		volatile Transport closeReplyTransport;
+		final java.util.Set<Transport> sessionTransports = java.util.concurrent.ConcurrentHashMap.newKeySet();
 		final BridgeRecovery recovery;
 		final BridgeSink sink;
 		BridgeAttemptSession attempts;
@@ -887,6 +888,7 @@ final class BridgeLoopback implements Runnable
 		Session(Transport initial)
 		{
 			transport = initial;
+			sessionTransports.add(initial);
 			recovery = new BridgeRecovery(initial);
 			sink = new BridgeSink(this::publish);
 			sink.afterTeleport(this::captureCheckpoint);
@@ -924,13 +926,16 @@ final class BridgeLoopback implements Runnable
 		{
 			boolean terminal = records.stream().anyMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.BYE);
 			Transport reply = closeReplyTransport;
-			Transport current = terminal && reply != null ? reply : transport;
+			if (terminal && reply != null)
+			{
+				publishCloseResult(reply, records);
+				return;
+			}
+			Transport current = transport;
 			if (current == null)
 				return;
 			synchronized (current)
 			{
-				if (terminal && current == reply && current.lost)
-					return; // EOF cancels output, not the single full disconnect and save.
 				if (!terminal && (current.lost || current.closing))
 					return;
 				boolean relocation = records.stream().anyMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.FACT
@@ -989,6 +994,57 @@ final class BridgeLoopback implements Runnable
 				}
 			}
 			fromSink(current, records);
+		}
+
+		/** Sink callback: only one transport monitor at a time, never the Session transition monitor. */
+		private void publishCloseResult(Transport reply, List<Envelope> records)
+		{
+			Transport recipient = reply;
+			long deadline;
+			synchronized (reply)
+			{
+				deadline = reply.resultDeadline;
+				if (reply.lost)
+					recipient = transport;
+				else
+					fromSink(reply, records);
+			}
+			if (recipient != null && recipient != reply)
+			{
+				synchronized (recipient)
+				{
+					if (recipient.lost)
+						recipient = null;
+					else
+					{
+						armResultWait(recipient);
+						recipient.resultDeadline = deadline;
+						fromSink(recipient, records);
+					}
+				}
+			}
+			// LocalChannel closure does not close listener sockets. Retire every non-recipient explicitly.
+			for (Transport other : sessionTransports)
+			{
+				if (other == recipient)
+					continue;
+				synchronized (other)
+				{
+					other.lost = true;
+					other.attemptFence.valid = false;
+					other.attemptFence.closing = true;
+					other.terminal = true;
+					other.awaitingResult = false;
+					if (other.checkpoint != null) other.checkpoint.cancel();
+					other.checkpoint = null;
+					other.queued.clear();
+					other.afterCheckpoint.clear();
+					other.writing = null;
+					other.held = 0;
+					armClose(other);
+				}
+			}
+			selector.wakeup();
 		}
 
 		void publishResult(byte[] result)
@@ -1092,6 +1148,7 @@ final class BridgeLoopback implements Runnable
 						replacement.resumeOwner = this;
 					}
 				}
+				sessionTransports.add(replacement);
 			}
 		}
 
@@ -1278,6 +1335,11 @@ final class BridgeLoopback implements Runnable
 		catch (IOException e)
 		{
 			key.cancel();
+		}
+		if (key.attachment() instanceof Transport source)
+		{
+			Session owner = source.resumeOwner != null ? source.resumeOwner : source.session;
+			if (owner != null) owner.sessionTransports.remove(source);
 		}
 		if (transports > 0)
 			transports--;
