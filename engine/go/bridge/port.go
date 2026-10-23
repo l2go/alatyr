@@ -12,6 +12,7 @@ import "context"
 type Port interface {
 	// Updates returns live batches and lifecycle changes in arrival order.
 	// The final update is Closed, followed by closure of the channel.
+	// An update not yet received when the session closes may be discarded in favor of Closed.
 	Updates() <-chan Update
 
 	// Write hands off a command and returns its attempt number. Only one Write
