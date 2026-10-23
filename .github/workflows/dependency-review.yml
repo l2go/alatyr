@@ -5,6 +5,13 @@ name: dependency review
 
 on:
   pull_request:
+    # Only these files declare dependencies.
+    paths:
+      - "**/pom.xml"
+      - "**/go.mod"
+      - "**/go.sum"
+      - "go.work"
+      - ".github/workflows/**"
 
 permissions:
   contents: read

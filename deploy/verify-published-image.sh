@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify the release index, each runnable manifest, and each platform's SBOM.
+# Verify the release index and the signature and provenance of each runnable manifest.
 set -euo pipefail
 image="${1:?usage: verify-published-image.sh IMAGE@DIGEST}"
 repository="${image%@*}"
@@ -15,11 +15,8 @@ verify() {
     gh attestation verify "oci://$1" --repo "$GITHUB_REPOSITORY" > /dev/null
 }
 verify "$image"
-# For an index of several platforms, buildx returns one SBOM per platform, keyed by os/architecture.
-sbom="$(docker buildx imagetools inspect "$image" --format '{{ json .SBOM }}')"
 for arch in amd64 arm64; do
     digest="$(jq -er --arg arch "$arch" '.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch) | .digest' <<< "$manifest")"
     verify "$repository@$digest"
-    packages="$(jq -er --arg platform "linux/$arch" '.[$platform].SPDX.packages | length | select(. > 0)' <<< "$sbom")"
-    echo "linux/$arch: $digest; signature, provenance, SBOM ($packages packages) verified"
+    echo "linux/$arch: $digest; signature and provenance verified"
 done

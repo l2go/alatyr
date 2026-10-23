@@ -4,8 +4,8 @@
                       http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<!--
 		This thin root entry point makes `mvn install` work from the repository root,
-		as CI expects. It also configures the aggregate release SBOM goal; application
-		code and module runtime behavior remain owned by the child projects.
+		as CI expects. Application code and module runtime behavior remain owned by
+		the child projects.
 	-->
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.l2jfree</groupId>
@@ -16,21 +16,4 @@
 	<modules>
 		<module>engine/java</module>
 	</modules>
-	<build>
-		<plugins>
-			<plugin>
-				<groupId>org.cyclonedx</groupId>
-				<artifactId>cyclonedx-maven-plugin</artifactId>
-				<version>2.9.2</version>
-				<configuration>
-					<projectType>application</projectType>
-					<outputFormat>json</outputFormat>
-					<outputName>bom</outputName>
-					<outputDirectory>${project.build.directory}</outputDirectory>
-					<outputReactorProjects>false</outputReactorProjects>
-					<skipAttach>true</skipAttach>
-				</configuration>
-			</plugin>
-		</plugins>
-	</build>
 </project>
