@@ -44,6 +44,38 @@ import io.netty.channel.embedded.EmbeddedChannel;
 class BridgeTransportRecoveryTest
 {
 	@Test
+	void anInventoryObservationWhileDetachedIsPresentInTheRecoverySnapshot() throws Exception
+	{
+		try (Fixture fixture = new Fixture(19950))
+		{
+			fixture.open();
+			var socket = mock(SocketChannel.class);
+			when(socket.read(any(ByteBuffer.class))).thenReturn(-1);
+			fixture.loop.account();
+			fixture.loop.serve(key(socket, fixture.first, true));
+			var item = mock(com.l2jfree.gameserver.model.items.L2ItemInstance.class);
+			var template = mock(com.l2jfree.gameserver.model.items.templates.L2Item.class);
+			when(item.getItem()).thenReturn(template);
+			when(item.getItemId()).thenReturn(57);
+			when(item.getItemDisplayId()).thenReturn(57);
+			when(item.getObjectId()).thenReturn(80);
+			when(item.getCount()).thenReturn(13L);
+			// This full inventory packet cannot reach the lost socket, but must update retained current state.
+			fixture.owner.sink.deliver(new ItemList(new com.l2jfree.gameserver.model.items.L2ItemInstance[] {item}, false), fixture.player);
+			assertThat(fixture.first.queued).isEmpty();
+			var replacement = new BridgeLoopback.Transport(new byte[32]);
+			fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+			barrier(fixture.client);
+			var records = fixture.drain(replacement);
+			var carried = records.stream().filter(record -> record.type() == Schemas.FACT && record.field(1).value().u() == 14)
+					.findFirst().orElseThrow();
+			assertThat(carried.field(23).value().s()).isEqualTo(13);
+			assertThat(carried.field(24).value().items()).hasSize(1);
+			assertThat(carried.field(31).value().u()).isEqualTo(1);
+		}
+	}
+
+	@Test
 	void relocationDuringOpeningKeepsTheQueueFreeAndEndsOnlyAfterCompletion() throws Exception
 	{
 		try (Fixture fixture = new Fixture(19930))

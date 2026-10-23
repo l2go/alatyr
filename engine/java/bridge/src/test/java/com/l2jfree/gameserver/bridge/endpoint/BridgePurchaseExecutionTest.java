@@ -44,7 +44,7 @@ class BridgePurchaseExecutionTest
 	}
 
 	@ParameterizedTest
-	@ValueSource(ints = { 3, 4, 5 })
+	@ValueSource(ints = { 3, 4, 5, 6 })
 	void socketLossBeforeDuringAndAfterPurchaseResumesWithoutBuyingTwice(int scenario)
 	{
 		runActualPurchase(scenario);
@@ -105,6 +105,8 @@ class BridgePurchaseExecutionTest
 		when(inventory.addItem(eq("Buy"), eq(1060), eq(2L), eq(player), any())).thenAnswer(call ->
 		{
 			EffectLedger.record(player, BridgeEffect.item(1060, 70, 2));
+			if (scenario == 6)
+				transport.get().overflow();
 			return null;
 		});
 		try (var itemTables = mockStatic(ItemTable.class);
@@ -260,6 +262,26 @@ class BridgePurchaseExecutionTest
 				when(socket.read(any(java.nio.ByteBuffer.class))).thenReturn(-1);
 				loop.account();
 				loop.serve(key(socket, first, true));
+				org.mockito.Mockito.verify(socket).close();
+				org.mockito.Mockito.verify(client, org.mockito.Mockito.never()).requestBridgeDisconnect();
+			}
+			catch (java.io.IOException failure) { throw new AssertionError(failure); }
+		}
+
+		void overflow()
+		{
+			try
+			{
+				BridgeLoopback.offer(first, new byte[BridgeLoopback.OUT_QUEUE_BYTES]);
+				BridgeLoopback.offer(first, new byte[1]);
+				var socket = mock(java.nio.channels.SocketChannel.class);
+				when(socket.write(any(java.nio.ByteBuffer.class))).thenAnswer(call ->
+				{
+					java.nio.ByteBuffer buffer = call.getArgument(0);
+					int n = buffer.remaining(); buffer.position(buffer.limit()); return n;
+				});
+				loop.account();
+				loop.serve(key(socket, first, false));
 				org.mockito.Mockito.verify(socket).close();
 				org.mockito.Mockito.verify(client, org.mockito.Mockito.never()).requestBridgeDisconnect();
 			}
