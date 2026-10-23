@@ -439,7 +439,7 @@ func adapterModule(t *testing.T, root string, p *policy) modulePolicy {
 	writeFixture(t, root, "engine/go/worldbridge/go.mod", "module "+modulePrefix+"worldbridge\n\ngo "+goVersion+"\nrequire (\n"+
 		modulePrefix+"bridge v0.0.0-20261023154142-3ca081d3eba3\n"+
 		modulePrefix+"protocol v0.0.0-20261023084050-3b52c8d267a0\n"+
-		modulePrefix+"world v0.0.0-20261023203925-ef0408f8cbf8\n)\n")
+		modulePrefix+"world v0.0.0-20261023214742-fbe46cd27dca\n)\n")
 	return m
 }
 
@@ -477,7 +477,7 @@ func TestWorldBridgeDependencyDirection(t *testing.T) {
 func TestWorldBridgeDependencyPins(t *testing.T) {
 	for _, directive := range []string{
 		"replace " + modulePrefix + "world => ../world",
-		"exclude " + modulePrefix + "world v0.0.0-20261023203925-ef0408f8cbf8",
+		"exclude " + modulePrefix + "world v0.0.0-20261023214742-fbe46cd27dca",
 		"tool example.org/foreign/cmd/tool",
 	} {
 		t.Run(strings.Fields(directive)[0], func(t *testing.T) {
