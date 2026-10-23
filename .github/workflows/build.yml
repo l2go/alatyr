@@ -37,7 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          # The merge commit of a pull request and its first parent, the head of the base branch.
+          # The merge commit of a pull request and its first parent, the head of the base branch. Without rename
+          # detection a moved file names both its old and its new path.
           fetch-depth: 2
           persist-credentials: false
 
@@ -51,7 +52,7 @@ jobs:
             printf '%s\n' java=true go=true world=true >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          files="$(git diff --name-only HEAD^1 HEAD)"
+          files="$(git diff --name-only --no-renames HEAD^1 HEAD)"
           printf '%s\n' "$files"
           changed() { if grep -Eq "$1" <<< "$files"; then echo true; else echo false; fi; }
           pipeline="$(changed '^\.github/workflows/build\.yml$')"
@@ -60,6 +61,54 @@ jobs:
           world="$(changed '^(world/|tools/world/)')"
           if [ "$pipeline" = true ]; then java=true; go=true; world=true; fi
           printf '%s\n' "java=$java" "go=$go" "world=$world" | tee -a "$GITHUB_OUTPUT"
+
+  # Guards of the whole tree run for every change: a pull request that touches none of the parts below must still not
+  # bring back the inherited world, or break the layout, licenses, and public content of the Go components.
+  guards:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check the tree has no inherited world
+        run: |
+          set -euo pipefail
+          if [ -e l2jfree-datapack ]; then
+            echo "::error::l2jfree-datapack is still in the tree"
+            exit 1
+          fi
+          cfg="$(find . -path './.git' -prune -o -name 'scripts.cfg' -print)"
+          if [ -n "$cfg" ]; then
+            echo "::error::scripts.cfg is in the tree"
+            printf '%s\n' "$cfg"
+            exit 1
+          fi
+          outside="$(find . \( -path './.git' -o -path './world' \) -prune -o -type d \( -path '*/data/scripts' -o -path '*/data/html' -o -path '*/data/stats' \) -print)"
+          if [ -n "$outside" ]; then
+            echo "::error::data/scripts, data/html, or data/stats exists outside world/"
+            printf '%s\n' "$outside"
+            exit 1
+          fi
+          echo "tree check passed: no l2jfree-datapack, no scripts.cfg, no data/scripts, data/html, or data/stats outside world/"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.3"
+          cache: false
+
+      - name: Check module boundaries and public content
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          go run ./tools/ci/check-engine-go.go
 
   # Checks the Go modules, the boundary checker, and the workflows.
   go:
@@ -114,13 +163,6 @@ jobs:
           set -euo pipefail
           go vet ./tools/ci/check-engine-go.go ./tools/ci/check-engine-go_test.go
           go test -race -count=1 -timeout=2m ./tools/ci/check-engine-go.go ./tools/ci/check-engine-go_test.go
-
-      - name: Check module boundaries and public content
-        env:
-          GOWORK: "off"
-        run: |
-          set -euo pipefail
-          go run ./tools/ci/check-engine-go.go
 
       - name: Vet and check each module outside the workspace
         env:
@@ -263,27 +305,6 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 1
-
-      - name: Check the tree has no inherited world
-        run: |
-          set -euo pipefail
-          if [ -e l2jfree-datapack ]; then
-            echo "::error::l2jfree-datapack is still in the tree"
-            exit 1
-          fi
-          cfg="$(find . -path './.git' -prune -o -name 'scripts.cfg' -print)"
-          if [ -n "$cfg" ]; then
-            echo "::error::scripts.cfg is in the tree"
-            printf '%s\n' "$cfg"
-            exit 1
-          fi
-          outside="$(find . \( -path './.git' -o -path './world' \) -prune -o -type d \( -path '*/data/scripts' -o -path '*/data/html' -o -path '*/data/stats' \) -print)"
-          if [ -n "$outside" ]; then
-            echo "::error::data/scripts, data/html, or data/stats exists outside world/"
-            printf '%s\n' "$outside"
-            exit 1
-          fi
-          echo "tree check passed: no l2jfree-datapack, no scripts.cfg, no data/scripts, data/html, or data/stats outside world/"
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -837,25 +858,36 @@ jobs:
           path: digests/*
           if-no-files-found: error
 
-  # The rules of main require one check named image. After a merge it passes only when the image of every platform
-  # passed, and it runs even when one failed, because a skipped required check would count as passed. A pull request
-  # builds no image, so there the check is skipped.
+  # The rules of main require one check named image, and it is also the gate for the checks the rules do not name.
+  # It always runs, because a skipped required check would count as passed. For a pull request, which builds no image,
+  # it requires the guards and the Go checks (passed, or skipped because Go did not change). After a merge it also
+  # requires the image of every platform, and Go must have run.
   image:
-    needs: image-platform
-    if: ${{ always() && github.event_name != 'pull_request' }}
+    needs: [guards, go, image-platform]
+    if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
     steps:
-      - name: Require the image of every platform
+      - name: Require the guards, Go, and the image of every platform
         env:
-          RESULT: ${{ needs.image-platform.result }}
+          EVENT: ${{ github.event_name }}
+          GUARDS: ${{ needs.guards.result }}
+          GO_RESULT: ${{ needs.go.result }}
+          IMAGE: ${{ needs.image-platform.result }}
         run: |
-          test "$RESULT" = success || { echo "::error::the image of a platform did not pass: $RESULT"; exit 1; }
+          set -euo pipefail
+          test "$GUARDS" = success || { echo "::error::the guards did not pass: $GUARDS"; exit 1; }
+          if [ "$EVENT" = pull_request ]; then
+            test "$GO_RESULT" = success -o "$GO_RESULT" = skipped || { echo "::error::the Go checks did not pass: $GO_RESULT"; exit 1; }
+            exit 0
+          fi
+          test "$GO_RESULT" = success || { echo "::error::the Go checks did not pass: $GO_RESULT"; exit 1; }
+          test "$IMAGE" = success || { echo "::error::the image of a platform did not pass: $IMAGE"; exit 1; }
 
   # Names the verified digests edge and sha-* only when every check of the commit passed.
   image-index:
-    needs: [image, build, integration, go, world, empty-world]
+    needs: [image, guards, build, integration, go, world, empty-world]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
