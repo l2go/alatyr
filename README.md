@@ -64,7 +64,7 @@ The image starts on both platforms, and 24 clients log in, create a character, e
 
 **🚀 Releases promote, never rebuild**
 
-A release retags the image digest that `main` built and tested, after the maintainer approves. The image carries a cosign signature, an SBOM, and build provenance; the compose archive carries its own signature.
+A release retags the image digest that `main` built and tested, after the maintainer approves. The image carries a cosign signature and build provenance; the compose archive carries its own signature.
 
 </td>
 <td width="33%" valign="top">

@@ -8,7 +8,7 @@ Open a [private security advisory](https://github.com/l2go/alatyr/security/advis
 
 ## Verify a release
 
-Set `VERSION` to the release number without the leading `v`, for example `3.2.1`, from the [releases page](https://github.com/l2go/alatyr/releases). The image is signed with cosign and carries an SBOM and build provenance:
+Set `VERSION` to the release number without the leading `v`, for example `3.2.1`, from the [releases page](https://github.com/l2go/alatyr/releases). The image is signed with cosign and carries build provenance:
 
 ```sh
 VERSION=3.2.1
@@ -31,4 +31,4 @@ Releases before 3.2.0 are no longer published; their pages remain as history.
 
 ## Scanning
 
-Trivy scans the image on every merge and every day. A critical or high finding that has a fix fails the daily scan and blocks a release, unless [.trivyignore](.trivyignore) lists it with a date.
+Trivy scans the published image every day and both platforms of a release before it is published. A critical or high finding that has a fix fails the daily scan and blocks a release, unless [.trivyignore](.trivyignore) lists it with a date.

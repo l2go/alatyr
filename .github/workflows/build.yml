@@ -454,8 +454,10 @@ jobs:
             engine/java/game/target/statement-check.txt
             engine/java/game/target/database-docs/*
 
-  # Builds the image of each platform from the verified distribution, rehearses the operator's first week on it, and on
-  # main pushes it by digest, signed and attested. It runs after a merge and on request, not for a pull request. Only
+  # Builds the image of each platform from the verified distribution and starts it: the server must come up on the native
+  # transport and admit a client. The rest of the operator's first week (the load, the roles, a restart, a backup and
+  # its restore, an update) does not depend on the platform and is rehearsed on amd64. On main the job pushes each
+  # image by digest, signed and attested. It runs after a merge and on request, not for a pull request. Only
   # image-index names a digest edge and sha-*, and only after every check of the commit passed.
   image-platform:
     name: image (${{ matrix.arch }}, ${{ matrix.runner }})
@@ -537,43 +539,10 @@ jobs:
             image-file-list.txt
             image-world-manifest.txt
 
-      # The policy of SECURITY.md: a fixed critical or high finding blocks the release, not the merge. The table is
-      # kept in the summary of the run, and the daily scan of the published image fails on a finding that blocks.
-      - name: Scan the image for known vulnerabilities
-        # a problem with the scanner or its database must not block a merge
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: l2jfree:ci
-          format: table
-          output: trivy.txt
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "0"
-          trivyignores: .trivyignore
-
-      - name: Keep the scan in the summary of the run
-        if: always()
-        run: |
-          {
-            echo "### Fixed critical and high vulnerabilities of the image"
-            echo
-            echo '```'
-            cat trivy.txt 2>/dev/null || echo "no scan report"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Keep the platform vulnerability report
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: image-trivy-${{ matrix.arch }}
-          path: trivy.txt
-          if-no-files-found: warn
-
       # Every client of the load test comes from the address of the Docker gateway, and one address may open only so many
       # connections in a short time. The operator directory raises the limits, as an operator behind such an address does.
       - name: Raise the accept limits of the stack for the load
+        if: matrix.arch == 'amd64'
         run: |
           docker volume create l2jfree_config
           docker run --rm --entrypoint bash -v l2jfree_config:/var/lib/l2jfree/config l2jfree:ci -c '
@@ -602,10 +571,12 @@ jobs:
 
       # Many clients at once, each with an account of its own: accounts, characters, and ids are made concurrently.
       - name: Take many clients through a session at once
+        if: matrix.arch == 'amd64'
         run: java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --sessions 24 --parallel 6
 
       # Each module reaches the schemas it owns and nothing else.
       - name: Check what each database role may reach
+        if: matrix.arch == 'amd64'
         env:
           L2JFREE_IMAGE: l2jfree:ci
         run: deploy/probe/check-roles.sh
@@ -625,6 +596,7 @@ jobs:
       # The deploy guides change a setting with this command. The extra key is in no default file, so the server names
       # it in a warning when it reads the file, which shows after the restart that the command wrote where the server reads.
       - name: Change a setting the way the deploy guides do
+        if: matrix.arch == 'amd64'
         env:
           L2JFREE_IMAGE: l2jfree:ci
         run: |
@@ -633,6 +605,7 @@ jobs:
           docker compose -f deploy/compose.yaml exec -T server stat -c '%U %a %n' /var/lib/l2jfree/config/server.properties
 
       - name: Restart the server and probe again
+        if: matrix.arch == 'amd64'
         env:
           L2JFREE_IMAGE: l2jfree:ci
         run: |
@@ -652,6 +625,7 @@ jobs:
 
       # The flight recording runs from the start and keeps its chunks in the log volume.
       - name: Check the flight recording
+        if: matrix.arch == 'amd64'
         env:
           L2JFREE_IMAGE: l2jfree:ci
         run: |
@@ -661,6 +635,7 @@ jobs:
 
       # One command collects what an incident needs, from a server that keeps running.
       - name: Capture the state of the running stack
+        if: matrix.arch == 'amd64'
         env:
           L2JFREE_IMAGE: l2jfree:ci
         run: |
@@ -677,6 +652,7 @@ jobs:
       # The server stops when asked: within the time Docker gives it, without being killed, and after it saved the
       # state of the world. A save that never ends shows as a kill (exit code 137).
       - name: Stop the server and check how it stops
+        if: matrix.arch == 'amd64'
         env:
           L2JFREE_IMAGE: l2jfree:ci
         run: |
@@ -695,6 +671,7 @@ jobs:
       # stack destroyed with its volumes, a clean start, the restore, and the account of the first session finds its
       # character again. The server is stopped by the step before, and the database is still running.
       - name: Rehearse the backup and the restore
+        if: matrix.arch == 'amd64'
         env:
           L2JFREE_IMAGE: l2jfree:ci
         run: |
@@ -740,6 +717,7 @@ jobs:
       # by the image of this commit, on the same volumes. The account and the character of the old image must survive
       # the migrations of the new one.
       - name: Rehearse the update of the image
+        if: matrix.arch == 'amd64'
         env:
           NEW_IMAGE: l2jfree:ci
           OLD_IMAGE: ghcr.io/l2go/l2jfree:edge
@@ -808,7 +786,6 @@ jobs:
           platforms: linux/${{ matrix.arch }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           provenance: mode=max
-          sbom: true
           cache-from: type=gha,scope=image-${{ matrix.arch }}
 
       - name: Install cosign

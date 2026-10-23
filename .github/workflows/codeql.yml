@@ -1,6 +1,7 @@
 name: codeql
 
-# Static analysis of the Java sources, the Go world tool, and the workflows.
+# Static analysis of the Java sources, the Go code, and the workflows, after a merge and weekly. It is not run for
+# pull requests: it gates nothing, and on a Java change it was the longest check a squash waited for.
 # Java is analyzed without a build, so this job does not depend on the Maven
 # build. Go uses CodeQL's automatic build: the module has no dependencies, and
 # the job installs the same Go as the world job.
@@ -8,13 +9,6 @@ name: codeql
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-    # Documents and the authored world hold no code that CodeQL reads.
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "world/**"
   schedule:
     - cron: "17 4 * * 1"
 
