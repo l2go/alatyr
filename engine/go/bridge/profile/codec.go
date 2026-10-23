@@ -125,10 +125,10 @@ func check(r wire.Record) error {
 		}
 		stage := wire.Stage(u(2))
 		reason := u(3)
-		if (stage == wire.Sent || stage == wire.Done) && u(7) != 2 {
+		if (stage == wire.StageSent || stage == wire.StageDone) && u(7) != 2 {
 			return frame
 		}
-		if stage == wire.Unrecoverable && (!pair || u(65) != 21) {
+		if stage == wire.StageUnrecoverable && (!pair || u(65) != 21) {
 			return frame
 		}
 		if pair {
@@ -140,7 +140,7 @@ func check(r wire.Record) error {
 				return frame
 			}
 		}
-		if has(66) != (stage == wire.Done) {
+		if has(66) != (stage == wire.StageDone) {
 			return frame
 		}
 		effects, _ := wire.Find(r.Fields, 66)

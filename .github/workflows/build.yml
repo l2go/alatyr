@@ -61,8 +61,8 @@ jobs:
             test ! -e "$module/go.sum"
           done
           printf '%s\n' \
-            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261022133410-be8a15a35b6b h1:7bP0qqv7z7miDSS2iFr8wy444hw16dAzbWb2w2URUoE=' \
-            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261022133410-be8a15a35b6b/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/bridge/go.sum
+            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0 h1:rMwRQ7Ky/sqoadBzm0G8x1JznT9qSwVIoEIzajZFh/A=' \
+            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/bridge/go.sum
 
       - name: Vet and test the boundary checker
         env:
@@ -157,8 +157,8 @@ jobs:
             test ! -e "$module/go.sum"
           done
           printf '%s\n' \
-            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261022133410-be8a15a35b6b h1:7bP0qqv7z7miDSS2iFr8wy444hw16dAzbWb2w2URUoE=' \
-            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261022133410-be8a15a35b6b/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/bridge/go.sum
+            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0 h1:rMwRQ7Ky/sqoadBzm0G8x1JznT9qSwVIoEIzajZFh/A=' \
+            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/bridge/go.sum
 
   # Formats, vets, and tests the world tool, then checks that the authored world matches a fresh render.
   # It does not build the server and runs beside the Java build.

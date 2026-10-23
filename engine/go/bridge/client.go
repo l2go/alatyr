@@ -655,9 +655,9 @@ func (o *owner) run(first operation, id Identity) {
 	}
 }
 func (o *owner) setProtocol(e error) {
-	o.protocolKind = wire.FrameError
+	o.protocolKind = wire.CloseFrameError
 	if errors.Is(e, wire.ErrUnsupported) {
-		o.protocolKind = wire.Unsupported
+		o.protocolKind = wire.CloseUnsupported
 	}
 }
 func errorKind(e error) FailureKind {
@@ -794,7 +794,7 @@ func (o *owner) validateFrame(rs []wire.Record) error {
 			if profile.U(r, 2) != o.epoch {
 				return wire.ErrFrame
 			}
-			if profile.U(r, 1) == wire.Begin {
+			if wire.CheckpointPhase(profile.U(r, 1)) == wire.CheckpointBegin {
 				if inCheckpoint || ended && (phase == 0 || phase == 3) {
 					return wire.ErrFrame
 				}
@@ -962,7 +962,7 @@ func (o *owner) apply(ev event) error {
 			if !o.flushProof(false) {
 				return failure(Capacity)
 			}
-			if profile.U(r, 1) == wire.Begin {
+			if wire.CheckpointPhase(profile.U(r, 1)) == wire.CheckpointBegin {
 				o.inCheckpoint = true
 				o.checkpointBytes = 0
 				o.checkpointGeneration = o.g

@@ -165,7 +165,7 @@ func TestHandoffProofAndOrder(t *testing.T) {
 	}
 	close(release)
 	u := nextUpdate(t, c)
-	if u.Kind != LiveBatch || len(u.Batch.Records) != 1 || len(u.Batch.Receipts) != 1 || u.Batch.Receipts[0].Key != 100 || u.Batch.Receipts[0].Stage != wire.Sent || len(u.Batch.ReceivedAt) != 1 {
+	if u.Kind != LiveBatch || len(u.Batch.Records) != 1 || len(u.Batch.Receipts) != 1 || u.Batch.Receipts[0].Key != 100 || u.Batch.Receipts[0].Stage != wire.StageSent || len(u.Batch.ReceivedAt) != 1 {
 		t.Fatal("proof batch", u)
 	}
 	if e = c.Close(); e != nil {
@@ -329,7 +329,7 @@ func TestCommandBoundsAndMatchingReceipt(t *testing.T) {
 		t.Fatal("field cap")
 	}
 	c := Command{Key: 1, Verb: 7, Payload: []wire.Field{wire.S(14, true, 1), wire.S(16, true, 2), wire.S(66, true, 1060)}}
-	r := Receipt{Requested: 7, Effective: 7, Stage: wire.Done, Effects: []wire.Value{{Fields: []wire.Field{wire.U(1, true, 1), wire.S(2, true, 1060), wire.S(3, true, 70), wire.S(4, true, 2)}}, {Fields: []wire.Field{wire.U(1, true, 2), wire.S(4, true, -13)}}}}
+	r := Receipt{Requested: 7, Effective: 7, Stage: wire.StageDone, Effects: []wire.Value{{Fields: []wire.Field{wire.U(1, true, 1), wire.S(2, true, 1060), wire.S(3, true, 70), wire.S(4, true, 2)}}, {Fields: []wire.Field{wire.U(1, true, 2), wire.S(4, true, -13)}}}}
 	if e := checkReceipt(r, c); e != nil {
 		t.Fatal(e)
 	}
