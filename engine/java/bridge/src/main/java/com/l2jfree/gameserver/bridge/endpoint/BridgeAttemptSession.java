@@ -57,7 +57,7 @@ final class BridgeAttemptSession
 		fields.sort(java.util.Comparator.comparingInt(com.l2jfree.gameserver.bridge.wire.Field::number));
 		byte[] normalized = Codec.bridge().encode(java.util.List.of(Envelope.of(intent.type(), fields)));
 		if (normalized.length > 4096)
-			throw new IllegalArgumentException("retained payload");
+			throw com.l2jfree.gameserver.bridge.wire.WireException.frame();
 		// Decode our own canonical bytes to sever all receive-side mutable arrays before FIFO submission.
 		Envelope acceptedIntent = Codec.bridge().decode(normalized).get(0);
 		return accept(n, normalized, () -> execute(client, acceptedIntent, n, verb, received, ttl),
