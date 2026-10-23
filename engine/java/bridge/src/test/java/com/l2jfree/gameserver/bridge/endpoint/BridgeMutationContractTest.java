@@ -110,7 +110,7 @@ class BridgeMutationContractTest
 		String creature = source("gameobjects/L2Creature.java");
 		assertThat(creature.indexOf("recordSkillReceipt(oldSkill, newSkill)"))
 				.isLessThan(creature.indexOf("skillChanged(oldSkill, newSkill)"));
-		assertThat(creature).contains("previous != newTarget", "recordSkillReceipt(oldSkill, null)");
+		assertThat(creature).contains("previous != current", "recordSkillReceipt(oldSkill, null)");
 		String learning = source("network/packets/client/RequestAquireSkill.java");
 		assertThat(learning).contains("expectLearningCost(player, 0", "expectLearningCost(player, 1",
 				"expectLearningCost(player, 2", "expectLearningCost(player, 3", "expectLearningCost(player, 4",
