@@ -3,6 +3,68 @@
 
 package world
 
+// ResourceKind identifies the resource whose quantity or balance changed.
+type ResourceKind string
+
+const (
+	// ResourceHP is health, measured continuously.
+	ResourceHP ResourceKind = "hp"
+	// ResourceMP is magic power, measured continuously.
+	ResourceMP ResourceKind = "mp"
+	// ResourceCP is combat power, measured continuously.
+	ResourceCP ResourceKind = "cp"
+	// ResourceSP is the exact integer skill-point resource.
+	ResourceSP ResourceKind = "sp"
+	// ResourceXP is the exact integer experience resource.
+	ResourceXP ResourceKind = "xp"
+	// ResourceItem is an exact integer quantity of an authored item template.
+	ResourceItem ResourceKind = "item"
+)
+
+// Place identifies a resource location within an entity or a world source or sink.
+type Place string
+
+const (
+	// PlaceWorld is a general world resource source or sink.
+	PlaceWorld Place = "world"
+	// PlaceCharacter is a character's resource balance.
+	PlaceCharacter Place = "character"
+	// PlaceInventory is an inventory row.
+	PlaceInventory Place = "inventory"
+	// PlaceGround is an item on the ground.
+	PlaceGround Place = "ground"
+	// PlaceReward is the source of a world-awarded resource.
+	PlaceReward Place = "reward"
+	// PlaceDecay is the sink for a decayed item.
+	PlaceDecay Place = "decay"
+	// PlaceLearning is the sink for skill-learning costs.
+	PlaceLearning Place = "learning"
+)
+
+// Capability identifies a world-provided ability.
+type Capability string
+
+const (
+	// CapabilitySkill is an acquired skill level.
+	CapabilitySkill Capability = "skill"
+	// CapabilitySkillEnabled is skill availability after cooldown.
+	CapabilitySkillEnabled Capability = "skill-enabled"
+)
+
+// SanctionKind identifies a world-imposed restriction. No nonzero kind is
+// defined until the world implements sanctions.
+type SanctionKind string
+
+// SanctionNone is the absence of an identified sanction.
+const SanctionNone SanctionKind = ""
+
+// ObligationState identifies an obligation's lifecycle state. No nonzero state
+// is defined until the world implements obligations.
+type ObligationState string
+
+// ObligationUnknown means no obligation state has been established.
+const ObligationUnknown ObligationState = ""
+
 // Verb identifies a world operation independently of a wire verb registry.
 type Verb string
 

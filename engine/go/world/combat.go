@@ -110,7 +110,7 @@ func (w *World) reduceHP(s *state, t actor, value float64, attacker actor) {
 	oldHP := c.hp
 	w.assignHP(s, t, max(c.hp-value, 0))
 	if c.hp < oldHP {
-		s.group([]Effect{HarmApplied{Source: attacker.base().ref(), Target: c.ref(), Resource: "hp", Before: oldHP, After: c.hp}})
+		s.group([]Effect{HarmApplied{Source: attacker.base().ref(), Target: c.ref(), Resource: ResourceHP, Before: oldHP, After: c.hp}})
 	}
 	if c.hp < 0.5 {
 		w.abortAttack(s, t)
@@ -123,7 +123,7 @@ func (w *World) reduceHP(s *state, t actor, value float64, attacker actor) {
 func (w *World) setHP(s *state, a actor, hp float64) {
 	old := a.base().hp
 	w.assignHP(s, a, hp)
-	s.resourceChange(a.base().ref(), "hp", old, a.base().hp)
+	s.resourceChange(a.base().ref(), ResourceHP, old, a.base().hp)
 }
 func (w *World) assignHP(s *state, a actor, hp float64) {
 	c := a.base()
@@ -147,7 +147,7 @@ func (w *World) setMP(s *state, a actor, mp float64) {
 	old := c.mp
 	c.mp = min(max(mp, 0), float64(a.maxMP()))
 	if c.mp != old {
-		s.resourceChange(c.ref(), "mp", old, c.mp)
+		s.resourceChange(c.ref(), ResourceMP, old, c.mp)
 		w.markBroadcast(s, a, broadcastStatus)
 	}
 	if c.mp < float64(a.maxMP()) {

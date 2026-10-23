@@ -64,7 +64,7 @@ func (w *World) setCP(s *state, p *player, cp float64) {
 	regen := cp < maxCP
 	p.cp = min(max(cp, 0), maxCP)
 	if old != p.cp {
-		s.resourceChange(p.ref(), "cp", old, p.cp)
+		s.resourceChange(p.ref(), ResourceCP, old, p.cp)
 		w.markBroadcast(s, p, broadcastStatus)
 	}
 	if regen {

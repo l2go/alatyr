@@ -43,7 +43,7 @@ func (w *World) dropOnGround(s *state, n *npc, killer *player, templateID int32,
 	}
 	g.pos = w.onGround(g.pos)
 	s.ground[g.id] = g
-	s.group([]Effect{ExistenceChanged{Entity: g.ref(), After: true}, ResourceTransferred{Resource: Resource{Kind: "item", TemplateID: templateID}, From: ResourceLocation{Place: "reward"}, To: ResourceLocation{Entity: g.ref(), Place: "ground"}, Quantity: count, ToQuantityAfter: count}}, Fact{Subject: g.ref(), Property: PropertyPosition, After: PointValue(g.pos)})
+	s.group([]Effect{ExistenceChanged{Entity: g.ref(), After: true}, ResourceTransferred{Resource: Resource{Kind: ResourceItem, TemplateID: templateID}, From: ResourceLocation{Place: PlaceReward}, To: ResourceLocation{Entity: g.ref(), Place: PlaceGround}, Quantity: count, ToQuantityAfter: count}}, Fact{Subject: g.ref(), Property: PropertyPosition, After: PointValue(g.pos)})
 	w.logItem(itemlog.Create, "Loot", g.id, templateID, count, killer, n.tmpl.Name)
 	w.showGround(s, g, n.id)
 	s.afterRule(autoDestroy, RuleItemDecay, func(s *state) {
@@ -153,7 +153,7 @@ func (w *World) insertItem(s *state, p *player, it Item, process, ref string, ex
 		w.logItem(op, process, it.ObjectID, it.TemplateID, it.Count, p, ref)
 	}
 	if !existed {
-		s.itemTransfer(p, p.itemRefs[p.char.Items[i].ObjectID], Resource{Kind: "item", TemplateID: it.TemplateID}, ResourceLocation{Place: "reward"}, it.Count, before, p.char.Items[i].Count)
+		s.itemTransfer(p, p.itemRefs[p.char.Items[i].ObjectID], Resource{Kind: ResourceItem, TemplateID: it.TemplateID}, ResourceLocation{Place: PlaceReward}, it.Count, before, p.char.Items[i].Count)
 	}
 	p.send(InventoryChanged{Changes: []ItemChange{{Kind: change, Item: p.char.Items[i]}}, Load: w.load(p)})
 }
@@ -192,7 +192,7 @@ func (w *World) doPickup(s *state, p *player, item int32) {
 	if before != 0 {
 		row = slices.IndexFunc(p.char.Items, func(held Item) bool { return held.TemplateID == it.TemplateID && !held.Equipped() })
 	}
-	effects := []Effect{ResourceTransferred{Resource: Resource{Kind: "item", TemplateID: it.TemplateID}, From: ResourceLocation{Entity: g.ref(), Place: "ground"}, To: ResourceLocation{Entity: p.ref(), Item: p.itemRefs[p.char.Items[row].ObjectID], Place: "inventory"}, Quantity: it.Count, FromQuantityBefore: it.Count, ToQuantityBefore: before, ToQuantityAfter: after}}
+	effects := []Effect{ResourceTransferred{Resource: Resource{Kind: ResourceItem, TemplateID: it.TemplateID}, From: ResourceLocation{Entity: g.ref(), Place: PlaceGround}, To: ResourceLocation{Entity: p.ref(), Item: p.itemRefs[p.char.Items[row].ObjectID], Place: PlaceInventory}, Quantity: it.Count, FromQuantityBefore: it.Count, ToQuantityBefore: before, ToQuantityAfter: after}}
 	if before != 0 {
 		effects = append(effects, ExistenceChanged{Entity: g.ref(), Before: true})
 	}
@@ -211,7 +211,7 @@ func (w *World) Pickup(ctx context.Context, id, item int32) error {
 }
 
 func (w *World) removeFromGround(s *state, g *groundItem) {
-	s.group([]Effect{ResourceTransferred{Resource: Resource{Kind: "item", TemplateID: g.templateID}, From: ResourceLocation{Entity: g.ref(), Place: "ground"}, To: ResourceLocation{Place: "decay"}, Quantity: g.count, FromQuantityBefore: g.count}, ExistenceChanged{Entity: g.ref(), Before: true}})
+	s.group([]Effect{ResourceTransferred{Resource: Resource{Kind: ResourceItem, TemplateID: g.templateID}, From: ResourceLocation{Entity: g.ref(), Place: PlaceGround}, To: ResourceLocation{Place: PlaceDecay}, Quantity: g.count, FromQuantityBefore: g.count}, ExistenceChanged{Entity: g.ref(), Before: true}})
 	w.eraseGround(s, g)
 }
 func (w *World) eraseGround(s *state, g *groundItem) {

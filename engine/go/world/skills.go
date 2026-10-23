@@ -37,7 +37,7 @@ func (w *World) addSkill(s *state, p *player, k Skill) {
 	old := p.skillLevel(k.ID)
 	w.putSkill(s, p, k)
 	if old != k.Level {
-		s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: "skill", ID: k.ID, Before: max(old, 0), After: k.Level}})
+		s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: CapabilitySkill, ID: k.ID, Before: max(old, 0), After: k.Level}})
 	}
 }
 func (w *World) putSkill(s *state, p *player, k Skill) {
@@ -96,7 +96,7 @@ func (w *World) removeSkill(s *state, p *player, id int32) bool {
 	p.char.Skills = slices.DeleteFunc(p.char.Skills, func(k Skill) bool { return k.ID == id })
 	p.memSkills = slices.DeleteFunc(p.memSkills, func(k Skill) bool { return k.ID == id })
 	if had {
-		s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: "skill", ID: id, Before: old}})
+		s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: CapabilitySkill, ID: id, Before: old}})
 		w.refreshSkillFuncs(p)
 		w.markBroadcast(s, p, broadcastFullInfo|broadcastSkillList)
 	}

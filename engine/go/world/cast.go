@@ -87,11 +87,11 @@ func (w *World) doCast(s *state, p *player, req *castRequest, target int32) {
 	}
 	p.disableSkill(sk.ID, time.Duration(reuse)*time.Millisecond)
 	if r, ok := p.reuse[sk.ID]; ok {
-		s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: "skill-enabled", ID: sk.ID, Before: 1}})
+		s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: CapabilitySkillEnabled, ID: sk.ID, Before: 1}})
 		s.afterRule(time.Until(r.until), RuleSkillReuse, func(s *state) {
 			if s.players[p.id] == p && p.reuse[sk.ID] == r {
 				delete(p.reuse, sk.ID)
-				s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: "skill-enabled", ID: sk.ID, After: 1}})
+				s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: CapabilitySkillEnabled, ID: sk.ID, After: 1}})
 			}
 		})
 	}
@@ -204,7 +204,7 @@ func (w *World) skillDisabled(s *state, p *player, id int32) bool {
 	disabled := p.skillDisabled(id)
 	if had && !disabled {
 		s.rule(RuleSkillReuse, func() {
-			s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: "skill-enabled", ID: id, After: 1}})
+			s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: CapabilitySkillEnabled, ID: id, After: 1}})
 		})
 	}
 	return disabled

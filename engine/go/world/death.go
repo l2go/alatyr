@@ -115,8 +115,8 @@ func (w *World) addExpAndSP(s *state, p *player, exp int64, sp int32, vitality b
 	w.addExp(s, p, exp)
 	p.char.SP += sp
 	s.group([]Effect{
-		ResourceTransferred{Resource: Resource{Kind: "xp"}, From: ResourceLocation{Place: "reward"}, To: ResourceLocation{Entity: p.ref(), Place: "character"}, Quantity: exp, ToQuantityBefore: oldXP, ToQuantityAfter: p.char.Exp},
-		ResourceTransferred{Resource: Resource{Kind: "sp"}, From: ResourceLocation{Place: "reward"}, To: ResourceLocation{Entity: p.ref(), Place: "character"}, Quantity: int64(sp), ToQuantityBefore: int64(oldSP), ToQuantityAfter: int64(p.char.SP)},
+		ResourceTransferred{Resource: Resource{Kind: ResourceXP}, From: ResourceLocation{Place: PlaceReward}, To: ResourceLocation{Entity: p.ref(), Place: PlaceCharacter}, Quantity: exp, ToQuantityBefore: oldXP, ToQuantityAfter: p.char.Exp},
+		ResourceTransferred{Resource: Resource{Kind: ResourceSP}, From: ResourceLocation{Place: PlaceReward}, To: ResourceLocation{Entity: p.ref(), Place: PlaceCharacter}, Quantity: int64(sp), ToQuantityBefore: int64(oldSP), ToQuantityAfter: int64(p.char.SP)},
 	})
 	p.send(Rewarded{ObjectID: p.id, XP: exp, SP: sp})
 	p.send(SelfChanged{})

@@ -84,7 +84,7 @@ func (ExistenceChanged) effect() {}
 // CapabilityChanged records a skill level or an enabled capability.
 type CapabilityChanged struct {
 	Entity        Ref
-	Capability    string
+	Capability    Capability
 	ID            int32
 	Before, After int32
 }
@@ -97,12 +97,12 @@ type ResourceLocation struct {
 	Entity Ref
 	// Item identifies the concrete inventory row for an item resource.
 	Item  Ref
-	Place string
+	Place Place
 }
 
 // Resource identifies a kind and, for items, an authored template.
 type Resource struct {
-	Kind       string
+	Kind       ResourceKind
 	TemplateID int32
 }
 
@@ -123,7 +123,7 @@ func (ResourceTransferred) effect() {}
 // HarmApplied records applied harm, not a calculated or announced attack.
 type HarmApplied struct {
 	Source, Target Ref
-	Resource       string
+	Resource       ResourceKind
 	Before, After  float64
 }
 
@@ -132,7 +132,7 @@ func (HarmApplied) effect() {}
 // SanctionChanged records a world-imposed restriction.
 type SanctionChanged struct {
 	Entity        Ref
-	Kind          string
+	Kind          SanctionKind
 	Before, After bool
 }
 
@@ -142,7 +142,7 @@ func (SanctionChanged) effect() {}
 type ObligationChanged struct {
 	Entity        Ref
 	ID            uint64
-	Before, After string
+	Before, After ObligationState
 }
 
 func (ObligationChanged) effect() {}
@@ -414,15 +414,15 @@ func cloneCommit(t Commit) Commit {
 	return t
 }
 func (s *state) itemTransfer(p *player, item Ref, resource Resource, from ResourceLocation, quantity, before, after int64) {
-	s.group([]Effect{ResourceTransferred{Resource: resource, From: from, To: ResourceLocation{Entity: p.ref(), Item: item, Place: "inventory"}, Quantity: quantity,
+	s.group([]Effect{ResourceTransferred{Resource: resource, From: from, To: ResourceLocation{Entity: p.ref(), Item: item, Place: PlaceInventory}, Quantity: quantity,
 		ToQuantityBefore: before, ToQuantityAfter: after}})
 }
-func (s *state) resourceChange(entity Ref, kind string, before, after float64) {
+func (s *state) resourceChange(entity Ref, kind ResourceKind, before, after float64) {
 	if before == after {
 		return
 	}
 	e := ResourceTransferred{Resource: Resource{Kind: kind}, Amount: after - before,
-		From: ResourceLocation{Place: "world"}, To: ResourceLocation{Entity: entity, Place: "character"}, ToBefore: before, ToAfter: after}
+		From: ResourceLocation{Place: PlaceWorld}, To: ResourceLocation{Entity: entity, Place: PlaceCharacter}, ToBefore: before, ToAfter: after}
 	if after < before {
 		e.Amount = before - after
 		e.From, e.To = e.To, e.From
