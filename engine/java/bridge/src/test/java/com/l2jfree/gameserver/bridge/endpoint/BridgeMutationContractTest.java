@@ -34,7 +34,10 @@ class BridgeMutationContractTest
 		String hooks = container.substring(container.indexOf("private void changeCountWithReceipt"),
 				container.indexOf("/** Coordinates a prepared exchange"));
 		assertThat(hooks).contains("recordReceipt(L2ItemInstance item, long delta)")
+				.contains("item.changeCountAndGetDelta(process, count, actor, reference)", "recordReceipt(item, delta)")
 				.doesNotContain("synchronized", ".lock(", "new Lock");
+		assertThat(source("model/items/L2ItemInstance.java"))
+				.contains("public synchronized long changeCountAndGetDelta", "return getCount() - before");
 		assertThat(source("network/bridge/EffectLedger.java"))
 				.doesNotContain("synchronized", ".lock(", "new Lock");
 		assertThat(source("gameobjects/L2Creature.java"))

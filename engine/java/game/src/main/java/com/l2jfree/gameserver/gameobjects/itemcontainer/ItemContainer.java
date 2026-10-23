@@ -581,9 +581,8 @@ public abstract class ItemContainer
 
 	private void changeCountWithReceipt(L2ItemInstance item, String process, long count, L2Player actor, L2Object reference)
 	{
-		long before = item.getCount();
-		item.changeCount(process, count, actor, reference);
-		recordReceipt(item, item.getCount() - before);
+		long delta = item.changeCountAndGetDelta(process, count, actor, reference);
+		recordReceipt(item, delta);
 	}
 
 	private void recordReceipt(L2ItemInstance item, long delta)
