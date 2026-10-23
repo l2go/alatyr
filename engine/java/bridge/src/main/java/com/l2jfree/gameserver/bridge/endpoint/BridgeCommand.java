@@ -49,6 +49,21 @@ final class BridgeCommand
 		}
 		return switch (verb)
 		{
+			case 2, 10 -> {
+				int object = positive(intent, 64);
+				yield new L2ClientPacket()
+				{
+					@Override
+					protected void readImpl() { throw new IllegalStateException("direct packet"); }
+					@Override
+					protected void runImpl()
+					{
+						com.l2jfree.gameserver.network.bridge.TargetSelection.select(getActiveChar(), object);
+					}
+					@Override
+					public String getType() { return "Bridge target selection"; }
+				};
+			}
 			case 1 -> {
 				Value at = required(intent, 11);
 				yield MoveBackwardToLocation.forBridge(client.getActiveChar(), at.x(), at.y(), at.z());

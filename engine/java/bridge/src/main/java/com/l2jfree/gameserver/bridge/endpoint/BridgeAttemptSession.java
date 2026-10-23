@@ -37,6 +37,21 @@ final class BridgeAttemptSession
 			try
 			{
 				var packet = BridgeCommand.packet(client, intent);
+				int opcode = switch ((int)verb)
+				{
+					case 1 -> 0x0f;
+					case 2, 4, 5, 10 -> 0x1f;
+					case 3 -> 0x01;
+					case 6 -> 0x21;
+					case 7 -> 0x37;
+					case 8 -> 0x1e;
+					case 9 -> 0x6d;
+					case 12 -> 0x39;
+					case 13 -> 0x6c;
+					default -> throw new IllegalArgumentException("verb");
+				};
+				if (!com.l2jfree.gameserver.network.L2ClientSelectorThread.getInstance().canReceivePacketFrom(client, opcode))
+					return BridgeResults.encode(n, verb, 3, 7, null);
 				var attempt = BridgeExecution.run(client, packet);
 				int stage = BridgeOutcome.match(attempt, Math.toIntExact(verb),
 						intent.field(66) == null ? 0 : BridgeCommand.integer(intent, 66),
