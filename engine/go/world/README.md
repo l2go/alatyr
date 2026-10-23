@@ -62,8 +62,12 @@ orders publications across the world independently of commit sequences. Scene
 markers retain the last publication in `Seq`. Captured state observations and
 caller-constructed events are not publications and have zero event markers.
 `DialoguePage` and `LearnList` retain their own detached `Dialogue` and original
-affordances; `SkillsShown` retains skill completeness and runtime availability.
+affordances; `SkillsShown.Known` retains skill completeness and runtime availability.
 Consumers do not pair these queued sources with a later capture.
+Legacy `DialoguePage.NPCID`/`HTML`, `LearnList.NPCID`, and `SkillsShown.Skills`
+remain available with their original types. `Affordance.Parameters` is the full
+issued parameter set. `Params` retains the legacy lesson projection and remains
+empty for Choose; the new `action` parameter does not change that old shape.
 
 `Execute` accepts a `Request` with captured `Ref` values, an exact skill level
 and an optional monotonic deadline. It returns the same source `Commit` that
@@ -109,12 +113,14 @@ are closed values with typed accessors, not arbitrary payloads.
 `WithRandomSource` supplies an exclusively owned random source before spawn;
 the default remains crypto-seeded ChaCha8, without a bit-exact replay promise.
 
-`Leave` takes the captured `Ref`, closes events and saves a detached snapshot
+`LeaveRef` takes the captured `Ref`, closes events and saves a detached snapshot
 outside the loop. A failed save can be retried only by the same incarnation;
 re-entry is blocked until it succeeds. A different live or pending incarnation
 returns `RefusalError` with `ReasonStale`, inspectable with `errors.As`.
-There is no ID-only wrapper. `Logout` takes the same `Ref` and also checks combat
-stance atomically with departure.
+`LogoutRef` takes the same `Ref` and also checks combat stance atomically with
+departure. `Leave` and `Logout` retain the trusted-host ID APIs; they intentionally
+choose the current live or pending incarnation in one owning-loop turn, not a
+captured caller's incarnation. Use the Ref variants for captured ownership.
 An accepted command completes even if its caller cancels in flight.
 Leave all characters before cancelling Run; shutdown does not implicitly save.
 

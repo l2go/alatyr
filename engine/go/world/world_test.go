@@ -86,7 +86,7 @@ func TestEnterMoveLeaveSave(t *testing.T) {
 		if _, ok := (<-entry.Events).(world.Stopped); !ok {
 			t.Fatal("missing stop")
 		}
-		if err = w.Leave(ctx, entry.Self.Entity); err != nil {
+		if err = w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 		left := false
@@ -160,20 +160,20 @@ func TestFailedSaveCanRetry(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := w.Leave(ctx, entry.Self.Entity); err == nil {
+		if err := w.LeaveRef(ctx, entry.Self.Entity); err == nil {
 			t.Fatal("save failure lost")
 		}
 		if _, err := w.Enter(ctx, c); !errors.Is(err, world.ErrPresent) {
 			t.Fatal("unsaved character re-entered")
 		}
-		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
+		if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 		entry, err = w.Enter(ctx, c)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
+		if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -217,9 +217,9 @@ func TestConcurrentLeaveCannotOverlapSaves(t *testing.T) {
 			t.Fatal(err)
 		}
 		done := make(chan error, 1)
-		go func() { done <- w.Leave(ctx, entry.Self.Entity) }()
+		go func() { done <- w.LeaveRef(ctx, entry.Self.Entity) }()
 		<-store.started
-		if err := w.Leave(ctx, entry.Self.Entity); !errors.Is(err, world.ErrSaving) {
+		if err := w.LeaveRef(ctx, entry.Self.Entity); !errors.Is(err, world.ErrSaving) {
 			t.Fatal(err)
 		}
 		if _, err := w.Enter(ctx, ready()); !errors.Is(err, world.ErrPresent) {

@@ -234,7 +234,7 @@ func TestCombatDeathDecayRespawn(t *testing.T) {
 		if !containsEvent(got, func(e Rewarded) bool { return e.XP == 10 && e.SP == 2 }) {
 			t.Fatal("damage-share reward")
 		}
-		if w.Logout(ctx, entry.Self.Entity) == nil {
+		if w.LogoutRef(ctx, entry.Self.Entity) == nil {
 			t.Fatal("combat allowed voluntary logout")
 		}
 		var drop ItemDropped
@@ -265,7 +265,7 @@ func TestCombatDeathDecayRespawn(t *testing.T) {
 		if !containsEvent(got, func(e ObjectGone) bool { return e.ObjectID == mob }) || !containsEvent(got, func(e NPCSeen) bool { return e.NPC.Template.ID == 9101 && e.NPC.ObjectID != mob && !e.NPC.Dead }) {
 			t.Fatal("corpse decay or fresh respawn")
 		}
-		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
+		if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 		if store.saved.Exp != 10 || store.saved.SP != 22 {
@@ -353,7 +353,7 @@ func TestTrainerLearningAndPassiveStats(t *testing.T) {
 		if w.Learn(ctx, 1, 9202, 1) == nil {
 			t.Fatal("duplicate learning charged")
 		}
-		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
+		if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 		if store.saved.SP != 17 || !slices.Contains(store.saved.Skills, Skill{ID: 9202, Level: 1}) {
@@ -409,7 +409,7 @@ func TestStaleAttackAndCastCannotHitAfterLeave(t *testing.T) {
 		mob := objectOf(t, w, ctx, 9101)
 		w.Action(ctx, 1, mob)
 		w.MagicSkillUse(ctx, 1, 9201, false, true)
-		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
+		if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 		entry = enterTest(t, w, ctx, c)
@@ -420,7 +420,7 @@ func TestStaleAttackAndCastCannotHitAfterLeave(t *testing.T) {
 			}
 		})
 		w.AttackRequest(ctx, 1, mob)
-		if err := w.Leave(ctx, entry.Self.Entity); err != nil {
+		if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 		entry = enterTest(t, w, ctx, c)

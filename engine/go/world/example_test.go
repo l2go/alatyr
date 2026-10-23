@@ -49,7 +49,7 @@ func ExampleWorld_Enter() {
 		fmt.Println(err)
 		return
 	}
-	if err := w.Leave(ctx, entry.Self.Entity); err != nil {
+	if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 		fmt.Println(err)
 	}
 	// Output:
@@ -130,7 +130,7 @@ findTeacher:
 		fmt.Println(err)
 		return
 	}
-	if err := w.Leave(ctx, entry.Self.Entity); err != nil {
+	if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 		fmt.Println(err)
 	}
 	// Output:

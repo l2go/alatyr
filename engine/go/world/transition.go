@@ -316,13 +316,17 @@ type Durability struct {
 // identity, target, parameters, costs, issue time and expiry are world-assigned.
 // Rendering text is not an authorization to execute a choice.
 type Affordance struct {
-	ID      uint64
-	Verb    Verb
-	Target  Ref
-	Params  []Parameter
-	Cost    []Cost
-	Issued  Time
-	Expires Time
+	ID     uint64
+	Verb   Verb
+	Target Ref
+	// Params retains legacy lesson parameters; choices leave it empty.
+	// Deprecated: use Parameters for the complete issued parameter set.
+	Params []Parameter
+	// Parameters contains the issued parameters for dialogue and lessons.
+	Parameters []Parameter
+	Cost       []Cost
+	Issued     Time
+	Expires    Time
 }
 
 // Parameter is one named, world-provided affordance parameter.

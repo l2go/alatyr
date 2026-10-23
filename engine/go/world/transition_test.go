@@ -125,7 +125,7 @@ func TestCommitLearningCommitAndDurability(t *testing.T) {
 				if len(log.writes) != 1 || (log.writes[0].Err != nil) != fail || log.writes[0].Intent != commit.Outcome.Intent {
 					t.Fatalf("durability: got %+v, want separate signal", log.writes)
 				}
-				if err := w.Leave(ctx, entry.Self.Entity); err != nil {
+				if err := w.LeaveRef(ctx, entry.Self.Entity); err != nil {
 					t.Fatal(err)
 				}
 				if store.saved.SP != 17 || !slices.Contains(store.saved.Skills, Skill{ID: 9202, Level: 1}) {
@@ -273,7 +273,7 @@ func TestCommitIncarnationAndDetachedValues(t *testing.T) {
 		var log commitLog
 		w, _, ctx := startObservedWorld(t, &log)
 		first := enterTest(t, w, ctx, syntheticCharacter(1))
-		if err := w.Leave(ctx, first.Self.Entity); err != nil {
+		if err := w.LeaveRef(ctx, first.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 		second := enterTest(t, w, ctx, syntheticCharacter(1))

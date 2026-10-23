@@ -124,11 +124,11 @@ func TestDelayedEventsRetainTheirIssuedSource(t *testing.T) {
 		if len(a) != 1 || len(b) != 1 || a[0].ID == b[0].ID || !affordanceAction(a[0], fmtChoice(teacher)) || !reflect.DeepEqual(b, latest.Dialogue.Affordances) {
 			t.Fatalf("page authority: A %+v, B %+v, latest %+v", a, b, latest.Dialogue)
 		}
-		if len(skills) != 2 || !skills[0].Complete || !skills[1].Complete || skills[0].Skills[0].Disabled || !skills[1].Skills[0].Disabled {
+		if len(skills) != 2 || !skills[0].Complete || !skills[1].Complete || skills[0].Known[0].Disabled || !skills[1].Known[0].Disabled {
 			t.Fatalf("runtime flags: got %+v", skills)
 		}
-		pages[1].Dialogue.Affordances[0].Params[0].Name = "changed"
-		skills[1].Skills[0].Skill.Level = 99
+		pages[1].Dialogue.Affordances[0].Parameters[0].Name = "changed"
+		skills[1].Known[0].Skill.Level = 99
 		after := captureTest(t, w, ctx, entry.Self.Entity)
 		if !reflect.DeepEqual(after.Dialogue, latest.Dialogue) || !reflect.DeepEqual(after.Skills, latest.Skills) {
 			t.Fatal("consumer mutated live authority or skills")
@@ -185,9 +185,9 @@ func TestSkillAvailabilityUsesPublicationTime(t *testing.T) {
 		{"before expiry", 9, true}, {"at expiry", 10, false}, {"after expiry", 11, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			source := SkillsShown{Complete: true, Skills: []KnownSkill{{Skill: Skill{ID: 1, Level: 1}, Disabled: true, ReuseUntil: 10}}}
+			source := SkillsShown{Complete: true, Known: []KnownSkill{{Skill: Skill{ID: 1, Level: 1}, Disabled: true, ReuseUntil: 10}}}
 			got := publishEvent(source, stamp{time: tc.at, seq: 1}).(SkillsShown)
-			if got.Skills[0].Disabled != tc.disabled || got.Time() != tc.at || !source.Skills[0].Disabled {
+			if got.Known[0].Disabled != tc.disabled || got.Time() != tc.at || !source.Known[0].Disabled {
 				t.Fatalf("availability: got %+v, want disabled %v without aliasing", got, tc.disabled)
 			}
 		})
