@@ -23,6 +23,51 @@ import org.junit.jupiter.api.Test;
 class BridgeAttemptSessionTest
 {
 	@Test
+	void aLateReadyGrantOnTheSameSocketCannotAdmitTheNewScene()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> output = new ArrayList<>();
+		var session = new BridgeAttemptSession(fifo::add, output::add);
+		var fence = new BridgeAttemptSession.Fence();
+		session.bindFence(fence);
+		long oldGeneration = fence.generation;
+		fence.invalidateReadiness();
+		session.ready(fence, oldGeneration);
+		assertThat(fence.isReady()).isFalse();
+		// Model relocation winning between the grant's generation check and its two writes.
+		fence.readyGeneration = oldGeneration;
+		fence.ready = true;
+		var intent = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(
+				java.util.HexFormat.of().parseHex("0a09180128093801b80c01")).getFirst();
+		assertThat(session.accept(null, intent, fence).kind).isEqualTo(BridgeIntents.Kind.NOT_READY);
+		assertThat(fifo).isEmpty();
+		session.ready(fence, fence.generation);
+		assertThat(fence.isReady()).isTrue();
+		assertThat(session.accept(null, intent, fence).kind).isEqualTo(BridgeIntents.Kind.REPLAY);
+		assertThat(output.get(1)).containsExactly(output.get(0));
+	}
+
+	@Test
+	void aLateReadyGrantCannotLetPreviouslyQueuedWorkRunInTheNewScene()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> output = new ArrayList<>();
+		var session = new BridgeAttemptSession(fifo::add, output::add);
+		var fence = new BridgeAttemptSession.Fence();
+		session.bindFence(fence);
+		session.ready(fence);
+		var intent = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(
+				java.util.HexFormat.of().parseHex("0a09180128093801b80c01")).getFirst();
+		assertThat(session.accept(null, intent, fence).kind).isEqualTo(BridgeIntents.Kind.ACCEPTED);
+		fence.invalidateReadiness();
+		fence.ready = true;
+		fifo.remove().run();
+		var result = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(output.getFirst()).getFirst();
+		assertThat(result.field(2).value().u()).isEqualTo(3);
+		assertThat(result.field(3).value().u()).isEqualTo(1);
+	}
+
+	@Test
 	void terminalClosingCancelsQueuedWorkWithItsOriginalVerbAndClosingReason()
 	{
 		ArrayDeque<Runnable> fifo = new ArrayDeque<>();

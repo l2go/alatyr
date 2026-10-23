@@ -794,6 +794,7 @@ final class BridgeLoopback implements Runnable
 	{
 		boolean finish = false;
 		boolean ready = false;
+		long readyGeneration = 0;
 		BridgeRecovery.Checkpoint token = null;
 		synchronized (transport)
 		{
@@ -817,6 +818,7 @@ final class BridgeLoopback implements Runnable
 				transport.opened = true;
 				transport.checkpointDeadline = 0;
 				ready = true;
+				readyGeneration = transport.checkpointFenceGeneration;
 				while (!transport.afterCheckpoint.isEmpty())
 					transport.queued.add(transport.afterCheckpoint.remove());
 			}
@@ -827,7 +829,7 @@ final class BridgeLoopback implements Runnable
 			transport.client.submit(() -> transport.session.finishCheckpoint(transport, expected));
 		}
 		if (ready)
-			transport.attempts.ready(transport.attemptFence);
+			transport.attempts.ready(transport.attemptFence, readyGeneration);
 	}
 
 	/** One game session owns the sink and attempts across successive sockets. */
@@ -890,7 +892,7 @@ final class BridgeLoopback implements Runnable
 						&& record.field(67) != null && record.field(67).value().u() == 1);
 				if (relocation)
 				{
-					current.attemptFence.ready = false;
+					current.attemptFence.invalidateReadiness();
 					current.checkpointDeadline = System.nanoTime() + OPENING_NS;
 				}
 				if (relocation && current.checkpoint != null)
@@ -1068,11 +1070,18 @@ final class BridgeLoopback implements Runnable
 			var player = client.getActiveChar();
 			if (player == null)
 				return;
+			synchronized (current)
+			{
+				// Duplicate relocation continuations must not replace an in-flight producer with
+				// another Begin, or replace the token whose ready tail is already scheduled.
+				if (current.checkpoint != null)
+					return;
+			}
 			var token = recovery.beginCheckpoint();
 			attempts.checkpoint();
 			synchronized (current)
 			{
-				current.attemptFence.ready = false;
+				current.attemptFence.invalidateReadiness();
 				if (current.checkpointDeadline == 0)
 					current.checkpointDeadline = System.nanoTime() + OPENING_NS;
 			}
@@ -1096,6 +1105,7 @@ final class BridgeLoopback implements Runnable
 								current.opened ? null : BridgeFrames.accepted(id, epoch).get(2), !current.reuseCheckpointBegin);
 						current.reuseCheckpointBegin = false;
 						current.token = token;
+						current.checkpointFenceGeneration = current.attemptFence.generation;
 						current.endScheduled = false;
 					}
 				}
@@ -1299,6 +1309,7 @@ final class BridgeLoopback implements Runnable
 		long checkpointDeadline;
 		BridgeCheckpointOutput checkpoint;
 		BridgeRecovery.Checkpoint token;
+		long checkpointFenceGeneration;
 		boolean endScheduled;
 		final ArrayDeque<byte[]> afterCheckpoint = new ArrayDeque<>();
 

@@ -27,7 +27,23 @@ final class BridgeAttemptSession
 	private Consumer<byte[]> outbound;
 	private record Queued(byte[] refusal, Fence fence) {}
 	/** A reader invalidates the source fence before any queued task can begin. No callback or lock is needed. */
-	static final class Fence { volatile boolean valid = true; volatile boolean ready = true; volatile boolean closing; }
+	static final class Fence
+	{
+		volatile boolean valid = true;
+		volatile boolean ready = true;
+		volatile boolean closing;
+		volatile long generation = 1;
+		volatile long readyGeneration = 1;
+
+		boolean isReady() { return ready && readyGeneration == generation; }
+
+		/** Called under the owning transport monitor; takes no additional lock. */
+		void invalidateReadiness()
+		{
+			generation = Math.incrementExact(generation);
+			ready = false;
+		}
+	}
 	private final java.util.Map<Long, Queued> queued = new java.util.HashMap<>();
 	private boolean detached;
 	private volatile long epoch = 1;
@@ -44,10 +60,18 @@ final class BridgeAttemptSession
 		intents.markReady();
 	}
 
-	synchronized void ready(Fence fence)
+	void ready(Fence fence)
 	{
-		if (!detached && activeFence == fence && fence.valid)
+		ready(fence, fence.generation);
+	}
+
+	synchronized void ready(Fence fence, long generation)
+	{
+		if (!detached && activeFence == fence && fence.valid && fence.generation == generation)
 		{
+			// A concurrent relocation can invalidate after the check. Matching generations, not the
+			// boolean alone, prevent that late grant from reopening admission for the new scene.
+			fence.readyGeneration = generation;
 			fence.ready = true;
 			intents.markReady();
 		}
@@ -241,7 +265,7 @@ final class BridgeAttemptSession
 			// A stale reader is ignored, never registered against the replacement epoch or thrown into the selector.
 			if (detached || fence != null && (!fence.valid || activeFence != fence))
 				return null;
-			if (fence != null && !fence.ready)
+			if (fence != null && !fence.isReady())
 				intents.markNotReady();
 			decision = intents.offer(n, normalized);
 			if (decision.kind == BridgeIntents.Kind.NOT_READY)
@@ -271,7 +295,7 @@ final class BridgeAttemptSession
 					if (entry == null)
 						return;
 					canceled = entry.fence() != null && !entry.fence().valid;
-					unavailable = entry.fence() != null && !entry.fence().ready;
+					unavailable = entry.fence() != null && !entry.fence().isReady();
 				}
 				byte[] result = canceled ? fence != null && fence.closing
 						? BridgeResults.encode(n, verb, 3, 16, null) : transportLost : unavailable ? notReady : execution.get();

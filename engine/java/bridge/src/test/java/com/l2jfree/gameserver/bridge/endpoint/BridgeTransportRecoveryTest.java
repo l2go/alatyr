@@ -44,6 +44,33 @@ import io.netty.channel.embedded.EmbeddedChannel;
 class BridgeTransportRecoveryTest
 {
 	@Test
+	void aDuplicateCaptureKeepsTheProducerAndTokenAfterBegin() throws Exception
+	{
+		try (Fixture fixture = new Fixture(20006))
+		{
+			fixture.seed();
+			fixture.client.submit(() -> fixture.owner.opened(BridgeFrames.accepted(fixture.id, 1)));
+			barrier(fixture.client);
+			var producer = fixture.first.checkpoint;
+			var token = fixture.first.token;
+			var socket = mock(SocketChannel.class);
+			when(socket.write(any(ByteBuffer.class))).thenAnswer(call ->
+			{
+				ByteBuffer buffer = call.getArgument(0); int n = buffer.remaining(); buffer.position(buffer.limit()); return n;
+			});
+			fixture.loop.serve(key(socket, fixture.first, false));
+			barrier(fixture.client);
+			assertThat(producer.began()).isTrue();
+			fixture.client.submit(fixture.owner::captureCheckpoint);
+			barrier(fixture.client);
+			assertThat(fixture.first.checkpoint).isSameAs(producer);
+			assertThat(fixture.first.token).isEqualTo(token);
+			assertThat(fixture.drain(fixture.first)).noneMatch(record -> record.type() == Schemas.CHECKPOINT
+					&& record.field(1).value().u() == Schemas.BEGIN);
+		}
+	}
+
+	@Test
 	void aSocketWaitingForFifoResumeCannotCreateATemporaryAttemptTable() throws Exception
 	{
 		try (Fixture fixture = new Fixture(20004))
