@@ -14,14 +14,27 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
 /**
  * @author Administrator
  *
  */
-public class ExShowScreenMessage extends L2ServerPacket
+public class ExShowScreenMessage extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		String text = _type == 1 ? _text : "World message " + _sysMessageId;
+		sink.emit(BridgeFact.of(18, BridgeField.text(20, text, _type == 1 ? 4 : 2),
+				BridgeField.string(26, "world-message")));
+	}
+
 	private final int _type;
 	private final int _sysMessageId;
 	private final int _unk1;

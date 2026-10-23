@@ -14,6 +14,11 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
 /**
@@ -28,8 +33,15 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  *
  * @author Tempy
  */
-public class L2FriendSay extends L2ServerPacket
+public class L2FriendSay extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		sink.emit(BridgeFact.of(18, BridgeField.text(12, _sender, 4), BridgeField.text(20, _message, 4),
+				BridgeField.string(26, "world-message")));
+	}
+
 	private static final String S_78_L2FRIENDSAY = "[S] 78 L2FriendSay";
 	
 	private final String _sender, _receiver, _message;

@@ -14,6 +14,12 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeActors;
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.Config;
 import com.l2jfree.gameserver.gameobjects.L2Decoy;
 import com.l2jfree.gameserver.gameobjects.L2Player;
@@ -25,8 +31,16 @@ import com.l2jfree.gameserver.model.skills.effects.AbnormalEffect;
 import com.l2jfree.gameserver.network.L2Client;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
-public final class CharInfo extends L2ServerPacket
+public final class CharInfo extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		BridgeActors.appeared(sink, _view.getObjectId(), "player", _activeChar.getAppearance().getVisibleName(),
+				_view.getX(), _view.getY(), _view.getZ(), _view.getRunSpd(), _view.getWalkSpd(),
+				_view.getMovementSpeedMultiplier(), _activeChar.isRunning(), !_activeChar.isAlikeDead(), false, null);
+	}
+
 	private static final String _S__31_CHARINFO =
 			"[S] 31 CharInfo [dddddsddd dddddddddddd dddddddd hhhh d hhhhhhhhhhhh d hhhh hhhhhhhhhhhhhhhh dddddd dddddddd ffff ddd s ddddd ccccccc h c d c h ddd cc d ccc ddddddddddd]";
 	

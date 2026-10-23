@@ -14,6 +14,11 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.gameobjects.L2Object;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
@@ -32,8 +37,19 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  * 
  * @version $Revision: 1.3.2.1.2.3 $ $Date: 2005/03/27 15:29:39 $
  */
-public class SpawnItemPoly extends L2ServerPacket
+public class SpawnItemPoly extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		if (_count < 0 || _count > Integer.MAX_VALUE)
+			throw new IllegalArgumentException("unrepresentable polymorph count");
+		sink.emit(BridgeFact.of(8, BridgeField.number(64, _objectId), BridgeField.string(11, "drop"),
+				BridgeField.at(13, _x, _y, _z), BridgeField.list(24, java.util.List.of(
+						BridgeField.object(1, BridgeField.number(2, _objectId), BridgeField.number(3, _itemId),
+								BridgeField.number(4, _count)).value()))));
+	}
+
 	private static final String _S__15_SPAWNITEM = "[S] 15 SpawnItem";
 	private int _objectId;
 	private int _itemId;

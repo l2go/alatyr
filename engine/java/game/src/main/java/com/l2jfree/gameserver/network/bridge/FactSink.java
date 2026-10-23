@@ -20,4 +20,11 @@ public interface FactSink
 	void emit(BridgeFact fact);
 	void systemMessage(int messageId, List<BridgeMessageArg> arguments);
 	long now();
+
+	default void movementSpeeds(int rawId, long run, long walk) {}
+
+	default void changeMoveType(int rawId, boolean running)
+	{
+		emit(BridgeFact.of(1, BridgeField.number(64, rawId)));
+	}
 }

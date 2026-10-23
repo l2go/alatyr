@@ -14,11 +14,22 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.gameobjects.L2Creature;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
-public class ChangeMoveType extends L2ServerPacket
+public class ChangeMoveType extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		sink.changeMoveType(_chaObjId, _running);
+	}
+
 	private static final String _S__28_CHANGEMOVETYPE = "[S] 28 ChangeMoveType [ddd]";
 	public static final int WALK = 0;
 	public static final int RUN = 1;

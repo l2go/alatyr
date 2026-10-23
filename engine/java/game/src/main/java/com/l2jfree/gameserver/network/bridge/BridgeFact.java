@@ -24,9 +24,15 @@ public record BridgeFact(int kind, List<BridgeField> fields)
 		fields = List.copyOf(fields);
 		BridgeField.requireUnique(fields);
 		for (BridgeField field : fields)
+		{
 			if (field.number() <= 6 || field.number() == 10 || field.number() == 16
 					|| field.number() == 21 || field.number() == 32)
 				throw new IllegalArgumentException("non-game fact field");
+			if (field.number() == 25 && field.value() instanceof BridgeValue.ObjectValue stats)
+				for (BridgeField stat : stats.fields())
+					if (stat.value() instanceof BridgeValue.Number number && number.value() < 0)
+						throw new IllegalArgumentException("negative observed stat");
+		}
 	}
 
 	public static BridgeFact of(int kind, BridgeField... fields)

@@ -14,6 +14,12 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeActors;
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.Config;
 import com.l2jfree.gameserver.datatables.NpcTable;
 import com.l2jfree.gameserver.gameobjects.L2Player;
@@ -68,8 +74,26 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
  * @version $Revision: 1.14.2.4.2.12 $ $Date: 2005/04/11 10:05:55 $
  */
-public final class UserInfo extends L2ServerPacket
+public final class UserInfo extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		if (receiver != _activeChar)
+			throw new IllegalArgumentException("userinfo receiver");
+		var view = _activeChar.getView();
+		var stat = _activeChar.getStat();
+		var status = _activeChar.getStatus();
+		BridgeActors.appeared(sink, view.getObjectId(), "player", _activeChar.getAppearance().getVisibleName(),
+				view.getX(), view.getY(), view.getZ(), view.getRunSpd(), view.getWalkSpd(),
+				view.getMovementSpeedMultiplier(), _activeChar.isRunning(), !_activeChar.isAlikeDead(), true, null);
+		sink.emit(BridgeFact.of(16, BridgeField.number(64, view.getObjectId()),
+				BridgeField.object(25, BridgeField.number(1, (int)status.getCurrentHp()),
+						BridgeField.number(2, stat.getMaxHp()), BridgeField.number(3, (int)status.getCurrentMp()),
+						BridgeField.number(4, stat.getMaxMp()), BridgeField.number(5, _activeChar.getLevel()),
+						BridgeField.number(6, _activeChar.getExp()), BridgeField.number(7, _activeChar.getSp()))));
+	}
+
 	private static final String _S__04_USERINFO = "[S] 04 UserInfo";
 	
 	private final L2Player _activeChar;

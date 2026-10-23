@@ -14,14 +14,26 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.gameobjects.L2Npc;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
 /**
  * @author Kerberos
  */
-public final class NpcSay extends L2ServerPacket
+public final class NpcSay extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		sink.emit(BridgeFact.of(18, BridgeField.number(64, _objectId), BridgeField.text(20, _text, 1),
+				BridgeField.string(26, "world-message")));
+	}
+
 	// dddS
 	private static final String _S__30_NPCSAY = "[S] 30 NpcSay";
 	private final int _objectId;

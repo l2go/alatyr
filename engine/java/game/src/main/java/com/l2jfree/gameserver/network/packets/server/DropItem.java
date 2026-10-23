@@ -14,11 +14,26 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
-public class DropItem extends L2ServerPacket
+public class DropItem extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		sink.emit(BridgeFact.of(8, BridgeField.number(64, _item.getObjectId()), BridgeField.number(65, _charObjId),
+				BridgeField.string(11, "drop"), BridgeField.at(13, _item.getX(), _item.getY(), _item.getZ()),
+				BridgeField.list(24, java.util.List.of(BridgeField.object(1,
+						BridgeField.number(2, _item.getObjectId()), BridgeField.number(3, _item.getItemDisplayId()),
+						BridgeField.number(4, _item.getCount())).value()))));
+	}
+
 	private static final String _S__16_DROPITEM = "[S] 16 DropItem [ddddddddd]";
 	private final L2ItemInstance _item;
 	private final int _charObjId;
