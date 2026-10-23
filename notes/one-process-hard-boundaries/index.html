@@ -55,6 +55,7 @@
 </ul>
 <h2>The decision</h2>
 <p>Run login and world in one JVM, and replace the protocol with a Java contract.</p>
+<p>The other option was to keep two processes and replace the hand-written protocol with a standard RPC. That keeps what separate processes give: independent restarts, separate scaling, and a crash that takes down only one half. This project needed none of those, and it would still have kept the registration, the versioning of messages between two deployments, and two things to run. One process with a typed contract removes the protocol instead of modernizing it, and pays for that with a shared fate, described below.</p>
 <p>The contract is its own module, and it is small on purpose. It has two interfaces and a handful of value types.</p>
 <p><code>LoginPort</code> is what the world asks of the login:</p>
 <pre class="code"><code class="language-java">public interface LoginPort
