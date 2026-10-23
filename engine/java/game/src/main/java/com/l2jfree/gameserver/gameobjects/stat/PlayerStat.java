@@ -426,12 +426,12 @@ public class PlayerStat extends PlayableStat
 	{
 		if (getActiveChar().isBridgeSession())
 		{
-				int before = getSp();
-				setSpValue(value);
-				int after = getSp();
-				if (before != after && com.l2jfree.gameserver.network.bridge.EffectLedger.isActive())
-					com.l2jfree.gameserver.network.bridge.EffectLedger.record(getActiveChar(),
-							com.l2jfree.gameserver.network.bridge.BridgeEffect.sp((long)after - before, before, after));
+			int before = getSp();
+			setSpValue(value);
+			int after = getSp();
+			if (before != after && com.l2jfree.gameserver.network.bridge.EffectLedger.isActive())
+				com.l2jfree.gameserver.network.bridge.EffectLedger.record(getActiveChar(),
+						com.l2jfree.gameserver.network.bridge.BridgeEffect.sp((long)after - before, before, after));
 			return;
 		}
 		setSpValue(value);

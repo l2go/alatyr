@@ -36,8 +36,13 @@ class BridgeOutcomeTest
 	void committedMultisellMarksTheOwnerLedgerIncompleteAndUnknown()
 	{
 		var player = BridgeTestPlayers.player();
+		var item = org.mockito.Mockito.mock(com.l2jfree.gameserver.model.items.L2ItemInstance.class);
+		org.mockito.Mockito.when(item.getCount()).thenReturn(3L);
 		var inventory = new com.l2jfree.gameserver.gameobjects.itemcontainer.PlayerInventory(player)
 		{
+			{
+				addItem(item);
+			}
 			@Override
 			public void refreshWeight()
 			{
@@ -51,7 +56,8 @@ class BridgeOutcomeTest
 			EffectLedger.record(player, BridgeEffect.item(1060, 70, 2));
 			EffectLedger.record(player, BridgeEffect.coin(-13));
 			assertThat(BridgeOutcome.match(attempt, 7, 1060, 0, 2)).isEqualTo(BridgeOutcome.DONE);
-			inventory.publishCommittedMultisell(java.util.Map.of(), java.util.List.of());
+			inventory.publishCommittedMultisell(java.util.Map.of(item, 2L), java.util.List.of());
+			org.mockito.Mockito.verify(item).setCount(2L);
 			assertThat(attempt.isLedgerIncomplete()).isTrue();
 			assertThat(BridgeOutcome.match(attempt, 7, 1060, 0, 2)).isEqualTo(BridgeOutcome.UNKNOWN);
 		}
