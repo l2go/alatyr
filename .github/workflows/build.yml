@@ -52,15 +52,8 @@ jobs:
             printf '%s\n' java=true go=true world=true >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          files="$(git diff --name-only --no-renames HEAD^1 HEAD)"
-          printf '%s\n' "$files"
-          changed() { if grep -Eq "$1" <<< "$files"; then echo true; else echo false; fi; }
-          pipeline="$(changed '^\.github/workflows/build\.yml$')"
-          java="$(changed '^(engine/java/|pom\.xml$|\.mvn/|mvnw|deploy/release/)')"
-          go="$(changed '^(engine/go/|tools/ci/|go\.work|\.github/workflows/)')"
-          world="$(changed '^(world/|tools/world/)')"
-          if [ "$pipeline" = true ]; then java=true; go=true; world=true; fi
-          printf '%s\n' "java=$java" "go=$go" "world=$world" | tee -a "$GITHUB_OUTPUT"
+          git diff --name-only --no-renames HEAD^1 HEAD
+          tools/ci/changed-parts.sh HEAD^1 HEAD | tee -a "$GITHUB_OUTPUT"
 
   # Guards of the whole tree run for every change: a pull request that touches none of the parts below must still not
   # bring back the inherited world, or break the layout, licenses, and public content of the Go components.
@@ -76,6 +69,9 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Test how the changed parts are named
+        run: bash tools/ci/test-changed-parts.sh
 
       - name: Check the tree has no inherited world
         run: |
@@ -528,6 +524,7 @@ jobs:
           test -d deploy/image/l2jfree/libs
 
       - name: Check the script that creates the passwords
+        if: matrix.arch == 'amd64'
         run: deploy/image/test-init-secrets.sh
 
       - name: Set up Docker Buildx
