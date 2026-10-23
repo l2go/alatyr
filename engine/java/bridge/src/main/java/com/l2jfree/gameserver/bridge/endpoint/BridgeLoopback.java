@@ -317,17 +317,24 @@ final class BridgeLoopback implements Runnable
 	{
 		if (transport.closing || transport.terminal)
 			return;
-		if (transport.session != null && records.size() == 1
+		if ((transport.session != null || transport.resumeOwner != null) && records.size() == 1
 				&& records.get(0).type() == com.l2jfree.gameserver.bridge.wire.Schemas.CLOSE)
 		{
 			Envelope close = records.get(0);
 			long epoch = close.field(2).value().u();
-			if (close.field(1).value().u() != transport.session.id || Long.compareUnsigned(epoch, transport.epoch) > 0)
+			long expectedSession;
+			long expectedEpoch;
+			synchronized (transport)
+			{
+				expectedSession = transport.session == null ? transport.resumeSession : transport.session.id;
+				expectedEpoch = transport.client == null ? transport.resumeEpoch : transport.epoch;
+			}
+			if (close.field(1).value().u() != expectedSession || Long.compareUnsigned(epoch, expectedEpoch) > 0)
 			{
 				finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
 				return;
 			}
-			if (Long.compareUnsigned(epoch, transport.epoch) < 0)
+			if (Long.compareUnsigned(epoch, expectedEpoch) < 0)
 				return;
 		}
 		BridgeReply reply = transport.dialogue.accept(records);

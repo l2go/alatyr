@@ -67,6 +67,11 @@ class BridgeTransportRecoveryTest
 				}
 				try (var cleanup = closeFirst ? null : new FifoGate(fixture.client))
 				{
+					// Ignore an older epoch before the dialogue can latch closed, even before binding.
+					var staleClose = Envelope.of(Schemas.CLOSE,
+							List.of(Field.u(1, true, fixture.id), Field.u(2, true, 1), Field.u(3, true, 0)));
+					fixture.loop.acceptFrame(replacement, List.of(staleClose));
+					assertThat(replacement.explicitClose).isFalse();
 					var close = Envelope.of(Schemas.CLOSE,
 							List.of(Field.u(1, true, fixture.id), Field.u(2, true, 2), Field.u(3, true, 0)));
 					fixture.loop.acceptFrame(replacement, List.of(close));
