@@ -113,16 +113,19 @@ class BridgeIntentTest
 	}
 	
 	@Test
-	void anIntentBeforeReadyIsRefusedAndStoresNothing()
+	void anIntentBeforeReadyIsRegisteredAndReplaysItsFinalRefusal()
 	{
 		BridgeIntents intents = new BridgeIntents();
 		Decision early = intents.offer(1, new byte[] { 1 });
 		assertThat(early.kind).isEqualTo(Kind.NOT_READY);
 		assertThat(early.code).isEqualTo(7);
-		assertThat(intents.next()).isEqualTo(1);
+		assertThat(intents.next()).isEqualTo(2);
+		byte[] refusal = new byte[] { 3, 1 };
+		intents.complete(1, refusal);
 		
 		intents.markReady();
-		assertThat(intents.offer(1, new byte[] { 1 }).kind).isEqualTo(Kind.ACCEPTED);
+		assertThat(intents.offer(1, new byte[] { 1 }).kind).isEqualTo(Kind.REPLAY);
+		assertThat(intents.result(1)).containsExactly(3, 1);
 	}
 	
 	private static BridgeIntents ready()

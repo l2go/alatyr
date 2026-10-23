@@ -63,10 +63,29 @@ class BridgeAttemptSessionTest
 	void everyVerbBeforeReadySchedulesNoWorldWork()
 	{
 		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
-		BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, bytes -> { throw new AssertionError("output"); });
 		for (int verb : new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13 })
+		{
+			BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, bytes -> { });
 			assertThat(session.accept(1, new byte[] { (byte)verb }, () -> { throw new AssertionError("world"); }).kind)
 					.isEqualTo(BridgeIntents.Kind.NOT_READY);
+		}
+		assertThat(fifo).isEmpty();
+	}
+
+	@Test
+	void aPreReadyRefusalReplaysAfterReadyWithoutSchedulingWorldWork()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> output = new ArrayList<>();
+		BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, output::add);
+		assertThat(session.accept(2, new byte[] { 9 }, () -> null).kind).isEqualTo(BridgeIntents.Kind.FRAME);
+		assertThat(session.accept(1, new byte[] { 9 }, () -> { throw new AssertionError("world"); }).kind)
+				.isEqualTo(BridgeIntents.Kind.NOT_READY);
+		session.ready();
+		assertThat(session.accept(1, new byte[] { 9 }, () -> { throw new AssertionError("world"); }).kind)
+				.isEqualTo(BridgeIntents.Kind.REPLAY);
+		assertThat(output).hasSize(2);
+		assertThat(output.get(1)).containsExactly(output.get(0));
 		assertThat(fifo).isEmpty();
 	}
 

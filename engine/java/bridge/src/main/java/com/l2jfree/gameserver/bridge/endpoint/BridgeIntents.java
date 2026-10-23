@@ -58,8 +58,6 @@ final class BridgeIntents
 				return Decision.replay(stored);
 			return Decision.mismatch(stored);
 		}
-		if (!ready)
-			return Decision.notReady();
 		if (n > next)
 			return Decision.frame();
 		if (n != next || n < floor)
@@ -70,6 +68,8 @@ final class BridgeIntents
 		byte[] copy = content.clone();
 		pending.put(n, copy);
 		next++;
+		if (!ready)
+			return Decision.notReady();
 		return Decision.accepted(copy);
 	}
 	

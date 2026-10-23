@@ -38,7 +38,8 @@ final class BridgeAttemptSession
 			throw new IllegalArgumentException("retained payload");
 		// Decode our own canonical bytes to sever all receive-side mutable arrays before FIFO submission.
 		Envelope acceptedIntent = Codec.bridge().decode(normalized).get(0);
-		return accept(n, normalized, () -> execute(client, acceptedIntent, n, verb, received, ttl));
+		return accept(n, normalized, () -> execute(client, acceptedIntent, n, verb, received, ttl),
+				BridgeResults.encode(n, verb, 3, 1, null));
 	}
 
 	private byte[] execute(L2Client client, Envelope intent, long n, long verb, long received, long ttl)
@@ -122,8 +123,18 @@ final class BridgeAttemptSession
 
 	BridgeIntents.Decision accept(long n, byte[] normalized, Supplier<byte[]> execution)
 	{
+		return accept(n, normalized, execution, BridgeResults.encode(n, 0, 3, 1, null));
+	}
+
+	private synchronized BridgeIntents.Decision accept(long n, byte[] normalized, Supplier<byte[]> execution, byte[] notReady)
+	{
 		BridgeIntents.Decision decision = intents.offer(n, normalized);
-		if (decision.kind == BridgeIntents.Kind.REPLAY)
+		if (decision.kind == BridgeIntents.Kind.NOT_READY)
+		{
+			intents.complete(n, notReady);
+			outbound.accept(intents.result(n));
+		}
+		else if (decision.kind == BridgeIntents.Kind.REPLAY)
 		{
 			byte[] result = intents.result(n);
 			if (result != null)

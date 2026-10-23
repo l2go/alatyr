@@ -351,9 +351,19 @@ final class BridgeLoopback implements Runnable
 		{
 			for (Envelope intent : records)
 			{
-				// No scene is complete in this slice. Never bind or execute before readiness.
-				byte[] result = BridgeResults.encode(intent.field(1).value().u(), intent.field(2).value().u(), 3, 1, null);
-				offer(transport, streamFrame(result));
+				if (transport.attempts == null)
+					transport.attempts = new BridgeAttemptSession(work -> transport.client.submit(work),
+							result -> offer(transport, streamFrame(result)));
+				var decision = transport.attempts.accept(transport.client, intent);
+				if (decision.kind == BridgeIntents.Kind.FRAME)
+				{
+					finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
+					break;
+				}
+				if (decision.kind == BridgeIntents.Kind.MISMATCH || decision.kind == BridgeIntents.Kind.OVERFLOW)
+					offer(transport, frame(List.of(Envelope.of(com.l2jfree.gameserver.bridge.wire.Schemas.INTENT_ERROR,
+							List.of(com.l2jfree.gameserver.bridge.wire.Field.u(1, true, intent.field(1).value().u()),
+									com.l2jfree.gameserver.bridge.wire.Field.u(2, true, decision.code))))));
 			}
 		}
 	}
@@ -804,6 +814,7 @@ final class BridgeLoopback implements Runnable
 		final long openingDeadline = System.nanoTime() + OPENING_NS;
 		boolean opened;
 		L2Client client;
+		BridgeAttemptSession attempts;
 
 		Transport(byte[] secret)
 		{
