@@ -34,7 +34,7 @@ func (r mapRegion) contains(x, y, z int32) bool {
 		return false
 	}
 	cn := 0
-	for i := 0; i < len(r.xs)-1; i++ {
+	for i := range len(r.xs) - 1 {
 		if (r.ys[i] <= y && r.ys[i+1] > y) || (r.ys[i] > y && r.ys[i+1] <= y) {
 			vt := float64(int64(y)-int64(r.ys[i])) / float64(int64(r.ys[i+1])-int64(r.ys[i]))
 			if float64(x) < float64(r.xs[i])+vt*float64(int64(r.xs[i+1])-int64(r.xs[i])) {
@@ -45,6 +45,8 @@ func (r mapRegion) contains(x, y, z int32) bool {
 	return cn&1 == 1
 }
 
+// Restart lists the authored restart points of a region for ordinary and
+// chaotic characters.
 type Restart struct {
 	ID              int32
 	Normal, Chaotic []Point

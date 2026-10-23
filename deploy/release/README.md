@@ -29,10 +29,10 @@ To update, unpack the new bundle, copy `.env` into its directory if you have one
 
 ## Change an option
 
-A file in the `config` volume overrides the keys it names in the file of the same name in the image. With the stack running, to triple the experience rate:
+A file in the `config` volume overrides the keys it names in the file of the same name in the image. With the stack running, to allow at most 50 players online:
 
 ```sh
-printf 'RateXp = 3.\n' | docker compose exec -T server tee /var/lib/l2jfree/config/rates.properties >/dev/null
+printf 'MaximumOnlineUsers = 50\n' | docker compose exec -T server tee /var/lib/l2jfree/config/server.properties >/dev/null
 docker compose restart server
 ```
 

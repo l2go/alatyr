@@ -1,0 +1,64 @@
+name: public text
+
+on:
+  pull_request:
+    branches: [main]
+  # The site tree has no workflow or build code of its own. Read it as data
+  # with the scanner from the default branch, never with a script from the PR.
+  pull_request_target:
+    branches: [site]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tree:
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Test the public text checker
+        run: python3 -I -m unittest discover -s tools/ci -p test_public_text.py -v
+
+      - name: Check all tracked text
+        run: python3 -I tools/ci/check-public-text.py
+
+      - name: Read the published site tree
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: site
+          path: site-tree
+          persist-credentials: false
+
+      - name: Check the published site text
+        run: python3 -I tools/ci/check-public-text.py --root site-tree
+
+  site:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read the trusted policy
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: policy
+          persist-credentials: false
+
+      - name: Read the proposed site tree as data
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Check the proposed site text without executing it
+        run: python3 -I policy/tools/ci/check-public-text.py --root candidate

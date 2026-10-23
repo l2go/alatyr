@@ -48,6 +48,11 @@ func repositoryWorld() string {
 // Headers are the authored schema; all rows, XML and pages below are synthetic.
 func syntheticCatalog(t *testing.T) *catalog.Catalog {
 	t.Helper()
+	return syntheticCatalogWithCoolTime(t, 0)
+}
+
+func syntheticCatalogWithCoolTime(t *testing.T, cool time.Duration) *catalog.Catalog {
+	t.Helper()
 	root := t.TempDir()
 	for _, dir := range []string{"catalog", "data/stats/weapon", "data/stats/armor", "data/stats/etcitem", "data/stats/skills", "data/zone", "data/html/trainer"} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0700); err != nil {
@@ -82,36 +87,47 @@ func syntheticCatalog(t *testing.T) *catalog.Catalog {
 			t.Fatal(err)
 		}
 		head, err := csv.NewReader(f).Read()
-		f.Close()
+		closeErr := f.Close()
 		if err != nil {
 			t.Fatal(err)
 		}
+		if closeErr != nil {
+			t.Fatal(closeErr)
+		}
 		var buf bytes.Buffer
 		cw := csv.NewWriter(&buf)
-		cw.Write(head)
+		if err := cw.Write(head); err != nil {
+			t.Fatal(err)
+		}
 		for _, row := range rows {
 			values := make([]string, len(head))
 			for i, h := range head {
 				values[i] = row[h]
 			}
-			cw.Write(values)
+			if err := cw.Write(values); err != nil {
+				t.Fatal(err)
+			}
 		}
 		cw.Flush()
+		if err := cw.Error(); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(root, "catalog", name+".csv"), buf.Bytes(), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for name, body := range map[string]string{
 		"data/stats/weapon/synthetic.xml": `<list><item id="9001"><for><set order="0x08" stat="pAtk" val="20"/></for></item></list>`,
-		"data/stats/skills/synthetic.xml": `<list>
+		"data/stats/skills/synthetic.xml": fmt.Sprintf(`<list>
    <skill id="9201" name="Synthetic strike" levels="1">
     <set name="operateType" val="OP_ACTIVE"/><set name="skillType" val="PDAM"/><set name="target" val="TARGET_ONE"/>
     <set name="power" val="20"/><set name="mpConsume" val="4"/><set name="mpInitialConsume" val="2"/>
     <set name="castRange" val="60"/><set name="effectRange" val="120"/><set name="hitTime" val="600"/>
+    <set name="coolTime" val="%d"/>
     <set name="reuseDelay" val="5000"/><set name="staticHitTime" val="true"/><set name="staticReuse" val="true"/><set name="overHit" val="true"/>
    </skill>
    <skill id="9202" name="Synthetic practice" levels="2"><table name="#gain">4 6</table><set name="operateType" val="OP_PASSIVE"/><set name="skillType" val="BUFF"/><set name="target" val="TARGET_SELF"/><for><add order="0x40" stat="pAtk" val="#gain"/></for></skill>
-  </list>`,
+  </list>`, cool.Milliseconds()),
 		"data/zone/synthetic.xml":    `<list><zone type="Town"><shape type="Rect"><point x="-1000" y="-1000"/><point x="-900" y="-900"/></shape></zone></list>`,
 		"data/html/trainer/9102.htm": `<html><body>Synthetic teacher<button action="bypass -h npc_%objectId%_SkillList"></body></html>`,
 	} {

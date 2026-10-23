@@ -216,8 +216,10 @@ func parseShape(n xmlNode) (zoneShape, error) {
 	return s, nil
 }
 
+// ZoneState is the combined rule of the zones at a point.
 type ZoneState struct{ Peace, PvP bool }
 
+// ZoneAt combines the zones containing the point. Peace wins over PvP.
 func (c *Catalog) ZoneAt(x, y, z int32) ZoneState {
 	var state ZoneState
 	for _, zone := range c.zones {

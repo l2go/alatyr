@@ -3,4 +3,5 @@
 
 package catalog
 
+// Teaches reports whether NPC template npc trains any class.
 func (c *Catalog) Teaches(npc int32) bool { return len(c.teach[npc]) > 0 }

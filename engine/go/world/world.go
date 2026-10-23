@@ -27,7 +27,7 @@ func (w *World) Run(ctx context.Context) error {
 	defer close(w.stopped)
 	defer func() {
 		for _, p := range w.s.players {
-			p.close()
+			p.close(CloseStop)
 		}
 	}()
 	s := w.s
@@ -58,6 +58,10 @@ func (w *World) Run(ctx context.Context) error {
 }
 
 func (w *World) do(ctx context.Context, f func(*state)) error {
+	return w.submit(ctx, func(s *state) { s.rule(RuleHost, func() { f(s) }) })
+}
+
+func (w *World) submit(ctx context.Context, f func(*state)) error {
 	if w.s == nil {
 		return ErrUninitialized
 	}
@@ -65,7 +69,7 @@ func (w *World) do(ctx context.Context, f func(*state)) error {
 	var result error
 	select {
 	case w.cmds <- func(s *state) {
-		s.rule(RuleHost, func() { f(s) })
+		f(s)
 		result = s.err
 		w.flush(s)
 		close(done)
@@ -81,7 +85,7 @@ func (w *World) do(ctx context.Context, f func(*state)) error {
 }
 
 func (w *World) doCommand(ctx context.Context, id int32, verb Verb, f func(*state)) error {
-	return w.do(ctx, func(s *state) { s.command(s.ref(id), verb, func() { f(s) }) })
+	return w.submit(ctx, func(s *state) { s.command(s.ref(id), verb, func() { f(s) }) })
 }
 
 var (
@@ -147,6 +151,7 @@ type state struct {
 	generation                                                      uint64
 	err                                                             error
 	commandSeq, commitSeq                                           uint64
+	affordanceSeq                                                   uint64
 	batch                                                           *commitBatch
 	observe                                                         func(Commit)
 }

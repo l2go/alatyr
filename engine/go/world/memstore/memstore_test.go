@@ -4,9 +4,10 @@
 package memstore
 
 import (
-	"github.com/l2go/alatyr/engine/go/world"
 	"sync"
 	"testing"
+
+	"github.com/l2go/alatyr/engine/go/world"
 )
 
 func TestDetachedConcurrentSnapshots(t *testing.T) {

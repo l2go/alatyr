@@ -17,7 +17,7 @@ type Ref struct {
 // Time is elapsed monotonic world time in nanoseconds. It is not UTC.
 type Time time.Duration
 
-// IntentID is assigned by the world for legacy calls. Session numbering
+// IntentID is assigned by the world for commands. Session numbering
 // and replay protection are responsibilities of the host, not this module.
 // Enter uses a zero Owner because its incarnation does not exist at admission.
 type IntentID struct {
@@ -34,7 +34,7 @@ type Cause struct {
 }
 
 // Intent carries an optional deadline in the world's monotonic scale.
-// Admission is part of the subsequent command surface. Legacy calls have no
+// Execute admits the deadline on the owning loop. Legacy calls have no
 // deadline and must not be mistaken for replay-safe intents. A zero Deadline
 // means no deadline.
 type Intent struct {
@@ -64,9 +64,11 @@ const (
 // Outcome describes a committed in-memory outcome, not storage durability.
 // A zero Intent means there is no intent outcome; a nonzero Intent with StageUnknown
 // means that particular intent has no proven terminal outcome.
+// Reason is nonzero only for a source-authored pre-execution refusal.
 type Outcome struct {
 	Intent IntentID
 	Stage  Stage
+	Reason Reason
 }
 
 // Effect is a member of the closed outcome kernel. A group is ordered and must
@@ -205,12 +207,13 @@ type Fact struct {
 // Value is a closed, comparable property value. Its zero value is integer zero.
 // Property determines the expected kind; mismatched kinds are not converted.
 type Value struct {
-	kind    valueKind
-	integer int64
-	ref     Ref
-	label   string
-	point   Point
-	time    Time
+	kind     valueKind
+	integer  int64
+	ref      Ref
+	label    string
+	point    Point
+	time     Time
+	unsigned uint64
 }
 
 type valueKind uint8
@@ -221,6 +224,7 @@ const (
 	labelValue
 	pointValue
 	timeValue
+	unsignedValue
 )
 
 // IntValue constructs an exact integer value, including boolean facts as 0/1.
@@ -237,6 +241,12 @@ func PointValue(p Point) Value { return Value{kind: pointValue, point: p} }
 
 // TimeValue constructs a monotonic world-time value.
 func TimeValue(t Time) Value { return Value{kind: timeValue, time: t} }
+
+// UintValue constructs a monotonic identity without a signed conversion.
+func UintValue(n uint64) Value { return Value{kind: unsignedValue, unsigned: n} }
+
+// Unsigned returns the identity and whether the value is unsigned.
+func (v Value) Unsigned() (uint64, bool) { return v.unsigned, v.kind == unsignedValue }
 
 // Integer returns the exact integer and whether the value is an integer.
 func (v Value) Integer() (int64, bool) { return v.integer, v.kind == integerValue }
@@ -303,7 +313,7 @@ type Durability struct {
 }
 
 // Affordance is the common proposal form for dialogue and learning. Its
-// identity, target, parameters, costs and expiry are assigned by the world.
+// identity, target, parameters, costs, issue time and expiry are world-assigned.
 // Rendering text is not an authorization to execute a choice.
 type Affordance struct {
 	ID      uint64
@@ -311,6 +321,7 @@ type Affordance struct {
 	Target  Ref
 	Params  []Parameter
 	Cost    []Cost
+	Issued  Time
 	Expires Time
 }
 
@@ -366,10 +377,10 @@ func (s *state) at(t time.Time) Time {
 	return Time(t.Sub(s.started))
 }
 
-func (s *state) source(cause Cause, f func()) {
+func (s *state) source(cause Cause, f func()) Commit {
 	if s.commitSeq == ^uint64(0) {
 		s.err = ErrExhausted
-		return
+		return Commit{}
 	}
 	previous := s.batch
 	if previous != nil {
@@ -377,30 +388,39 @@ func (s *state) source(cause Cause, f func()) {
 		previous.cause = cause
 		defer func() { previous.cause = old }()
 		f()
-		return
+		return Commit{}
 	}
 	s.batch = &commitBatch{cause: cause}
 	f()
 	b := s.batch
 	s.batch = previous
 	if len(b.groups) == 0 && b.outcome.Intent == (IntentID{}) {
-		return
+		return Commit{}
 	}
 	s.commitSeq++
 	c := Commit{Sequence: s.commitSeq, Time: s.now(), Intent: b.intent, Outcome: b.outcome, Groups: b.groups}
 	if s.observe != nil {
 		s.observe(cloneCommit(c))
 	}
+	return c
 }
 func (s *state) command(owner Ref, verb Verb, f func()) {
+	s.commandUntil(owner, verb, 0, f)
+}
+
+func (s *state) commandUntil(owner Ref, verb Verb, deadline Time, f func()) Commit {
 	if s.commandSeq == ^uint64(0) {
 		s.err = ErrExhausted
-		return
+		return Commit{}
 	}
 	s.commandSeq++
-	s.source(Cause{Intent: IntentID{Owner: owner, N: s.commandSeq}}, func() {
-		s.batch.intent = Intent{ID: s.cause().Intent, Verb: verb}
-		f()
+	return s.source(Cause{Intent: IntentID{Owner: owner, N: s.commandSeq}}, func() {
+		s.batch.intent = Intent{ID: s.cause().Intent, Verb: verb, Deadline: deadline}
+		if deadline > 0 && s.now() >= deadline {
+			s.finish(StageExpired)
+		} else {
+			f()
+		}
 		if s.batch.outcome.Intent == (IntentID{}) {
 			s.finish(StageUnknown)
 		}
@@ -429,10 +449,14 @@ func (s *state) change(entity Ref, property Property, before, after Value) {
 	}
 }
 func (s *state) finish(stage Stage) {
+	s.resolve(stage, "")
+}
+
+func (s *state) resolve(stage Stage, reason Reason) {
 	if s.batch == nil || s.batch.intent.ID.N == 0 || s.batch.cause.Intent != s.batch.intent.ID || s.batch.outcome.Intent != (IntentID{}) {
 		return
 	}
-	s.batch.outcome = Outcome{Intent: s.batch.intent.ID, Stage: stage}
+	s.batch.outcome = Outcome{Intent: s.batch.intent.ID, Stage: stage, Reason: reason}
 }
 func cloneCommit(c Commit) Commit {
 	c.Groups = slices.Clone(c.Groups)

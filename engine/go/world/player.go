@@ -19,7 +19,7 @@ type player struct {
 	creature
 	char                       Character
 	stats                      *stat.Player
-	out                        chan Event
+	stream                     *eventStream
 	outbox                     []Event
 	slow                       bool
 	known                      map[int32]bool
@@ -34,6 +34,10 @@ type player struct {
 	lastFolk                   int32
 	bypass, bypassPrefix       []string
 	dialogue                   string
+	dialogueHTML               string
+	dialogueSpeaker            Ref
+	affordances                []Affordance
+	fence                      Fence
 	itemRefs                   map[int32]Ref
 	reuse                      map[int32]reuseStamp
 	learning                   bool
@@ -77,8 +81,9 @@ type Self struct {
 
 // Entry supplies a ready character's initial self view and live notifications.
 type Entry struct {
-	Self   Self
-	Events <-chan Event
+	Self         Self
+	Events       <-chan Event
+	Subscription Subscription
 }
 
 func (p *player) base() *creature { return &p.creature }
@@ -115,10 +120,10 @@ func (p *player) send(e Event) {
 		p.outbox = append(p.outbox, e)
 	}
 }
-func (p *player) close() {
+func (p *player) close(reason CloseReason) {
 	if !p.slow {
 		p.slow = true
-		close(p.out)
+		p.stream.close(reason)
 	}
 }
 func (p *player) deliver(e Event) {
@@ -127,9 +132,9 @@ func (p *player) deliver(e Event) {
 	}
 	e = cloneEvent(e)
 	select {
-	case p.out <- e:
+	case p.stream.events <- e:
 	default:
-		p.close()
+		p.close(CloseOverflow)
 	}
 }
 func (w *World) statsOf(c Character) (*stat.Player, error) {
@@ -169,13 +174,8 @@ func (w *World) selfOf(p *player) Self {
 // skills or quests and does not select a start point.
 func (w *World) Enter(ctx context.Context, c Character) (Entry, error) {
 	c = c.Clone()
-	if c.ObjectID <= 0 || c.Level < 1 || c.Level > 1000 || c.Exp < 0 || c.SP < 0 || c.Heading < 0 || c.Heading > 65535 {
-		return Entry{}, fmt.Errorf("world: invalid ready character")
-	}
-	for _, v := range []float64{c.CurHP, c.CurMP, c.CurCP} {
-		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
-			return Entry{}, fmt.Errorf("world: invalid vitals")
-		}
+	if err := validateReady(c); err != nil {
+		return Entry{}, err
 	}
 	st, err := w.statsOf(c)
 	if err != nil {
@@ -200,22 +200,10 @@ func (w *World) Enter(ctx context.Context, c Character) (Entry, error) {
 			s.reserved[id] = true
 			s.ids.reserve(id)
 		}
-		generation := s.incarnation()
-		if generation == 0 {
-			result = ErrExhausted
+		p, allocationErr := s.enterPlayer(c, st)
+		if allocationErr != nil {
+			result = allocationErr
 			return
-		}
-		p := &player{creature: creature{id: c.ObjectID, generation: generation, pos: Point{c.X, c.Y, c.Z}, heading: c.Heading,
-			running: true, hp: min(c.CurHP, float64(st.MaxHP())), mp: min(c.CurMP, float64(st.MaxMP())), dead: c.CurHP <= 0,
-			listeners: map[int32]bool{}, regen: time.Now()}, char: c, stats: st, out: make(chan Event, 64), known: map[int32]bool{}, cp: min(c.CurCP, float64(st.MaxCP()))}
-		p.itemRefs = make(map[int32]Ref, len(c.Items))
-		for _, it := range c.Items {
-			gen := s.incarnation()
-			if gen == 0 {
-				result = ErrExhausted
-				return
-			}
-			p.itemRefs[it.ObjectID] = Ref{ID: it.ObjectID, Gen: gen}
 		}
 		s.players[c.ObjectID] = p
 		s.group([]Effect{ExistenceChanged{Entity: p.ref(), After: true}})
@@ -228,12 +216,43 @@ func (w *World) Enter(ctx context.Context, c Character) (Entry, error) {
 		if p.hp < float64(p.maxHP()) || p.mp < float64(p.maxMP()) || p.cp < float64(st.MaxCP()) {
 			w.startRegen(s, p)
 		}
-		entry = Entry{Self: w.selfOf(p), Events: p.out}
+		entry = Entry{Self: w.selfOf(p), Events: p.stream.events, Subscription: p.stream.subscription()}
 	})
 	if err != nil {
 		return Entry{}, err
 	}
 	return entry, result
+}
+
+func validateReady(c Character) error {
+	if c.ObjectID <= 0 || c.Level < 1 || c.Level > 1000 || c.Exp < 0 || c.SP < 0 || c.Heading < 0 || c.Heading > 65535 {
+		return fmt.Errorf("world: invalid ready character")
+	}
+	for _, v := range []float64{c.CurHP, c.CurMP, c.CurCP} {
+		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+			return fmt.Errorf("world: invalid vitals")
+		}
+	}
+	return nil
+}
+
+func (s *state) enterPlayer(c Character, st *stat.Player) (*player, error) {
+	generation := s.incarnation()
+	if generation == 0 {
+		return nil, ErrExhausted
+	}
+	p := &player{creature: creature{id: c.ObjectID, generation: generation, pos: Point{c.X, c.Y, c.Z}, heading: c.Heading,
+		running: true, hp: min(c.CurHP, float64(st.MaxHP())), mp: min(c.CurMP, float64(st.MaxMP())), dead: c.CurHP <= 0,
+		listeners: map[int32]bool{}, regen: time.Now()}, char: c, stats: st, stream: newEventStream(), known: map[int32]bool{}, cp: min(c.CurCP, float64(st.MaxCP()))}
+	p.itemRefs = make(map[int32]Ref, len(c.Items))
+	for _, it := range c.Items {
+		gen := s.incarnation()
+		if gen == 0 {
+			return nil, ErrExhausted
+		}
+		p.itemRefs[it.ObjectID] = Ref{ID: it.ObjectID, Gen: gen}
+	}
+	return p, nil
 }
 
 func (s *state) entryIDs(c Character) (map[int32]bool, error) {
@@ -318,8 +337,7 @@ func (w *World) MoveTo(ctx context.Context, id int32, to Point) error {
 			s.finish(StageRefused)
 			return
 		}
-		dx, dy := float64(to.X)-float64(p.pos.X), float64(to.Y)-float64(p.pos.Y)
-		if math.Hypot(dx, dy) > 9900 || p.dead || p.teleporting || p.sitting || p.moveSpeed() <= 0 {
+		if !w.validMove(p, to) {
 			result = ErrMove
 			s.finish(StageRefused)
 			return
@@ -376,7 +394,7 @@ func (w *World) leave(ctx context.Context, id int32, voluntary bool) error {
 			}
 			p.outbox = nil
 			p.deliver(LeftWorld{ObjectID: id})
-			p.close()
+			p.close(CloseLeave)
 			s.group([]Effect{ExistenceChanged{Entity: p.ref(), Before: true}})
 			s.finish(StageDone)
 			delete(s.players, id)

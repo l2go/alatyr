@@ -40,6 +40,8 @@ func (t ItemTemplate) BodyPart() int32 {
 	}
 	return 0
 }
+
+// IsKind reports whether a weapon has weapon type kind or armor has armor type kind.
 func (t ItemTemplate) IsKind(kind string) bool {
 	return t.Kind == Weapon && t.WeaponType == kind || t.Kind == Armor && t.ArmorType == kind
 }

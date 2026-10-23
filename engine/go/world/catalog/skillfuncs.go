@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+// Cond is a condition on a stat function. Op is and, or, not or using; Args
+// holds the operands of and, or and not, and Kinds the equipment kinds of using.
 type Cond struct {
 	Op    string
 	Kinds []string

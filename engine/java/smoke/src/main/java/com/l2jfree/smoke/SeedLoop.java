@@ -272,11 +272,20 @@ final class SeedLoop
 			if (!fell || (view.exp == expBefore && view.sp == spBefore))
 				continue;
 
+			if (view.kills == 0)
+				checkFirstReward(view.exp - expBefore, view.sp - spBefore);
 			view.kills++;
 			pickup(game, view, deadline, target.objectId);
 			reporter.info(tag(view) + " kill " + view.kills + " level=" + view.level + " exp=" + view.exp + " sp="
-					+ view.sp + " userinfo=" + view.userInfos + " recent=" + view.recentOpcodes());
+					+ view.sp + " xp-gain=" + (view.exp - expBefore) + " sp-gain=" + (view.sp - spBefore)
+					+ " userinfo=" + view.userInfos + " recent=" + view.recentOpcodes());
 		}
+	}
+
+	static void checkFirstReward(long xp, int sp) throws SmokeException
+	{
+		if (xp != 88 || sp != 8)
+			throw new SmokeException("step first reward: expected 88 XP and 8 SP, actual " + xp + " XP and " + sp + " SP");
 	}
 
 	/**

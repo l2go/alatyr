@@ -120,7 +120,7 @@ func TestStructuralBoundaries(t *testing.T) {
 			rule := "I-1"
 			switch mutation {
 			case "missing-use":
-				writeFixture(t, root, "go.work", "go 1.27.1\ntoolchain go1.27.1\nuse ./tools/world\n")
+				writeFixture(t, root, "go.work", "go "+goVersion+"\ntoolchain "+toolchainVersion+"\nuse ./tools/world\n")
 			case "module-path":
 				writeFixture(t, root, "engine/go/gateway/go.mod", "module example.org/other\ngo 1.27.1\ntoolchain go1.27.1\n")
 			case "nested-module":
@@ -134,6 +134,42 @@ func TestStructuralBoundaries(t *testing.T) {
 				writeFixture(t, root, "engine/go/bridge/doc.go", "package bridge\n")
 			}
 			expectRule(t, checkTree(root, p), rule)
+		})
+	}
+}
+
+func TestWorkspaceToolchainIsSeparateFromModuleMinimum(t *testing.T) {
+	for _, tc := range []struct {
+		name, minimum, toolchain string
+		wantOK                   bool
+	}{
+		{"pinned-patch", goVersion, toolchainVersion, true},
+		{"old-patch", goVersion, "go" + goVersion, false},
+		{"missing", goVersion, "", false},
+		{"raised-minimum", "1.27.3", toolchainVersion, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, _ := fixture(t)
+			path := filepath.Join(root, "go.work")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			updated := strings.Replace(string(data), "toolchain "+toolchainVersion,
+				"toolchain "+tc.toolchain, 1)
+			updated = strings.Replace(updated, "go "+goVersion+"\n", "go "+tc.minimum+"\n", 1)
+			if tc.toolchain == "" {
+				updated = strings.Replace(updated, "toolchain \n", "", 1)
+			}
+			writeFixture(t, root, "go.work", updated)
+			err = checkWorkspace(root)
+			if tc.wantOK {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			expectRule(t, err, "I-1")
 		})
 	}
 }

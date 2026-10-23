@@ -33,6 +33,7 @@ import (
 )
 
 const goVersion = "1.27.1"
+const toolchainVersion = "go1.27.3"
 const modulePrefix = "github.com/l2go/alatyr/engine/go/"
 const apacheSHA256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
 
@@ -345,7 +346,7 @@ func checkWorkspace(root string) error {
 		Use       []struct{ DiskPath string }
 		Replace   []json.RawMessage
 	}
-	if json.Unmarshal(data, &work) != nil || work.Go != goVersion || work.Toolchain != "go"+goVersion ||
+	if json.Unmarshal(data, &work) != nil || work.Go != goVersion || work.Toolchain != toolchainVersion ||
 		len(work.Replace) != 0 || len(work.Use) != len(moduleNames)+1 {
 		return errors.New("I-1: workspace boundary or version")
 	}
