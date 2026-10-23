@@ -44,9 +44,45 @@ import io.netty.channel.embedded.EmbeddedChannel;
 class BridgeTransportRecoveryTest
 {
 	@Test
-	void eofAfterSessionIdAssignmentButBeforeOpeningEndStillFullyDisconnects() throws Exception
+	void aSocketWaitingForFifoResumeCannotCreateATemporaryAttemptTable() throws Exception
 	{
-		try (Fixture fixture = new Fixture(20000))
+		try (Fixture fixture = new Fixture(20004))
+		{
+			fixture.open();
+			fixture.owner.detach(fixture.first);
+			var started = new CountDownLatch(1);
+			var release = new CountDownLatch(1);
+			fixture.client.submit(() ->
+			{
+				started.countDown();
+				try { if (!release.await(5, TimeUnit.SECONDS)) throw new AssertionError("resume gate"); }
+				catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
+			});
+			assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+			try
+			{
+				var replacement = new BridgeLoopback.Transport(new byte[32]);
+				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+				var intent = Codec.bridge().decode(java.util.HexFormat.of().parseHex("0a09180128093801b80c01")).getFirst();
+				fixture.loop.acceptFrame(replacement, List.of(intent));
+				assertThat(replacement.client).isNull();
+				assertThat(replacement.attempts).isNull();
+				assertThat(replacement.queued).isEmpty();
+				assertThat(fixture.owner.attempts.retainedResults()).isEmpty();
+				release.countDown();
+				barrier(fixture.client);
+				assertThat(fixture.drain(replacement)).noneMatch(record -> record.type() == Schemas.RESULT);
+				assertThat(replacement.attempts).isSameAs(fixture.owner.attempts);
+			}
+			finally { release.countDown(); }
+		}
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(booleans = { false, true })
+	void eofAfterSessionIdAssignmentButBeforeOpeningEndStillFullyDisconnects(boolean prefixWritten) throws Exception
+	{
+		try (Fixture fixture = new Fixture(prefixWritten ? 20002 : 20000))
 		{
 			fixture.seed();
 			fixture.client.submit(() -> fixture.owner.opened(BridgeFrames.accepted(fixture.id, 1)));
@@ -54,6 +90,16 @@ class BridgeTransportRecoveryTest
 			assertThat(fixture.owner.id).isEqualTo(fixture.id);
 			assertThat(fixture.first.opened).isFalse();
 			var lost = mock(SocketChannel.class);
+			if (prefixWritten)
+			{
+				when(lost.write(any(ByteBuffer.class))).thenAnswer(call ->
+				{
+					ByteBuffer buffer = call.getArgument(0); int n = buffer.remaining(); buffer.position(buffer.limit()); return n;
+				});
+				fixture.loop.serve(key(lost, fixture.first, false));
+				barrier(fixture.client);
+				assertThat(fixture.first.opened).isFalse();
+			}
 			when(lost.read(any(ByteBuffer.class))).thenReturn(-1);
 			fixture.loop.account();
 			fixture.loop.serve(key(lost, fixture.first, true));

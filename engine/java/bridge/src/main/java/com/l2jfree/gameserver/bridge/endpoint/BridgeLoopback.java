@@ -381,6 +381,10 @@ final class BridgeLoopback implements Runnable
 			offer(transport, frame(reply.records));
 		else if (!reply.close && records.stream().allMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.INTENT))
 		{
+			// Resume is accepted in FIFO. Until that task publishes the binding, this socket owns no admission
+			// table. In particular, do not produce a temporary not-ready Result that a later Resume could lose.
+			if (transport.client == null)
+				return;
 			for (Envelope intent : records)
 			{
 				if (transport.session != null && (transport.session.transport != transport || transport.lost))
@@ -949,8 +953,10 @@ final class BridgeLoopback implements Runnable
 		{
 			long generation;
 			boolean fullDisconnect;
+			boolean initialOpening;
 			synchronized (source)
 			{
+				initialOpening = source.epoch == 1 && !source.opened;
 				source.lost = true;
 				source.attemptFence.valid = false;
 				if (source.checkpoint != null)
@@ -965,7 +971,13 @@ final class BridgeLoopback implements Runnable
 			// Serialize the state, binding and admission changes with Resume. No source/model callback runs here.
 			synchronized (this)
 			{
-				generation = recovery.detach(source, source.fence);
+				if (transport == source && initialOpening)
+				{
+					recovery.close();
+					generation = 0;
+				}
+				else
+					generation = recovery.detach(source, source.fence);
 				fullDisconnect = generation == 0 && transport == source;
 				if (generation != 0)
 				{
@@ -1007,8 +1019,6 @@ final class BridgeLoopback implements Runnable
 						synchronized (old) { old.lost = true; old.attemptFence.valid = false; armClose(old); }
 						attempts.detach();
 					}
-					transport = replacement;
-					replacement.client = client;
 					replacement.session = this;
 					replacement.attempts = attempts;
 					replacement.fence = recovery.fence();
@@ -1016,6 +1026,9 @@ final class BridgeLoopback implements Runnable
 					replacement.holdOpeningFacts = true;
 					replacement.attemptFence.ready = false;
 					attempts.resume(epoch, this::publishResult, replacement.attemptFence);
+					// Publish the complete binding, not a socket whose attempt table still belongs to no session.
+					replacement.client = client;
+					transport = replacement;
 				}
 			}
 			if (decision == BridgeRecovery.Resume.REPLAY)
@@ -1266,16 +1279,16 @@ final class BridgeLoopback implements Runnable
 		byte[] writing;
 		int writingAt;
 		int held;
-		boolean closing;
+		volatile boolean closing;
 		long closeDeadline;
-		boolean awaitingResult;
+		volatile boolean awaitingResult;
 		long resultDeadline;
-		boolean terminal;
+		volatile boolean terminal;
 		boolean disconnectStarted;
 		long readDeadline;
 		final long openingDeadline = System.nanoTime() + OPENING_NS;
-		boolean opened;
-		L2Client client;
+		volatile boolean opened;
+		volatile L2Client client;
 		BridgeAttemptSession attempts;
 		Session session;
 		volatile boolean lost;
