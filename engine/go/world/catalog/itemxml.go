@@ -3,9 +3,12 @@
 
 package catalog
 
-// ItemFunc is one stat function of an item or skill: Op applies Value to Stat
-// in Order. Conditional marks a function that could not be parsed and is never
-// applied. Cond, if set, must hold for the function to apply.
+// ItemFunc is one stat function of an item or skill, applied to Stat in
+// ascending Order. Op is set, add, sub, mul or div, which combine Value with the
+// current stat; basemul, which adds Value times the stat as it stood before the
+// first order-0x30 function; or enchant, which is accepted but has no effect
+// yet. Conditional marks a function whose order, value or condition is
+// unsupported or invalid; it is never applied. Cond, if set, must hold.
 type ItemFunc struct {
 	Stat        string
 	Op          string

@@ -147,11 +147,11 @@ func (p *Player) Regen(stat Name, init float64) float64 { return p.calc(stat, in
 // LevelMod returns the level modifier (89 + level) / 100.
 func (p *Player) LevelMod() float64 { return p.levelMod() }
 
-// STRBonus returns the strength bonus for v, clamped to 0 to 99.
+// STRBonus clamps v to [0, 99] and returns the strength bonus for it.
 func STRBonus(v int32) float64 { return strBonus[bonusIndex(v)] }
 
-// CONBonus returns the constitution bonus for v, clamped to 0 to 99.
+// CONBonus clamps v to [0, 99] and returns the constitution bonus for it.
 func CONBonus(v int32) float64 { return conBonus[bonusIndex(v)] }
 
-// MENBonus returns the mentality bonus for v, clamped to 0 to 99.
+// MENBonus clamps v to [0, 99] and returns the mentality bonus for it.
 func MENBonus(v int32) float64 { return menBonus[bonusIndex(v)] }

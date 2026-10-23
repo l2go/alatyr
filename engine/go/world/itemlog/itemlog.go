@@ -48,7 +48,8 @@ type Log struct {
 // Discard is a Log that records nothing.
 var Discard = &Log{}
 
-// New returns a Log that writes to w and stamps lines with now.
+// New returns a Log that writes to w and stamps lines with now. If w is not
+// nil, now must not be nil. A Log with a nil writer records nothing.
 func New(w io.Writer, now func() time.Time) *Log { return &Log{w: w, now: now} }
 
 // Open creates path's directory if needed, opens path for appending and

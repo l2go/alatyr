@@ -123,8 +123,9 @@ func (r *row) int64(name string) int64 {
 }
 func (c *Catalog) tree(class int32) []SkillLearn { return c.skillTree[class] }
 
-// SkillCost returns the SP cost of skill id at skillLevel in class's tree,
-// if a character of the given level may learn it.
+// SkillCost returns the SP cost of the row for skill id at skillLevel in
+// class's tree, if that row's minimum level is at most level. It does not check
+// the known skill level, the character's SP or the trainer; callers do.
 func (c *Catalog) SkillCost(class, id, skillLevel, level int32) (int32, bool) {
 	for _, k := range c.tree(class) {
 		if k.SkillID == id && k.Level == skillLevel && k.MinLevel <= level {

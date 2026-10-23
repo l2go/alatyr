@@ -82,8 +82,10 @@ const (
 
 // Player holds the inputs of a character's stat calculation: its class
 // template, level, worn items, item functions and passive skill functions.
-// Each getter evaluates the standard formula and the matching functions in
-// authored order.
+// A stat is calculated by applying the standard formula functions and the
+// matching Funcs and SkillFuncs in ascending Order; at equal Order the standard
+// functions come first, then Funcs, then SkillFuncs, each in input order. A
+// function with a Cond applies only when the condition holds.
 type Player struct {
 	Template   catalog.PlayerTemplate
 	Mage       *bool // nil when authored class metadata is absent
