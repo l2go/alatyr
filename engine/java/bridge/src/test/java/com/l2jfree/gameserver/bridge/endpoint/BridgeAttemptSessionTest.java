@@ -11,6 +11,36 @@ import org.junit.jupiter.api.Test;
 class BridgeAttemptSessionTest
 {
 	@Test
+	void connectedAndAuthenticatedClientsNeverBindAnyVerb()
+	{
+		for (var state : new com.l2jfree.gameserver.network.L2Client.GameClientState[] {
+				com.l2jfree.gameserver.network.L2Client.GameClientState.CONNECTED,
+				com.l2jfree.gameserver.network.L2Client.GameClientState.AUTHED })
+		{
+			var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);
+			org.mockito.Mockito.when(client.getState()).thenReturn(state);
+			for (int verb : new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13 })
+			{
+				ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+				ArrayList<byte[]> output = new ArrayList<>();
+				BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, output::add);
+				session.ready();
+				var intent = com.l2jfree.gameserver.bridge.wire.Envelope.of(
+						com.l2jfree.gameserver.bridge.wire.Schemas.INTENT, java.util.List.of(
+						com.l2jfree.gameserver.bridge.wire.Field.u(1, true, 1),
+						com.l2jfree.gameserver.bridge.wire.Field.u(2, true, verb),
+						com.l2jfree.gameserver.bridge.wire.Field.u(3, true, 1)));
+				session.accept(client, intent);
+				fifo.remove().run();
+				var result = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(output.get(0)).get(0);
+				assertThat(result.field(2).value().u()).isEqualTo(3);
+				assertThat(result.field(3).value().u()).isEqualTo(1);
+				org.mockito.Mockito.verify(client, org.mockito.Mockito.never()).getActiveChar();
+			}
+		}
+	}
+
+	@Test
 	void everyVerbBeforeReadySchedulesNoWorldWork()
 	{
 		ArrayDeque<Runnable> fifo = new ArrayDeque<>();

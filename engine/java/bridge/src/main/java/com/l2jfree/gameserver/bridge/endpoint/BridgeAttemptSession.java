@@ -34,6 +34,8 @@ final class BridgeAttemptSession
 			if (client.isBridgeDisconnectRequested() || client.getState() != L2Client.GameClientState.IN_GAME
 					|| client.getActiveChar() == null)
 				return BridgeResults.encode(n, verb, 3, 1, null);
+			if (intent.field(3).value().u() != 1)
+				return BridgeResults.encode(n, verb, 3, 1, null);
 			try
 			{
 				var packet = BridgeCommand.packet(client, intent);
