@@ -7,10 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/l2go/alatyr/engine/go/world/catalog"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
 
 func (n *npc) npcInstance() bool {
@@ -24,9 +26,10 @@ func (w *World) talk(s *state, p *player, n *npc) {
 	}
 	w.tryAnimation(s, n, true, true)
 	if n.trainer() {
-		html, ok := w.cat.HTML(fmt.Sprintf("data/html/trainer/%d.htm", n.tmpl.ID))
+		page := fmt.Sprintf("data/html/trainer/%d.htm", n.tmpl.ID)
+		html, ok := w.cat.HTML(page)
 		if ok {
-			w.sendPage(p, n, strings.ReplaceAll(html, "%objectId%", strconv.Itoa(int(n.id))))
+			w.sendPage(s, p, n, page, strings.ReplaceAll(html, "%objectId%", strconv.Itoa(int(n.id))))
 		}
 	}
 }
@@ -34,19 +37,22 @@ func (w *World) talk(s *state, p *player, n *npc) {
 // Bypass executes only the trainer choice present in the last authored page.
 func (w *World) Bypass(ctx context.Context, id int32, cmd string) error {
 	var result error
-	err := w.act(ctx, id, func(s *state, p *player) {
+	err := w.act(ctx, id, VerbChoose, func(s *state, p *player) {
 		if !p.validBypass(cmd) {
 			result = errors.New("world: choice not offered")
+			s.finish(StageRefused)
 			return
 		}
 		n, ok := s.npcs[p.lastFolk]
 		if !ok || !n.trainer() || !w.canInteract(p, n) || p.teleporting {
 			result = errors.New("world: trainer unavailable")
+			s.finish(StageRefused)
 			return
 		}
 		want := "npc_" + strconv.Itoa(int(n.id)) + "_SkillList"
 		if cmd != want {
 			result = errors.New("world: unsupported choice")
+			s.finish(StageRefused)
 			return
 		}
 		w.showSkillList(s, p, n)
@@ -58,9 +64,10 @@ func (w *World) Bypass(ctx context.Context, id int32, cmd string) error {
 }
 func (w *World) showSkillList(s *state, p *player, n *npc) {
 	if !w.cat.CanTeach(n.tmpl.ID, p.char.ClassID) {
-		p.send(RequestIgnored{})
+		p.send(ActionIgnored{})
 		return
 	}
+	s.change(p.ref(), PropertyLearning, boolValue(p.learning), IntValue(1))
 	p.learning = true
 	var skills []catalog.SkillLearn
 	for _, k := range w.cat.AvailableSkills(p.char.ClassID, p.level(), p.skillLevel) {
@@ -84,14 +91,18 @@ func (w *World) Learn(ctx context.Context, id, skillID, level int32) error {
 	}
 	var learnt *Skill
 	var result error
-	err := w.act(ctx, id, func(s *state, p *player) {
+	var command IntentID
+	err := w.act(ctx, id, VerbLearn, func(s *state, p *player) {
+		command = s.cause().Intent
 		if p.learningWrite {
 			result = ErrSaving
+			s.finish(StageRefused)
 			return
 		}
 		n, ok := s.npcs[p.lastFolk]
 		if !ok || !n.trainer() || !p.learning || !w.canInteract(p, n) || p.teleporting || !w.cat.CanTeach(n.tmpl.ID, p.char.ClassID) {
 			result = errors.New("world: trainer offer unavailable")
+			s.finish(StageRefused)
 			return
 		}
 		sk, known := w.cat.Skill(skillID, level)
@@ -104,18 +115,27 @@ func (w *World) Learn(ctx context.Context, id, skillID, level int32) error {
 		}
 		if !known || !available || !offered || !sk.Passive && sk.Type != "PDAM" {
 			result = errors.New("world: skill not offered")
+			s.finish(StageRefused)
 			return
 		}
 		if p.char.SP < cost {
-			result = errors.New("world: insufficient SP")
+			result = errors.New("world: insufficient sp")
+			s.finish(StageRefused)
 			return
 		}
 		k := Skill{ID: skillID, Level: level}
 		learnt = &k
-		w.addSkill(s, p, k)
+		oldSP := p.char.SP
+		oldSkill := p.skillLevel(skillID)
+		w.putSkill(s, p, k)
 		p.char.SP -= cost
+		s.group([]Effect{
+			ResourceTransferred{Resource: Resource{Kind: ResourceSP}, From: ResourceLocation{Entity: p.ref(), Place: PlaceCharacter}, To: ResourceLocation{Place: PlaceLearning}, Amount: IntegerAmount(int64(cost)), FromBalance: Balance{Before: IntegerAmount(int64(oldSP)), After: IntegerAmount(int64(p.char.SP))}},
+			CapabilityChanged{Entity: p.ref(), Capability: CapabilitySkill, ID: skillID, Before: max(oldSkill, 0), After: level},
+		})
+		s.finish(StageDone)
 		p.learningWrite = true
-		p.send(SelfInfo{})
+		p.send(SelfChanged{})
 		w.showSkillList(s, p, n)
 	})
 	if err != nil {
@@ -128,13 +148,16 @@ func (w *World) Learn(ctx context.Context, id, skillID, level int32) error {
 		return nil
 	}
 	saveErr := store.PutSkill(ctx, id, *learnt)
+	if w.durability != nil {
+		w.durability(Durability{Intent: command, Time: Time(time.Since(w.started)), Err: saveErr})
+	}
 	clearErr := w.do(context.Background(), func(s *state) {
 		if p, ok := s.players[id]; ok {
 			p.learningWrite = false
 		}
 	})
 	if saveErr != nil {
-		return fmt.Errorf("world: save skill: %w", saveErr)
+		return fmt.Errorf("world: save skill: %w", errors.Join(saveErr, clearErr))
 	}
 	return clearErr
 }
@@ -151,9 +174,12 @@ func distance3DSq(a, b Point) float64 {
 	return dx*dx + dy*dy + dz*dz
 }
 
-func (w *World) sendPage(p *player, n *npc, html string) {
+func (w *World) sendPage(s *state, p *player, n *npc, page, html string) {
+	s.change(p.ref(), PropertyDialogue, LabelValue(p.dialogue), LabelValue(page))
+	p.dialogue = page
 	p.bypass, p.bypassPrefix = bypassCache(html)
-	p.send(NPCPage{NPCID: n.id, HTML: html})
+	s.group([]Effect{SpeechCompleted{Speaker: n.ref(), Listener: p.ref(), Text: html}})
+	p.send(DialoguePage{NPCID: n.id, HTML: html})
 }
 
 func bypassCache(html string) (exact, prefix []string) {
@@ -198,7 +224,7 @@ func (p *player) validBypass(cmd string) bool {
 func (w *World) onIntentionInteract(s *state, p *player, object int32) {
 	c := p.base()
 	if c.ai.intention == intentRest {
-		p.send(RequestIgnored{})
+		p.send(ActionIgnored{})
 		return
 	}
 	w.clientStopAutoAttack(s, p)
@@ -212,17 +238,17 @@ func (w *World) onIntentionInteract(s *state, p *player, object int32) {
 func (w *World) thinkInteract(s *state, p *player) {
 	c := p.base()
 	if c.casting {
-		p.send(RequestIgnored{})
+		p.send(ActionIgnored{})
 		return
 	}
 	n, ok := s.npcs[c.ai.target]
 	if !ok {
 		w.setIntention(s, p, order{intent: intentActive})
-		p.send(RequestIgnored{})
+		p.send(ActionIgnored{})
 		return
 	}
 	if w.maybeMoveToPawn(s, p, n.id, 36) {
-		p.send(RequestIgnored{})
+		p.send(ActionIgnored{})
 		return
 	}
 	w.npcOnAction(s, p, n)

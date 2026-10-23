@@ -8,17 +8,24 @@ import (
 	"math"
 )
 
+// Point is an authored world coordinate.
 type Point struct{ X, Y, Z int32 }
 
+// Role identifies an authored NPC role without defining protocol capabilities.
 type Role string
 
 const (
-	Monster  Role = "monster"
-	Trainer  Role = "trainer"
+	// Monster participates in combat and hunt rewards.
+	Monster Role = "monster"
+	// Trainer provides authored lessons.
+	Trainer Role = "trainer"
+	// Merchant is an authored role, not an implemented shop capability.
 	Merchant Role = "merchant"
-	Folk     Role = "folk"
+	// Folk is a non-combat NPC.
+	Folk Role = "folk"
 )
 
+// NPCTemplate contains validated authored NPC statistics and presentation.
 type NPCTemplate struct {
 	ID, ClientID                   int32
 	Name, Title                    string
@@ -40,6 +47,8 @@ type NPCTemplate struct {
 	AIType                         string
 	DropsHerbs                     bool
 }
+
+// Spawn describes an authored NPC population and respawn interval.
 type Spawn struct {
 	Group        string
 	ID           int32
@@ -52,10 +61,13 @@ type Spawn struct {
 	PeriodOfDay  string
 }
 
+// NPC returns the exact authored template and whether it exists.
 func (c *Catalog) NPC(id int32) (NPCTemplate, bool) {
 	t, ok := c.npcs[id]
 	return t, ok
 }
+
+// Spawns returns detached spawn records for the requested group.
 func (c *Catalog) Spawns(group string) []Spawn {
 	var out []Spawn
 	for _, s := range c.spawns {
@@ -88,7 +100,7 @@ func (c *Catalog) npcTemplateRow(r row) error {
 	}
 	for _, v := range []float64{t.MaxHP, t.MaxMP, t.PAtk, t.PDef, t.PAtkSpd, t.CollisionRadius, t.CollisionHigh, t.WalkSpeed, t.RunSpeed} {
 		if v > math.MaxInt32 {
-			return fmt.Errorf("NPC value exceeds integer range")
+			return fmt.Errorf("catalog: npc value exceeds integer range")
 		}
 	}
 	switch r.str("instance_type") {
@@ -101,13 +113,13 @@ func (c *Catalog) npcTemplateRow(r row) error {
 	case "L2Npc":
 		t.Role = Folk
 	default:
-		return fmt.Errorf("unsupported NPC role")
+		return fmt.Errorf("catalog: unsupported npc role")
 	}
-	if t.ID <= 0 || t.Level < 1 || t.MaxHP < 1 || t.MaxMP < 0 || t.PDef <= 0 || t.PAtkSpd <= 0 || t.PAtk < 0 || t.DEX < 0 || t.CollisionRadius < 0 || t.CollisionHigh < 0 || t.WalkSpeed <= 0 || t.RunSpeed <= 0 || t.RewardExp < 0 || t.RewardSP < 0 {
-		return fmt.Errorf("invalid NPC template %d", t.ID)
+	if t.ID <= 0 || t.Level < 1 || t.MaxHP < 1 || t.MaxMP < 0 || t.PDef < 1 || t.PAtkSpd < 1 || t.PAtk < 0 || t.DEX < 0 || t.CollisionRadius < 0 || t.CollisionHigh < 0 || t.WalkSpeed < 1 || t.RunSpeed < 1 || t.RewardExp < 0 || t.RewardSP < 0 {
+		return fmt.Errorf("catalog: invalid npc template %d", t.ID)
 	}
 	if _, dup := c.npcs[t.ID]; dup {
-		return fmt.Errorf("duplicate NPC %d", t.ID)
+		return fmt.Errorf("catalog: duplicate npc %d", t.ID)
 	}
 	c.npcs[t.ID] = t
 	return nil

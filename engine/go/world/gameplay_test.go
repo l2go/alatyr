@@ -199,17 +199,17 @@ func TestCombatDeathDecayRespawn(t *testing.T) {
 		got := drainEvents(entry.Events)
 		died := false
 		for range 300 {
-			time.Sleep(100 * time.Millisecond)
+			advanceVirtual(100 * time.Millisecond)
 			got = append(got, drainEvents(entry.Events)...)
 			if containsEvent(got, func(e Died) bool { return e.ObjectID == mob }) {
 				died = true
 				break
 			}
 		}
-		if !died || !containsEvent(got, func(e Following) bool { return e.ObjectID == 1 }) || !containsEvent(got, func(e AttackDone) bool { return e.AttackerID == 1 && e.Damage > 0 }) {
+		if !died || !containsEvent(got, func(e Following) bool { return e.ObjectID == 1 }) || !containsEvent(got, func(e AttackStarted) bool { return e.AttackerID == 1 && e.Damage > 0 }) {
 			t.Fatal("fight did not walk, attack and kill")
 		}
-		if !containsEvent(got, func(e Rewarded) bool { return e.Exp == 10 && e.SP == 2 }) {
+		if !containsEvent(got, func(e Rewarded) bool { return e.XP == 10 && e.SP == 2 }) {
 			t.Fatal("damage-share reward")
 		}
 		if w.Logout(ctx, 1) == nil {
@@ -228,7 +228,7 @@ func TestCombatDeathDecayRespawn(t *testing.T) {
 			t.Fatal(err)
 		}
 		for range 20 {
-			time.Sleep(100 * time.Millisecond)
+			advanceVirtual(100 * time.Millisecond)
 			drainEvents(entry.Events)
 		}
 		self, _ := w.Snapshot(ctx, 1)
@@ -237,7 +237,7 @@ func TestCombatDeathDecayRespawn(t *testing.T) {
 		}
 		got = nil
 		for range 200 {
-			time.Sleep(100 * time.Millisecond)
+			advanceVirtual(100 * time.Millisecond)
 			got = append(got, drainEvents(entry.Events)...)
 		}
 		if !containsEvent(got, func(e ObjectGone) bool { return e.ObjectID == mob }) || !containsEvent(got, func(e NPCSeen) bool { return e.NPC.Template.ID == 9101 && e.NPC.ObjectID != mob && !e.NPC.Dead }) {
@@ -283,7 +283,7 @@ func TestPlayersMeetForgetAndAppear(t *testing.T) {
 		w.MoveTo(ctx, 2, Point{X: 5000})
 		var got []Event
 		for range 600 {
-			time.Sleep(100 * time.Millisecond)
+			advanceVirtual(100 * time.Millisecond)
 			got = append(got, drainEvents(a.Events)...)
 			drainEvents(b.Events)
 		}
@@ -302,7 +302,7 @@ func TestTrainerLearningAndPassiveStats(t *testing.T) {
 		w.Action(ctx, 1, teacher)
 		w.Action(ctx, 1, teacher)
 		page := drainEvents(entry.Events)
-		if !containsEvent(page, func(e NPCPage) bool { return strings.Contains(e.HTML, fmt.Sprintf("npc_%d_SkillList", teacher)) }) {
+		if !containsEvent(page, func(e DialoguePage) bool { return strings.Contains(e.HTML, fmt.Sprintf("npc_%d_SkillList", teacher)) }) {
 			t.Fatal("authored trainer page not loaded")
 		}
 		choice := fmt.Sprintf("npc_%d_SkillList", teacher)
@@ -358,7 +358,7 @@ func TestSkillCastReuseAndProtectedMovement(t *testing.T) {
 		if self.Char.X != 250 {
 			t.Fatal("protected cast interrupted by movement")
 		}
-		time.Sleep(650 * time.Millisecond)
+		advanceVirtual(650 * time.Millisecond)
 		got := drainEvents(entry.Events)
 		if !containsEvent(got, func(e DamageNotice) bool { return e.TargetID == mob && e.Damage > 0 }) || !containsEvent(got, func(e Moving) bool { return e.ObjectID == 1 }) {
 			t.Fatal("cast damage or queued movement missing")
@@ -387,7 +387,7 @@ func TestStaleAttackAndCastCannotHitAfterLeave(t *testing.T) {
 		w.MagicSkillUse(ctx, 1, 9201, false, true)
 		w.Leave(ctx, 1)
 		enterTest(t, w, ctx, c)
-		time.Sleep(700 * time.Millisecond)
+		advanceVirtual(700 * time.Millisecond)
 		w.do(ctx, func(s *state) {
 			if s.npcs[mob].hp != 70 {
 				t.Fatal("old cast damaged new presence")
@@ -396,7 +396,7 @@ func TestStaleAttackAndCastCannotHitAfterLeave(t *testing.T) {
 		w.AttackRequest(ctx, 1, mob)
 		w.Leave(ctx, 1)
 		enterTest(t, w, ctx, c)
-		time.Sleep(700 * time.Millisecond)
+		advanceVirtual(700 * time.Millisecond)
 		w.do(ctx, func(s *state) {
 			if s.npcs[mob].hp != 70 {
 				t.Fatal("old swing damaged new presence")
@@ -413,7 +413,7 @@ func TestRegenDeathAndExplicitRevive(t *testing.T) {
 		c.CurMP = 10
 		entry := enterTest(t, w, ctx, c)
 		drainEvents(entry.Events)
-		time.Sleep(4 * time.Second)
+		advanceVirtual(4 * time.Second)
 		self, _ := w.Snapshot(ctx, 1)
 		if self.Char.CurHP <= 40 || self.Char.CurMP <= 10 {
 			t.Fatal("regeneration missing")
@@ -424,7 +424,7 @@ func TestRegenDeathAndExplicitRevive(t *testing.T) {
 		if !self.Dead || self.Char.CurHP != 0 || len(self.Char.Skills) != 0 {
 			t.Fatal("death state or invented skill")
 		}
-		time.Sleep(4 * time.Second)
+		advanceVirtual(4 * time.Second)
 		self, _ = w.Snapshot(ctx, 1)
 		if self.Char.CurHP != 0 {
 			t.Fatal("dead player regenerated")
@@ -457,7 +457,7 @@ func TestItemJournalPickupStackAndOverflow(t *testing.T) {
 				s.players[1].pos = s.ground[item].pos
 			})
 			w.Pickup(ctx, 1, item)
-			time.Sleep(100 * time.Millisecond)
+			advanceVirtual(100 * time.Millisecond)
 			drainEvents(entry.Events)
 		}
 		self, _ := w.Snapshot(ctx, 1)
@@ -542,7 +542,7 @@ func TestSyntheticGroundAdapter(t *testing.T) {
 		drainEvents(entry.Events)
 		w.MoveTo(ctx, 1, Point{X: 100})
 		for range 20 {
-			time.Sleep(100 * time.Millisecond)
+			advanceVirtual(100 * time.Millisecond)
 			drainEvents(entry.Events)
 		}
 		self, _ := w.Snapshot(ctx, 1)
@@ -578,7 +578,7 @@ func TestProtectedSwingAndPositionObservation(t *testing.T) {
 		if self.Char.X != 250 {
 			t.Fatal("swing did not protect movement")
 		}
-		time.Sleep(1400 * time.Millisecond)
+		advanceVirtual(1400 * time.Millisecond)
 		if !containsEvent(drainEvents(entry.Events), func(e Moving) bool { return e.To.X == 100 }) {
 			t.Fatal("saved swing intention not executed")
 		}

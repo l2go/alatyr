@@ -42,7 +42,15 @@ func (w *World) moveTo(s *state, a actor, to Point, offset int32) {
 	} else {
 		sin, cos = dy/distance, dx/distance
 	}
+	oldHeading := c.heading
 	c.heading = headingOf(cos, sin)
+	s.change(c.ref(), PropertyHeading, IntValue(int64(oldHeading)), IntValue(int64(c.heading)))
+	s.change(c.ref(), PropertyMovement, boolValue(c.move != nil), IntValue(1))
+	oldDest := c.pos
+	if c.move != nil {
+		oldDest = c.move.dest
+	}
+	s.change(c.ref(), PropertyDestination, PointValue(oldDest), PointValue(to))
 	c.move = &moveData{dest: to, startTick: s.ticks}
 	if !slices.Contains(s.moving, c.id) {
 		s.moving = append(s.moving, c.id)
@@ -94,12 +102,15 @@ func headingOf(dx, dy float64) int32 {
 	return int32(h)
 }
 
+// Point is an authoritative world position in the authored coordinate system.
 type Point struct{ X, Y, Z int32 }
 
 func (w *World) setPos(s *state, a actor, pos Point) {
 	c := a.base()
 	old := c.region
+	oldPos := c.pos
 	c.pos = pos
+	s.change(c.ref(), PropertyPosition, PointValue(oldPos), PointValue(pos))
 	c.region = regionOf(pos)
 	if old != c.region {
 		r := s.region(old)
@@ -117,7 +128,9 @@ func (w *World) stopMove(s *state, a actor) {
 	c := a.base()
 	if c.move != nil {
 		w.updatePosition(s, a, s.ticks)
+		before := c.move != nil
 		c.move = nil
+		s.change(c.ref(), PropertyMovement, boolValue(before), boolValue(c.move != nil))
 	}
 	w.broadcastToKnown(s, a, Stopped{ObjectID: c.id, Pos: c.pos, Heading: c.heading})
 }
@@ -156,7 +169,7 @@ func (w *World) tickMovement(s *state) {
 	for _, a := range followers {
 		w.notifyArrivedRevalidate(s, a)
 	}
-	s.after(tickPeriod, w.tickMovement)
+	s.afterRule(tickPeriod, RuleMovement, w.tickMovement)
 }
 
 func distance2D(a, b Point) float64 {

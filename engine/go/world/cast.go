@@ -5,10 +5,11 @@ package world
 
 import (
 	"context"
-	"github.com/l2go/alatyr/engine/go/world/catalog"
-	"github.com/l2go/alatyr/engine/go/world/stat"
 	"math"
 	"time"
+
+	"github.com/l2go/alatyr/engine/go/world/catalog"
+	"github.com/l2go/alatyr/engine/go/world/stat"
 )
 
 type castRequest struct {
@@ -26,14 +27,15 @@ type castEnv struct {
 	seq                                   uint64
 }
 
+// MagicSkillUse requests a known skill using the current target and level.
 func (w *World) MagicSkillUse(ctx context.Context, id, skillID int32, ctrl, shift bool) error {
-	return w.act(ctx, id, func(s *state, p *player) {
+	return w.act(ctx, id, VerbCast, func(s *state, p *player) {
 		sk, ok := w.cat.Skill(skillID, p.skillLevel(skillID))
 		if !ok || sk.Passive || sk.Type != "PDAM" || sk.Target != "TARGET_ONE" || p.teleporting || p.dead || p.sitting || sk.Precondition || sk.Lethal1 != 0 || sk.Lethal2 != 0 || sk.NeededCharges != 0 || sk.ItemConsume != 0 || sk.SoulCount != 0 {
-			p.send(RequestIgnored{})
+			p.send(ActionIgnored{})
 			return
 		}
-		if p.skillDisabled(skillID) {
+		if w.skillDisabled(s, p, skillID) {
 			w.sendReuseMessage(p, sk)
 			return
 		}
@@ -56,8 +58,8 @@ func (w *World) skillTarget(s *state, p *player, sk catalog.Skill, target int32)
 func (w *World) doCast(s *state, p *player, req *castRequest, target int32) {
 	sk := req.skill
 	t, ok := w.skillTarget(s, p, sk, target)
-	if !ok || p.dead || p.teleporting || p.sitting || p.skillDisabled(sk.ID) || !weaponAllowed(sk, p.stats.Worn) || p.mp < float64(sk.MPConsume)+float64(sk.MPInitialConsume) || p.hp <= float64(sk.HPConsume) {
-		p.send(RequestIgnored{})
+	if !ok || p.dead || p.teleporting || p.sitting || w.skillDisabled(s, p, sk.ID) || !weaponAllowed(sk, p.stats.Worn) || p.mp < float64(sk.MPConsume)+float64(sk.MPInitialConsume) || p.hp <= float64(sk.HPConsume) {
+		p.send(ActionIgnored{})
 		w.setIntention(s, p, order{intent: intentActive})
 		return
 	}
@@ -74,7 +76,7 @@ func (w *World) doCast(s *state, p *player, req *castRequest, target int32) {
 		hit = int32(float64(hit) * multiplier)
 		cool = int32(float64(cool) * multiplier)
 	}
-	p.casting = true
+	s.setBool(p.ref(), PropertyCasting, &p.casting, true)
 	p.castSeq++
 	seq := p.castSeq
 	reuse := sk.ReuseDelay
@@ -84,7 +86,18 @@ func (w *World) doCast(s *state, p *player, req *castRequest, target int32) {
 		w.setMP(s, p, p.mp-float64(sk.MPInitialConsume))
 	}
 	p.disableSkill(sk.ID, time.Duration(reuse)*time.Millisecond)
+	if r, ok := p.reuse[sk.ID]; ok {
+		s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: CapabilitySkillEnabled, ID: sk.ID, Before: 1}})
+		s.afterRule(time.Until(r.until), RuleSkillReuse, func(s *state) {
+			if s.players[p.id] == p && p.reuse[sk.ID] == r {
+				delete(p.reuse, sk.ID)
+				s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: CapabilitySkillEnabled, ID: sk.ID, After: 1}})
+			}
+		})
+	}
+	oldHeading := p.heading
 	p.heading = headingTo(p.pos, t.base().pos)
+	s.change(p.ref(), PropertyHeading, IntValue(int64(oldHeading)), IntValue(int64(p.heading)))
 	env := castEnv{skill: sk, targets: []int32{target}, originalTarget: target, skillTarget: target, coolTime: cool, seq: seq}
 	w.broadcastToKnown(s, p, SkillCast{CasterID: p.id, TargetID: target, SkillID: sk.ID, Level: sk.Level, HitTime: hit, Reuse: reuse, From: p.pos, TargetPos: t.base().pos})
 	launch := func(s *state) {
@@ -95,7 +108,7 @@ func (w *World) doCast(s *state, p *player, req *castRequest, target int32) {
 	if hit < 10 {
 		launch(s)
 	} else {
-		s.after(time.Duration(hit)*time.Millisecond, launch)
+		s.afterRule(time.Duration(hit)*time.Millisecond, RuleCastLaunch, launch)
 	}
 }
 func (w *World) onMagicLaunched(s *state, p *player, env castEnv) {
@@ -145,7 +158,7 @@ func (w *World) onMagicLaunched(s *state, p *player, env castEnv) {
 	if env.coolTime < 10 {
 		finish(s)
 	} else {
-		s.after(time.Duration(env.coolTime)*time.Millisecond, finish)
+		s.afterRule(time.Duration(env.coolTime)*time.Millisecond, RuleCastReady, finish)
 	}
 }
 func (w *World) skillReflect(s *state, sk catalog.Skill) {
@@ -156,7 +169,7 @@ func (w *World) skillReflect(s *state, sk catalog.Skill) {
 	s.rng.IntN(100)
 }
 func (w *World) onMagicFinalizer(s *state, p *player, env castEnv) {
-	p.casting = false
+	s.setBool(p.ref(), PropertyCasting, &p.casting, false)
 	n, ok := s.npcs[env.skillTarget]
 	if p.target == env.skillTarget && ok && !n.dead && n.mob() && p.ai.intention != intentMoveTo && (p.ai.next == nil || p.ai.next.intent == intentIdle) &&
 		(env.skill.CastRange < 200 || float64(p.attackRange()+200) > distance2D(p.pos, n.pos)) {
@@ -169,7 +182,7 @@ func (w *World) abortCast(s *state, p *player) {
 	if !p.casting {
 		return
 	}
-	p.casting = false
+	s.setBool(p.ref(), PropertyCasting, &p.casting, false)
 	p.castSeq++
 	w.executeNextIntention(s, p)
 	w.broadcastToKnown(s, p, SkillCanceled{ObjectID: p.id})
@@ -185,6 +198,16 @@ func (p *player) skillDisabled(id int32) bool {
 		return false
 	}
 	return true
+}
+func (w *World) skillDisabled(s *state, p *player, id int32) bool {
+	_, had := p.reuse[id]
+	disabled := p.skillDisabled(id)
+	if had && !disabled {
+		s.rule(RuleSkillReuse, func() {
+			s.group([]Effect{CapabilityChanged{Entity: p.ref(), Capability: CapabilitySkillEnabled, ID: id, After: 1}})
+		})
+	}
+	return disabled
 }
 
 func (p *player) disableSkill(id int32, delay time.Duration) {
@@ -204,7 +227,7 @@ func (p *player) disableSkill(id int32, delay time.Duration) {
 func (w *World) onIntentionCast(s *state, p *player, req *castRequest) {
 	c := p.base()
 	if c.ai.intention == intentRest && req.skill.Magic {
-		p.send(RequestIgnored{})
+		p.send(ActionIgnored{})
 		return
 	}
 	if req.skill.HitTime > 50 {
@@ -224,11 +247,11 @@ func (w *World) thinkCast(s *state, p *player) {
 	req, target := c.ai.cast, c.ai.object
 	if _, ok := s.actor(target); !ok || req == nil {
 		w.setIntention(s, p, order{intent: intentActive})
-		p.send(RequestIgnored{})
+		p.send(ActionIgnored{})
 		return
 	}
 	if w.maybeMoveToPawn(s, p, target, req.skill.CastRange) {
-		p.send(RequestIgnored{})
+		p.send(ActionIgnored{})
 		return
 	}
 	if req.skill.HitTime > 50 {

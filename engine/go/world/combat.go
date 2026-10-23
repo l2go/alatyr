@@ -16,7 +16,7 @@ func (w *World) doAttack(s *state, a, t actor) {
 		return
 	}
 	if p, ok := t.(*player); ok && (!p.stats.PDefKnown() || p.teleporting) {
-		w.clientRequestIgnored(s, a)
+		w.actionIgnored(s, a)
 		return
 	}
 	if n, ok := t.(*npc); ok {
@@ -28,8 +28,10 @@ func (w *World) doAttack(s *state, a, t actor) {
 	c.attackSeq++
 	seq := c.attackSeq
 	c.attackEnd = time.Now().Add(duration)
-	c.attacking = 1
+	s.setAttacking(c, 1)
+	oldHeading := c.heading
 	c.heading = headingTo(c.pos, tc.pos)
+	s.change(c.ref(), PropertyHeading, IntValue(int64(oldHeading)), IntValue(int64(c.heading)))
 	miss := !w.calcHit(s, a, t)
 	crit := false
 	damage := 0
@@ -37,24 +39,24 @@ func (w *World) doAttack(s *state, a, t actor) {
 		crit = w.calcCrit(s, a, t)
 		damage = int(min(w.calcPhysDamage(s, a, t, crit), math.MaxInt32))
 	}
-	w.broadcastToKnown(s, a, AttackDone{AttackerID: c.id, TargetID: tc.id, Damage: int32(damage), Critical: crit, Miss: miss, From: c.pos, TargetPos: tc.pos})
-	s.after(duration/2, func(s *state) {
+	w.broadcastToKnown(s, a, AttackStarted{AttackerID: c.id, TargetID: tc.id, Damage: int32(damage), Critical: crit, Miss: miss, From: c.pos, TargetPos: tc.pos})
+	s.afterRule(duration/2, RuleAttackHit, func(s *state) {
 		if s.live(a) && s.live(t) && c.attackSeq == seq {
 			w.onHit(s, a, t, damage, crit, miss)
 		}
 	})
-	s.after(duration, func(s *state) {
+	s.afterRule(duration, RuleAttackReady, func(s *state) {
 		if s.live(a) && c.attackSeq == seq && !c.dead {
-			c.attacking = 0
+			s.setAttacking(c, 0)
 			w.notifyReadyToAct(s, a)
 		}
 	})
 	if miss {
-		c.attacking = 0
+		s.setAttacking(c, 0)
 	}
 }
 func (w *World) abortAttack(s *state, a actor) {
-	a.base().attacking = 0
+	s.setAttacking(a.base(), 0)
 }
 func (w *World) onHit(s *state, a, t actor, damage int, crit, miss bool) {
 	c, tc := a.base(), t.base()
@@ -105,7 +107,11 @@ func (w *World) reduceHP(s *state, t actor, value float64, attacker actor) {
 			w.standUp(s, v, true)
 		}
 	}
-	w.setHP(s, t, max(c.hp-value, 0))
+	oldHP := c.hp
+	w.assignHP(s, t, max(c.hp-value, 0))
+	if c.hp < oldHP {
+		s.group([]Effect{HarmApplied{Source: attacker.base().ref(), Target: c.ref(), Resource: ResourceHP, Before: oldHP, After: c.hp}})
+	}
 	if c.hp < 0.5 {
 		w.abortAttack(s, t)
 		w.die(s, t, attacker)
@@ -115,6 +121,11 @@ func (w *World) reduceHP(s *state, t actor, value float64, attacker actor) {
 	}
 }
 func (w *World) setHP(s *state, a actor, hp float64) {
+	old := a.base().hp
+	w.assignHP(s, a, hp)
+	s.resourceChange(a.base().ref(), ResourceHP, old, a.base().hp)
+}
+func (w *World) assignHP(s *state, a actor, hp float64) {
 	c := a.base()
 	if c.dead {
 		return
@@ -136,6 +147,7 @@ func (w *World) setMP(s *state, a actor, mp float64) {
 	old := c.mp
 	c.mp = min(max(mp, 0), float64(a.maxMP()))
 	if c.mp != old {
+		s.resourceChange(c.ref(), ResourceMP, old, c.mp)
 		w.markBroadcast(s, a, broadcastStatus)
 	}
 	if c.mp < float64(a.maxMP()) {

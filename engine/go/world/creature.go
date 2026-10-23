@@ -9,13 +9,14 @@ import (
 )
 
 type creature struct {
-	id      int32
-	pos     Point
-	heading int32
-	move    *moveData
-	running bool
-	region  regionKey
-	ai      ai
+	id         int32
+	generation uint64
+	pos        Point
+	heading    int32
+	move       *moveData
+	running    bool
+	region     regionKey
+	ai         ai
 
 	hp, mp     float64
 	dead       bool
