@@ -52,6 +52,52 @@ import io.netty.channel.embedded.EmbeddedChannel;
 class BridgeBoundCloseTest
 {
 	@Test
+	void storeCloseAndStoreDeleteWaitForCurrentWorldWorkAndDisconnectOnce() throws Exception
+	{
+		for (boolean delete : new boolean[] { false, true })
+		{
+			CountDownLatch entered = new CountDownLatch(1);
+			CountDownLatch release = new CountDownLatch(1);
+			try (InlinePool pool = InlinePool.open(); Bound bound = Bound.open(call -> true))
+			{
+				bound.client.submit(() ->
+				{
+					entered.countDown();
+					try
+					{
+						assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
+					}
+					catch (InterruptedException interrupted)
+					{
+						Thread.currentThread().interrupt();
+						throw new AssertionError(interrupted);
+					}
+				});
+				try
+				{
+					assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+					var facade = new com.l2jfree.gameserver.network.Disconnection(bound.client).store();
+					if (delete)
+						facade.deleteMe();
+					else
+						facade.close(false);
+					new com.l2jfree.gameserver.network.Disconnection(bound.client).store().deleteMe().close(false);
+					verify(bound.player, org.mockito.Mockito.never()).store(true, true);
+					verify(bound.player, org.mockito.Mockito.never()).deleteMe();
+				}
+				finally
+				{
+					release.countDown();
+				}
+				bound.awaitDisconnect();
+				verify(bound.player, times(1)).store(true, true);
+				verify(bound.player, times(1)).deleteMe();
+				assertThat(bound.transport.queued).hasSize(1);
+			}
+		}
+	}
+
+	@Test
 	void aSavedCharacterClosesNormally() throws Exception
 	{
 		assertBye(true, BridgeFrames.BYE_NORMAL);
