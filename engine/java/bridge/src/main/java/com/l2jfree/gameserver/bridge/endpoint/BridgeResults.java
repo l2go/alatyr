@@ -32,6 +32,9 @@ final class BridgeResults
 
 	static byte[] encode(long n, long verb, int stage, long reason, Attempt attempt)
 	{
+		// Unknown needs a valid uncertainty reason even when no handler exception was observed.
+		if (stage == BridgeOutcome.UNKNOWN && reason == 0)
+			reason = 24;
 		ArrayList<Field> fields = new ArrayList<>(List.of(Field.u(1, true, n), Field.u(2, true, stage),
 				Field.u(3, true, reason), Field.u(5, true, verb), Field.u(6, true, knownVerb(verb) ? verb : 0),
 				Field.u(7, true, stage == 3 || stage == 5 ? 0 : 2)));
