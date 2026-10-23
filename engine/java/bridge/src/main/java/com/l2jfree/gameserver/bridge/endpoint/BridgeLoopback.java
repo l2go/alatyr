@@ -347,6 +347,15 @@ final class BridgeLoopback implements Runnable
 		}
 		if (!reply.records.isEmpty())
 			offer(transport, frame(reply.records));
+		else if (!reply.close && records.stream().allMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.INTENT))
+		{
+			for (Envelope intent : records)
+			{
+				// No scene is complete in this slice. Never bind or execute before readiness.
+				byte[] result = BridgeResults.encode(intent.field(1).value().u(), intent.field(2).value().u(), 3, 1, null);
+				offer(transport, streamFrame(result));
+			}
+		}
 	}
 
 	/**
@@ -741,6 +750,11 @@ final class BridgeLoopback implements Runnable
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		Codec.bridge().write(out, records);
 		return out.toByteArray();
+	}
+
+	private static byte[] streamFrame(byte[] body)
+	{
+		return frame(Codec.bridge().decode(body));
 	}
 
 	/**

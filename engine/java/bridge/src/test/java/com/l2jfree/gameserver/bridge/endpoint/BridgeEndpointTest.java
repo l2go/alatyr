@@ -35,6 +35,21 @@ import com.l2jfree.gameserver.bridge.wire.Schemas;
  */
 class BridgeEndpointTest
 {
+	@Test
+	void intentsAreAllowedOnlyAfterAnAuthenticatedOpening()
+	{
+		Envelope intent = Envelope.of(Schemas.INTENT, List.of(Field.u(1, true, 1), Field.u(2, true, 7), Field.u(3, true, 1)));
+		BridgeDialogue unopened = new BridgeDialogue(SECRET);
+		assertThat(unopened.accept(List.of(intent)).close).isTrue();
+		BridgeDialogue opened = new BridgeDialogue(SECRET);
+		Envelope open = Envelope.of(Schemas.OPEN, List.of(Field.u(1, true, 1), Field.u(2, true, 1),
+				Field.data(3, true, Codec.profileName()), Field.data(4, true, SECRET),
+				Field.data(5, true, "guest".getBytes(StandardCharsets.UTF_8)),
+				Field.data(6, true, "Guest".getBytes(StandardCharsets.UTF_8)), Field.u(7, true, 1)));
+		assertThat(opened.accept(List.of(open)).admit).isTrue();
+		assertThat(opened.accept(List.of(intent)).close).isFalse();
+	}
+
 	private static final byte[] SECRET = new byte[32];
 	
 	static
