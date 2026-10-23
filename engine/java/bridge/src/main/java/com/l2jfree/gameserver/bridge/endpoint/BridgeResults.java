@@ -55,6 +55,9 @@ final class BridgeResults
 			}
 			fields.add(Field.items(66, true, effects));
 		}
-		return Codec.bridge().encode(List.of(Envelope.of(Schemas.RESULT, fields)));
+		byte[] encoded = Codec.bridge().encode(List.of(Envelope.of(Schemas.RESULT, fields)));
+		if (encoded.length > 8192)
+			return encode(n, verb, BridgeOutcome.UNKNOWN, 24, null);
+		return encoded;
 	}
 }
