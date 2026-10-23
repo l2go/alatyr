@@ -43,6 +43,31 @@ import io.netty.channel.embedded.EmbeddedChannel;
 /** Uses the real client FIFO and listener socket branches with isolated game state. */
 class BridgeTransportRecoveryTest
 {
+	@Test
+	void relocationBeforeOpeningBeginReplacesBufferedFactsWithOneFreshSnapshot() throws Exception
+	{
+		try (Fixture fixture = new Fixture(19988))
+		{
+			fixture.seed();
+			fixture.client.submit(() -> fixture.owner.opened(BridgeFrames.accepted(fixture.id, 1)));
+			barrier(fixture.client);
+			assertThat(fixture.first.checkpoint.began()).isFalse();
+			fixture.owner.sink.deliver(new UserInfo(fixture.player), fixture.player);
+			assertThat(fixture.first.afterCheckpoint).isNotEmpty();
+			fixture.owner.sink.deliver(TeleportToLocation.forBridgeRelocation(fixture.player, 8, 9, 10, 0, 1), fixture.player);
+			assertThat(fixture.first.queued).isEmpty();
+			assertThat(fixture.first.afterCheckpoint).isEmpty();
+			assertThat(fixture.first.held).isZero();
+			fixture.client.submit(fixture.owner::captureCheckpoint);
+			barrier(fixture.client);
+			var records = fixture.drain(fixture.first);
+			assertThat(records.getFirst().type()).isEqualTo(Schemas.CHECKPOINT);
+			assertThat(records).filteredOn(record -> record.type() == Schemas.CHECKPOINT
+					&& record.field(1).value().u() == Schemas.BEGIN).hasSize(1);
+			assertThat(records.getLast().type()).isEqualTo(Schemas.OPENED);
+		}
+	}
+
 	@org.junit.jupiter.params.ParameterizedTest
 	@org.junit.jupiter.params.provider.ValueSource(booleans = { false, true })
 	void resumeBeforeOrAfterOwnCompletionUsesTheNewSceneWithoutEarlyReady(boolean completeFirst) throws Exception

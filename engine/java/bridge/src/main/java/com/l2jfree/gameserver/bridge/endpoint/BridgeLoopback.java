@@ -888,13 +888,17 @@ final class BridgeLoopback implements Runnable
 					current.checkpoint = null;
 					current.token = null;
 					current.endScheduled = false;
-					while (!current.afterCheckpoint.isEmpty())
-						current.queued.add(current.afterCheckpoint.remove());
 					if (!current.opened)
 					{
+						// The fresh opening/recovery snapshot subsumes these observations. In particular, facts
+						// cannot precede Begin when the cancelled producer had not transferred its first frame.
+						while (!current.afterCheckpoint.isEmpty())
+							current.held -= current.afterCheckpoint.remove().length;
 						current.reuseCheckpointBegin = began;
 						return;
 					}
+					while (!current.afterCheckpoint.isEmpty())
+						current.queued.add(current.afterCheckpoint.remove());
 					if (began)
 					{
 						offer(current, frame(records));
