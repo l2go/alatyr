@@ -28,6 +28,30 @@ import com.l2jfree.gameserver.network.packets.L2ClientPacket;
 class BridgeExecutionTest
 {
 	@Test
+	void selectingTheCurrentTargetDoesNotActOrMutateAgain()
+	{
+		var player = BridgeTestPlayers.player();
+		var target = mock(com.l2jfree.gameserver.gameobjects.L2Object.class);
+		when(player.getTargetId()).thenReturn(70);
+		when(player.getTarget()).thenReturn(target);
+		when(player.isSameInstance(target)).thenReturn(true);
+		Attempt attempt = new Attempt(player);
+		EffectLedger.open(attempt);
+		try
+		{
+			com.l2jfree.gameserver.network.bridge.TargetSelection.select(player, 70);
+			assertThat(attempt.effects()).isEmpty();
+			assertThat(BridgeOutcome.match(attempt, 2, 0, 70, 0)).isEqualTo(BridgeOutcome.UNKNOWN);
+			org.mockito.Mockito.verify(player, org.mockito.Mockito.never()).setTarget(target);
+			org.mockito.Mockito.verify(target, org.mockito.Mockito.never()).onAction(player);
+		}
+		finally
+		{
+			EffectLedger.close();
+		}
+	}
+
+	@Test
 	void aMissingActionObjectReturnsUnknownWithoutInventingARefusal()
 	{
 		var player = BridgeTestPlayers.player();
