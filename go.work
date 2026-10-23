@@ -7,5 +7,6 @@ use (
 	./engine/go/gateway
 	./engine/go/protocol
 	./engine/go/world
+	./engine/go/worldbridge
 	./tools/world
 )

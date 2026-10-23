@@ -28,6 +28,13 @@
       "package": "world",
       "license": "AGPL-3.0-or-later",
       "phase": "active"
+    },
+    {
+      "path": "engine/go/worldbridge",
+      "module": "github.com/l2go/alatyr/engine/go/worldbridge",
+      "package": "worldbridge",
+      "license": "AGPL-3.0-or-later",
+      "phase": "active"
     }
   ],
   "denied": [

@@ -63,7 +63,7 @@ type policy struct {
 	FuzzTargets []fuzzTarget   `json:"fuzz_targets"`
 }
 
-var moduleNames = []string{"protocol", "gateway", "bridge", "world"}
+var moduleNames = []string{"protocol", "gateway", "bridge", "world", "worldbridge"}
 var windowsProfile = regexp.MustCompile(`(?i)[a-z]:[\\/](users|documents and settings)[\\/]`)
 var fuzzName = regexp.MustCompile(`^Fuzz[A-Z0-9_][A-Za-z0-9_]*$`)
 
@@ -211,6 +211,11 @@ func checkTree(root string, p policy) error {
 				return err
 			}
 		}
+		if m.Package == "worldbridge" {
+			if err := checkWorldBridgeDeps(root, m); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -350,7 +355,7 @@ func checkWorkspace(root string) error {
 		len(work.Replace) != 0 || len(work.Use) != len(moduleNames)+1 {
 		return errors.New("I-1: workspace boundary or version")
 	}
-	expected := map[string]bool{"tools/world": true, "engine/go/protocol": true, "engine/go/gateway": true, "engine/go/bridge": true, "engine/go/world": true}
+	expected := map[string]bool{"tools/world": true, "engine/go/protocol": true, "engine/go/gateway": true, "engine/go/bridge": true, "engine/go/world": true, "engine/go/worldbridge": true}
 	for _, use := range work.Use {
 		path := filepath.ToSlash(filepath.Clean(use.DiskPath))
 		if filepath.IsAbs(use.DiskPath) || !expected[path] {
@@ -465,6 +470,112 @@ func checkProtocolDeps(root string, m modulePolicy) error {
 		return errors.New("I-3: cannot resolve stdlib-only module dependency graph")
 	}
 	return checkDependencyJSON(data, m.Module, dir)
+}
+
+// checkWorldBridgeDeps enforces the adapter's direction for every source file,
+// including tests and disabled build constraints, and for the resolved graph.
+func checkWorldBridgeDeps(root string, m modulePolicy) error {
+	if m.Phase == "scaffold" {
+		return nil
+	}
+	dir := filepath.Join(root, m.Path)
+	pins := map[string]string{
+		modulePrefix + "bridge":   "v0.0.0-20261023154142-3ca081d3eba3",
+		modulePrefix + "protocol": "v0.0.0-20261023084050-3b52c8d267a0",
+		modulePrefix + "world":    "v0.0.0-20261023154142-3ca081d3eba3",
+	}
+	data, err := goCommand(dir, "off", "mod", "edit", "-json")
+	if err != nil {
+		return errors.New("I-3: cannot read adapter dependencies")
+	}
+	var mod struct {
+		Require                []struct{ Path, Version string }
+		Replace, Exclude, Tool []json.RawMessage
+	}
+	if json.Unmarshal(data, &mod) != nil || len(mod.Require) != len(pins) || len(mod.Replace)+len(mod.Exclude)+len(mod.Tool) != 0 {
+		return errors.New("I-3: invalid adapter dependency directives")
+	}
+	seen := make(map[string]bool, len(pins))
+	for _, req := range mod.Require {
+		if seen[req.Path] || pins[req.Path] != req.Version || req.Version == "" {
+			return errors.New("I-3: unpinned adapter dependency")
+		}
+		seen[req.Path] = true
+	}
+	allowed := func(path string) bool {
+		if !fs.ValidPath(path) || strings.Contains(path, "\\") {
+			return false
+		}
+		if allowedImport(path, m.Module, dir) {
+			return true
+		}
+		for module := range pins {
+			if path == module || strings.HasPrefix(path, module+"/") {
+				return true
+			}
+		}
+		return false
+	}
+	err = filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return errors.New("I-3: cannot read adapter source")
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return errors.New("I-3: invalid adapter source")
+		}
+		for _, imp := range file.Imports {
+			path, err := strconv.Unquote(imp.Path.Value)
+			if err != nil || !allowed(path) {
+				return errors.New("I-3: import outside adapter boundary")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	data, err = goCommand(dir, filepath.Join(root, "go.work"), "list", "-deps", "-test", "-json", "./...")
+	if err != nil {
+		return errors.New("I-3: cannot resolve adapter graph")
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	for {
+		var pkg struct {
+			Standard   bool
+			Error      json.RawMessage
+			DepsErrors []json.RawMessage
+			Module     *struct {
+				Path, Version string
+				Main          bool
+				Replace       json.RawMessage
+			}
+		}
+		err := dec.Decode(&pkg)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil || len(pkg.Error)+len(pkg.DepsErrors) != 0 {
+			return errors.New("I-3: invalid adapter graph")
+		}
+		if pkg.Standard {
+			continue
+		}
+		if pkg.Module == nil || len(pkg.Module.Replace) != 0 {
+			return errors.New("I-3: replaced adapter dependency")
+		}
+		if pkg.Module.Path == m.Module {
+			continue
+		}
+		pin, ok := pins[pkg.Module.Path]
+		if !ok || !pkg.Module.Main && pkg.Module.Version != pin {
+			return errors.New("I-3: external adapter dependency")
+		}
+	}
+	return nil
 }
 
 func allowedImport(path, module, dir string) bool {
