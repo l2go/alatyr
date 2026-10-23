@@ -28,7 +28,7 @@ body:
     attributes:
       label: Version
       description: The release, or the image tag or commit.
-      placeholder: "v3.2.0"
+      placeholder: "v3.2.1"
     validations:
       required: true
   - type: textarea
