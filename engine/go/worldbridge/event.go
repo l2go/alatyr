@@ -25,10 +25,9 @@ func (t translator) dropped(v world.ItemDropped) (fact, error) {
 	return fact{8, "objects", fs}, nil
 }
 
-// events translates one notification with its actual accompanying source view.
-// It never returns effects. Context-sensitive notifications need a matching
-// captured source; missing or superseded source data must be repaired by capture,
-// not guessed from an unrelated notification or a future command result.
+// events translates observations, never effects. Pages, lessons and skills
+// carry their own issued source; a later Scene cannot replace that authority.
+// Other notifications still use actual captured scene context when needed.
 func (t translator) events(e world.Event, s world.Scene, origin world.Time) ([]fact, error) {
 	one := func(kind uint64, domain string, fields ...wire.Field) ([]fact, error) {
 		return []fact{{kind, domain, fields}}, nil
@@ -142,26 +141,18 @@ func (t translator) events(e world.Event, s world.Scene, origin world.Time) ([]f
 		}
 		return fs, nil
 	case world.SkillsShown:
-		if len(v.Skills) != len(s.Skills) {
+		if !v.Complete {
 			return nil, errSource
 		}
-		for i, k := range v.Skills {
-			if k != s.Skills[i].Skill {
-				return nil, errSource
-			}
-		}
-		f, err := t.known(s.Skills)
+		f, err := t.known(v.Known)
 		return []fact{f}, err
 	case world.LearnList:
-		for _, a := range s.Dialogue.Affordances {
+		for _, a := range v.Dialogue.Affordances {
 			if a.Verb != world.VerbLearn {
 				return nil, errSource
 			}
 		}
-		if v.NPCID != s.Dialogue.Speaker.ID {
-			return nil, errSource
-		}
-		fs, err := t.dialogue(s.Dialogue, origin)
+		fs, err := t.dialogue(v.Dialogue, origin)
 		if err != nil {
 			return nil, err
 		}
@@ -171,33 +162,21 @@ func (t translator) events(e world.Event, s world.Scene, origin world.Time) ([]f
 				practice = &fs[i]
 			}
 		}
-		if len(v.Skills) == 0 {
+		if len(v.Dialogue.Affordances) == 0 {
 			if practice != nil {
 				return nil, errSource
 			}
-			return one(22, "skills", wire.S(64, true, int64(v.NPCID)), wire.S(22, true, 0), wire.U(69, true, 0), wire.Items(34, true, []wire.Value{}), boolean(31, true))
+			if !validRef(v.Dialogue.Speaker) || v.Dialogue.Page == "" || v.Dialogue.HTML == "" {
+				return nil, errSource
+			}
+			return one(22, "skills", wire.S(64, true, int64(v.Dialogue.Speaker.ID)), wire.S(22, true, 0), wire.U(69, true, 0), wire.Items(34, true, []wire.Value{}), boolean(31, true))
 		}
 		if practice == nil {
 			return nil, errSource
 		}
-		lessons, _ := wire.Find(practice.fields, 34)
-		if len(lessons.Items) != len(v.Skills) {
-			return nil, errSource
-		}
-		for i, k := range v.Skills {
-			id, _ := wire.Find(lessons.Items[i].Fields, 2)
-			level, _ := wire.Find(lessons.Items[i].Fields, 3)
-			cost, _ := wire.Find(lessons.Items[i].Fields, 5)
-			if id.S != int64(k.SkillID) || level.S != int64(k.Level) || cost.S != int64(k.SP) {
-				return nil, errSource
-			}
-		}
 		return []fact{*practice}, nil
 	case world.DialoguePage:
-		if v.NPCID <= 0 || v.HTML == "" || v.NPCID != s.Dialogue.Speaker.ID || v.HTML != s.Dialogue.HTML {
-			return nil, errSource
-		}
-		fs, err := t.dialogue(s.Dialogue, origin)
+		fs, err := t.dialogue(v.Dialogue, origin)
 		if err != nil {
 			return nil, err
 		}
@@ -206,18 +185,9 @@ func (t translator) events(e world.Event, s world.Scene, origin world.Time) ([]f
 		}
 		return fs[:1], nil
 	case world.AffordancesChanged:
-		if !slices.EqualFunc(v.Affordances, s.Dialogue.Affordances, func(a, b world.Affordance) bool {
-			return a.ID == b.ID && a.Target == b.Target && a.Verb == b.Verb && a.Issued == b.Issued && a.Expires == b.Expires && slices.Equal(a.Params, b.Params) && slices.Equal(a.Cost, b.Cost)
-		}) {
-			return nil, errSource
-		}
-		fs, err := t.dialogue(s.Dialogue, origin)
-		if err != nil {
-			return nil, err
-		}
-		// Replacing permissions does not complete another utterance. The actual
-		// DialoguePage supplies speech; only lesson proposals are relevant here.
-		return slices.DeleteFunc(fs, func(f fact) bool { return f.kind != 22 }), nil
+		// DialoguePage and LearnList carry the corresponding authority. This
+		// refresh is neither another utterance nor another lesson proposal.
+		return nil, nil
 	case world.Rewarded:
 		if v.XP < 0 || v.SP < 0 {
 			return nil, errSource

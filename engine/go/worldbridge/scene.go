@@ -6,7 +6,7 @@ package worldbridge
 import (
 	"errors"
 	"slices"
-	"strconv"
+	"strings"
 
 	"github.com/l2go/alatyr/engine/go/bridge"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
@@ -143,18 +143,24 @@ func choices(d world.Dialogue) (page, []wire.Value, error) {
 		return page{}, nil, err
 	}
 	opts := []wire.Value{}
+	bound := make(map[string]bool)
+	ids := make(map[uint64]bool)
 	for _, a := range d.Affordances {
 		if a.Verb != world.VerbChoose {
 			continue
 		}
-		if !validRef(a.Target) || a.Target != d.Speaker || a.ID == 0 || a.Expires <= a.Issued || len(a.Params) != 0 || len(a.Cost) != 0 {
+		action, ok := choiceAction(a)
+		if !ok || !validRef(a.Target) || a.Target != d.Speaker || a.ID == 0 || ids[a.ID] || a.Expires <= a.Issued || len(a.Cost) != 0 || bound[action] {
 			return page{}, nil, errSource
 		}
-		want := "npc_" + strconv.Itoa(int(a.Target.ID)) + "_SkillList"
+		ids[a.ID], bound[action] = true, true
 		matched := false
 		for _, o := range p.options {
-			if o.action != want {
+			if o.action != action {
 				continue
+			}
+			if matched {
+				return page{}, nil, errSource
 			}
 			matched = true
 			label, err := text(2, o.label, wire.ProvenanceAuthored)
@@ -169,6 +175,14 @@ func choices(d world.Dialogue) (page, []wire.Value, error) {
 		}
 	}
 	return p, opts, nil
+}
+
+func choiceAction(a world.Affordance) (string, bool) {
+	if a.Verb != world.VerbChoose || len(a.Parameters) != 1 || a.Parameters[0].Name != "action" {
+		return "", false
+	}
+	action, ok := a.Parameters[0].Value.Label()
+	return action, ok && action != "" && !strings.ContainsRune(action, 0)
 }
 
 func (t translator) dialogue(d world.Dialogue, origin world.Time) ([]fact, error) {
@@ -247,11 +261,11 @@ func (t translator) dialogue(d world.Dialogue, origin world.Time) ([]fact, error
 }
 
 func lesson(a world.Affordance) (int32, int32, bool) {
-	if a.Verb != world.VerbLearn || len(a.Params) != 2 || len(a.Cost) != 1 || a.Cost[0].Resource != (world.Resource{Kind: world.ResourceSP}) || a.Cost[0].Quantity < 0 {
+	if a.Verb != world.VerbLearn || len(a.Parameters) != 2 || len(a.Cost) != 1 || a.Cost[0].Resource != (world.Resource{Kind: world.ResourceSP}) || a.Cost[0].Quantity < 0 {
 		return 0, 0, false
 	}
 	var id, level int64
-	for _, p := range a.Params {
+	for _, p := range a.Parameters {
 		v, ok := p.Value.Integer()
 		if !ok {
 			return 0, 0, false

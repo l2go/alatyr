@@ -201,7 +201,8 @@ func prepare(c bridge.Command, s world.Scene, now world.Time) (prepared, error) 
 		}
 		if found {
 			for _, a := range s.Dialogue.Affordances {
-				if a.Verb == world.VerbChoose && a.Target == p.request.Target && a.Issued <= now && a.Expires > now {
+				bound, ok := choiceAction(a)
+				if ok && bound == string(action.Data) && a.Target == p.request.Target && a.Issued <= now && a.Expires > now {
 					if p.request.AffordanceID != 0 {
 						return prepared{}, errSource
 					}

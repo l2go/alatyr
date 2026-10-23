@@ -482,7 +482,7 @@ func checkWorldBridgeDeps(root string, m modulePolicy) error {
 	pins := map[string]string{
 		modulePrefix + "bridge":   "v0.0.0-20261023154142-3ca081d3eba3",
 		modulePrefix + "protocol": "v0.0.0-20261023084050-3b52c8d267a0",
-		modulePrefix + "world":    "v0.0.0-20261023154142-3ca081d3eba3",
+		modulePrefix + "world":    "v0.0.0-20261023203925-ef0408f8cbf8",
 	}
 	data, err := goCommand(dir, "off", "mod", "edit", "-json")
 	if err != nil {

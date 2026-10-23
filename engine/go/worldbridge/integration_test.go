@@ -125,7 +125,7 @@ func TestAuthoredWorldCommitMatchesRawReceipt(t *testing.T) {
 		if r.Stage != wire.StageDone || len(r.Effects) != wantEffects {
 			t.Fatalf("learn: %+v, want %d effects for the exact source cost", r, wantEffects)
 		}
-		if err := w.Leave(ctx, 1); err != nil {
+		if err := w.LeaveRef(ctx, scene.Self.Entity); err != nil {
 			t.Fatal(err)
 		}
 	})
