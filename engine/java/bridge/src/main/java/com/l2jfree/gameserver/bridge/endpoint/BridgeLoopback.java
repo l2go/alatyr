@@ -406,6 +406,12 @@ final class BridgeLoopback implements Runnable
 	/** The disconnect save owns the terminal bye. A late bye is dropped once that bye is claimed. */
 	void fromSink(Transport transport, List<Envelope> records)
 	{
+		if (records != null && !records.isEmpty()
+				&& records.stream().noneMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.BYE))
+		{
+			enqueue(transport, records);
+			return;
+		}
 		synchronized (transport)
 		{
 			if (resultExpired(transport, System.nanoTime()))

@@ -78,6 +78,7 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	private GameCrypt _crypt;
 	private volatile boolean _disconnected;
 	private final AtomicBoolean _bridgeDisconnectRequested = new AtomicBoolean();
+	private final AtomicBoolean _bridgeInternalFailure = new AtomicBoolean();
 	private final Object _bridgeLife = new Object();
 	private final ClientSink _sink;
 	private L2Player _bridgeOpeningPlayer;
@@ -173,6 +174,19 @@ public final class L2Client extends com.l2jfree.network.Connection<L2Client, L2C
 	public void requestBridgeDisconnect()
 	{
 		DisconnectionExecutor.request(this);
+	}
+
+	/** Preserves a projection failure through the full save and cleanup facade. */
+	public void requestBridgeDisconnect(BridgeFailure failure)
+	{
+		if (failure.byeReason() == BridgeFailure.internal().byeReason())
+			_bridgeInternalFailure.set(true);
+		DisconnectionExecutor.request(this);
+	}
+
+	boolean bridgeInternalFailure()
+	{
+		return _bridgeInternalFailure.get();
 	}
 	
 	public void publishOwnTeleport(long generation)

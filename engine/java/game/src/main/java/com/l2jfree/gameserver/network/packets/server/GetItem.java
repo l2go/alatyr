@@ -35,16 +35,18 @@ public class GetItem extends L2ServerPacket implements SemanticPacket
 	@Override
 	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
 	{
-		sink.emit(BridgeFact.of(9, BridgeField.number(64, _playerId), BridgeField.number(65, _item.getObjectId())));
+		sink.emit(BridgeFact.of(9, BridgeField.number(64, _playerId), BridgeField.number(65, _departingId)));
 	}
 
 	private static final String _S__17_GETITEM = "[S] 0d GetItem";
 	private final L2ItemInstance _item;
 	private final int _playerId;
+	private final int _departingId;
 	
 	public GetItem(L2ItemInstance item, int playerId)
 	{
 		_item = item;
+		_departingId = item.getObjectId();
 		_playerId = playerId;
 	}
 	

@@ -75,7 +75,8 @@ final class DisconnectionExecutor
 			}
 		}
 		
-		final BridgeFailure failure = saved ? BridgeFailure.normal() : BridgeFailure.internal();
+		final BridgeFailure failure = saved && !client.bridgeInternalFailure()
+				? BridgeFailure.normal() : BridgeFailure.internal();
 		
 		if (player != null)
 		{
