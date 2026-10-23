@@ -237,10 +237,10 @@ final class BridgeAttemptSession
 		Consumer<byte[]> target;
 		synchronized (this)
 		{
-			// The caller's transport fence must be checked before entering this method. Detached readers never
-			// register a new number; a detached session only retains work admitted before the fence was lost.
-			if (detached)
-				throw new IllegalStateException("detached bridge admission");
+			// Recheck under the admission monitor: EOF or replacement may win after the reader's outer check.
+			// A stale reader is ignored, never registered against the replacement epoch or thrown into the selector.
+			if (detached || fence != null && (!fence.valid || activeFence != fence))
+				return null;
 			if (fence != null && !fence.ready)
 				intents.markNotReady();
 			decision = intents.offer(n, normalized);

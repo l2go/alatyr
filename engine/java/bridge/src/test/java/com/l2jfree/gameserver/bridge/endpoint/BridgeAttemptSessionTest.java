@@ -23,6 +23,30 @@ import org.junit.jupiter.api.Test;
 class BridgeAttemptSessionTest
 {
 	@Test
+	void aReaderThatLostItsFenceCannotRegisterAgainstTheReplacement()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> output = new ArrayList<>();
+		var session = new BridgeAttemptSession(fifo::add, output::add);
+		var old = new BridgeAttemptSession.Fence();
+		var replacement = new BridgeAttemptSession.Fence();
+		session.bindFence(old);
+		session.ready(old);
+		var intent = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(
+				java.util.HexFormat.of().parseHex("0a09180128093801b80c01")).get(0);
+		old.valid = false;
+		session.detach();
+		assertThat(session.accept(null, intent, old)).isNull();
+		session.resume(2, output::add, replacement);
+		session.ready(replacement);
+		assertThat(session.accept(null, intent, old)).isNull();
+		assertThat(session.accept(null, intent, replacement).kind).isEqualTo(BridgeIntents.Kind.ACCEPTED);
+		fifo.remove().run();
+		assertThat(output).hasSize(1);
+		assertThat(session.retainedResults()).hasSize(1);
+	}
+
+	@Test
 	void detachFinalizesQueuedWorkAndResumeNeverRunsItAgain()
 	{
 		ArrayDeque<Runnable> fifo = new ArrayDeque<>();

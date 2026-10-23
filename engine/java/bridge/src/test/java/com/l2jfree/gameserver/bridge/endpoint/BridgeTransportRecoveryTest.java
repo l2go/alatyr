@@ -44,6 +44,23 @@ import io.netty.channel.embedded.EmbeddedChannel;
 class BridgeTransportRecoveryTest
 {
 	@Test
+	void aLateEofOnTheReplacedSocketCannotDetachTheAcceptedResume() throws Exception
+	{
+		try (Fixture fixture = new Fixture(19960))
+		{
+			fixture.open();
+			var replacement = new BridgeLoopback.Transport(new byte[32]);
+			fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+			barrier(fixture.client);
+			fixture.owner.detach(fixture.first);
+			assertThat(fixture.owner.transport).isSameAs(replacement);
+			assertThat(fixture.drain(replacement).getLast().type()).isEqualTo(Schemas.OPENED);
+			assertThat(replacement.attemptFence.ready).isTrue();
+			assertThat(fixture.client.isBridgeDisconnectRequested()).isFalse();
+		}
+	}
+
+	@Test
 	void anInventoryObservationWhileDetachedIsPresentInTheRecoverySnapshot() throws Exception
 	{
 		try (Fixture fixture = new Fixture(19950))

@@ -386,9 +386,14 @@ final class BridgeLoopback implements Runnable
 				if (transport.session != null && (transport.session.transport != transport || transport.lost))
 					return;
 				if (transport.attempts == null)
+				{
 					transport.attempts = new BridgeAttemptSession(work -> transport.client.submit(work),
 							result -> offer(transport, streamFrame(result)));
+					transport.attempts.bindFence(transport.attemptFence);
+				}
 				var decision = transport.attempts.accept(transport.client, intent, transport.attemptFence);
+				if (decision == null)
+					return; // The reader lost its fence after the outer transport check.
 				if (decision.kind == BridgeIntents.Kind.FRAME)
 				{
 					finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
@@ -943,15 +948,22 @@ final class BridgeLoopback implements Runnable
 				source.held = 0;
 					source.checkpointDeadline = 0;
 			}
-			generation = recovery.detach(source, source.fence);
+			// Serialize the state, binding and admission changes with Resume. No source/model callback runs here.
+			synchronized (this)
+			{
+				generation = recovery.detach(source, source.fence);
+				if (generation != 0)
+				{
+					transport = null;
+					attempts.detach();
+				}
+			}
 			if (generation == 0)
 			{
 				if (id == 0)
 					client.requestBridgeDisconnect();
 				return;
 			}
-			transport = null;
-			attempts.detach();
 			com.l2jfree.gameserver.ThreadPoolManager.getInstance().scheduleGeneral(() -> client.submit(() ->
 			{
 				if (recovery.expireGrace(generation))
@@ -966,7 +978,29 @@ final class BridgeLoopback implements Runnable
 				finishTerminal(replacement, List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_CLOSED)));
 				return;
 			}
-			var decision = recovery.resume(replacement, epoch);
+			BridgeRecovery.Resume decision;
+			synchronized (this)
+			{
+				decision = recovery.resume(replacement, epoch);
+				if (decision == BridgeRecovery.Resume.ACCEPTED)
+				{
+					Transport old = transport;
+					if (old != null)
+					{
+						synchronized (old) { old.lost = true; old.attemptFence.valid = false; armClose(old); }
+						attempts.detach();
+					}
+					transport = replacement;
+					replacement.client = client;
+					replacement.session = this;
+					replacement.attempts = attempts;
+					replacement.fence = recovery.fence();
+					replacement.epoch = epoch;
+					replacement.holdOpeningFacts = true;
+					replacement.attemptFence.ready = false;
+					attempts.resume(epoch, this::publishResult, replacement.attemptFence);
+				}
+			}
 			if (decision == BridgeRecovery.Resume.REPLAY)
 			{
 				if (replacement.checkpoint == null)
@@ -979,21 +1013,6 @@ final class BridgeLoopback implements Runnable
 						? BridgeFrames.openedRefused(BridgeFrames.REASON_CLOSED) : BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
 				return;
 			}
-			Transport old = transport;
-			if (old != null)
-			{
-				synchronized (old) { old.lost = true; old.attemptFence.valid = false; armClose(old); }
-				attempts.detach();
-			}
-			transport = replacement;
-			replacement.client = client;
-			replacement.session = this;
-			replacement.attempts = attempts;
-			replacement.fence = recovery.fence();
-			replacement.epoch = epoch;
-			replacement.holdOpeningFacts = true;
-			replacement.attemptFence.ready = false;
-			attempts.resume(epoch, this::publishResult, replacement.attemptFence);
 			captureCheckpoint();
 		}
 
