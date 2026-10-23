@@ -19,6 +19,7 @@ type Time time.Duration
 
 // IntentID is assigned by the world for legacy calls. Session numbering
 // and replay protection are responsibilities of the host, not this module.
+// Enter uses a zero Owner because its incarnation does not exist at admission.
 type IntentID struct {
 	Owner Ref
 	N     uint64
@@ -283,6 +284,7 @@ type EffectGroup struct {
 // A zero Outcome.Intent means there is no intent outcome. Intent describes the
 // originating operation when this commit fixes its outcome; ambient groups may
 // carry a prior IntentID as their cause without fixing that outcome again.
+// Only the command that opens Intent may fix Outcome, with that unchanged ID.
 type Commit struct {
 	Sequence uint64
 	Time     Time
@@ -426,10 +428,10 @@ func (s *state) change(entity Ref, property Property, before, after Value) {
 	}
 }
 func (s *state) finish(stage Stage) {
-	if s.batch != nil && s.batch.cause.Intent.N != 0 && s.batch.outcome.Intent == (IntentID{}) {
-		s.batch.intent.ID = s.batch.cause.Intent
-		s.batch.outcome = Outcome{Intent: s.batch.cause.Intent, Stage: stage}
+	if s.batch == nil || s.batch.intent.ID.N == 0 || s.batch.cause.Intent != s.batch.intent.ID || s.batch.outcome.Intent != (IntentID{}) {
+		return
 	}
+	s.batch.outcome = Outcome{Intent: s.batch.intent.ID, Stage: stage}
 }
 func cloneCommit(t Commit) Commit {
 	t.Groups = slices.Clone(t.Groups)

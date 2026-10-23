@@ -218,7 +218,6 @@ func (w *World) Enter(ctx context.Context, c Character) (Entry, error) {
 			p.itemRefs[it.ObjectID] = Ref{ID: it.ObjectID, Gen: gen}
 		}
 		s.players[c.ObjectID] = p
-		s.batch.cause.Intent.Owner = p.ref()
 		s.group([]Effect{ExistenceChanged{Entity: p.ref(), After: true}})
 		s.finish(StageDone)
 		for _, message := range w.announcements {

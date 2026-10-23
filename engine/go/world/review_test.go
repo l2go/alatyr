@@ -15,6 +15,66 @@ type fixedRandomSource uint64
 
 func (r fixedRandomSource) Uint64() uint64 { return uint64(r) }
 
+func TestCommitDeferredRefusalHasNoOutcome(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var log commitLog
+		w := New(nil, nil, WithCommits(log.observe))
+		s := w.s
+		owner := Ref{ID: 1, Gen: 1}
+		var original IntentID
+		s.command(owner, VerbMove, func() {
+			original = s.cause().Intent
+			s.finish(StageDone)
+		})
+		log.reset()
+		s.afterRule(time.Second, RuleMovement, func(s *state) {
+			s.source(Cause{Intent: original}, func() {
+				// A delayed refusal path must not fix the prior command again.
+				s.change(owner, PropertyMovement, boolValue(true), boolValue(false))
+				s.finish(StageRefused)
+			})
+		})
+		advanceVirtual(time.Second)
+		s.runDue()
+		commits := log.read()
+		if len(commits) != 1 || commits[0].Outcome != (Outcome{}) || commits[0].Intent != (Intent{}) {
+			t.Fatalf("deferred refusal: got %+v, want observations without an outcome", commits)
+		}
+		if got := commits[0].Groups[0].Cause.Intent; got != original {
+			t.Fatalf("deferred cause: got %+v, want %+v", got, original)
+		}
+	})
+}
+
+func TestCommitEnterIntentIdentityIsImmutable(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var log commitLog
+		w, _, ctx := startObservedWorld(t, &log)
+		log.reset()
+		entry := enterTest(t, w, ctx, syntheticCharacter(1))
+		var found bool
+		for _, commit := range log.read() {
+			if commit.Intent.Verb != VerbEnter {
+				continue
+			}
+			found = true
+			id := commit.Intent.ID
+			if id.N == 0 || id.Owner != (Ref{}) || commit.Outcome.Intent != id {
+				t.Fatalf("enter identity: got %+v, outcome %+v, want unchanged unowned ID", id, commit.Outcome)
+			}
+			for _, group := range commit.Groups {
+				if group.Cause.Intent != (IntentID{}) && group.Cause.Intent != id {
+					t.Fatalf("enter cause: got %+v, want %+v", group.Cause.Intent, id)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("missing entry commitment")
+		}
+		drainEvents(entry.Events)
+	})
+}
+
 func TestAmountClosedKinds(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
