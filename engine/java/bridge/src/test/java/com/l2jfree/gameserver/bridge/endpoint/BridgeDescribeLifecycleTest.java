@@ -142,4 +142,38 @@ class BridgeDescribeLifecycleTest
 		}
 		finally { loop.close(); }
 	}
+
+	@Test
+	void openingObservationsFollowBeginAndPrecedeTheExistingNotReadyEnd() throws Exception
+	{
+		Properties properties = new Properties();
+		properties.setProperty("bridge.enabled", "true");
+		properties.setProperty("bridge.port", "19886");
+		properties.setProperty("bridge.secret", "44".repeat(32));
+		var loop = BridgeLoopback.open(BridgeSettings.parse(properties), null);
+		try
+		{
+			var transport = new BridgeLoopback.Transport(new byte[32]);
+			transport.holdOpeningFacts = true;
+			var sink = new BridgeSink(records -> loop.fromSink(transport, records));
+			var client = mock(L2Client.class);
+			when(client.isBridge()).thenReturn(true);
+			sink.attach(client);
+			sink.deliver(new StopMove(10, 1, 2, 3, 0), null);
+			assertThat(transport.queued).isEmpty();
+			assertThat(transport.openingFacts).hasSize(1);
+			loop.fromSink(transport, BridgeFrames.accepted(7, 1));
+			assertThat(transport.openingFacts).isEmpty();
+			assertThat(transport.openingFactBytes).isZero();
+			var decoded = new ArrayList<Envelope>();
+			for (byte[] frame : transport.queued)
+				decoded.addAll(com.l2jfree.gameserver.bridge.wire.Codec.bridge()
+						.read(new java.io.ByteArrayInputStream(frame)));
+			assertThat(decoded).extracting(Envelope::type).containsExactly(
+					Schemas.CHECKPOINT, Schemas.FACT, Schemas.CHECKPOINT, Schemas.OPENED);
+			assertThat(decoded.get(2).field(3).value().u()).isZero();
+			assertThat(transport.terminal).isFalse();
+		}
+		finally { loop.close(); }
+	}
 }
