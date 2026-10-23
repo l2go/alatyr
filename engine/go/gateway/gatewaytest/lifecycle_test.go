@@ -108,6 +108,7 @@ func TestG09DetachAndExplicitResume(t *testing.T) {
 		}
 		r.world, r.state = w, st
 		r.p = gatewaytest.Join(r.t, r.g, r.c, "one", wire.ModeAct, true)
+		r.peers = append(r.peers, r.p)
 		r.sync()
 		if r.p.Epoch != 1 || r.p.Session == oldSession {
 			r.t.Fatal("resume reused participant scope")
@@ -212,6 +213,7 @@ func TestG02ControlTransferBeforeEffect(t *testing.T) {
 			r.t.Fatal(log)
 		}
 		other := gatewaytest.Join(r.t, r.g, r.c, "one", wire.ModeAct, false)
+		r.peers = append(r.peers, other)
 		r.sync() // Join's end frame must also finish the actor's checkpoint drain.
 		other.Send(wire.Record{Type: wire.Control, Fields: []wire.Field{wire.U(1, true, uint64(wire.ControlTake))}})
 		other.Until(func() bool { return other.Control != 0 })

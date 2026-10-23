@@ -29,6 +29,7 @@ type rig struct {
 	c                          meaning.Config
 	g                          *gateway.Gateway
 	p                          *gatewaytest.Peer
+	peers                      []*gatewaytest.Peer
 	port                       bridge.Port
 	f                          *fixture.World
 	session                    *backend.Session
@@ -180,6 +181,7 @@ func newRig(t *testing.T, client bool, source meaning.Source) *rig {
 	r.p = gatewaytest.Join(t, r.g, r.c, "one", wire.ModeAct, true, func(tr gateway.Transport) gateway.Transport {
 		return &drainTransport{Transport: tr, rig: r, done: make(chan struct{})}
 	})
+	r.peers = append(r.peers, r.p)
 	r.sync()
 	return r
 }

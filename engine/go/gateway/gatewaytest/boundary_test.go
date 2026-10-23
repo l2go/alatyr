@@ -66,6 +66,7 @@ func TestDuplicateMismatchDoesNotWrite(t *testing.T) {
 func TestWatchAdmissionAndSlowReaderIsolation(t *testing.T) {
 	both(t, func(r *rig) {
 		watch := gatewaytest.Join(r.t, r.g, r.c, "one", wire.ModeObserve, false)
+		r.peers = append(r.peers, watch)
 		defer watch.Close()
 		r.sync()
 		watch.Send(r.intent(1, 1, wire.At(11, true, 1, 2, 3)))

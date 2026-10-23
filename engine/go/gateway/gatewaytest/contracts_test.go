@@ -44,6 +44,10 @@ func checkOracle(t *testing.T, key string, got transcript) {
 		t.Fatal(err)
 	}
 	for _, frame := range got.frames {
+		if strings.HasPrefix(frame, "peer:") {
+			want.Records = append(want.Records, frame)
+			continue
+		}
 		b, err := hex.DecodeString(frame)
 		if err != nil {
 			t.Fatal(err)
@@ -103,21 +107,30 @@ func both(t *testing.T, run func(*rig)) {
 					t.Fatal(err)
 				}
 				var got transcript
-				for _, rec := range r.p.Records {
-					if rec.Type == wire.Welcome {
-						// Game-session IDs are opaque per-construction values.
-						rec.Fields = slices.Clone(rec.Fields)
-						for i, f := range rec.Fields {
-							if f.Number == 4 {
-								rec.Fields[i] = wire.U(4, true, 1)
+				// Preserve each participant's receive order, including retired
+				// scopes and observers. Registration order is deterministic;
+				// there is no invented total order across independent sockets.
+				for i, peer := range r.peers {
+					peer.Drain()
+					if i != 0 {
+						got.frames = append(got.frames, fmt.Sprintf("peer:%d", i))
+					}
+					for _, rec := range peer.Records {
+						if rec.Type == wire.Welcome {
+							// Game-session IDs are opaque per-construction values.
+							rec.Fields = slices.Clone(rec.Fields)
+							for i, f := range rec.Fields {
+								if f.Number == 4 {
+									rec.Fields[i] = wire.U(4, true, 1)
+								}
 							}
 						}
+						b, err := codec.Encode([]wire.Record{rec})
+						if err != nil {
+							t.Fatal(err)
+						}
+						got.frames = append(got.frames, hex.EncodeToString(b))
 					}
-					b, err := codec.Encode([]wire.Record{rec})
-					if err != nil {
-						t.Fatal(err)
-					}
-					got.frames = append(got.frames, hex.EncodeToString(b))
 				}
 				r.mu.Lock()
 				got.handoffs = slices.Clone(r.handoffs)

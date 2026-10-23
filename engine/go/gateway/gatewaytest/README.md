@@ -10,7 +10,10 @@ participant transport. `Peer` retains every decoded record in arrival order;
 The contract suite uses one set of scenarios and one adapter on a scripted raw
 fixture and the real `bridge.Client` over a controlled peer below its transport.
 Ordered canonical participant bytes and numeric handoffs are compared exactly.
-Only opaque Welcome session IDs are normalized. Static SHA-256 oracles in
+Each peer's ordered transcript is retained, including the old scope after
+Resume; peers are compared in registration order, without inventing a total
+receive order across independent sockets. Only opaque Welcome session IDs are
+normalized. Static SHA-256 oracles in
 `testdata/contracts.json` also catch common-mode changes; nothing is sorted or
 filtered. `GATEWAY_PRINT_ORACLE=1` prints candidate oracles for inspection only;
 it never writes or updates fixtures.
