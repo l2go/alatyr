@@ -28,6 +28,32 @@ import com.l2jfree.gameserver.network.packets.L2ClientPacket;
 class BridgeExecutionTest
 {
 	@Test
+	void gameGuardQueryExemptsBridgeButKeepsTheOrdinaryClientPath()
+	{
+		for (boolean bridge : new boolean[] { true, false })
+		{
+			var player = BridgeTestPlayers.player();
+			var client = mock(L2Client.class);
+			when(client.isBridge()).thenReturn(bridge);
+			when(player.getClient()).thenReturn(client);
+			org.mockito.Mockito.doCallRealMethod().when(player).queryGameGuard();
+			boolean enforce = com.l2jfree.Config.GAMEGUARD_ENFORCE;
+			com.l2jfree.Config.GAMEGUARD_ENFORCE = false;
+			try
+			{
+				player.queryGameGuard();
+				org.mockito.Mockito.verify(client, org.mockito.Mockito.times(bridge ? 0 : 1)).setGameGuardOk(false);
+				org.mockito.Mockito.verify(player, org.mockito.Mockito.times(bridge ? 0 : 1))
+						.sendPacket(com.l2jfree.gameserver.network.packets.server.GameGuardQuery.STATIC_PACKET);
+			}
+			finally
+			{
+				com.l2jfree.Config.GAMEGUARD_ENFORCE = enforce;
+			}
+		}
+	}
+
+	@Test
 	void anExceptionAfterAReceiptIsUnknownAndClearsTheThreadLocal()
 	{
 		L2Player player = BridgeTestPlayers.player();
