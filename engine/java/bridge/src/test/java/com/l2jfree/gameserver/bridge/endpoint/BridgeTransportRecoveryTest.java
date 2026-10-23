@@ -200,7 +200,7 @@ class BridgeTransportRecoveryTest
 			case "close" -> fixture.loop.acceptFrame(replacement, List.of(close(fixture.id, 2)));
 			case "auth" -> fixture.loop.acceptFrame(replacement, List.of(Envelope.of(Schemas.RESUME, List.of(
 					Field.u(1, true, fixture.id), Field.u(2, true, 2), Field.data(3, true, new byte[] { 1 }),
-					Field.data(4, true, "bridge/1".getBytes(java.nio.charset.StandardCharsets.UTF_8)))));
+					Field.data(4, true, "bridge/1".getBytes(java.nio.charset.StandardCharsets.UTF_8))))));
 			case "overflow" ->
 			{
 				BridgeLoopback.offer(replacement, new byte[BridgeLoopback.OUT_QUEUE_BYTES + 1]);
