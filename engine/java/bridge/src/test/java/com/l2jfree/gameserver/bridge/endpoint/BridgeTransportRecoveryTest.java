@@ -326,6 +326,8 @@ class BridgeTransportRecoveryTest
 			assertThat(fixture.first.queued).isEmpty();
 			assertThat(fixture.first.afterCheckpoint).isEmpty();
 			assertThat(fixture.first.held).isZero();
+			fixture.owner.sink.deliver(new UserInfo(fixture.player), fixture.player);
+			assertThat(fixture.first.queued).isEmpty();
 			fixture.client.submit(fixture.owner::captureCheckpoint);
 			barrier(fixture.client);
 			var records = fixture.drain(fixture.first);

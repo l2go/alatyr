@@ -898,6 +898,7 @@ final class BridgeLoopback implements Runnable
 					current.endScheduled = false;
 					if (!current.opened)
 					{
+						current.holdOpeningFacts = true;
 						// The fresh opening/recovery snapshot subsumes these observations. In particular, facts
 						// cannot precede Begin when the cancelled producer had not transferred its first frame.
 						while (!current.afterCheckpoint.isEmpty())
