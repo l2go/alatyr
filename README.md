@@ -48,14 +48,14 @@ Login and world share a JVM, not code. They meet only through a typed contract, 
 
 **🗄️ SQL checked against the schema**
 
-Every SQL statement of the server is prepared against the migrated PostgreSQL schema, and every JDBC type is compared with its column. A ratchet keeps direct database access from spreading.
+The SQL strings of the compiled world classes are prepared against the migrated PostgreSQL schema, and every JDBC type is compared with its column. A ratchet keeps direct database access from spreading.
 
 </td>
 <td width="33%" valign="top">
 
 **🧪 Every merge is a release rehearsal**
 
-The image starts, and 24 clients play: each creates a character, fights, picks up coins, buys and drinks a potion, learns a skill, and logs out and back in. The server restarts, a backup is restored into a clean stack, and the running stack is upgraded in place. The saved characters remain available after each restart, restore, and upgrade.
+The image starts on both platforms, and 24 clients log in, create a character, enter the world, and log out. The server restarts, a backup is restored into a clean stack, and, when the previous image can be pulled, the running stack is upgraded in place from it. The saved characters remain available after each restart, restore, and upgrade.
 
 </td>
 </tr>
