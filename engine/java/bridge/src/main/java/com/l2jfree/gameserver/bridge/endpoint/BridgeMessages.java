@@ -48,7 +48,7 @@ final class BridgeMessages
 				stats.add(BridgeField.number(7, args.get(id == 95 ? 1 : 0).number()));
 			if (own)
 				facts.add(BridgeFact.of(17, BridgeField.number(64, actor),
-						BridgeField.object(25, stats), BridgeField.flag(19, true)));
+						BridgeField.object(25, stats.toArray(BridgeField[]::new)), BridgeField.flag(19, true)));
 		}
 		return List.copyOf(facts);
 	}
