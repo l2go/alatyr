@@ -14,11 +14,21 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeHtml;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 /**
  * @author NB4L1
  */
-public final class NpcLinkHtmlMessage extends AbstractNpcHtmlMessage
+public final class NpcLinkHtmlMessage extends AbstractNpcHtmlMessage implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		BridgeHtml.describe(sink, receiver, 0, _content);
+	}
+
 	private CharSequence _content;
 	
 	@Override

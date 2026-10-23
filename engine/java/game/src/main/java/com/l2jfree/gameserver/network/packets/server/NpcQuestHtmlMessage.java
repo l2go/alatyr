@@ -14,6 +14,10 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeHtml;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.cache.HtmCache;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.network.L2Client;
@@ -123,8 +127,14 @@ import com.l2jfree.lang.Replaceable;
  *
  * @version $Revision: 1.3.2.1.2.3 $ $Date: 2005/03/27 15:29:57 $
  */
-public final class NpcQuestHtmlMessage extends L2ServerPacket
+public final class NpcQuestHtmlMessage extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		BridgeHtml.describe(sink, receiver, _npcObjId, _replaceable);
+	}
+
 	private final int _npcObjId;
 	private Replaceable _replaceable;
 	private int _questId = 0;
