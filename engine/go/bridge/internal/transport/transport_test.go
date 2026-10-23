@@ -6,32 +6,33 @@ package transport
 import (
 	"context"
 	"errors"
-	"github.com/l2go/alatyr/engine/go/bridge/profile"
-	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/l2go/alatyr/engine/go/bridge/profile"
+	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
 
 func TestFirstByteDeadline(t *testing.T) {
 	a, b := net.Pipe()
 	defer b.Close()
 	defer a.Close()
-	codec, e := profile.NewProfileCodec()
-	if e != nil {
-		t.Fatal(e)
+	codec, err := profile.NewProfileCodec()
+	if err != nil {
+		t.Fatal(err)
 	}
 	c := New(a, codec)
 	done := make(chan error, 1)
-	go func() { _, _, e := c.Read(); done <- e }()
+	go func() { _, _, err := c.Read(); done <- err }()
 	// Idle has no five-second frame deadline. The shorter opening bound is separate.
 	c.mu.Lock()
 	if !c.frame.IsZero() {
 		t.Error("frame started without a byte")
 	}
 	c.mu.Unlock()
-	if _, e = b.Write([]byte{128}); e != nil {
-		t.Fatal(e)
+	if _, err = b.Write([]byte{128}); err != nil {
+		t.Fatal(err)
 	}
 	deadline := time.Now().Add(time.Second)
 	for {
@@ -50,7 +51,7 @@ func TestFirstByteDeadline(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	c.Bound(time.Now().Add(15 * time.Millisecond))
-	if e = <-done; e == nil {
+	if err = <-done; err == nil {
 		t.Fatal("partial prefix accepted")
 	}
 }
@@ -74,21 +75,21 @@ func TestShortWritesAndCancellation(t *testing.T) {
 	c := New(shortConn{a, 1}, codec)
 	done := make(chan error, 1)
 	go func() {
-		rs, e := codec.Read(b)
-		if e == nil && (len(rs) != 1 || profile.U(rs[0], 1) != 123) {
-			e = errors.New("short-write output")
+		rs, err := codec.Read(b)
+		if err == nil && (len(rs) != 1 || profile.U(rs[0], 1) != 123) {
+			err = errors.New("short-write output")
 		}
-		done <- e
+		done <- err
 	}()
-	if e := c.Write(context.Background(), []wire.Record{{Type: wire.Ping, Fields: []wire.Field{wire.U(1, true, 123)}}}); e != nil {
-		t.Fatal(e)
+	if err := c.Write(context.Background(), []wire.Record{{Type: wire.Ping, Fields: []wire.Field{wire.U(1, true, 123)}}}); err != nil {
+		t.Fatal(err)
 	}
-	if e := <-done; e != nil {
-		t.Fatal(e)
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if e := c.Write(ctx, []wire.Record{{Type: wire.Ping, Fields: []wire.Field{wire.U(1, true, 1)}}}); e == nil {
+	if err := c.Write(ctx, []wire.Record{{Type: wire.Ping, Fields: []wire.Field{wire.U(1, true, 1)}}}); err == nil {
 		t.Fatal("canceled write")
 	}
 }
