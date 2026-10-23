@@ -11,6 +11,25 @@ import org.junit.jupiter.api.Test;
 class BridgeAttemptSessionTest
 {
 	@Test
+	void reorderedFieldsReplayTheSamePendingAttempt()
+	{
+		var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, bytes -> { });
+		session.ready();
+		var n = com.l2jfree.gameserver.bridge.wire.Field.u(1, true, 1);
+		var verb = com.l2jfree.gameserver.bridge.wire.Field.u(2, true, 9);
+		var control = com.l2jfree.gameserver.bridge.wire.Field.u(3, true, 1);
+		var first = com.l2jfree.gameserver.bridge.wire.Envelope.of(
+				com.l2jfree.gameserver.bridge.wire.Schemas.INTENT, java.util.List.of(n, verb, control));
+		var reordered = com.l2jfree.gameserver.bridge.wire.Envelope.of(
+				com.l2jfree.gameserver.bridge.wire.Schemas.INTENT, java.util.List.of(control, n, verb));
+		assertThat(session.accept(client, first).kind).isEqualTo(BridgeIntents.Kind.ACCEPTED);
+		assertThat(session.accept(client, reordered).kind).isEqualTo(BridgeIntents.Kind.REPLAY);
+		assertThat(fifo).hasSize(1);
+	}
+
+	@Test
 	void connectedAndAuthenticatedClientsNeverBindAnyVerb()
 	{
 		for (var state : new com.l2jfree.gameserver.network.L2Client.GameClientState[] {
