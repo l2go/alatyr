@@ -83,6 +83,45 @@ func TestExecuteSelectOnlyAndSameCommit(t *testing.T) {
 	})
 }
 
+func TestExecuteSelectRefusalReasons(t *testing.T) {
+	for _, tc := range []struct {
+		name                     string
+		dead, teleporting, stale bool
+		reason                   Reason
+	}{
+		{"dead owner", true, false, false, ReasonState},
+		{"teleporting owner", false, true, false, ReasonState},
+		{"stale target", false, false, true, ReasonStale},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				var log commitLog
+				w, _, ctx := startObservedWorld(t, &log)
+				entry := enterTest(t, w, ctx, syntheticCharacter(1))
+				target := refTest(t, w, ctx, objectOf(t, w, ctx, 9101))
+				if tc.stale {
+					target.Gen++
+				}
+				if err := w.do(ctx, func(s *state) {
+					p := s.players[1]
+					p.dead, p.teleporting = tc.dead, tc.teleporting
+				}); err != nil {
+					t.Fatal(err)
+				}
+				drainEvents(entry.Events)
+				log.reset()
+				commit := executeTest(t, w, ctx, Request{Owner: entry.Self.Entity, Verb: VerbSelect, Target: target})
+				if commit.Outcome.Stage != StageRefused || commit.Outcome.Reason != tc.reason || len(commit.Groups) != 0 {
+					t.Fatalf("select: got %+v, want refused/%s without groups", commit, tc.reason)
+				}
+				if events := drainEvents(entry.Events); len(events) != 0 {
+					t.Fatalf("notifications: got %+v, want none", events)
+				}
+			})
+		})
+	}
+}
+
 func TestExecuteChooseCommitsIssuedList(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

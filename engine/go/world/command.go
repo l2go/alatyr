@@ -86,7 +86,11 @@ func (w *World) execute(s *state, p *player, req Request) *Skill {
 		}
 		w.setIntention(s, p, order{intent: intentMoveTo, pos: to})
 	case VerbSelect:
-		if p.dead || p.teleporting || !w.selectable(s, p, req.Target) {
+		if p.dead || p.teleporting {
+			s.resolve(StageRefused, ReasonState)
+			return nil
+		}
+		if !w.selectable(s, p, req.Target) {
 			s.resolve(StageRefused, ReasonStale)
 			return nil
 		}
