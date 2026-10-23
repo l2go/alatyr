@@ -56,4 +56,3 @@ public final class BridgeActors
 		sink.emit(new BridgeFact(1, fields));
 	}
 }
-
