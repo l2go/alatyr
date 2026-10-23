@@ -30,6 +30,8 @@ import com.l2jfree.gameserver.ThreadPoolManager;
 final class InlinePool implements AutoCloseable
 {
 	private final MockedStatic<ThreadPoolManager> pools;
+	private final java.util.List<Thread> workers = new java.util.concurrent.CopyOnWriteArrayList<>();
+	private final java.util.concurrent.atomic.AtomicReference<Throwable> failure = new java.util.concurrent.atomic.AtomicReference<>();
 	final ThreadPoolManager pool;
 	
 	private InlinePool()
@@ -40,8 +42,19 @@ final class InlinePool implements AutoCloseable
 		doAnswer(invocation ->
 		{
 			Runnable task = invocation.getArgument(0);
-			Thread thread = new Thread(task, "bridge-test-queue");
+			Thread thread = new Thread(() ->
+			{
+				// FIFO release may reschedule on the worker, not the submitting test thread.
+				// Mockito static mocks are thread-local; that path must not start the real server pool.
+				try (var workerPools = mockStatic(ThreadPoolManager.class))
+				{
+					workerPools.when(ThreadPoolManager::getInstance).thenReturn(pool);
+					task.run();
+				}
+				catch (Throwable problem) { failure.compareAndSet(null, problem); }
+			}, "bridge-test-queue");
 			thread.setDaemon(true);
+			workers.add(thread);
 			thread.start();
 			return null;
 		}).when(pool).execute(any(Runnable.class));
@@ -55,6 +68,18 @@ final class InlinePool implements AutoCloseable
 	@Override
 	public void close()
 	{
-		pools.close();
+		try
+		{
+			// A joined worker cannot enqueue another worker after this walk passes it.
+			for (int i = 0; i < workers.size(); i++)
+			{
+				Thread worker = workers.get(i);
+				try { worker.join(5000); }
+				catch (InterruptedException problem) { Thread.currentThread().interrupt(); throw new AssertionError(problem); }
+				if (worker.isAlive()) throw new AssertionError("bridge test worker did not stop");
+			}
+			if (failure.get() != null) throw new AssertionError("bridge test worker failed", failure.get());
+		}
+		finally { pools.close(); }
 	}
 }
