@@ -264,6 +264,8 @@ jobs:
           done
 
       - name: Check raw adapter fuzzing readiness
+        # The seed corpus runs with the tests of every pull request; the search for new inputs runs on main.
+        if: github.event_name != 'pull_request'
         working-directory: engine/go/gateway
         env:
           GOWORK: "off"
