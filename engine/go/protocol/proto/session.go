@@ -18,7 +18,8 @@ import (
 var (
 	// ErrState reports an operation that is not valid in the current state.
 	ErrState = errors.New("invalid state transition")
-	// ErrExhausted reports a counter that reached its maximum; the session is closed.
+	// ErrExhausted reports that a number or deadline no longer fits its type.
+	// The Session or Connection that returns it is closed.
 	ErrExhausted = errors.New("counter exhausted")
 )
 
@@ -119,7 +120,10 @@ func New(c Config) (*Session, error) {
 // NextN returns the next attempt number the controller may use.
 func (s *Session) NextN() uint64 { return s.next }
 
-// Floor returns the lowest attempt number whose outcome is still retained.
+// Floor returns the lowest attempt number that is not yet too old. Begin
+// answers a lower number with StageUnrecoverable and ReasonTooOld. The floor
+// starts at 1 and rises past each evicted attempt, whether or not an outcome
+// with that exact number is still retained.
 func (s *Session) Floor() uint64 { return s.floor }
 
 // Projection returns the current projection epoch.
@@ -582,7 +586,9 @@ func (s *Session) Relocate(survivor uint64) ([]Outcome, error) {
 	return out, nil
 }
 
-// Close refuses every unfinished attempt and closes the session.
+// Close ends every unfinished attempt with ReasonWorldClosed and closes the
+// session. An attempt without contact is refused; one that already reached the
+// world ends as StageUnknown, since it may have taken effect.
 func (s *Session) Close() []Outcome {
 	var out []Outcome
 	for i := range s.entries {

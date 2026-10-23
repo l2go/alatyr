@@ -87,7 +87,9 @@ func (c *Connection) Lose(epoch uint64) error {
 }
 
 // Fact checks a fact of projection epoch with sequence seq. It reports false
-// for a fact of an older epoch, which the caller drops.
+// with a nil error for any epoch other than the current projection, older or
+// newer; the caller drops such a fact. ErrState reports a closed or unwelcomed
+// connection, no projection, or a sequence that is zero or not above LastSeq.
 func (c *Connection) Fact(epoch, seq uint64) (bool, error) {
 	if c.closed || !c.welcome || c.Projection == 0 {
 		return false, ErrState
@@ -118,6 +120,8 @@ func (c *Connection) Incomplete(domain string) (wire.Record, error) {
 }
 
 // Allocate returns the next attempt number while the connection may act.
+// When the number space is exhausted it closes the connection and returns
+// ErrExhausted.
 func (c *Connection) Allocate() (uint64, error) {
 	if !c.Acting || !c.Ready || c.closed {
 		return 0, ErrState

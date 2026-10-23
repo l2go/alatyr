@@ -26,11 +26,11 @@ type Stage uint64
 
 // Stages of an attempt.
 const (
-	StageSent          Stage = iota + 1 // handed to the world; no proof of effect yet
+	StageSent          Stage = iota + 1 // delivered locally or to the world; no proof of effect yet
 	StageDone                           // effect witnessed by the world
 	StageRefused                        // not executed; Reason says why
 	StageUnknown                        // may or may not have taken effect
-	StageUnrecoverable                  // below the retained floor; must not be repeated
+	StageUnrecoverable                  // number below the session floor; the outcome is no longer known
 )
 
 // Reason explains a Result or a refusal. ReasonNone is used only with
