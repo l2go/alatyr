@@ -26,6 +26,32 @@ import com.l2jfree.gameserver.network.bridge.BridgeValue;
 class BridgeProjectionTest
 {
 	@Test
+	void aNinthCurrentWindowFailsInsteadOfDiscardingAnAcceptedProposal()
+	{
+		var projection = new BridgeProjection();
+		for (int i = 1; i <= BridgeProjection.WINDOWS; i++)
+			projection.observe(BridgeFact.of(12, BridgeField.number(22, i), BridgeField.list(24, List.of())), i, 0);
+		assertThat(projection.capture(1).facts()).hasSize(8);
+		assertThatThrownBy(() -> projection.observe(BridgeFact.of(12, BridgeField.number(22, 9),
+				BridgeField.list(24, List.of())), 9, 1)).isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	void historyKeepsOnlyTheLatestRowsAndTheirOriginalTimeAndText()
+	{
+		var projection = new BridgeProjection();
+		for (int i = 0; i <= 256; i++)
+			projection.observe(BridgeFact.of(18, BridgeField.text(20, "message " + i, 4)), i + 1, i);
+		var entries = ((BridgeValue.ListValue)field(kind(projection.capture(300), 19), 28).value()).items();
+		assertThat(entries).hasSize(256);
+		var first = (BridgeValue.ObjectValue)entries.getFirst();
+		var last = (BridgeValue.ObjectValue)entries.getLast();
+		assertThat(((BridgeValue.Number)first.fields().getFirst().value()).value()).isEqualTo(1);
+		assertThat(((BridgeValue.Number)last.fields().getFirst().value()).value()).isEqualTo(256);
+		assertThat(projection.capture(300).facts()).extracting(BridgeFact::kind).containsExactly(19);
+	}
+
+	@Test
 	void unknownDomainsNeverBecomeReadyButPresentEmptyDomainsCan()
 	{
 		BridgeProjection projection = new BridgeProjection();
