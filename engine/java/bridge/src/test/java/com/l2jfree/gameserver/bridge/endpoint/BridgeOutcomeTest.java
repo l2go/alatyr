@@ -1,0 +1,52 @@
+package com.l2jfree.gameserver.bridge.endpoint;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+
+import org.junit.jupiter.api.Test;
+
+import com.l2jfree.gameserver.gameobjects.L2Player;
+import com.l2jfree.gameserver.network.bridge.Attempt;
+import com.l2jfree.gameserver.network.bridge.BridgeEffect;
+import com.l2jfree.gameserver.network.bridge.EffectLedger;
+
+class BridgeOutcomeTest
+{
+	@Test
+	void aTaxedPurchaseMatchesActualCoinWithoutAnObservedPrice()
+	{
+		L2Player player = mock(L2Player.class);
+		Attempt attempt = new Attempt(player);
+		EffectLedger.open(attempt);
+		try
+		{
+			EffectLedger.record(player, BridgeEffect.item(1060, 70, 2));
+			EffectLedger.record(player, BridgeEffect.coin(-13));
+			assertThat(BridgeOutcome.match(attempt, 7, 1060, 0, 2)).isEqualTo(BridgeOutcome.DONE);
+			EffectLedger.record(player, BridgeEffect.coin(13));
+			assertThat(BridgeOutcome.match(attempt, 7, 1060, 0, 2)).isEqualTo(BridgeOutcome.UNKNOWN);
+		}
+		finally
+		{
+			EffectLedger.close();
+		}
+	}
+
+	@Test
+	void anUnregisteredWhiteRefusalIsUnknownNotDoneOrRefused()
+	{
+		Attempt attempt = new Attempt(mock(L2Player.class));
+		attempt.addRefusal(279);
+		assertThat(BridgeOutcome.match(attempt, 7, 1060, 0, 2)).isEqualTo(BridgeOutcome.UNKNOWN);
+		assertThat(BridgeOutcome.match(attempt, 8, 1060, 70, 2)).isEqualTo(BridgeOutcome.UNKNOWN);
+	}
+
+	@Test
+	void failureDominatesReceiptsAndMovementNeverGetsVacuousDone()
+	{
+		Attempt attempt = new Attempt(mock(L2Player.class));
+		assertThat(BridgeOutcome.match(attempt, 1, 0, 0, 0)).isEqualTo(BridgeOutcome.SENT);
+		attempt.markFailed();
+		assertThat(BridgeOutcome.match(attempt, 1, 0, 0, 0)).isEqualTo(BridgeOutcome.UNKNOWN);
+	}
+}
