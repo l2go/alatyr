@@ -105,7 +105,7 @@ jobs:
           mkdir -p "$GOBIN"
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
-          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
           echo "$GOBIN" >> "$GITHUB_PATH"
 
       - name: Check Go code with Staticcheck
