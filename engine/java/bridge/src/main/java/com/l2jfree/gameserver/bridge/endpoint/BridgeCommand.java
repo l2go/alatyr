@@ -69,7 +69,7 @@ final class BridgeCommand
 				yield MoveBackwardToLocation.forBridge(client.getActiveChar(), at.x(), at.y(), at.z());
 			}
 			case 3 -> AttackRequest.forBridge(positive(intent, 64));
-			case 5 -> Action.forBridge(positive(intent, 64));
+			case 4, 5 -> Action.forBridge(positive(intent, 64));
 			case 6 -> {
 				int npc = positive(intent, 64);
 				if (client.getActiveChar().getTarget() == null || client.getActiveChar().getTargetId() != npc)

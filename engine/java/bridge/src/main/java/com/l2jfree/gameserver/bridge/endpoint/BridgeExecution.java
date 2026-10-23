@@ -14,6 +14,11 @@ final class BridgeExecution
 
 	static Attempt run(L2Client client, L2ClientPacket packet)
 	{
+		return run(client, packet, attempt -> { });
+	}
+
+	static Attempt run(L2Client client, L2ClientPacket packet, java.util.function.Consumer<Attempt> continuation)
+	{
 		if (client == null || !client.isBridge() || client.getActiveChar() == null || packet == null)
 			throw new IllegalArgumentException("execution");
 		Attempt attempt = new Attempt(client.getActiveChar());
@@ -25,6 +30,8 @@ final class BridgeExecution
 			packet.run();
 			if (packet.failed())
 				attempt.markFailed();
+			if (!attempt.isFailed())
+				continuation.accept(attempt);
 		}
 		catch (RuntimeException | Error failure)
 		{

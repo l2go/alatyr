@@ -38,6 +38,14 @@ final class BridgeAttemptSession
 				return BridgeResults.encode(n, verb, 3, 1, null);
 			try
 			{
+				com.l2jfree.gameserver.model.items.L2ItemInstance ground = null;
+				if (verb == 4)
+				{
+					var object = com.l2jfree.gameserver.model.world.L2World.getInstance().findObject(BridgeCommand.positive(intent, 64));
+					if (!(object instanceof com.l2jfree.gameserver.model.items.L2ItemInstance item) || !item.isVisible())
+						throw new IllegalArgumentException("ground item");
+					ground = item;
+				}
 				var packet = BridgeCommand.packet(client, intent);
 				int opcode = switch ((int)verb)
 				{
@@ -54,11 +62,29 @@ final class BridgeAttemptSession
 				};
 				if (!com.l2jfree.gameserver.network.L2ClientSelectorThread.getInstance().canReceivePacketFrom(client, opcode))
 					return BridgeResults.encode(n, verb, 3, 7, null);
-				var attempt = BridgeExecution.run(client, packet);
+				final var source = ground;
+				final int takenItem = source == null ? 0 : source.getItemId();
+				final long takenCount = source == null ? 0 : source.getCount();
+				var attempt = BridgeExecution.run(client, packet, active ->
+				{
+					if (source == null || BridgeOutcome.match(active, 4, takenItem, source.getObjectId(), takenCount) == BridgeOutcome.DONE)
+						return;
+					if (client.isBridgeDisconnectRequested() || client.getState() != L2Client.GameClientState.IN_GAME
+							|| com.l2jfree.gameserver.model.world.L2World.getInstance().findObject(source.getObjectId()) != source
+							|| !source.isVisible())
+						return;
+					if (!com.l2jfree.gameserver.network.L2ClientSelectorThread.getInstance().canReceivePacketFrom(client, 0x1f))
+						return;
+					var second = com.l2jfree.gameserver.network.packets.client.Action.forBridge(source.getObjectId());
+					second.bindDirect(client);
+					second.run();
+					if (second.failed())
+						active.markFailed();
+				});
 				int stage = BridgeOutcome.match(attempt, Math.toIntExact(verb),
-						intent.field(66) == null ? 0 : BridgeCommand.integer(intent, 66),
+						verb == 4 ? takenItem : intent.field(66) == null ? 0 : BridgeCommand.integer(intent, 66),
 						intent.field(64) == null ? 0 : BridgeCommand.integer(intent, 64),
-						intent.field(16) == null ? 0 : intent.field(16).value().s());
+						verb == 4 ? takenCount : intent.field(16) == null ? 0 : intent.field(16).value().s());
 				if (verb == 13)
 				{
 					var skill = intent.field(18).value().fields();
