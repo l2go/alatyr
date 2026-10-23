@@ -347,7 +347,9 @@ public final class BridgeHtml
 			if (digits.isEmpty())
 				return null;
 			for (int i = 0; i < digits.length(); i++)
-				if (Character.digit(digits.charAt(i), hex ? 16 : 10) < 0)
+				if (!(digits.charAt(i) >= '0' && digits.charAt(i) <= '9'
+						|| hex && (digits.charAt(i) >= 'a' && digits.charAt(i) <= 'f'
+								|| digits.charAt(i) >= 'A' && digits.charAt(i) <= 'F')))
 					return null;
 			int code = Integer.parseInt(digits, hex ? 16 : 10);
 			if (!Character.isValidCodePoint(code) || code >= 0xd800 && code <= 0xdfff)

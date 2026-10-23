@@ -35,6 +35,7 @@ class BridgeHtmlTest
 		assertThat(window.options()).isEmpty();
 		assertThat(BridgeHtml.parse("a&#0;b").text()).isEqualTo("a\0b");
 		assertThat(BridgeHtml.parse("&#xD800; &#1114112;").text()).isEqualTo("&#xD800; &#1114112;");
+		assertThat(BridgeHtml.parse("&#\u0661;").text()).isEqualTo("&#\u0661;");
 	}
 
 	@Test

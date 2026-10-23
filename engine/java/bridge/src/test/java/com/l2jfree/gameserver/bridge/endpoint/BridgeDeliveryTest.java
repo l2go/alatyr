@@ -193,4 +193,35 @@ class BridgeDeliveryTest
 			last = sequence;
 		}
 	}
+
+	@Test
+	void movementRefreshUsesOnlyCapturedSpeedsPositionAndExplicitLifeEvents()
+	{
+		var actor = BridgeTestPlayers.player();
+		var view = mock(com.l2jfree.gameserver.gameobjects.view.PlayerView.class);
+		var appearance = mock(com.l2jfree.gameserver.gameobjects.appearance.PlayerAppearance.class);
+		when(actor.getObjectId()).thenReturn(70);
+		when(actor.getView()).thenReturn(view);
+		when(actor.getAppearance()).thenReturn(appearance);
+		when(appearance.getVisibleName()).thenReturn("Visible");
+		when(view.getObjectId()).thenReturn(70);
+		when(view.getRunSpd()).thenReturn(120);
+		when(view.getWalkSpd()).thenReturn(80);
+		when(view.getMovementSpeedMultiplier()).thenReturn(1.5f);
+		sink.deliver(new CharInfo(actor), player);
+		when(actor.isRunning()).thenReturn(true);
+		sink.deliver(new ChangeMoveType(actor), player);
+		assertThat(records.get(1).get(0).field(15).value().u()).isEqualTo(180);
+		sink.deliver(new StopMove(70, 1, 2, 3, 0), player);
+		var dying = mock(com.l2jfree.gameserver.gameobjects.L2Creature.class);
+		when(dying.getObjectId()).thenReturn(70);
+		sink.deliver(new Die(dying), player);
+		when(actor.isRunning()).thenReturn(false);
+		sink.deliver(new ChangeMoveType(actor), player);
+		var refresh = records.get(4).get(0);
+		assertThat(refresh.field(15).value().u()).isEqualTo(120);
+		assertThat(refresh.field(13).value().x()).isEqualTo(1);
+		assertThat(refresh.field(70).value().u()).isZero();
+		verify(actor, never()).getStat();
+	}
 }

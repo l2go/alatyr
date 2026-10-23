@@ -178,7 +178,7 @@ public final class BridgeSink implements ClientSink
 			ActorView previous = view(id);
 			if (fact.kind() != 1 && previous == null)
 				return;
-			if (fact.kind() != 1 && (fact.kind() < 2 || fact.kind() > 4))
+			if (fact.kind() != 1 && (fact.kind() < 2 || fact.kind() > 4) && fact.kind() != 6 && fact.kind() != 7)
 				return;
 			var fields = new HashMap<Integer, BridgeField>();
 			if (previous != null)
@@ -187,6 +187,8 @@ public final class BridgeSink implements ClientSink
 				if (field.number() == 64 || field.number() == 11 || field.number() == 12 || field.number() == 13
 						|| field.number() == 15 || field.number() == 19 || field.number() == 70 || field.number() == 73)
 					fields.put(field.number(), field);
+			if (fact.kind() == 6 || fact.kind() == 7)
+				fields.put(70, BridgeField.flag(70, fact.kind() == 7));
 			changes.put(id, new ActorView(Map.copyOf(fields), previous == null ? null : previous.run(),
 					previous == null ? null : previous.walk()));
 		}
