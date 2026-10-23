@@ -29,21 +29,22 @@ final class BridgeIntents
 	
 	private final LinkedHashMap<Long, byte[]> pending = new LinkedHashMap<>();
 	private final LinkedHashMap<Long, byte[]> completed = new LinkedHashMap<>();
+	private final LinkedHashMap<Long, byte[]> results = new LinkedHashMap<>();
 	private long next = 1;
 	private long floor = 1;
 	private boolean ready;
 	
-	void markReady()
+	synchronized void markReady()
 	{
 		ready = true;
 	}
 	
-	long next()
+	synchronized long next()
 	{
 		return next;
 	}
 	
-	Decision offer(long n, byte[] content)
+	synchronized Decision offer(long n, byte[] content)
 	{
 		if (content == null)
 			throw new IllegalArgumentException("content");
@@ -73,19 +74,34 @@ final class BridgeIntents
 	}
 	
 	/** Moves a pending attempt into the completed ring. The stored body stays the one that was accepted. */
-	void complete(long n)
+	synchronized void complete(long n)
+	{
+		complete(n, null);
+	}
+
+	/** Retains an encoded result once; callers cannot mutate the replay through their byte arrays. */
+	synchronized void complete(long n, byte[] result)
 	{
 		byte[] body = pending.remove(n);
 		if (body == null)
 			return;
 		
 		completed.put(n, body);
+		if (result != null)
+			results.put(n, result.clone());
 		while (completed.size() > COMPLETED_CAP)
 		{
 			Long oldest = completed.keySet().iterator().next();
 			completed.remove(oldest);
+			results.remove(oldest);
 			floor = Math.max(floor, oldest + 1);
 		}
+	}
+
+	synchronized byte[] result(long n)
+	{
+		byte[] stored = results.get(n);
+		return stored == null ? null : stored.clone();
 	}
 	
 	enum Kind
@@ -109,7 +125,7 @@ final class BridgeIntents
 		{
 			this.kind = kind;
 			this.code = code;
-			this.stored = stored;
+			this.stored = stored == null ? null : stored.clone();
 		}
 		
 		private static Decision accepted(byte[] stored)

@@ -28,6 +28,40 @@ import com.l2jfree.gameserver.bridge.endpoint.BridgeIntents.Kind;
 class BridgeIntentTest
 {
 	@Test
+	void aCompletedResultIsImmutableAndCannotBeReplaced()
+	{
+		BridgeIntents intents = ready();
+		byte[] body = { 1 };
+		byte[] result = { 2, 3 };
+		Decision accepted = intents.offer(1, body);
+		accepted.stored[0] = 99;
+		body[0] = 98;
+		intents.complete(1, result);
+		result[0] = 97;
+		intents.result(1)[0] = 96;
+		intents.complete(1, new byte[] { 95 });
+		assertThat(intents.offer(1, new byte[] { 1 }).kind).isEqualTo(Kind.REPLAY);
+		assertThat(intents.result(1)).containsExactly(2, 3);
+	}
+
+	@Test
+	void evictingACompletedResultDoesNotEvictAnOlderPendingAttempt()
+	{
+		BridgeIntents intents = ready();
+		intents.offer(1, new byte[] { 1 });
+		for (long n = 2; n <= 66; n++)
+		{
+			intents.offer(n, new byte[] { (byte) n });
+			intents.complete(n, new byte[] { (byte) n });
+		}
+		assertThat(intents.result(2)).isNull();
+		assertThat(intents.offer(2, new byte[] { 2 }).kind).isEqualTo(Kind.UNRECOVERABLE);
+		assertThat(intents.offer(1, new byte[] { 1 }).kind).isEqualTo(Kind.REPLAY);
+		assertThat(intents.result(1)).isNull();
+		assertThat(intents.result(66)).containsExactly(66);
+	}
+
+	@Test
 	void aDifferentBodyDoesNotReplaceThePendingOrCompletedAttempt()
 	{
 		BridgeIntents intents = ready();
