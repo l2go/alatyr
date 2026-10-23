@@ -111,6 +111,8 @@ type Teleported struct {
 	ObjectID int32
 	Pos      Point
 	Heading  int32
+	Entity   Ref
+	Fence    Fence
 }
 
 // Revived announces revival at the current position, not return to a start point.
@@ -235,6 +237,9 @@ func (ActionIgnored) event()    {}
 
 func cloneEvent(e Event) Event {
 	switch value := e.(type) {
+	case AffordancesChanged:
+		value.Affordances = cloneAffordances(value.Affordances)
+		return value
 	case SelfChanged:
 		value.Self.Char = value.Self.Char.Clone()
 		return value

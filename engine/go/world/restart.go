@@ -32,6 +32,9 @@ func (w *World) decayPlayer(s *state, p *player) {
 	p.lastFolk = 0
 	s.change(p.ref(), PropertyDialogue, LabelValue(p.dialogue), LabelValue(""))
 	p.dialogue = ""
+	p.dialogueHTML = ""
+	p.dialogueSpeaker = Ref{}
+	s.clearAffordances(p)
 	p.bypass = nil
 	p.bypassPrefix = nil
 	s.change(p.ref(), PropertyLearning, boolValue(p.learning), IntValue(0))
@@ -42,18 +45,23 @@ func (w *World) decayPlayer(s *state, p *player) {
 // A generation-fenced command surface is separate from this legacy call.
 func (w *World) Appear(ctx context.Context, id int32) error {
 	return w.act(ctx, id, VerbAppear, func(s *state, p *player) {
-		if p.teleporting {
-			s.setBool(p.ref(), PropertyTeleporting, &p.teleporting, false)
-			w.place(s, p)
-			w.revalidateZone(s, p)
-			if p.pendingRevive {
-				w.revive(s, p)
-			}
-			p.send(SelfChanged{})
-		}
+		w.appear(s, p)
 		p.send(SelfChanged{})
 		p.send(ActionIgnored{})
 	})
+}
+
+func (w *World) appear(s *state, p *player) {
+	if !p.teleporting {
+		return
+	}
+	s.setBool(p.ref(), PropertyTeleporting, &p.teleporting, false)
+	w.place(s, p)
+	w.revalidateZone(s, p)
+	if p.pendingRevive {
+		w.revive(s, p)
+	}
+	p.send(SelfChanged{})
 }
 
 func (w *World) revive(s *state, p *player) {

@@ -14,6 +14,7 @@ import (
 
 type castRequest struct {
 	skill       catalog.Skill
+	target      Ref
 	ctrl, shift bool
 }
 type reuseStamp struct {
@@ -25,13 +26,15 @@ type castEnv struct {
 	targets                               []int32
 	originalTarget, skillTarget, coolTime int32
 	seq                                   uint64
+	refs                                  []Ref
+	deadline                              Time
 }
 
 // MagicSkillUse requests a known skill using the current target and level.
 func (w *World) MagicSkillUse(ctx context.Context, id, skillID int32, ctrl, shift bool) error {
 	return w.act(ctx, id, VerbCast, func(s *state, p *player) {
 		sk, ok := w.cat.Skill(skillID, p.skillLevel(skillID))
-		if !ok || sk.Passive || sk.Type != "PDAM" || sk.Target != "TARGET_ONE" || p.teleporting || p.dead || p.sitting || sk.Precondition || sk.Lethal1 != 0 || sk.Lethal2 != 0 || sk.NeededCharges != 0 || sk.ItemConsume != 0 || sk.SoulCount != 0 {
+		if !ok || !w.validCast(p, sk) {
 			p.send(ActionIgnored{})
 			return
 		}
@@ -41,6 +44,10 @@ func (w *World) MagicSkillUse(ctx context.Context, id, skillID int32, ctrl, shif
 		}
 		w.setIntention(s, p, order{intent: intentCast, cast: &castRequest{skill: sk, ctrl: ctrl, shift: shift}})
 	})
+}
+
+func (w *World) validCast(p *player, sk catalog.Skill) bool {
+	return !sk.Passive && sk.Type == "PDAM" && sk.Target == "TARGET_ONE" && !p.teleporting && !p.dead && !p.sitting && !sk.Precondition && sk.Lethal1 == 0 && sk.Lethal2 == 0 && sk.NeededCharges == 0 && sk.ItemConsume == 0 && sk.SoulCount == 0
 }
 func (w *World) sendReuseMessage(p *player, sk catalog.Skill) {
 	p.send(SkillReuse{SkillID: sk.ID, RemainingMilliseconds: max(time.Until(p.reuse[sk.ID].until).Milliseconds(), 0)})
@@ -57,6 +64,9 @@ func (w *World) skillTarget(s *state, p *player, sk catalog.Skill, target int32)
 }
 func (w *World) doCast(s *state, p *player, req *castRequest, target int32) {
 	sk := req.skill
+	if p.ai.deadline != 0 && s.now() >= p.ai.deadline || req.target != (Ref{}) && (s.ref(target) != req.target || p.skillLevel(sk.ID) != sk.Level) {
+		return
+	}
 	t, ok := w.skillTarget(s, p, sk, target)
 	if !ok || p.dead || p.teleporting || p.sitting || w.skillDisabled(s, p, sk.ID) || !weaponAllowed(sk, p.stats.Worn) || p.mp < float64(sk.MPConsume)+float64(sk.MPInitialConsume) || p.hp <= float64(sk.HPConsume) {
 		p.send(ActionIgnored{})
@@ -98,7 +108,7 @@ func (w *World) doCast(s *state, p *player, req *castRequest, target int32) {
 	oldHeading := p.heading
 	p.heading = headingTo(p.pos, t.base().pos)
 	s.change(p.ref(), PropertyHeading, IntValue(int64(oldHeading)), IntValue(int64(p.heading)))
-	env := castEnv{skill: sk, targets: []int32{target}, originalTarget: target, skillTarget: target, coolTime: cool, seq: seq}
+	env := castEnv{skill: sk, targets: []int32{target}, refs: []Ref{t.base().ref()}, deadline: p.ai.deadline, originalTarget: target, skillTarget: target, coolTime: cool, seq: seq}
 	w.broadcastToKnown(s, p, SkillCast{CasterID: p.id, TargetID: target, SkillID: sk.ID, Level: sk.Level, HitTime: hit, Reuse: reuse, From: p.pos, TargetPos: t.base().pos})
 	launch := func(s *state) {
 		if s.players[p.id] == p && p.castSeq == seq && p.casting && !p.dead && !p.teleporting {
@@ -112,8 +122,15 @@ func (w *World) doCast(s *state, p *player, req *castRequest, target int32) {
 	}
 }
 func (w *World) onMagicLaunched(s *state, p *player, env castEnv) {
+	if env.deadline != 0 && s.now() >= env.deadline {
+		w.abortCast(s, p)
+		return
+	}
 	var targets []int32
-	for _, id := range env.targets {
+	for i, id := range env.targets {
+		if i >= len(env.refs) || s.ref(id) != env.refs[i] {
+			continue
+		}
 		t, ok := w.skillTarget(s, p, env.skill, id)
 		if !ok {
 			continue
@@ -170,10 +187,17 @@ func (w *World) skillReflect(s *state, sk catalog.Skill) {
 }
 func (w *World) onMagicFinalizer(s *state, p *player, env castEnv) {
 	s.setBool(p.ref(), PropertyCasting, &p.casting, false)
+	// An automatic continuation inherits the cast's authority. Cleanup must
+	// not renew it, but a separately queued command keeps its own authority.
+	if env.deadline != 0 && s.now() >= env.deadline || len(env.refs) == 0 || s.ref(env.skillTarget) != env.refs[0] {
+		w.haltIntention(s, p)
+		w.executeNextIntention(s, p)
+		return
+	}
 	n, ok := s.npcs[env.skillTarget]
-	if p.target == env.skillTarget && ok && !n.dead && n.mob() && p.ai.intention != intentMoveTo && (p.ai.next == nil || p.ai.next.intent == intentIdle) &&
+	if p.target == env.skillTarget && ok && len(env.refs) > 0 && n.ref() == env.refs[0] && !n.dead && n.mob() && p.ai.intention != intentMoveTo && (p.ai.next == nil || p.ai.next.intent == intentIdle) &&
 		(env.skill.CastRange < 200 || float64(p.attackRange()+200) > distance2D(p.pos, n.pos)) {
-		w.setIntention(s, p, order{intent: intentAttack, object: n.id})
+		w.setIntention(s, p, order{intent: intentAttack, object: n.id, cause: s.cause(), deadline: env.deadline, target: env.refs[0]})
 	}
 	w.clientStartAutoAttack(s, p)
 	w.executeNextIntention(s, p)
@@ -234,7 +258,11 @@ func (w *World) onIntentionCast(s *state, p *player, req *castRequest) {
 		w.abortAttack(s, p)
 	}
 	target := int32(0)
-	if t, ok := w.skillTarget(s, p, req.skill, p.target); ok {
+	selected := p.target
+	if req.target != (Ref{}) {
+		selected = req.target.ID
+	}
+	if t, ok := w.skillTarget(s, p, req.skill, selected); ok && (req.target == (Ref{}) || t.base().ref() == req.target) {
 		target = t.base().id
 	}
 	w.changeIntention(s, p, intentCast, target, Point{})

@@ -30,7 +30,26 @@
 // external delivery and must not reenter the world. There is no retained log,
 // deduplication or recovery service here.
 //
-// Affordance and Intent are neutral forms. The existing command methods do not
-// yet admit deadline-bearing intents or issue general affordances. Protocol
-// encodings, checkpoints, delivery receipts and proofs belong to consumers.
+// # Commands and observation
+//
+// Execute admits a Request with captured incarnations, an exact skill level,
+// an optional world-time deadline and an issued affordance identity. It returns
+// the same Commit published by the source observer, not a second effect ledger.
+// Selection never acts on its target. Delayed work checks its captured target
+// and deadline again; it never promotes or rewrites a prior Unknown outcome.
+// Every new attempt gets a world-local IntentID, not a replay-safe session key.
+//
+// Capture reads supported observable sources in one loop turn. Scene.End is
+// the final marker; Ready requires source completeness and no pending relocation.
+// Missing sources stay incomplete. Trade and quests are explicitly absent
+// mechanics, not unconditionally complete snapshots of invented state.
+// Capture does not renew Affordance expiry, mutate gameplay or repeat effects.
+// Subscribe replaces an observation stream and captures the same incarnation
+// atomically; it cannot restore a departed character or a stopped world.
+// Subscription.End distinguishes overflow, leave, stop and replacement.
+//
+// Fence identifies relocation, independently of Ref.Gen and session epochs.
+// Execute with VerbAppear requires the current Fence; legacy Appear trusts its
+// host to select the current relocation. Protocol encodings, delivery receipts,
+// checkpoint framing, session deduplication and proofs belong to consumers.
 package world

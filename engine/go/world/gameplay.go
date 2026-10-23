@@ -142,34 +142,47 @@ func (w *World) ValidatePosition(ctx context.Context, id int32, at Point) error 
 func (w *World) Teleport(ctx context.Context, id int32, to Point, revive bool) error {
 	var result error
 	err := w.act(ctx, id, VerbTeleport, func(s *state, p *player) {
-		if p.teleporting || revive && !p.dead {
-			result = errors.New("world: invalid teleport state")
+		result = w.teleport(s, p, to, revive)
+		if result != nil {
 			s.finish(StageRefused)
-			return
 		}
-		p.attackSeq++
-		p.castSeq++
-		s.change(p.ref(), PropertyAttacking, boolValue(p.attacking != 0), IntValue(0))
-		s.change(p.ref(), PropertyCasting, boolValue(p.casting), IntValue(0))
-		s.change(p.ref(), PropertyMovement, boolValue(p.move != nil), IntValue(0))
-		p.attacking = 0
-		p.attackEnd = time.Time{}
-		p.casting = false
-		p.ai.next = nil
-		p.move = nil
-		w.decayPlayer(s, p)
-		s.setBool(p.ref(), PropertyTeleporting, &p.teleporting, true)
-		p.pendingRevive = revive
-		old := p.pos
-		p.pos = to
-		s.change(p.ref(), PropertyPosition, PointValue(old), PointValue(to))
-		p.region = regionOf(to)
-		p.send(Teleported{ObjectID: p.id, Pos: to, Heading: p.heading})
 	})
 	if err != nil {
 		return err
 	}
 	return result
+}
+
+func (w *World) teleport(s *state, p *player, to Point, revive bool) error {
+	if p.teleporting || revive && !p.dead {
+		return errors.New("world: invalid teleport state")
+	}
+	if p.fence == ^Fence(0) {
+		s.err = ErrExhausted
+		return ErrExhausted
+	}
+	beforeFence := p.fence
+	p.fence++
+	s.change(p.ref(), PropertyFence, UintValue(uint64(beforeFence)), UintValue(uint64(p.fence)))
+	p.attackSeq++
+	p.castSeq++
+	s.change(p.ref(), PropertyAttacking, boolValue(p.attacking != 0), IntValue(0))
+	s.change(p.ref(), PropertyCasting, boolValue(p.casting), IntValue(0))
+	s.change(p.ref(), PropertyMovement, boolValue(p.move != nil), IntValue(0))
+	p.attacking = 0
+	p.attackEnd = time.Time{}
+	p.casting = false
+	p.ai.next = nil
+	p.move = nil
+	w.decayPlayer(s, p)
+	s.setBool(p.ref(), PropertyTeleporting, &p.teleporting, true)
+	p.pendingRevive = revive
+	old := p.pos
+	p.pos = to
+	s.change(p.ref(), PropertyPosition, PointValue(old), PointValue(to))
+	p.region = regionOf(to)
+	p.send(Teleported{ObjectID: p.id, Pos: to, Heading: p.heading, Entity: p.ref(), Fence: p.fence})
+	return nil
 }
 
 // Logout is the voluntary exit and refuses an active combat stance. Leave

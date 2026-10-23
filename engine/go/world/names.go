@@ -77,6 +77,10 @@ const (
 	VerbMove Verb = "move"
 	// VerbAction selects or acts on an object.
 	VerbAction Verb = "action"
+	// VerbSelect changes only the selected target, never performing an action.
+	VerbSelect Verb = "select"
+	// VerbTalk requests dialogue with a known non-hostile NPC.
+	VerbTalk Verb = "talk"
 	// VerbAttack requests an attack intention.
 	VerbAttack Verb = "attack"
 	// VerbPosture requests sitting or standing.
@@ -193,6 +197,10 @@ const (
 	PropertyGameClock Property = "game-clock"
 	// PropertyDialogue is the current authored page's catalog path (LabelValue).
 	PropertyDialogue Property = "dialogue"
+	// PropertyAffordance adds or removes an issued choice (UintValue).
+	PropertyAffordance Property = "affordance"
+	// PropertyFence is a relocation barrier (UintValue).
+	PropertyFence Property = "fence"
 	// PropertyFollow is the followed incarnation (RefValue).
 	PropertyFollow Property = "follow"
 	// PropertyFollowRange is the acting range of following (IntValue).

@@ -52,10 +52,39 @@ and returns an error for invalid input; without it, XP does not change level.
 `WithItemLog` installs the item journal. Its synchronous writer must be bounded.
 `WithAnnouncements` supplies entry notices; the default list is empty.
 
-`Snapshot` returns a detached value. `Entry.Events` carries semantic state
+`Snapshot` returns detached self state. `Entry.Events` carries semantic state
 notifications, not a wire format, command receipt or effect ledger. The host
 must drain events; a slow consumer has its channel closed without blocking the
-loop. Channel closure does not automatically remove or save the character.
+loop. `Entry.Subscription.End` distinguishes overflow, leave, stop and stream
+replacement. Channel closure does not automatically remove or save the character.
+
+`Execute` accepts a `Request` with captured `Ref` values, an exact skill level
+and an optional monotonic deadline. It returns the same source `Commit` that
+the observer receives. Validation failures have a typed refusal reason; loop,
+admission and persistence failures return Go errors. Selection never attacks,
+talks or collects an item. Selecting the same target completes with
+`StageDone` and no groups. A dialogue choice completes with `StageDone` when
+its lesson list is issued, including an empty list. Cast retains the requested
+target and level even while queued. Deadlines are checked before execution and deferred effects;
+started work is not promoted from `StageUnknown` by later notifications.
+Unsupported operations are refused before execution.
+
+Trainer pages and lesson lists issue `Affordance` values with stable identities,
+captured targets, exact costs and a one-minute lifetime in world time. `Choose`
+and `Learn` requests accept only an issued choice; rendering text grants no
+authority. A successful learn replaces the lesson list as part of that command.
+
+`Capture` reads self, known objects, all inventory rows, effective skills with
+reuse state, and current dialogue in one loop turn. `Scene.End` is its final
+marker. Each domain has explicit `Coverage`; a missing source prevents ready.
+Trade and quests are declared absent mechanics, not inferred from empty data.
+Capture does not refresh visibility, renew choices or replay transitions.
+`Subscribe` replaces the stream and captures the same live incarnation atomically.
+It can recover observation after overflow, but not after departure or Run-stop.
+
+Every teleport increments a relocation `Fence`, without changing `Ref.Gen`.
+Its scene stays not ready until `Execute(VerbAppear)` supplies that exact fence.
+Legacy `Appear` remains a trusted-host compatibility call without a fence check.
 
 `WithCommits` installs a bounded synchronous observer of source-authored
 transitions. A `Commit` fixes an `Outcome` with ordered atomic `EffectGroup`
@@ -69,8 +98,7 @@ Legacy command handoff remains unknown unless its promised transition is proven.
 Learning fixes one group containing the SP transfer and skill capability.
 `WithDurability` reports the subsequent external skill write separately; an
 error does not rewrite the in-memory outcome or claim rollback. `Fact` values
-are closed values with typed accessors, not arbitrary payloads. `Affordance`
-and deadline-bearing `Intent` are neutral forms, not yet a new command surface.
+are closed values with typed accessors, not arbitrary payloads.
 `WithRandomSource` supplies an exclusively owned random source before spawn;
 the default remains crypto-seeded ChaCha8, without a bit-exact replay promise.
 
@@ -85,4 +113,4 @@ Verify this module with `go vet ./...` and
 Tests use virtual time and synthetic fixtures; authored catalog tests read the
 repository's CC-BY-SA-4.0 world directly, without copying its data.
 
-not yet: deadline admission and general affordances; full scene capture, reasoned subscription closure and relocation fences; shops; healing items and HEAL_STATIC; hunt-reward parity (#263); automatic return without restart0; character creation and authored start points; pgstore.
+not yet: world-to-port adapter and shared port contract; session deduplication and replay; shops; healing items and HEAL_STATIC; parity with the Java hunt-reward rules introduced in #263; automatic return without restart0; character creation and authored start points; pgstore.

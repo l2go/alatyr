@@ -142,6 +142,11 @@ func (w *World) tickMovement(s *state) {
 		if !ok || a.base().move == nil {
 			continue
 		}
+		c := a.base()
+		if a.isPlayer() && (c.ai.deadline != 0 && s.now() >= c.ai.deadline || c.ai.refTarget != (Ref{}) && s.ref(c.ai.refTarget.ID) != c.ai.refTarget) {
+			w.haltIntention(s, a)
+			continue
+		}
 		done := w.updatePosition(s, a, s.ticks)
 		if a.base().ai.follow == 0 {
 			if done {
