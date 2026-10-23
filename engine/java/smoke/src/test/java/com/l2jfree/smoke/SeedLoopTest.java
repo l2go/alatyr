@@ -26,6 +26,19 @@ import org.junit.jupiter.api.Test;
 class SeedLoopTest
 {
 	@Test
+	void firstKillUsesTheAuthoredReward() throws SmokeException
+	{
+		SeedLoop.checkFirstReward(88, 8);
+	}
+
+	@Test
+	void firstKillRejectsAHiddenMultiplier()
+	{
+		assertThatThrownBy(() -> SeedLoop.checkFirstReward(264, 24)).isInstanceOf(SmokeException.class)
+				.hasMessageContaining("expected 88 XP and 8 SP");
+	}
+
+	@Test
 	void aLaterStopKeepsItsPlaceInsteadOfTheOldDestination() throws SmokeException
 	{
 		SeedLoop.View view = moving();
