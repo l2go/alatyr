@@ -753,6 +753,7 @@ final class BridgeLoopback implements Runnable
 		while (true)
 		{
 			ByteBuffer slice;
+			byte[] writing;
 			synchronized (transport)
 			{
 				if (transport.writing == null)
@@ -762,17 +763,21 @@ final class BridgeLoopback implements Runnable
 				}
 				if (transport.writing == null)
 					return written;
-				slice = ByteBuffer.wrap(transport.writing, transport.writingAt,
-						transport.writing.length - transport.writingAt);
+				writing = transport.writing;
+				slice = ByteBuffer.wrap(writing, transport.writingAt, writing.length - transport.writingAt);
 			}
 			int n = socket.write(slice);
 			synchronized (transport)
 			{
 				if (n > 0)
+					written += n;
+				// A cancelled writer still owns its borrowed slice, not the replacement's byte budget.
+				if (transport.writing != writing)
+					return written;
+				if (n > 0)
 				{
 					transport.writingAt += n;
-					transport.held -= n;
-					written += n;
+					transport.held = Math.max(0, transport.held - n);
 				}
 				if (n <= 0 || transport.writingAt < transport.writing.length)
 					return written;
@@ -1039,8 +1044,8 @@ final class BridgeLoopback implements Runnable
 					other.checkpoint = null;
 					other.queued.clear();
 					other.afterCheckpoint.clear();
-					other.writing = null;
-					other.held = 0;
+					// The selector may be writing a borrowed slice outside this monitor.
+					// Leave its active array, offset and byte accounting under selector ownership.
 					armClose(other);
 				}
 			}

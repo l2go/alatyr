@@ -43,6 +43,94 @@ import io.netty.channel.embedded.EmbeddedChannel;
 /** Uses the real client FIFO and listener socket branches with isolated game state. */
 class BridgeTransportRecoveryTest
 {
+	@Test
+	void retiringAPendingCloseCannotResetTheSliceHeldByTheSelector() throws Exception
+	{
+		var saving = new CountDownLatch(1);
+		var releaseSave = new CountDownLatch(1);
+		var writing = new CountDownLatch(1);
+		var releaseWrite = new CountDownLatch(1);
+		var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+		try (Fixture fixture = new Fixture(20028))
+		{
+			fixture.open();
+			doAnswer(call ->
+			{
+				saving.countDown();
+				assertThat(releaseSave.await(5, TimeUnit.SECONDS)).isTrue();
+				return true;
+			}).when(fixture.player).store(true, true);
+			var replacement = new BridgeLoopback.Transport(new byte[32]);
+			var active = new ByteArrayOutputStream();
+			Codec.bridge().write(active, List.of(BridgeFrames.pong(1)));
+			byte[] frame = active.toByteArray();
+			BridgeLoopback.offer(fixture.first, frame);
+			BridgeLoopback.offer(fixture.first, new byte[] { 99 }); // Never started: retirement must discard it.
+			SocketChannel socket = mock(SocketChannel.class);
+			when(socket.write(any(ByteBuffer.class))).thenAnswer(call ->
+			{
+				writing.countDown();
+				assertThat(releaseWrite.await(5, TimeUnit.SECONDS)).isTrue();
+				ByteBuffer slice = call.getArgument(0);
+				int n = slice.remaining();
+				slice.position(slice.limit());
+				return n;
+			});
+			SelectionKey socketKey = key(socket, fixture.first, false);
+			fixture.loop.account();
+			fixture.loop.account();
+			Thread selector = new Thread(() ->
+			{
+				try { fixture.loop.serve(socketKey); }
+				catch (Throwable thrown) { failure.set(thrown); }
+			}, "bridge-test-selector");
+			try
+			{
+				try (var gate = new FifoGate(fixture.client))
+				{
+					fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+					fixture.loop.acceptFrame(replacement, List.of(Envelope.of(Schemas.CLOSE,
+							List.of(Field.u(1, true, fixture.id), Field.u(2, true, 2), Field.u(3, true, 0)))));
+					gate.release();
+					assertThat(saving.await(5, TimeUnit.SECONDS)).isTrue();
+					selector.start();
+					assertThat(writing.await(5, TimeUnit.SECONDS)).isTrue();
+					releaseSave.countDown();
+					barrier(fixture.client);
+					barrier(fixture.client);
+					synchronized (fixture.first)
+					{
+						assertThat(fixture.first.writing).isSameAs(frame);
+						assertThat(fixture.first.writingAt).isZero();
+						assertThat(fixture.first.held).isEqualTo(frame.length + 1);
+						assertThat(fixture.first.queued).isEmpty();
+						assertThat(fixture.first.closing).isTrue();
+					}
+				}
+			}
+			finally
+			{
+				releaseSave.countDown();
+				releaseWrite.countDown();
+				selector.join(5000);
+			}
+			assertThat(selector.isAlive()).isFalse();
+			assertThat(failure.get()).isNull();
+			assertThat(fixture.first.held).isGreaterThanOrEqualTo(0);
+			verify(socket, times(1)).write(any(ByteBuffer.class));
+			verify(socket).close();
+			verify(socketKey).cancel();
+			assertThat(fixture.loop.transports()).isEqualTo(1);
+			var bye = fixture.drain(replacement);
+			assertThat(bye).hasSize(1);
+			assertThat(bye.get(0).type()).isEqualTo(Schemas.BYE);
+			assertThat(bye.get(0).field(1).value().u()).isEqualTo(BridgeFrames.BYE_NORMAL);
+			assertThat(fixture.loop.transports()).isZero();
+			verify(fixture.player).store(true, true);
+			verify(fixture.player).deleteMe();
+		}
+	}
+
 	@org.junit.jupiter.params.ParameterizedTest
 	@org.junit.jupiter.params.provider.ValueSource(strings = { "saved", "false", "exception", "deadline", "lost-saved", "lost-false", "lost-exception", "lost-deadline" })
 	void aPendingCloseRetiresTheLiveFirstSocketAndFallsBackAfterReplyLoss(String outcome) throws Exception

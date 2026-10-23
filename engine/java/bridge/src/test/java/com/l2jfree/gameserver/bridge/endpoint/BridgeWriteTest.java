@@ -77,4 +77,31 @@ class BridgeWriteTest
 		assertThat(transport.queued.peekLast()).isEqualTo(bye);
 		assertThat(transport.held).isEqualTo(BridgeLoopback.OUT_QUEUE_BYTES - 1);
 	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(booleans = { false, true })
+	void aReplacedWriterDoesNotDebitTheNewWriterAfterSocketWrite(boolean replacement) throws Exception
+	{
+		Transport transport = new Transport(SECRET);
+		BridgeLoopback.offer(transport, new byte[] { 1, 2, 3 });
+		byte[] next = replacement ? new byte[] { 4, 5 } : null;
+		var socket = mock(java.nio.channels.SocketChannel.class);
+		when(socket.write(any(ByteBuffer.class))).thenAnswer(call ->
+		{
+			ByteBuffer slice = call.getArgument(0);
+			int n = slice.remaining();
+			slice.position(slice.limit());
+			synchronized (transport)
+			{
+				transport.writing = next;
+				transport.writingAt = 0;
+				transport.held = replacement ? next.length : 0;
+			}
+			return n;
+		});
+		assertThat(BridgeLoopback.flush(transport, socket)).isEqualTo(3);
+		assertThat(transport.writing).isSameAs(next);
+		assertThat(transport.writingAt).isZero();
+		assertThat(transport.held).isEqualTo(replacement ? next.length : 0);
+	}
 }
