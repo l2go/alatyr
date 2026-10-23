@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>One save, one transaction — L2JFree</title>
+<meta name="description" content="A character save and its item writes used separate database connections. A failure could leave them out of sync. One transaction now groups the save's writes, and rollback restores the item flags needed to retry. Writes outside a save keep their background queue.">
+<meta name="theme-color" content="#05060c">
+<meta property="og:type" content="article">
+<meta property="og:title" content="One save, one transaction">
+<meta property="og:description" content="A character save and its item writes used separate database connections. A failure could leave them out of sync. One transaction now groups the save's writes, and rollback restores the item flags needed to retry. Writes outside a save keep their background queue.">
+<meta property="og:url" content="https://l2go.github.io/alatyr/notes/one-save-one-transaction/">
+<meta property="og:image" content="https://l2go.github.io/alatyr/assets/img/covers/transaction.jpg">
+<meta property="article:published_time" content="2026-10-23">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/alatyr/assets/img/favicon.svg" type="image/svg+xml">
+<link rel="author" href="/alatyr/humans.txt">
+<link rel="preload" href="/alatyr/assets/fonts/cinzel.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/alatyr/assets/css/site.css">
+<script src="/alatyr/assets/js/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="progress" aria-hidden="true"></div>
+<header class="bar">
+  <a class="bar__mark" href="/alatyr/">L2JFREE</a>
+  <nav aria-label="Sections">
+    <a href="/alatyr/#start">Start</a>
+    <a class="opt" href="/alatyr/#engineering">Engineering</a>
+    <a href="/alatyr/#notes">Notes</a>
+    <a href="https://github.com/l2go/alatyr">GitHub</a>
+  </nav>
+</header>
+<main id="main">
+<article>
+<header class="article-head article-head--focus-right">
+  <picture><source srcset="/alatyr/assets/img/covers/transaction.webp" type="image/webp"><img src="/alatyr/assets/img/covers/transaction.jpg" alt="" width="1600" height="667"></picture>
+  <div class="wrap">
+    <div class="crumbs"><a href="/alatyr/#notes">Reviving L2JFree</a> · Part 4</div>
+    <h1>One save, one transaction</h1>
+    <p class="dek">A character save and its item writes used separate database connections. A failure could leave them out of sync. One transaction now groups the save's writes, and rollback restores the item flags needed to retry. Writes outside a save keep their background queue.</p>
+    <div class="byline"><time datetime="2026-10-23">23 October 2026</time> · 7 min read</div>
+  </div>
+</header>
+<div class="prose">
+<p>In an online game, a lost or duplicated item changes what a player owns. L2JFree could save a character and its items independently, leaving them out of sync after a failure. The fix needed to make one save atomic without turning a persistence repair into a server-wide refactor.</p>
+
+<h2>The problem</h2>
+<p>In Lineage II, an online role-playing game, one player-controlled character spans several database rows. Depending on the save call and configuration, a save can include its character record, a companion pet if present, temporary status effects, and its inventory, the items it carries. In the inherited Java server, those writes did not share a transaction.</p>
+<p>The character, pet, and effects were written on the thread running <code>store()</code>, the character-save method. Items went through an SQL queue: one background writer for the whole process that grouped writes on a separate database connection. It kept frequent item writes off the caller's path, which was worth preserving outside a save. But a save had two independent write paths, and <code>store()</code> could return before the queued item writes ran.</p>
+<p>The consequences were the quiet kind:</p>
+<ul>
+<li>A failure could leave the character and its items reflecting different save attempts.</li>
+<li>After rollback, a later save could skip the item writes because the in-memory flags already said those items were stored.</li>
+</ul>
+<p>Each item tracks two things: whether its database row exists, and whether that row matches the current in-memory values. A write updates that bookkeeping before the transaction commits. If the transaction rolls back, PostgreSQL discards the writes, but Java does not automatically restore the flags.</p>
+
+<h2>The decision</h2>
+<p>Put the writes selected for one player save in one database transaction. They commit together or roll back together. On rollback, restore the item flags to their pre-write values; keep the changed item values in memory so the next save can write them.</p>
+<p>Passing a connection into every call is the better shape for new code, because the boundary sits in the signature and the compiler catches a missing one. Connection acquisition was spread across the persistence layer: 106 classes outside the factory acquired connections directly in the main sources of 3.1.1. That is the size of the layer, not the required change set for this save. Converting the whole layer to explicit connections would also require changing the inherited <code>finally</code> blocks that close connections or flip auto-commit. I chose to establish this save boundary through the existing factory instead.</p>
+<p>Enlisting the SQL queue was the other local option. The queue is one deque for every player, drained on another thread, each statement committing alone; pulled into this save, it would commit or roll back other players' writes with it.</p>
+<p>An outbox would commit the character row and apply the items later, which is the split this change removes. XA would add distributed-transaction coordination where one PostgreSQL transaction is enough.</p>
+<p>So the save boundary goes through the existing connection factory, and during a save the item writes bypass the queue and join the character's transaction. Outside a save, they keep the queue.</p>
+
+<h2>A transaction that follows the thread</h2>
+<p><a href="https://github.com/l2go/alatyr/blob/v3.1.1/l2jfree-core/src/main/java/com/l2jfree/gameserver/persistence/WorldTransaction.java"><code>WorldTransaction</code></a> runs a piece of work in one database transaction. While it runs, every connection that <code>L2DatabaseFactory.getConnection()</code> hands out on the same thread is the connection of the transaction. The old code keeps calling the factory exactly as before; it just gets the same connection each time.</p>
+<pre class="code"><code>boolean committed = WorldTransaction.run("store the player", () -&gt; {
+	// everything here that asks the factory for a connection
+	// gets the one connection of this transaction
+});</code></pre>
+<p>Existing methods still close their connections in <code>finally</code> blocks, and some change auto-commit, the mode in which each SQL statement commits on its own. They cannot be allowed to end the surrounding transaction. The factory therefore returns a wrapper around the real connection. It ignores <code>close</code>, <code>setAutoCommit</code>, and the no-argument <code>commit()</code> and <code>rollback()</code>; <code>WorldTransaction</code> owns the final commit or rollback. Nothing in this tree takes a savepoint. A nested call joins the outer transaction rather than starting an independently committed one.</p>
+<p>The work rolls back when it throws. The inherited item writes, though, do not throw: they catch a failure and log it. On PostgreSQL a failed statement aborts the transaction, and <code>WorldTransaction</code> checks with <code>SELECT 1</code> before committing, so a swallowed SQL error still rolls the whole save back. A failure that is not an SQL error, caught inside an item write, does not abort the transaction, and the rest of the save can commit.</p>
+
+<h2>Making a failed save retryable</h2>
+<p>PostgreSQL rolls back database writes; it cannot roll back fields in a Java object. The item flags therefore need their own undo step.</p>
+<p><code>WorldTransaction.onRollback(Runnable)</code> registers code to run if the transaction rolls back. Before writing, an item records its existing flags. Rollback restores those flags, not the item's gameplay values. The changed item still needs saving, and the next save no longer skips it.</p>
+<p>The change in <a href="https://github.com/l2go/alatyr/pull/162">#162</a> is small, and narrower than "every save". <code>L2Player.store(true, true)</code>, the call a disconnect makes, writes the player's inventory and the pet's inventory on the same connection as the character, the pet, and the effects; a disconnect tries that save up to three times. The periodic auto-save calls <code>store()</code> without arguments, and with the shipped <code>UpdateItemsOnCharStore = False</code> it does not write the player's inventory. The pet's inventory is written on every save. Item writes outside a save still go through the queue.</p>
+
+<h2>What it cost</h2>
+<ul>
+<li><strong>Row locks held until the commit.</strong> The rows belong to one player's save, not the whole world, but another writer of those rows waits, and the queue is such a writer. This change does not establish a save-latency or throughput budget.</li>
+<li><strong>Two item-write paths.</strong> Outside a save, the queue still takes the write: one shared deque, another thread, its own connection. A queued write and a save of the same item both take that item's monitor, and the queue reads the flags again before it chooses insert, update, or delete. That ordering is part of correctness and has to stay true as the code changes.</li>
+<li><strong>An implicit transaction dependency.</strong> Callers keep the factory API, so the active transaction is invisible in their parameters, and work handed to another thread leaves it behind. One save does not change thread. For the same reason, the shared queue must not be flushed while the save transaction is active: it asks the factory for a connection, so it would join this transaction and carry every other player's pending writes with it.</li>
+<li><strong>A pet edge that is not closed.</strong> A pet row references its control item, the inventory item that identifies the pet. Before #162 the save flushed the queue first, so that item was committed before the pet. That flush is gone, and the periodic save does not write the player's inventory, so on that path the control item can still be waiting in the queue when the pet row is written.</li>
+</ul>
+
+<h2>How it is verified</h2>
+<p>Two tests guard the mechanism, against PostgreSQL 18, not a mock. <a href="https://github.com/l2go/alatyr/blob/v3.1.1/l2jfree-core/src/test/java/com/l2jfree/L2DatabaseFactoryTransactionTest.java"><code>L2DatabaseFactoryTransactionTest</code></a> guards the one connection per thread, the wrapper that cannot end the transaction, and the rollback after a swallowed SQL error. <a href="https://github.com/l2go/alatyr/blob/v3.1.1/l2jfree-core/src/test/java/com/l2jfree/gameserver/model/items/PlayerItemSavePostgresTest.java"><code>PlayerItemSavePostgresTest</code></a> guards the character and the items:</p>
+<ol>
+<li>Save an existing item row with quantity 4. In memory, change its quantity to 9 and create another item with quantity 3.</li>
+<li>In one transaction, write both items and a new character title, a display label, then throw an exception to force rollback.</li>
+<li>Reopen the pooled database connections and read through fresh ones. The title is unchanged, the new item is absent, and the existing item still has quantity 4. In memory, the new item knows it has no row; the existing item knows its row exists but does not match memory, and its quantity is still 9.</li>
+<li>Save again without the exception. Read through fresh connections again: the saved title and item quantities 3 and 9 are all present.</li>
+</ol>
+<p>Step 3 checks that rollback leaves the previous database state visible through new connections. Step 4 checks that the same in-memory items can still be saved afterwards. Refreshing the connections is not a server restart; this test isolates rollback and retry, not crash recovery.</p>
+<p>The same transaction later carried two more fixes, and they are not the rollback hook. Replacing a subclass, an alternate class a character can switch to, deletes the old row and inserts the new one in one transaction (<a href="https://github.com/l2go/alatyr/pull/203">#203</a>). The character's map drops that subclass only after the transaction commits, so a rolled-back delete leaves it in the database and in memory (<a href="https://github.com/l2go/alatyr/issues/175">#175</a>). Neither fix is covered by the tests above.</p>
+<p>The database must commit the save as a unit; the objects must still know what needs saving if it rolls back. That is the boundary: one player save, not one SQL statement.</p>
+<div class="aside"><strong>Update, 23 October 2026.</strong> The project's <a href="https://github.com/l2go/alatyr/blob/6ac0b3962975051ff7c3bd39790ecad0a7770306/engine/go/world/doc.go">Go world module</a> names the same distinction. <code>Commit</code> records an in-memory gameplay outcome, not a database commit. For skill learning, <code>Durability</code> reports the result of the subsequent storage write. If that write fails, the learned state remains in memory and its outcome is not rewritten as a rollback. These are separate promises; the module does not provide transactional persistent storage.</div>
+</div>
+<nav class="series" aria-label="Series">
+<a href="/alatyr/notes/an-island-of-our-own/"><small>Previous</small><span>An island of our own</span></a>
+<div class="empty later"><small>Next, soon</small><span>Every merge is a release rehearsal</span></div>
+</nav>
+</article>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__top">
+      <span class="foot__mark" title="L2JFREE = SIGNED = 58">L2JFREE</span>
+      <nav aria-label="Project">
+        <a href="https://github.com/l2go/alatyr">Repository</a>
+        <a href="https://github.com/l2go/alatyr/releases">Releases</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">Deploy guide</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/SECURITY.md">Security</a>
+      </nav>
+    </div>
+    <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server. Since 3.2 it ships no data inherited from the fork; its world, Okolitsa, is original content. It does not modify, patch, or distribute the game client.</p>
+    <p>The code is under the GNU GPLv3. Banner art generated with AI. Cinzel typeface under the SIL Open Font License. <a class="sigma" href="/alatyr/numbers/" title="The numbers">Σ</a></p>
+  </div>
+</footer>
+</body>
+</html>
