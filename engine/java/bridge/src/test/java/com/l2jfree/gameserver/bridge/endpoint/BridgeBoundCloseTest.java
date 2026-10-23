@@ -54,7 +54,7 @@ class BridgeBoundCloseTest
 	@Test
 	void storeCloseAndStoreDeleteWaitForCurrentWorldWorkAndDisconnectOnce() throws Exception
 	{
-		for (boolean delete : new boolean[] { false, true })
+		for (int mode : new int[] { 0, 1, 2 })
 		{
 			CountDownLatch entered = new CountDownLatch(1);
 			CountDownLatch release = new CountDownLatch(1);
@@ -76,11 +76,23 @@ class BridgeBoundCloseTest
 				try
 				{
 					assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
-					var facade = new com.l2jfree.gameserver.network.Disconnection(bound.client).store();
-					if (delete)
-						facade.deleteMe();
+					if (mode == 2)
+					{
+						when(bound.player.getClient()).thenReturn(bound.client);
+						try (var gms = mockStatic(com.l2jfree.gameserver.datatables.GmListTable.class))
+						{
+							new com.l2jfree.gameserver.util.IllegalPlayerAction(bound.player, "fixture",
+									com.l2jfree.gameserver.util.IllegalPlayerAction.PUNISH_KICK).run();
+						}
+					}
 					else
-						facade.close(false);
+					{
+						var facade = new com.l2jfree.gameserver.network.Disconnection(bound.client).store();
+						if (mode == 1)
+							facade.deleteMe();
+						else
+							facade.close(false);
+					}
 					new com.l2jfree.gameserver.network.Disconnection(bound.client).store().deleteMe().close(false);
 					verify(bound.player, org.mockito.Mockito.never()).store(true, true);
 					verify(bound.player, org.mockito.Mockito.never()).deleteMe();
