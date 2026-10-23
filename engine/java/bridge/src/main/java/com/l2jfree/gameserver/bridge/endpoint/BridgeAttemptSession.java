@@ -3,6 +3,10 @@ package com.l2jfree.gameserver.bridge.endpoint;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+import com.l2jfree.gameserver.bridge.wire.Codec;
+import com.l2jfree.gameserver.bridge.wire.Envelope;
+import com.l2jfree.gameserver.network.L2Client;
+
 /** Registers on the reader, executes in FIFO, and retains the first response before publishing it. */
 final class BridgeAttemptSession
 {
@@ -19,6 +23,39 @@ final class BridgeAttemptSession
 	void ready()
 	{
 		intents.markReady();
+	}
+
+	BridgeIntents.Decision accept(L2Client client, Envelope intent)
+	{
+		long n = intent.field(1).value().u();
+		long verb = intent.field(2).value().u();
+		return accept(n, Codec.bridge().encode(java.util.List.of(intent)), () ->
+		{
+			if (client.isBridgeDisconnectRequested() || client.getState() != L2Client.GameClientState.IN_GAME
+					|| client.getActiveChar() == null)
+				return BridgeResults.encode(n, verb, 3, 1, null);
+			try
+			{
+				var packet = BridgeCommand.packet(client, intent);
+				var attempt = BridgeExecution.run(client, packet);
+				int stage = BridgeOutcome.match(attempt, Math.toIntExact(verb),
+						intent.field(66) == null ? 0 : BridgeCommand.integer(intent, 66),
+						intent.field(64) == null ? 0 : BridgeCommand.integer(intent, 64),
+						intent.field(16) == null ? 0 : intent.field(16).value().s());
+				if (verb == 13)
+				{
+					var skill = intent.field(18).value().fields();
+					int id = Math.toIntExact(skill.stream().filter(field -> field.number() == 1).findFirst().orElseThrow().value().s());
+					int level = Math.toIntExact(skill.stream().filter(field -> field.number() == 2).findFirst().orElseThrow().value().s());
+					stage = BridgeOutcome.learn(attempt, id, level);
+				}
+				return BridgeResults.encode(n, verb, stage, attempt.isFailed() ? 24 : 0, attempt);
+			}
+			catch (IllegalArgumentException | ArithmeticException invalid)
+			{
+				return BridgeResults.encode(n, verb, 3, 10, null);
+			}
+		});
 	}
 
 	BridgeIntents.Decision accept(long n, byte[] normalized, Supplier<byte[]> execution)
