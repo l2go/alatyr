@@ -14,6 +14,11 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,8 +32,28 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  * 
  * @version $Revision: 1.4.2.3.2.4 $ $Date: 2005/03/27 15:29:39 $
  */
-public class SellList extends L2ServerPacket
+public class SellList extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		if (_money < 0)
+			throw new IllegalArgumentException("negative purse");
+		var goods = new java.util.ArrayList<com.l2jfree.gameserver.network.bridge.BridgeValue>();
+		for (L2ItemInstance item : _selllist)
+		{
+			long count = item.getCount();
+			long price = item.getItem().getReferencePrice() / 2;
+			if (count < 0 || price < 0)
+				throw new IllegalArgumentException("invalid sale row");
+			goods.add(BridgeField.object(1, BridgeField.number(2, item.getObjectId()),
+					BridgeField.number(3, item.getItemDisplayId()), BridgeField.number(4, count),
+					BridgeField.number(5, price)).value());
+		}
+		sink.emit(BridgeFact.of(13, BridgeField.number(22, 0), BridgeField.number(23, _money),
+				BridgeField.list(24, goods), BridgeField.number(74, sink.now())));
+	}
+
 	private static final String _S__10_SELLLIST = "[S] 10 SellList";
 	
 	private final L2Player _activeChar;

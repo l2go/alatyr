@@ -14,6 +14,13 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import static com.l2jfree.gameserver.network.bridge.BridgeField.number;
+import static com.l2jfree.gameserver.network.bridge.BridgeField.at;
+
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.Config;
 import com.l2jfree.gameserver.gameobjects.L2Creature;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
@@ -29,8 +36,20 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  * 
  * @version $Revision: 1.3.2.1.2.5 $ $Date: 2005/04/06 16:13:46 $
  */
-public class MoveToPawn extends L2ServerPacket
+public class MoveToPawn extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		var fields = new java.util.ArrayList<com.l2jfree.gameserver.network.bridge.BridgeField>();
+		fields.add(number(64, _charObjId));
+		fields.add(number(65, _targetId));
+		fields.add(at(13, _x, _y, _z));
+		if (Config.PACKET_FINAL)
+			fields.add(at(14, _tx != 0 ? _tx : _x, _ty != 0 ? _ty : _y, _tz != 0 ? _tz : _z));
+		sink.emit(new BridgeFact(2, fields));
+	}
+
 	private static final String _S__75_MOVETOPAWN = "[S] 60 MoveToPawn";
 	private final int _charObjId;
 	private final int _targetId;

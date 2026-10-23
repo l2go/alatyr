@@ -14,6 +14,11 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
@@ -25,15 +30,23 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  * 
  * @version $Revision: 1.3.2.1.2.3 $ $Date: 2005/03/27 15:29:39 $
  */
-public class GetItem extends L2ServerPacket
+public class GetItem extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		sink.emit(BridgeFact.of(9, BridgeField.number(64, _playerId), BridgeField.number(65, _departingId)));
+	}
+
 	private static final String _S__17_GETITEM = "[S] 0d GetItem";
 	private final L2ItemInstance _item;
 	private final int _playerId;
+	private final int _departingId;
 	
 	public GetItem(L2ItemInstance item, int playerId)
 	{
 		_item = item;
+		_departingId = item.getObjectId();
 		_playerId = playerId;
 	}
 	

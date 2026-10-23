@@ -383,6 +383,7 @@ final class BridgeLoopback implements Runnable
 		if (transport.client != null)
 			throw new IllegalStateException("already admitted");
 
+		transport.holdOpeningFacts = true;
 		BridgeSink sink = new BridgeSink(records -> fromSink(transport, records));
 		LocalChannel channel = new LocalChannel();
 		virtualChannels.register(channel).syncUninterruptibly();
@@ -406,6 +407,32 @@ final class BridgeLoopback implements Runnable
 	/** The disconnect save owns the terminal bye. A late bye is dropped once that bye is claimed. */
 	void fromSink(Transport transport, List<Envelope> records)
 	{
+		if (records != null && !records.isEmpty()
+				&& records.stream().noneMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.BYE))
+		{
+			synchronized (transport)
+			{
+				if (transport.holdOpeningFacts
+						&& records.stream().allMatch(record -> record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.FACT))
+				{
+					expire(transport);
+					if (transport.terminal || transport.closing)
+						return;
+					byte[] bytes = frame(records);
+					if (bytes.length > OUT_QUEUE_BYTES - transport.openingFactBytes)
+						finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)));
+					else
+					{
+						transport.openingFacts.add(bytes);
+						transport.openingFactBytes += bytes.length;
+					}
+					selector.wakeup();
+					return;
+				}
+			}
+			enqueue(transport, records);
+			return;
+		}
 		synchronized (transport)
 		{
 			if (resultExpired(transport, System.nanoTime()))
@@ -467,6 +494,8 @@ final class BridgeLoopback implements Runnable
 
 			transport.terminal = true;
 			transport.awaitingResult = false;
+			transport.openingFacts.clear();
+			transport.openingFactBytes = 0;
 			offer(transport, frame(records));
 			armClose(transport);
 		}
@@ -486,6 +515,31 @@ final class BridgeLoopback implements Runnable
 			{
 				if (record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.OPENED)
 					transport.opened = true;
+			}
+			if (transport.holdOpeningFacts && transport.opened)
+			{
+				transport.holdOpeningFacts = false;
+				boolean accepted = records.stream().anyMatch(record ->
+						record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.OPENED
+								&& record.field(1).value().u() == 1);
+				if (accepted && !transport.openingFacts.isEmpty())
+				{
+					// The existing not-ready opening prefix owns these observations.
+					// Full projection completeness and teleport-aware readiness are a separate concern.
+					for (Envelope record : records)
+					{
+						offer(transport, frame(List.of(record)));
+						if (record.type() == com.l2jfree.gameserver.bridge.wire.Schemas.CHECKPOINT
+								&& record.field(1).value().u() == com.l2jfree.gameserver.bridge.wire.Schemas.BEGIN)
+							while (!transport.openingFacts.isEmpty())
+								offer(transport, transport.openingFacts.remove());
+					}
+					transport.openingFactBytes = 0;
+					selector.wakeup();
+					return;
+				}
+				transport.openingFacts.clear();
+				transport.openingFactBytes = 0;
 			}
 			offer(transport, frame(records));
 		}
@@ -801,6 +855,9 @@ final class BridgeLoopback implements Runnable
 		final ByteBuffer input = ByteBuffer.allocate(FRAME_CAP + 10);
 		final ByteArrayOutputStream pending = new ByteArrayOutputStream();
 		final ArrayDeque<byte[]> queued = new ArrayDeque<>();
+		final ArrayDeque<byte[]> openingFacts = new ArrayDeque<>();
+		int openingFactBytes;
+		boolean holdOpeningFacts;
 		byte[] writing;
 		int writingAt;
 		int held;

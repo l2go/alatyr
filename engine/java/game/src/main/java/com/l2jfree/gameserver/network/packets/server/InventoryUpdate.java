@@ -14,6 +14,11 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,8 +51,32 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  * Rebuild 23.2.2006 by Advi
  */
 
-public class InventoryUpdate extends L2ServerPacket
+public class InventoryUpdate extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		var goods = new java.util.ArrayList<com.l2jfree.gameserver.network.bridge.BridgeValue>();
+		Long coin = null;
+		for (ItemInfo item : _items)
+		{
+			long count = item.getCount();
+			int change = item.getChange();
+			if (count < 0 || change < 1 || change > 3)
+				throw new IllegalArgumentException("invalid inventory row");
+			goods.add(BridgeField.object(1, BridgeField.number(2, item.getObjectId()),
+					BridgeField.number(3, item.getItem().getItemDisplayId()), BridgeField.number(4, count),
+					BridgeField.number(7, change)).value());
+			if (item.getItem().getItemId() == 57)
+				coin = change == 3 ? 0 : count;
+		}
+		var fields = new java.util.ArrayList<BridgeField>();
+		fields.add(BridgeField.list(24, goods));
+		if (coin != null)
+			fields.add(BridgeField.number(23, coin));
+		sink.emit(new BridgeFact(15, fields));
+	}
+
 	private static final String _S__37_INVENTORYUPDATE = "[S] 27 InventoryUpdate";
 	
 	private List<ItemInfo> _items;

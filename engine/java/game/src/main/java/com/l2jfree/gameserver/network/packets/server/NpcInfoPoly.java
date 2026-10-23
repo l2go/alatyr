@@ -14,6 +14,12 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeActors;
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.datatables.NpcTable;
 import com.l2jfree.gameserver.gameobjects.L2Creature;
 import com.l2jfree.gameserver.gameobjects.L2Object;
@@ -26,8 +32,15 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  * 
  * @version $Revision: 1.7.2.4.2.9 $ $Date: 2005/04/11 10:05:54 $
  */
-public class NpcInfoPoly extends L2ServerPacket
+public class NpcInfoPoly extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		BridgeActors.appeared(sink, _obj.getObjectId(), "unknown", _name, _x, _y, _z,
+				_runSpd, _walkSpd, 1, _isRunning, !_isAlikeDead, false, _npcId);
+	}
+
 	//   ddddddddddddddddddffffdddcccccSSddd dddddc
 	
 	private static final String _S__22_NPCINFO = "[S] 16 NpcInfo";

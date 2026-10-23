@@ -56,7 +56,7 @@ class BridgeSinkTest
 		L2Client client = L2Client.forBridge(server, channel, InetAddress.getByAddress(new byte[] { 127, 0, 0, 1 }), sink);
 		sink.attach(client);
 		
-		sink.deliver(null, null);
+		sink.deliver(com.l2jfree.gameserver.network.packets.server.ActionFailed.STATIC_PACKET, null);
 		sink.disconnect(BridgeFailure.normal());
 		sink.disconnect(BridgeFailure.internal());
 		

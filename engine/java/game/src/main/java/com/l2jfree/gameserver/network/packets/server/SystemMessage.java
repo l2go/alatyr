@@ -17,8 +17,16 @@ package com.l2jfree.gameserver.network.packets.server;
 import com.l2jfree.gameserver.network.SystemMessageId;
 
 public final class SystemMessage extends AbstractSystemMessage<SystemMessage>
+		implements com.l2jfree.gameserver.network.bridge.SemanticPacket
 {
 	private static final String _S__62_SYSTEMMESSAGE = "[S] 62 SystemMessage";
+
+	@Override
+	public void describe(com.l2jfree.gameserver.network.bridge.FactSink sink,
+			com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		sink.systemMessage(_messageId, describeElements());
+	}
 	
 	public SystemMessage(SystemMessageId messageId)
 	{

@@ -14,6 +14,12 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeActors;
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.gameobjects.L2Summon;
 import com.l2jfree.gameserver.gameobjects.itemcontainer.Inventory;
 import com.l2jfree.gameserver.gameobjects.instance.L2PetInstance;
@@ -24,8 +30,16 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  * 
  * @version $Revision: 1.6.2.5.2.12 $ $Date: 2005/03/31 09:19:16 $
  */
-public class PetInfo extends L2ServerPacket
+public class PetInfo extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		BridgeActors.appeared(sink, _summon.getObjectId(), "unknown", _summon.getName(),
+				_x, _y, _z, _runSpd, _walkSpd, _multiplier, true, !_summon.isAlikeDead(), false,
+				_summon.getTemplate().getIdTemplate());
+	}
+
 	private static final String _S__CA_PETINFO = "[S] b1 PetInfo";
 	private final L2Summon _summon;
 	private final int _x, _y, _z, _heading;

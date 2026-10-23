@@ -24,6 +24,70 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeResultsTest
 {
 	@Test
+	void deliveredQuantityRejectionIsInvalidAndMatchesTheGoCodecFixture()
+	{
+		var player = BridgeTestPlayers.player();
+		var client = org.mockito.Mockito.mock(com.l2jfree.gameserver.network.L2Client.class);
+		org.mockito.Mockito.when(client.getActiveChar()).thenReturn(player);
+		org.mockito.Mockito.when(client.isBridge()).thenReturn(true);
+		var facts = new java.util.ArrayList<java.util.List<com.l2jfree.gameserver.bridge.wire.Envelope>>();
+		var sink = new BridgeSink(facts::add);
+		sink.attach(client);
+		var attempt = new Attempt(client, player);
+		EffectLedger.open(attempt);
+		try
+		{
+			sink.deliver(new com.l2jfree.gameserver.network.packets.server.SystemMessage(
+					com.l2jfree.gameserver.network.SystemMessageId.YOU_HAVE_EXCEEDED_QUANTITY_THAT_CAN_BE_INPUTTED), player);
+			assertThat(facts).hasSize(1);
+			assertThat(facts.get(0).get(0).field(71).value().u()).isEqualTo(1036);
+			byte[] bytes = BridgeResults.encode(1, 7, BridgeOutcome.UNKNOWN, 0, attempt);
+			assertThat(bytes).containsExactly(java.util.HexFormat.of().parseHex(
+					"0c2218012803380a5807680778008a0810782e6c326a667265652f627269646765980806"));
+			var result = Codec.bridge().decode(bytes).get(0);
+			assertThat(result.field(2).value().u()).isEqualTo(3);
+			assertThat(result.field(3).value().u()).isEqualTo(10);
+			assertThat(result.field(65).value().u()).isEqualTo(6);
+			assertThat(result.field(7).value().u()).isZero();
+			assertThat(result.field(66)).isNull();
+			EffectLedger.record(player, BridgeEffect.coin(-10));
+			result = Codec.bridge().decode(BridgeResults.encode(1, 7, 4, 0, attempt)).get(0);
+			assertThat(result.field(2).value().u()).isEqualTo(4);
+			assertThat(result.field(3).value().u()).isEqualTo(17);
+			assertThat(result.field(65)).isNull();
+		}
+		finally { EffectLedger.close(); }
+	}
+
+	@Test
+	void exactDoneDominatesRefusalsButPartialEffectsAndFailuresCannotBecomeRefused()
+	{
+		var player = BridgeTestPlayers.player();
+		var attempt = new Attempt(player);
+		attempt.addRefusal(350);
+		attempt.addRefusal(279);
+		var refused = Codec.bridge().decode(BridgeResults.encode(1, 7, 4, 0, attempt)).get(0);
+		assertThat(refused.field(3).value().u()).isEqualTo(16);
+		assertThat(refused.field(65).value().u()).isEqualTo(17);
+		EffectLedger.open(attempt);
+		try
+		{
+			EffectLedger.record(player, BridgeEffect.coin(-13));
+			EffectLedger.record(player, BridgeEffect.item(1060, 70, 2));
+			int stage = BridgeOutcome.match(attempt, 7, 1060, 0, 2);
+			assertThat(stage).isEqualTo(BridgeOutcome.DONE);
+			var done = Codec.bridge().decode(BridgeResults.encode(1, 7, stage, 0, attempt)).get(0);
+			assertThat(done.field(2).value().u()).isEqualTo(2);
+			assertThat(done.field(65)).isNull();
+			attempt.markFailed();
+			var failed = Codec.bridge().decode(BridgeResults.encode(1, 7, 4, 0, attempt)).get(0);
+			assertThat(failed.field(2).value().u()).isEqualTo(4);
+			assertThat(failed.field(65).value().u()).isEqualTo(20);
+		}
+		finally { EffectLedger.close(); }
+	}
+
+	@Test
 	void anUnmatchedOutcomeEncodesAValidUnknownResult()
 	{
 		var result = Codec.bridge().decode(BridgeResults.encode(1, 7, 4, 0, null)).get(0);

@@ -61,6 +61,16 @@ class BridgePurchaseExecutionTest
 		}
 		when(client.isBridge()).thenReturn(true);
 		when(client.getActiveChar()).thenReturn(player);
+		var facts = new ArrayList<java.util.List<com.l2jfree.gameserver.bridge.wire.Envelope>>();
+		var sink = new BridgeSink(facts::add);
+		sink.attach(client);
+		org.mockito.Mockito.doAnswer(call ->
+		{
+			com.l2jfree.gameserver.network.packets.L2ServerPacket packet = call.getArgument(0);
+			packet.prepareToSend(client, player);
+			sink.deliver(packet, player);
+			return null;
+		}).when(client).sendPacket(any(com.l2jfree.gameserver.network.packets.L2ServerPacket.class));
 		when(player.isGM()).thenReturn(true);
 		when(player.getAccessLevel()).thenReturn(-1);
 		when(player.getInventory()).thenReturn(inventory);
@@ -118,7 +128,14 @@ class BridgePurchaseExecutionTest
 			assertThat(output).hasSize(2);
 			assertThat(output.get(1)).containsExactly(output.get(0));
 			var result = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(output.get(0)).get(0);
-			assertThat(result.field(2).value().u()).isEqualTo(enoughCoin ? 2 : 4);
+			assertThat(result.field(2).value().u()).isEqualTo(enoughCoin ? 2 : 3);
+			if (!enoughCoin)
+			{
+				assertThat(result.field(3).value().u()).isEqualTo(16);
+				assertThat(result.field(65).value().u()).isEqualTo(1);
+				assertThat(result.field(66)).isNull();
+			}
+			assertThat(EffectLedger.isActive()).isFalse();
 			org.mockito.Mockito.verify(player).reduceAdena("Buy", debit, merchant, false);
 			org.mockito.Mockito.verify(inventory, org.mockito.Mockito.times(enoughCoin ? 1 : 0))
 					.addItem("Buy", 1060, 2L, player, merchant);

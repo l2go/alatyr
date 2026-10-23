@@ -14,14 +14,49 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import java.util.ArrayList;
 import java.util.List;
 
 import com.l2jfree.gameserver.gameobjects.L2Creature;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
-public final class StatusUpdate extends L2ServerPacket
+public final class StatusUpdate extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		var stats = new java.util.TreeMap<Integer, Long>();
+		for (Attribute attribute : _attributes)
+		{
+			int number = switch (attribute.id)
+			{
+				case CUR_HP -> 1;
+				case MAX_HP -> 2;
+				case CUR_MP -> 3;
+				case MAX_MP -> 4;
+				case LEVEL -> 5;
+				case EXP -> 6;
+				case SP -> 7;
+				default -> 0;
+			};
+			if (number == 0)
+				continue;
+			if (attribute.value < 0)
+				throw new IllegalArgumentException("negative observed stat");
+			stats.put(number, (long)attribute.value);
+		}
+		if (stats.isEmpty())
+			return;
+		var fields = stats.entrySet().stream().map(entry -> BridgeField.number(entry.getKey(), entry.getValue())).toList();
+		sink.emit(BridgeFact.of(16, BridgeField.number(64, _objectId),
+				new BridgeField(25, new com.l2jfree.gameserver.network.bridge.BridgeValue.ObjectValue(fields))));
+	}
+
 	private static final String _S__1A_STATUSUPDATE = "[S] 0e StatusUpdate";
 	public static final byte LEVEL = 0x01;
 	public static final byte EXP = 0x02;

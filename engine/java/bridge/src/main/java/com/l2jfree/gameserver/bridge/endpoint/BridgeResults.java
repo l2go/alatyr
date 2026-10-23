@@ -32,6 +32,18 @@ final class BridgeResults
 
 	static byte[] encode(long n, long verb, int stage, long reason, Attempt attempt)
 	{
+		int refusal = 0;
+		if (stage == BridgeOutcome.UNKNOWN && reason == 0 && attempt != null
+				&& !attempt.isFailed() && !attempt.isLedgerIncomplete() && attempt.effects().isEmpty())
+		{
+			refusal = BridgeRefusals.firstReason(Math.toIntExact(verb), attempt.refusals());
+			if (refusal != 0)
+			{
+				stage = 3;
+				// Quantity rejection is invalid input, not a world-rule refusal.
+				reason = refusal == 6 ? 10 : 16;
+			}
+		}
 		// Lack of evidence is quiet uncertainty; only failure or an incomplete ledger is a backend error.
 		if (stage == BridgeOutcome.UNKNOWN && reason == 0)
 			reason = attempt != null && (attempt.isFailed() || attempt.isLedgerIncomplete()) ? 24 : 17;
@@ -49,6 +61,8 @@ final class BridgeResults
 			case 20 -> 21;
 			default -> 0;
 		};
+		if (refusal != 0)
+			bridgeReason = refusal;
 		if (bridgeReason != 0)
 		{
 			fields.add(Field.data(64, true, "x.l2jfree/bridge".getBytes(java.nio.charset.StandardCharsets.UTF_8)));

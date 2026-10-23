@@ -14,6 +14,10 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeActors;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.Config;
 import com.l2jfree.gameserver.gameobjects.L2Creature;
 import com.l2jfree.gameserver.gameobjects.L2Npc;
@@ -76,8 +80,16 @@ public abstract class AbstractNpcInfo extends L2ServerPacket
 	/**
 	 * Packet for Npcs
 	 */
-	public static class NpcInfo extends AbstractNpcInfo
+	public static class NpcInfo extends AbstractNpcInfo implements SemanticPacket
 	{
+		@Override
+		public void describe(FactSink sink, L2Player receiver)
+		{
+			BridgeActors.appeared(sink, _npc.getObjectId(), BridgeActors.role(_npc, receiver), _name,
+					_x, _y, _z, _runSpd, _walkSpd, _npc.getStat().getMovementSpeedMultiplier(),
+					_npc.isRunning(), !_npc.isAlikeDead(), false, _idTemplate);
+		}
+
 		private final L2Npc _npc;
 		
 		public NpcInfo(L2Npc cha)
@@ -194,8 +206,15 @@ public abstract class AbstractNpcInfo extends L2ServerPacket
 		}
 	}
 	
-	public static class TrapInfo extends AbstractNpcInfo
+	public static class TrapInfo extends AbstractNpcInfo implements SemanticPacket
 	{
+		@Override
+		public void describe(FactSink sink, L2Player receiver)
+		{
+			BridgeActors.appeared(sink, _trap.getObjectId(), "unknown", _name, _x, _y, _z,
+					_runSpd, _walkSpd, 1.1, true, !_trap.isAlikeDead(), false, _idTemplate);
+		}
+
 		private final L2Trap _trap;
 		
 		public TrapInfo(L2Trap cha)
@@ -290,8 +309,16 @@ public abstract class AbstractNpcInfo extends L2ServerPacket
 	/**
 	 * Packet for summons
 	 */
-	public static class SummonInfo extends AbstractNpcInfo
+	public static class SummonInfo extends AbstractNpcInfo implements SemanticPacket
 	{
+		@Override
+		public void describe(FactSink sink, L2Player receiver)
+		{
+			BridgeActors.appeared(sink, _summon.getObjectId(), "unknown", _name, _x, _y, _z,
+					_runSpd, _walkSpd, _summon.getStat().getMovementSpeedMultiplier(), true,
+					!_summon.isAlikeDead(), false, _idTemplate);
+		}
+
 		private final L2Summon _summon;
 		private int _form = 0;
 		private int _val = 0;
@@ -428,8 +455,16 @@ public abstract class AbstractNpcInfo extends L2ServerPacket
 	/**
 	 * Packet for morphed PCs
 	 */
-	public static class PlayerMorphInfo extends AbstractNpcInfo
+	public static class PlayerMorphInfo extends AbstractNpcInfo implements SemanticPacket
 	{
+		@Override
+		public void describe(FactSink sink, L2Player receiver)
+		{
+			BridgeActors.appeared(sink, _pc.getObjectId(), "player", _pc.getAppearance().getVisibleName(),
+					_x, _y, _z, _runSpd, _walkSpd, _pc.getStat().getMovementSpeedMultiplier(),
+					_pc.isRunning(), !_pc.isAlikeDead(), false, _pc.getPoly().getPolyId());
+		}
+
 		private final L2Player _pc;
 		private final L2NpcTemplate _template;
 		

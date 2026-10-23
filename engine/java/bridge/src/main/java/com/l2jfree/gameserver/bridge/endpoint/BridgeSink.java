@@ -15,14 +15,26 @@
 package com.l2jfree.gameserver.bridge.endpoint;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 import com.l2jfree.gameserver.bridge.wire.Envelope;
+import com.l2jfree.gameserver.bridge.wire.Codec;
+import com.l2jfree.gameserver.bridge.wire.SemanticFacts;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.network.L2Client;
 import com.l2jfree.gameserver.network.bridge.BridgeFailure;
 import com.l2jfree.gameserver.network.bridge.ClientSink;
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.BridgeMessageArg;
+import com.l2jfree.gameserver.network.bridge.BridgeValue;
+import com.l2jfree.gameserver.network.bridge.EffectLedger;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
 /**
@@ -32,9 +44,16 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  */
 public final class BridgeSink implements ClientSink
 {
+	private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(BridgeSink.class);
 	private final Consumer<List<Envelope>> _outbound;
 	private final AtomicBoolean _disconnected = new AtomicBoolean();
 	private L2Client _client;
+	private final long _born = System.nanoTime();
+	private long _sequence;
+	private boolean _failed;
+	private final Map<Integer, ActorView> _actors = new HashMap<>();
+
+	private record ActorView(Map<Integer, BridgeField> fields, Long run, Long walk) {}
 	
 	public BridgeSink(Consumer<List<Envelope>> outbound)
 	{
@@ -56,17 +75,188 @@ public final class BridgeSink implements ClientSink
 		return true;
 	}
 	
+	/**
+	 * Runs under a leaf sink monitor, possibly inside any game lock held by the sender. The only permitted
+	 * nested monitors are transport for outbound queue operations and, on failure, the client's _bridgeLife.
+	 * Neither path may call back into packet delivery; describers must not acquire locks.
+	 */
 	@Override
-	public void deliver(L2ServerPacket packet, L2Player player)
+	public synchronized void deliver(L2ServerPacket packet, L2Player player)
 	{
-		if (_client != null && _client.getActiveChar() == player)
+		if (_failed || _disconnected.get() || _client == null || _client.isBridgeDisconnectRequested())
+			return;
+		try
 		{
-			if (packet instanceof com.l2jfree.gameserver.network.packets.server.NpcHtmlMessage html)
-				com.l2jfree.gameserver.network.bridge.EffectLedger.spoken(_client, player, html.bridgeNpcObjectId());
-			else if (packet instanceof com.l2jfree.gameserver.network.packets.server.NpcQuestHtmlMessage html)
-				com.l2jfree.gameserver.network.bridge.EffectLedger.spoken(_client, player, html.bridgeNpcObjectId());
+			BridgePacketRegistry.Kind kind = BridgePacketRegistry.classify(packet.getClass());
+			if (kind == BridgePacketRegistry.Kind.NONESSENTIAL)
+				return;
+			if (kind == BridgePacketRegistry.Kind.FATAL)
+				throw new IllegalArgumentException("unregistered packet class");
+			Stage stage = new Stage(player);
+			((SemanticPacket)packet).describe(stage, player);
+			var records = new ArrayList<Envelope>();
+			long sequence = _sequence;
+			for (BridgeFact fact : stage.facts)
+				records.add(SemanticFacts.envelope(fact, sequence = Math.incrementExact(sequence),
+						stage.ms, 1, domain(fact.kind())));
+			// Validate every observation before any delivery or receipt becomes visible.
+			Codec codec = Codec.bridge();
+			for (Envelope record : records)
+				codec.encode(List.of(record));
+			stage.validateActors();
+			if (_outbound != null)
+				for (Envelope record : records)
+					_outbound.accept(List.of(record));
+			_sequence = sequence;
+			stage.commitActors();
+			if (player != null && _client.getActiveChar() == player)
+			{
+				for (BridgeFact fact : stage.facts)
+					if (fact.kind() == 11)
+						EffectLedger.spoken(_client, player, rawId(fact));
+				for (int id : stage.messages)
+					EffectLedger.systemMessage(_client, player, id);
+			}
 		}
-		// Describing the packet is a later slice. This sink never encodes a server packet.
+		catch (RuntimeException failure)
+		{
+			_failed = true;
+			// Packet content and exception text can contain private or saved action data.
+			LOG.warn("Bridge projection failed for packet class {}", packet == null ? "null" : packet.getClass().getName());
+			EffectLedger.incomplete(player);
+			_client.requestBridgeDisconnect(BridgeFailure.internal());
+		}
+	}
+
+	private static int rawId(BridgeFact fact)
+	{
+		for (BridgeField field : fact.fields())
+			if (field.number() == 64)
+				return Math.toIntExact(((BridgeValue.Number)field.value()).value());
+		return 0;
+	}
+
+	private static String domain(int kind)
+	{
+		if (kind <= 10 || kind == 24)
+			return "objects";
+		return switch (kind)
+		{
+			case 11, 18 -> "dialogue";
+			case 12, 13 -> "trade";
+			case 14, 15 -> "inventory";
+			case 16, 17 -> "self";
+			case 19 -> "history";
+			case 20, 21 -> "quests";
+			default -> "skills";
+		};
+	}
+
+	/** Packet-local staging keeps malformed windows from leaking partial actions. */
+	private final class Stage implements FactSink
+	{
+		final long ms = Math.max(0, (System.nanoTime() - _born) / 1_000_000);
+		final L2Player player;
+		final List<BridgeFact> facts = new ArrayList<>();
+		final List<Integer> messages = new ArrayList<>();
+		final Map<Integer, ActorView> changes = new HashMap<>();
+
+		Stage(L2Player player) { this.player = player; }
+
+		@Override
+		public long now() { return ms; }
+
+		@Override
+		public void emit(BridgeFact fact)
+		{
+			if (facts.size() >= 256)
+				throw new IllegalArgumentException("too many packet observations");
+			facts.add(fact);
+			int id = rawId(fact);
+			if (id == 0)
+				return;
+			if (fact.kind() == 10)
+			{
+				changes.put(id, null);
+				return;
+			}
+			ActorView previous = view(id);
+			if (fact.kind() != 1 && previous == null)
+				return;
+			if (fact.kind() != 1 && (fact.kind() < 2 || fact.kind() > 4) && fact.kind() != 6 && fact.kind() != 7)
+				return;
+			var fields = new HashMap<Integer, BridgeField>();
+			if (previous != null)
+				fields.putAll(previous.fields());
+			for (BridgeField field : fact.fields())
+				if (field.number() == 64 || field.number() == 11 || field.number() == 12 || field.number() == 13
+						|| field.number() == 15 || field.number() == 19 || field.number() == 70 || field.number() == 73)
+					fields.put(field.number(), field);
+			if (fact.kind() == 6 || fact.kind() == 7)
+				fields.put(70, BridgeField.flag(70, fact.kind() == 7));
+			changes.put(id, new ActorView(Map.copyOf(fields), previous == null ? null : previous.run(),
+					previous == null ? null : previous.walk()));
+		}
+
+		private ActorView view(int id)
+		{
+			return changes.containsKey(id) ? changes.get(id) : _actors.get(id);
+		}
+
+		@Override
+		public void movementSpeeds(int id, long run, long walk)
+		{
+			ActorView old = view(id);
+			changes.put(id, new ActorView(old == null ? Map.of() : old.fields(), run, walk));
+		}
+
+		@Override
+		public void changeMoveType(int id, boolean running)
+		{
+			ActorView old = view(id);
+			var fields = new HashMap<Integer, BridgeField>();
+			if (old != null)
+				fields.putAll(old.fields());
+			fields.put(64, BridgeField.number(64, id));
+			Long speed = old == null ? null : running ? old.run() : old.walk();
+			if (speed == null)
+				fields.remove(15);
+			else
+				fields.put(15, BridgeField.number(15, speed));
+			emit(new BridgeFact(1, List.copyOf(fields.values())));
+		}
+
+		@Override
+		public void systemMessage(int id, List<BridgeMessageArg> args)
+		{
+			boolean own = player != null && _client.getActiveChar() == player;
+			for (BridgeFact fact : BridgeMessages.describe(id, List.copyOf(args), own, own ? player.getObjectId() : 0))
+				emit(fact);
+			messages.add(id);
+		}
+
+		void validateActors()
+		{
+			int count = _actors.size();
+			for (var change : changes.entrySet())
+			{
+				if (change.getValue() == null && _actors.containsKey(change.getKey()))
+					count--;
+				else if (change.getValue() != null && !_actors.containsKey(change.getKey()))
+					count++;
+			}
+			if (count > 4096)
+				throw new IllegalArgumentException("too many observed actors");
+		}
+
+		void commitActors()
+		{
+			for (var change : changes.entrySet())
+				if (change.getValue() == null)
+					_actors.remove(change.getKey());
+				else
+					_actors.put(change.getKey(), change.getValue());
+		}
 	}
 	
 	@Override

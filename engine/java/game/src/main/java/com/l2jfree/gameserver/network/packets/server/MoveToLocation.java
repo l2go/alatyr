@@ -14,11 +14,24 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import static com.l2jfree.gameserver.network.bridge.BridgeField.number;
+import static com.l2jfree.gameserver.network.bridge.BridgeField.at;
+
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.gameobjects.L2Creature;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
-public class MoveToLocation extends L2ServerPacket
+public class MoveToLocation extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		sink.emit(BridgeFact.of(2, number(64, _charObjId), at(13, _x, _y, _z), at(14, _xDst, _yDst, _zDst)));
+	}
+
 	private static final String _S__2F_CHARMOVETOLOCATION = "[S] 2f CharMoveToLocation [ddddddd]";
 	
 	private final int _charObjId, _x, _y, _z, _xDst, _yDst, _zDst;

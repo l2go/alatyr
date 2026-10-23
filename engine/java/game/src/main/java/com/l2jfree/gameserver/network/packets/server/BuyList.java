@@ -14,6 +14,11 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.BridgeField;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import java.util.List;
 
 import com.l2jfree.Config;
@@ -21,8 +26,32 @@ import com.l2jfree.gameserver.model.L2TradeList;
 import com.l2jfree.gameserver.model.items.L2ItemInstance;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
-public final class BuyList extends L2ServerPacket
+public final class BuyList extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		if (_money < 0)
+			throw new IllegalArgumentException("negative purse");
+		var goods = new java.util.ArrayList<com.l2jfree.gameserver.network.bridge.BridgeValue>();
+		for (L2ItemInstance item : _list)
+		{
+			long count = item.getCount();
+			if (count != -1 && count <= 0)
+				continue;
+			double price = item.getItemId() >= 3960 && item.getItemId() <= 4026
+					? item.getPriceToSell() * Config.RATE_SIEGE_GUARDS_PRICE * _taxRate
+					: item.getPriceToSell() * _taxRate;
+			if (!Double.isFinite(price) || price < 0 || price >= 0x1p63)
+				throw new IllegalArgumentException("unrepresentable price");
+			goods.add(BridgeField.object(1, BridgeField.number(2, item.getObjectId()),
+					BridgeField.number(3, item.getItemDisplayId()), BridgeField.number(4, count),
+					BridgeField.number(5, (long)price)).value());
+		}
+		sink.emit(BridgeFact.of(12, BridgeField.number(22, _listId), BridgeField.number(23, _money),
+				BridgeField.list(24, goods), BridgeField.number(74, sink.now())));
+	}
+
 	private static final String _S__07_BUYLIST = "[S] 07 BuyList [ddh (hdddhhdhhhdddddddd)]";
 	private final int _listId;
 	private final L2ItemInstance[] _list;

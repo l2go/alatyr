@@ -69,6 +69,14 @@ public final class EffectLedger
 		attempt.add(owner, effect);
 	}
 
+	/** Records delivery only in this client's current synchronous attempt. */
+	public static void systemMessage(com.l2jfree.gameserver.network.L2Client client, L2Player owner, int id)
+	{
+		Attempt attempt = ACTIVE.get();
+		if (attempt != null && attempt.belongsTo(client) && owner == attempt.player())
+			attempt.addRefusal(id);
+	}
+
 	/** Marks an owner mutation path whose complete receipt set is not represented by this profile. */
 	public static void incomplete(L2Player owner)
 	{

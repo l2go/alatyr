@@ -14,6 +14,13 @@
  */
 package com.l2jfree.gameserver.network.packets.server;
 
+import static com.l2jfree.gameserver.network.bridge.BridgeField.number;
+import static com.l2jfree.gameserver.network.bridge.BridgeField.at;
+
+import com.l2jfree.gameserver.network.bridge.BridgeFact;
+import com.l2jfree.gameserver.network.bridge.FactSink;
+import com.l2jfree.gameserver.network.bridge.SemanticPacket;
+
 import com.l2jfree.gameserver.gameobjects.L2Creature;
 import com.l2jfree.gameserver.network.packets.L2ServerPacket;
 
@@ -26,8 +33,14 @@ import com.l2jfree.gameserver.network.packets.L2ServerPacket;
  * 
  * @version $Revision: 1.3.2.1.2.3 $ $Date: 2005/03/27 15:29:57 $
  */
-public class StopMove extends L2ServerPacket
+public class StopMove extends L2ServerPacket implements SemanticPacket
 {
+	@Override
+	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
+	{
+		sink.emit(BridgeFact.of(3, number(64, _objectId), at(13, _x, _y, _z)));
+	}
+
 	private static final String _S__59_STOPMOVE = "[S] 47 StopMove";
 	private final int _objectId;
 	private final int _x;
