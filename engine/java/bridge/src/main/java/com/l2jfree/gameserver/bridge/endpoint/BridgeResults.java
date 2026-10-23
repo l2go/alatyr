@@ -44,7 +44,7 @@ final class BridgeResults
 	{
 		int refusal = 0;
 		if (stage == BridgeOutcome.UNKNOWN && reason == 0 && attempt != null
-				&& !attempt.isFailed() && !attempt.isLedgerIncomplete() && attempt.effects().isEmpty())
+				&& !attempt.isFailed() && !attempt.isLedgerIncomplete() && !attempt.isInterrupted() && attempt.effects().isEmpty())
 		{
 			refusal = BridgeRefusals.firstReason(Math.toIntExact(verb), attempt.refusals());
 			if (refusal != 0)
@@ -56,10 +56,11 @@ final class BridgeResults
 		}
 		// Lack of evidence is quiet uncertainty; only failure or an incomplete ledger is a backend error.
 		if (stage == BridgeOutcome.UNKNOWN && reason == 0)
-			reason = attempt != null && (attempt.isFailed() || attempt.isLedgerIncomplete()) ? 24 : 17;
+			reason = attempt != null && (attempt.isFailed() || attempt.isLedgerIncomplete()) ? 24
+					: attempt != null && attempt.isInterrupted() ? 19 : 17;
 		ArrayList<Field> fields = new ArrayList<>(List.of(Field.u(1, true, n), Field.u(2, true, stage),
 				Field.u(3, true, reason), Field.u(5, true, verb), Field.u(6, true, knownVerb(verb) ? verb : 0),
-				Field.u(7, true, stage == 3 || stage == 5 ? 0 : 2)));
+				Field.u(7, true, stage == 3 || stage == 5 ? 0 : reason == 19 ? 3 : 2)));
 		long bridgeReason = switch ((int)reason)
 		{
 			case 1 -> 7;

@@ -130,11 +130,11 @@ final class BridgeAttemptSession
 			throw com.l2jfree.gameserver.bridge.wire.WireException.frame();
 		// Decode our own canonical bytes to sever all receive-side mutable arrays before FIFO submission.
 		Envelope acceptedIntent = Codec.bridge().decode(normalized).get(0);
-		return accept(n, normalized, () -> execute(client, acceptedIntent, n, verb, received, ttl),
+		return accept(n, normalized, () -> execute(client, acceptedIntent, n, verb, received, ttl, fence),
 				BridgeResults.encode(n, verb, 3, 1, null), BridgeResults.transportLost(n, verb), fence);
 	}
 
-	private byte[] execute(L2Client client, Envelope intent, long n, long verb, long received, long ttl)
+	private byte[] execute(L2Client client, Envelope intent, long n, long verb, long received, long ttl, Fence fence)
 		{
 			if (client.isBridgeDisconnectRequested())
 				return BridgeResults.encode(n, verb, 3, 16, null);
@@ -182,6 +182,12 @@ final class BridgeAttemptSession
 				{
 					if (source == null || BridgeOutcome.match(active, 4, takenItem, source.getObjectId(), takenCount) == BridgeOutcome.DONE)
 						return;
+					if (fence != null && !fence.valid || intent.field(3).value().u() != epoch
+							|| client.isBridgeDisconnectRequested())
+					{
+						active.markInterrupted();
+						return;
+					}
 					if (client.isBridgeDisconnectRequested() || client.getState() != L2Client.GameClientState.IN_GAME
 							|| com.l2jfree.gameserver.model.world.L2World.getInstance().findObject(source.getObjectId()) != source
 							|| !source.isVisible())

@@ -317,11 +317,29 @@ final class BridgeLoopback implements Runnable
 	{
 		if (transport.closing || transport.terminal)
 			return;
+		if (transport.session != null && records.size() == 1
+				&& records.get(0).type() == com.l2jfree.gameserver.bridge.wire.Schemas.CLOSE)
+		{
+			Envelope close = records.get(0);
+			long epoch = close.field(2).value().u();
+			if (close.field(1).value().u() != transport.session.id || Long.compareUnsigned(epoch, transport.epoch) > 0)
+			{
+				finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
+				return;
+			}
+			if (Long.compareUnsigned(epoch, transport.epoch) < 0)
+				return;
+		}
 		BridgeReply reply = transport.dialogue.accept(records);
 		if (reply.resume != null)
 		{
 			long id = reply.resume.field(1).value().u();
 			long epoch = reply.resume.field(2).value().u();
+			if (transport.session != null && transport.session.id != id)
+			{
+				finishTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_FRAME)));
+				return;
+			}
 			L2Client client = BridgeAdmission.session(id);
 			Session owner = client == null ? null : sessions.get(client);
 			if (owner == null || !admitting)
@@ -996,7 +1014,7 @@ final class BridgeLoopback implements Runnable
 					current.checkpointDeadline = System.nanoTime() + OPENING_NS;
 			}
 			long epoch = recovery.epoch();
-			var retained = attempts.retainedResults();
+			List<byte[]> retained = current.opened ? List.of() : attempts.retainedResults();
 			player.captureBridgeScene(() ->
 			{
 				synchronized (sink)

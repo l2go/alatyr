@@ -37,6 +37,7 @@ public final class Attempt
 	private boolean _started;
 	private boolean _failed;
 	private boolean _incomplete;
+	private boolean _interrupted;
 	private boolean _spoke;
 	private int _spokenNpc;
 	private Cost _cost;
@@ -88,6 +89,17 @@ public final class Attempt
 	public void markFailed()
 	{
 		_failed = true;
+	}
+
+	/** A started multi-contact plan lost its transport/state fence before the next contact. */
+	public void markInterrupted()
+	{
+		_interrupted = true;
+	}
+
+	public boolean isInterrupted()
+	{
+		return _interrupted;
 	}
 	
 	public boolean isLedgerIncomplete()
