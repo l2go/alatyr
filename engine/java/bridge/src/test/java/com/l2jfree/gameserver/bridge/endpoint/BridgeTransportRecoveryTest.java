@@ -83,8 +83,16 @@ class BridgeTransportRecoveryTest
 			var replacement = new BridgeLoopback.Transport(new byte[32]);
 			try (var gate = new FifoGate(fixture.client))
 			{
-				if (scenario.startsWith("full-first")) fixture.loop.acceptFrame(fixture.first, List.of(close(fixture.id, 1)));
-				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+				if (scenario.startsWith("full-first"))
+				{
+					// Authenticate/register while admission is open, but queue the full task before Resume.
+					// A Resume first received after Close is instead the separate closed-refusal case.
+					replacement.dialogue.accept(List.of(resume(fixture.id, 2)));
+					assertThat(fixture.owner.notePendingResume(replacement, fixture.id, 2)).isTrue();
+					fixture.loop.acceptFrame(fixture.first, List.of(close(fixture.id, 1)));
+					fixture.client.submit(() -> fixture.owner.resume(replacement, fixture.id, 2));
+				}
+				else fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
 				if (scenario.startsWith("resume-first")) fixture.loop.acceptFrame(fixture.first, List.of(close(fixture.id, 1)));
 				fixture.loop.acceptFrame(replacement, List.of(close(fixture.id, 2)));
 				if (outcome.equals("deadline"))
@@ -107,6 +115,46 @@ class BridgeTransportRecoveryTest
 			verify(fixture.player).store(true, true);
 			verify(fixture.player).deleteMe();
 			assertThat(fixture.drain(fixture.first)).isEmpty();
+		}
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(booleans = { false, true })
+	void aResumeFirstReceivedAfterCloseKeepsItsClosedRefusal(boolean saved) throws Exception
+	{
+		try (Fixture fixture = new Fixture(20037))
+		{
+			fixture.open();
+			fixture.first.dialogue.accept(List.of(resume(fixture.id, 1)));
+			when(fixture.player.store(true, true)).thenReturn(saved);
+			var replacement = new BridgeLoopback.Transport(new byte[32]);
+			try (var gate = new FifoGate(fixture.client))
+			{
+				fixture.loop.acceptFrame(fixture.first, List.of(close(fixture.id, 1)));
+				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+				fixture.loop.acceptFrame(replacement, List.of(close(fixture.id, 2)));
+				assertThat(replacement.resumeOwner).isNull();
+				assertThat(replacement.terminal).isTrue();
+			}
+			barrier(fixture.client);
+			barrier(fixture.client);
+			var refusal = fixture.drain(replacement);
+			assertThat(refusal).singleElement().satisfies(record ->
+			{
+				assertThat(record.type()).isEqualTo(Schemas.OPENED);
+				assertThat(record.field(1).value().u()).isEqualTo(BridgeFrames.OPENED_REFUSED);
+				assertThat(record.field(5).value().u()).isEqualTo(BridgeFrames.REASON_CLOSED);
+			});
+			assertThat(fixture.drain(fixture.first)).singleElement().satisfies(record ->
+			{
+				assertThat(record.type()).isEqualTo(Schemas.BYE);
+				assertThat(record.field(1).value().u()).isEqualTo(saved ? BridgeFrames.BYE_NORMAL : BridgeFrames.BYE_INTERNAL);
+			});
+			assertThat(fixture.owner.recovery.epoch()).isEqualTo(1);
+			assertThat(replacement.client).isNull();
+			assertThat(replacement.attempts).isNull();
+			verify(fixture.player).store(true, true);
+			verify(fixture.player).deleteMe();
 		}
 	}
 
@@ -665,7 +713,7 @@ class BridgeTransportRecoveryTest
 					if (closeFirst)
 					{
 						assertThat(replacement.client).isNull();
-						assertThat(fixture.client.isBridgeDisconnectRequested()).isFalse();
+						assertThat(fixture.client.isBridgeDisconnectRequested()).isTrue();
 					}
 					else
 						assertThat(fixture.client.isBridgeDisconnectRequested()).isTrue();

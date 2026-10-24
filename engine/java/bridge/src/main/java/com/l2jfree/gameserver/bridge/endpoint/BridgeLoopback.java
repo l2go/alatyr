@@ -1777,7 +1777,7 @@ final class BridgeLoopback implements Runnable
 	{
 		long budgetNs = Math.max(0, Math.min(30_000, budgetMs)) * 1_000_000L;
 		long end = System.nanoTime() + budgetNs;
-		long saveEnd = end - Math.min(1_000_000_000L, budgetNs);
+		long saveEnd = shutdownSaveEnd(end, budgetNs);
 		shutdownDeadline = end;
 		stopAdmitting();
 		while (System.nanoTime() < saveEnd && !disconnectsFinished())
@@ -1819,6 +1819,12 @@ final class BridgeLoopback implements Runnable
 		{
 			throw new UncheckedIOException(e);
 		}
+	}
+
+	/** Reserve at most a tenth of the total budget for selector disposal, capped at one second. */
+	static long shutdownSaveEnd(long end, long budgetNs)
+	{
+		return end - Math.min(1_000_000_000L, budgetNs / 10);
 	}
 
 	/** Blocking write used only for the one-frame refusal of a socket that is about to be closed. */
