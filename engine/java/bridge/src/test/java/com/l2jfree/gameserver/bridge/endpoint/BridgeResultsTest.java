@@ -24,6 +24,21 @@ import com.l2jfree.gameserver.network.bridge.EffectLedger;
 class BridgeResultsTest
 {
 	@Test
+	void aStartedInterruptedPlanIsUnknownNotAClosingOrWorldRefusal()
+	{
+		var attempt = new Attempt(BridgeTestPlayers.player());
+		attempt.markStarted();
+		attempt.addRefusal(279);
+		attempt.markInterrupted();
+		var result = Codec.bridge().decode(BridgeResults.encode(1, 7, BridgeOutcome.UNKNOWN, 0, attempt)).get(0);
+		assertThat(result.field(2).value().u()).isEqualTo(4);
+		assertThat(result.field(3).value().u()).isEqualTo(19);
+		assertThat(result.field(7).value().u()).isEqualTo(3);
+		assertThat(result.field(64)).isNull();
+		assertThat(result.field(66)).isNull();
+	}
+
+	@Test
 	void deliveredQuantityRejectionIsInvalidAndMatchesTheGoCodecFixture()
 	{
 		var player = BridgeTestPlayers.player();

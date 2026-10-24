@@ -83,6 +83,19 @@ class BridgeDescribeContractTest
 	}
 
 	@Test
+	void checkpointCaptureChecksRelocationBeforeEnteringTheLeafSink() throws Exception
+	{
+		String source = Files.readString(GAME.resolve("gameobjects/L2Player.java"));
+		int start = source.indexOf("public boolean captureBridgeScene(");
+		int end = source.indexOf("private boolean acceptsBridgeCompletion", start);
+		String body = source.substring(start, end);
+		assertThat(body).contains("_teleportLock.lock()", "isTeleporting()", "_bridgeCompleting",
+				"client.isBridgeDisconnectRequested()", "capture.run()", "_teleportLock.unlock()");
+		assertThat(body.indexOf("isTeleporting()")).isLessThan(body.indexOf("capture.run()"));
+		assertThat(body).doesNotContain(".get()", ".await(", "Thread.sleep", "store(", "deleteMe(");
+	}
+
+	@Test
 	void ownTeleportGenerationIsCapturedUnderItsSourceLockBeforeCompletion() throws Exception
 	{
 		String source = Files.readString(GAME.resolve("gameobjects/L2Creature.java"));

@@ -23,6 +23,148 @@ import org.junit.jupiter.api.Test;
 class BridgeAttemptSessionTest
 {
 	@Test
+	void aLateReadyGrantOnTheSameSocketCannotAdmitTheNewScene()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> output = new ArrayList<>();
+		var session = new BridgeAttemptSession(fifo::add, output::add);
+		var fence = new BridgeAttemptSession.Fence();
+		session.bindFence(fence);
+		long oldGeneration = fence.generation;
+		fence.invalidateReadiness();
+		session.ready(fence, oldGeneration);
+		assertThat(fence.isReady()).isFalse();
+		// Model relocation winning between the grant's generation check and its two writes.
+		fence.readyGeneration = oldGeneration;
+		fence.ready = true;
+		var intent = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(
+				java.util.HexFormat.of().parseHex("0a09180128093801b80c01")).getFirst();
+		assertThat(session.accept(null, intent, fence).kind).isEqualTo(BridgeIntents.Kind.NOT_READY);
+		assertThat(fifo).isEmpty();
+		session.ready(fence, fence.generation);
+		assertThat(fence.isReady()).isTrue();
+		assertThat(session.accept(null, intent, fence).kind).isEqualTo(BridgeIntents.Kind.REPLAY);
+		assertThat(output.get(1)).containsExactly(output.get(0));
+	}
+
+	@Test
+	void aLateReadyGrantCannotLetPreviouslyQueuedWorkRunInTheNewScene()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> output = new ArrayList<>();
+		var session = new BridgeAttemptSession(fifo::add, output::add);
+		var fence = new BridgeAttemptSession.Fence();
+		session.bindFence(fence);
+		session.ready(fence);
+		var intent = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(
+				java.util.HexFormat.of().parseHex("0a09180128093801b80c01")).getFirst();
+		assertThat(session.accept(null, intent, fence).kind).isEqualTo(BridgeIntents.Kind.ACCEPTED);
+		fence.invalidateReadiness();
+		fence.ready = true;
+		fifo.remove().run();
+		var result = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(output.getFirst()).getFirst();
+		assertThat(result.field(2).value().u()).isEqualTo(3);
+		assertThat(result.field(3).value().u()).isEqualTo(1);
+	}
+
+	@Test
+	void terminalClosingCancelsQueuedWorkWithItsOriginalVerbAndClosingReason()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> output = new ArrayList<>();
+		var session = new BridgeAttemptSession(fifo::add, output::add);
+		var fence = new BridgeAttemptSession.Fence();
+		session.bindFence(fence);
+		session.ready(fence);
+		var intent = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(
+				java.util.HexFormat.of().parseHex("0a09180128093801b80c01")).get(0);
+		session.accept(null, intent, fence);
+		fence.closing = true;
+		fence.valid = false;
+		fifo.remove().run();
+		var result = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(output.getFirst()).getFirst();
+		assertThat(result.field(2).value().u()).isEqualTo(3);
+		assertThat(result.field(3).value().u()).isEqualTo(16);
+		assertThat(result.field(5).value().u()).isEqualTo(9);
+		assertThat(result.field(65).value().u()).isEqualTo(10);
+	}
+
+	@Test
+	void aReaderThatLostItsFenceCannotRegisterAgainstTheReplacement()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> output = new ArrayList<>();
+		var session = new BridgeAttemptSession(fifo::add, output::add);
+		var old = new BridgeAttemptSession.Fence();
+		var replacement = new BridgeAttemptSession.Fence();
+		session.bindFence(old);
+		session.ready(old);
+		var intent = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(
+				java.util.HexFormat.of().parseHex("0a09180128093801b80c01")).get(0);
+		old.valid = false;
+		session.detach();
+		assertThat(session.accept(null, intent, old)).isNull();
+		session.resume(2, output::add, replacement);
+		session.ready(replacement);
+		assertThat(session.accept(null, intent, old)).isNull();
+		assertThat(session.accept(null, intent, replacement).kind).isEqualTo(BridgeIntents.Kind.ACCEPTED);
+		fifo.remove().run();
+		assertThat(output).hasSize(1);
+		assertThat(session.retainedResults()).hasSize(1);
+	}
+
+	@Test
+	void detachFinalizesQueuedWorkAndResumeNeverRunsItAgain()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> first = new ArrayList<>();
+		ArrayList<byte[]> replacement = new ArrayList<>();
+		BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, first::add);
+		session.ready();
+		session.accept(1, new byte[] { 7 }, () -> { throw new AssertionError("detached purchase"); });
+		session.detach();
+		var retained = session.resume(2, replacement::add);
+		assertThat(retained).hasSize(1);
+		var result = com.l2jfree.gameserver.bridge.wire.Codec.bridge().decode(retained.get(0)).get(0);
+		assertThat(result.field(2).value().u()).isEqualTo(3);
+		assertThat(result.field(3).value().u()).isEqualTo(16);
+		assertThat(result.field(7).value().u()).isZero();
+		assertThat(result.field(65).value().u()).isEqualTo(9);
+		fifo.remove().run();
+		session.ready();
+		assertThat(session.accept(1, new byte[] { 7 }, () -> { throw new AssertionError("replay"); }).kind)
+				.isEqualTo(BridgeIntents.Kind.REPLAY);
+		assertThat(replacement.get(0)).containsExactly(retained.get(0));
+		assertThat(first).isEmpty();
+	}
+
+	@Test
+	void detachInsideStartedPurchaseRetainsDoneForResumeWithoutSecondPurchase()
+	{
+		ArrayDeque<Runnable> fifo = new ArrayDeque<>();
+		ArrayList<byte[]> first = new ArrayList<>();
+		ArrayList<byte[]> replacement = new ArrayList<>();
+		AtomicInteger purchases = new AtomicInteger();
+		BridgeAttemptSession session = new BridgeAttemptSession(fifo::add, first::add);
+		session.ready();
+		session.accept(1, new byte[] { 7 }, () ->
+		{
+			purchases.incrementAndGet();
+			session.detach();
+			return new byte[] { 2, 13 };
+		});
+		fifo.remove().run();
+		assertThat(first).isEmpty();
+		var retained = session.resume(2, replacement::add);
+		assertThat(retained.get(0)).containsExactly(2, 13);
+		session.ready();
+		session.accept(1, new byte[] { 7 }, () -> { throw new AssertionError("second purchase"); });
+		assertThat(replacement.get(0)).containsExactly(2, 13);
+		assertThat(purchases).hasValue(1);
+		assertThat(fifo).isEmpty();
+	}
+
+	@Test
 	void castRejectsAnOutOfProfileKnownSkillBeforeBinding()
 	{
 		var player = BridgeTestPlayers.player();

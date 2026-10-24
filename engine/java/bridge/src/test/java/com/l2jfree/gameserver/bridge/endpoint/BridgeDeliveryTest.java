@@ -52,6 +52,49 @@ class BridgeDeliveryTest
 	}
 
 	@Test
+	void checkpointCaptureReservesSequenceAndKeepsTheOriginalHistoryTime()
+	{
+		sink.deliver(new NpcSay(70, 0, 1, "An observation"), player);
+		long original = records.get(0).get(0).field(3).value().s();
+		var snapshot = sink.snapshot(2, false);
+		assertThat(snapshot.ready()).isFalse();
+		assertThat(snapshot.records()).hasSize(1);
+		var history = snapshot.records().get(0);
+		assertThat(history.field(1).value().u()).isEqualTo(19);
+		assertThat(history.field(2).value().u()).isEqualTo(2);
+		assertThat(history.field(4).value().u()).isEqualTo(2);
+		assertThat(history.field(28).value().items().get(0).fields().get(0).value().s()).isEqualTo(original);
+		sink.deliver(new NpcSay(70, 0, 1, "A later observation"), player);
+		assertThat(records.get(1).get(0).field(2).value().u()).isEqualTo(3);
+		assertThat(records.get(1).get(0).field(4).value().u()).isEqualTo(2);
+	}
+
+	@Test
+	void ownRelocationDiscardsTheOldSceneActorCacheBeforeMovementRefresh()
+	{
+		var actor = BridgeTestPlayers.player();
+		var view = mock(com.l2jfree.gameserver.gameobjects.view.PlayerView.class);
+		var appearance = mock(com.l2jfree.gameserver.gameobjects.appearance.PlayerAppearance.class);
+		when(actor.getObjectId()).thenReturn(70);
+		when(actor.getView()).thenReturn(view);
+		when(actor.getAppearance()).thenReturn(appearance);
+		when(appearance.getVisibleName()).thenReturn("Old scene actor");
+		when(view.getObjectId()).thenReturn(70);
+		when(view.getRunSpd()).thenReturn(120);
+		when(view.getMovementSpeedMultiplier()).thenReturn(1.0f);
+		sink.deliver(new CharInfo(actor), player);
+		sink.deliver(TeleportToLocation.forBridgeRelocation(player, 8, 9, 10, 0, 1), player);
+		when(actor.isRunning()).thenReturn(true);
+		sink.deliver(new ChangeMoveType(actor), player);
+		var refresh = records.getLast().getFirst();
+		assertThat(refresh.field(11)).isNull();
+		assertThat(refresh.field(12)).isNull();
+		assertThat(refresh.field(13)).isNull();
+		assertThat(refresh.field(15)).isNull();
+		verify(actor, never()).getStat();
+	}
+
+	@Test
 	void spokeFollowedByActionFailedIsDoneButNoticesNeverCertifyTalk()
 	{
 		L2Npc npc = mock(L2Npc.class);

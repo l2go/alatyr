@@ -3664,6 +3664,29 @@ public final class L2Player extends L2Playable
 		}
 	}
 	
+	/**
+	 * Runs a copied-state checkpoint continuation only after relocation is stable. The callback must not read
+	 * the model or acquire game locks; it may enter the leaf bridge sink. The client FIFO never waits for complete.
+	 */
+	public boolean captureBridgeScene(Runnable capture)
+	{
+		_teleportLock.lock();
+		try
+		{
+			L2Client client = getClient();
+			if (!_bridgeSession || _bridgeClosing || isTeleporting() || _bridgeCompleting
+					|| getOnlineState() == ONLINE_STATE_DELETED || client == null || !client.isBridge()
+					|| client.isBridgeDisconnectRequested())
+				return false;
+			capture.run();
+			return true;
+		}
+		finally
+		{
+			_teleportLock.unlock();
+		}
+	}
+
 	private boolean acceptsBridgeCompletion(long generation)
 	{
 		if (_bridgeClosing || _teleportGeneration != generation || !isTeleporting())
