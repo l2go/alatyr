@@ -757,7 +757,7 @@ class BridgeTransportRecoveryTest
 			{
 				assertThat(waiting.await(5, TimeUnit.SECONDS)).isTrue();
 				if (!concurrent) finished.get(3, TimeUnit.SECONDS);
-				org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(1), fixture.loop::close);
+				org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(1), () -> fixture.loop.close());
 				finished.get(3, TimeUnit.SECONDS); // No ISE from the real close with save still held.
 				assertThat(claims.get()).isEqualTo(1);
 				assertThat(remainingAtDisposal.get()).isGreaterThan(1_000_000L);
