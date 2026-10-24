@@ -99,6 +99,58 @@ func TestRunDoesNotCallStateAfterServiceStateError(t *testing.T) {
 	testRunServiceStateError(t, true)
 }
 
+func TestRunStopsAfterObservationAndCheckpointStateErrors(t *testing.T) {
+	for _, method := range []string{"Witness", "CandidateValid"} {
+		t.Run(method, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				r := scheduleNewRig(t)
+				r.game.services = nil
+				r.conn.ready, r.conn.transfer, r.conn.awaitComplete = true, false, false
+				s := &actorState{game: r.game, errorState: &errorState{testState: &testState{}, method: method,
+					action: &Action{Effective: 4, Class: "take", Waiting: true, AfterCheckpoint: method == "CandidateValid"}}}
+				r.game.state = s
+				_, control := r.game.attempts.Controller()
+				r.game.intent(r.conn, testIntent(2, 4, control))
+				if err := r.game.attempts.Contact(2, r.game.gate.now()); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := r.game.attempts.Sent(2, false); err != nil {
+					t.Fatal(err)
+				}
+				ex := r.game.actions[2]
+				ex.hasCandidate, ex.candidate = true, r.game.gate.now()
+				w := &actorWorld{World: r.world, game: r.game}
+				r.game.world = w
+				if method == "Witness" {
+					r.world.updates = make(chan Update, 1)
+					r.world.updates <- Update{Value: struct{}{}}
+				} else {
+					r.conn.generation, r.conn.capturedReady = 1, true
+					r.game.input <- input{conn: r.conn, checkpoint: 1}
+				}
+				r.game.gate.cfg.Ticks = func(time.Duration) (<-chan time.Time, func()) { return nil, func() {} }
+				ctx, cancel := context.WithCancel(context.Background())
+				runDone := make(chan struct{})
+				go func() { defer close(runDone); r.game.run(ctx) }()
+				synctest.Wait()
+				select {
+				case <-runDone:
+				default:
+					t.Error("actor remained alive after State error")
+				}
+				cancel()
+				<-runDone
+				// A late drain callback must be harmless after internal closure.
+				r.conn.ready = true
+				r.game.commitReadyWitnesses()
+				if !r.game.closed || w.closes != 1 || s.calls != 1 || len(s.afterClose) != 0 || w.writesAfterClose != 0 || len(r.world.writes) != 0 {
+					t.Fatalf("closed=%v closes=%d errors=%d calls after close=%v writes=%d/%d", r.game.closed, w.closes, s.calls, s.afterClose, len(r.world.writes), w.writesAfterClose)
+				}
+			})
+		})
+	}
+}
+
 func testRunServiceStateError(t *testing.T, tickAfterClose bool) {
 	t.Helper()
 	for _, method := range []string{"Start", "Confirmed"} {

@@ -47,7 +47,7 @@ func TestSavedProposalsResolveOnlyCapturedActions(t *testing.T) {
 		event Event
 		want  Command
 	}{
-		{Event{Kind: Spoke, ID: 7, Lines: []Line{{Label: "Continue", Say: "saved-action"}}}, Command{Kind: Say, Text: "saved-action"}},
+		{Event{Kind: Spoke, ID: 7, Lines: []Line{{Label: "Continue", Say: "saved-action"}}}, Command{Kind: Say, Target: 7, Text: "saved-action"}},
 		{Event{Kind: Shop, List: 5, Goods: []Good{{ID: 30, Count: 10, Price: 30}}}, Command{Kind: Buy, List: 5, Item: 30, Count: 1}},
 		{Event{Kind: Offer, List: 6, Goods: []Good{{Object: 101, ID: 30, Count: 10, Price: 20}}}, Command{Kind: Sell, List: 6, Target: 101, Item: 30, Count: 1}},
 		{Event{Kind: Practice, List: 2, Goods: []Good{{ID: 3, Count: 2, Object: 3, Price: 40}}, Complete: true}, Command{Kind: Learn, List: 2, Item: 3, Count: 2}},

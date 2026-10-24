@@ -232,6 +232,7 @@ func PlanIntent(r wire.Record, env Environment) (Plan, wire.Reason) {
 		}
 		var npc Ref
 		cmd, npc, reason = env.Proposals.choose(plan.Dialog, getU(f, 13), env.Now)
+		cmd.Target = npc.ID
 		if reason == wire.ReasonNone && (env.Observed == nil || !env.Observed.Valid(npc)) {
 			return Plan{}, wire.ReasonStaleOffer
 		}
