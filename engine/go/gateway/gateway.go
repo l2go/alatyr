@@ -79,6 +79,7 @@ type outgoing struct {
 type connection struct {
 	receivedAt                 int64
 	awaitComplete              bool
+	inputClosed                bool // Actor-owned, terminal even when Bye still drains.
 	closing                    bool
 	transfer                   bool
 	capturedReady              bool
@@ -389,6 +390,19 @@ func (c *connection) enqueue(r wire.Record) bool {
 	c.wake()
 	return true
 }
+
+// acceptsInput is called only by the actor. Physical closure may precede the
+// actor's first transport error; it fences ordinary work without consuming the
+// pending Lose/cleanup obligation. inputClosed is set only by drop/finish.
+func (c *connection) acceptsInput() bool {
+	if c.inputClosed {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return !c.closed && !c.closing
+}
+
 func (c *connection) close() {
 	c.once.Do(func() {
 		c.mu.Lock()
@@ -475,11 +489,14 @@ func (s *game) connections() []*connection {
 	return out
 }
 func (s *game) send(c *connection, r wire.Record) {
-	if s.closed || c.closing {
+	if s.closed || !c.acceptsInput() {
 		return
 	}
 	s.trace(c, r, 0, false)
 	if !c.enqueue(r) {
+		if !c.acceptsInput() {
+			return
+		}
 		if c.transfer && !c.restarted {
 			c.restarted = true
 			s.checkpoint(c, nil, c.awaitComplete)
@@ -499,9 +516,12 @@ func (s *game) broadcast(r wire.Record) {
 	}
 }
 func (s *game) drop(c *connection, reason wire.CloseReason) {
-	if s.closed {
+	if s.closed || c.inputClosed {
 		return
 	}
+	// Do not test physical closure here: the first transport error must still
+	// release control even when the writer has already closed and removed c.
+	c.inputClosed = true
 	owner, _ := s.attempts.Controller()
 	if owner == c.id {
 		if err := s.attempts.Lose(c.id); err != nil {
@@ -516,6 +536,9 @@ func (s *game) drop(c *connection, reason wire.CloseReason) {
 // finish is also used by endScope's terminal drain. It cannot restart a
 // checkpoint, call State, or mutate the protocol's already closed controller.
 func (s *game) finish(c *connection, reason wire.CloseReason) {
+	// Fence every finish path, including absent reservations, immediate Close,
+	// failed Encode and overflow. closing only controls the writer's Bye drain.
+	c.inputClosed = true
 	s.gate.mu.Lock()
 	_, exists := s.conns[c.id]
 	s.gate.mu.Unlock()
@@ -533,7 +556,7 @@ func (s *game) finish(c *connection, reason wire.CloseReason) {
 		return
 	}
 	c.mu.Lock()
-	if len(raw) > s.gate.cfg.OutBytes-c.bytes-c.active {
+	if c.closed || len(raw) > s.gate.cfg.OutBytes-c.bytes-c.active {
 		c.mu.Unlock()
 		c.close()
 		return
@@ -563,7 +586,7 @@ func (s *game) endScope(reason wire.CloseReason, detached bool) {
 	}
 	for _, o := range s.attempts.Close() {
 		for _, c := range s.connections() {
-			if c.hello && !c.closing {
+			if c.hello && c.acceptsInput() {
 				// Final outcomes may drain before Bye, but never restart a
 				// transfer (and therefore never call Snapshot after closure).
 				r := o.Record()
@@ -646,10 +669,13 @@ func (s *game) run(ctx context.Context) {
 	}
 }
 func (s *game) checkpoint(c *connection, welcome *wire.Record, hold bool) bool {
-	if s.closed || c.closing {
+	if s.closed || !c.acceptsInput() {
 		return false
 	}
 	snapshot, err := s.state.Snapshot(s.gate.now())
+	if !c.acceptsInput() {
+		return false
+	}
 	if err != nil {
 		s.fail(wire.CloseInternal)
 		return false
@@ -685,7 +711,13 @@ func (s *game) checkpoint(c *connection, welcome *wire.Record, hold bool) bool {
 	frames := make([][]byte, 0, len(records))
 	total := 0
 	for _, r := range records {
+		if !c.acceptsInput() {
+			return false
+		}
 		b, e := s.gate.cfg.Codec.Encode([]wire.Record{r})
+		if !c.acceptsInput() {
+			return false
+		}
 		if e != nil {
 			s.fail(wire.CloseInternal)
 			return false
@@ -705,6 +737,10 @@ func (s *game) checkpoint(c *connection, welcome *wire.Record, hold bool) bool {
 		return false
 	}
 	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return false
+	}
 	c.queue = nil
 	c.bytes = 0
 	c.snapshot = frames
@@ -719,7 +755,7 @@ func (s *game) checkpoint(c *connection, welcome *wire.Record, hold bool) bool {
 }
 func limit(fields []wire.Field, n uint32) int { v, _ := wire.Find(fields, n); return int(v.U) }
 func (s *game) checkpointDone(c *connection) {
-	if s.closed || c.closing {
+	if s.closed || !c.acceptsInput() {
 		return
 	}
 	ready := c.capturedReady
@@ -728,6 +764,9 @@ func (s *game) checkpointDone(c *connection) {
 	c.ready = ready
 	if !ready {
 		snapshot, err := s.state.Snapshot(s.gate.now())
+		if !c.acceptsInput() {
+			return
+		}
 		if err != nil {
 			s.fail(wire.CloseInternal)
 			return
@@ -741,7 +780,7 @@ func (s *game) checkpointDone(c *connection) {
 	owner, _ := s.attempts.Controller()
 	if owner == c.id || owner == 0 && c.mayAuto && c.mode == wire.ModeAct {
 		s.grant(c)
-		if s.closed {
+		if s.closed || !c.acceptsInput() {
 			return
 		}
 	}
@@ -749,7 +788,7 @@ func (s *game) checkpointDone(c *connection) {
 	s.commitReadyWitnesses()
 }
 func (s *game) grant(c *connection) {
-	if s.closed || c.closing {
+	if s.closed || !c.acceptsInput() {
 		return
 	}
 	old, _ := s.attempts.Controller()
@@ -774,7 +813,7 @@ func (s *game) grant(c *connection) {
 	s.send(c, control(wire.ControlGranted, grant.Epoch, grant.NextN))
 }
 func (s *game) receive(c *connection, r wire.Record) bool {
-	if s.closed || c.closing {
+	if s.closed || !c.acceptsInput() {
 		return false
 	}
 	if !c.hello {
@@ -843,11 +882,14 @@ func (s *game) receive(c *connection, r wire.Record) bool {
 		s.drop(c, wire.CloseFrameError)
 		return false
 	}
-	return !s.closed
+	return !s.closed && c.acceptsInput()
 }
 func (s *game) intent(c *connection, r wire.Record) {
+	if s.closed || !c.acceptsInput() {
+		return
+	}
 	s.expire()
-	if s.closed {
+	if s.closed || !c.acceptsInput() {
 		return
 	}
 	normalized := r
@@ -859,6 +901,9 @@ func (s *game) intent(c *connection, r wire.Record) {
 	}
 	if err != nil {
 		s.drop(c, wire.CloseFrameError)
+		return
+	}
+	if !c.acceptsInput() {
 		return
 	}
 	a := proto.Attempt{N: uintField(r, 1), Verb: uintField(r, 2), Control: uintField(r, 3), Payload: bytes, EncodedBytes: r.EncodedBytes}
@@ -873,7 +918,7 @@ func (s *game) intent(c *connection, r wire.Record) {
 		} else {
 			s.send(c, admission.Result.Record())
 		}
-		if s.closed {
+		if s.closed || !c.acceptsInput() {
 			return
 		}
 	}
@@ -991,6 +1036,9 @@ func (s *game) process(in input) {
 		s.drop(in.conn, reason)
 		return
 	}
+	if !in.conn.acceptsInput() {
+		return
+	}
 	if in.checkpoint != 0 {
 		if in.checkpoint == in.conn.generation {
 			s.checkpointDone(in.conn)
@@ -999,7 +1047,7 @@ func (s *game) process(in input) {
 	}
 	in.conn.receivedAt = in.received
 	for _, r := range in.records {
-		if s.closed {
+		if s.closed || !in.conn.acceptsInput() {
 			return
 		}
 		s.trace(in.conn, r, in.bytes, true)

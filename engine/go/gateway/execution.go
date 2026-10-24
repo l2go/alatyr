@@ -462,10 +462,13 @@ func (s *game) observe(update Update) bool {
 		if s.closed {
 			return false
 		}
-		if c.closing || !c.hello || c.ready {
+		if !c.acceptsInput() || !c.hello || c.ready {
 			continue
 		}
 		snapshot, err := s.state.Snapshot(s.gate.now())
+		if !c.acceptsInput() {
+			continue
+		}
 		if err != nil {
 			s.fail(wire.CloseInternal)
 			return false
@@ -475,11 +478,18 @@ func (s *game) observe(update Update) bool {
 			c.capturedReady = true
 			end := checkpoint(false, s.attempts.Projection(), true, nil)
 			raw, err := s.gate.cfg.Codec.Encode([]wire.Record{end})
+			if !c.acceptsInput() {
+				continue
+			}
 			if err != nil {
 				s.fail(wire.CloseInternal)
 				return false
 			}
 			c.mu.Lock()
+			if c.closed {
+				c.mu.Unlock()
+				continue
+			}
 			if len(raw) > s.gate.cfg.OutBytes-c.bytes-c.active {
 				c.mu.Unlock()
 				s.drop(c, wire.CloseSlowConsumer)
@@ -493,7 +503,7 @@ func (s *game) observe(update Update) bool {
 			c.mu.Unlock()
 			c.wake()
 		} else if snapshot.Ready && !c.transfer {
-			if !s.checkpoint(c, nil, false) {
+			if !s.checkpoint(c, nil, false) && s.closed {
 				return false
 			}
 		}
@@ -562,7 +572,7 @@ func (s *game) expire() {
 		if s.closed {
 			return
 		}
-		if c.closing {
+		if !c.acceptsInput() {
 			continue
 		}
 		if !c.hello {
@@ -575,6 +585,9 @@ func (s *game) expire() {
 			reason := wire.CloseSlowConsumer
 			if !c.ready {
 				snapshot, err := s.state.Snapshot(now)
+				if !c.acceptsInput() {
+					continue
+				}
 				if err != nil {
 					s.fail(wire.CloseInternal)
 					return
@@ -613,7 +626,7 @@ func (s *game) commitReadyWitnesses() {
 	owner, _ := s.attempts.Controller()
 	ready := false
 	for _, c := range s.connections() {
-		if c.id == owner && c.ready {
+		if c.id == owner && c.ready && c.acceptsInput() {
 			ready = true
 		}
 	}
