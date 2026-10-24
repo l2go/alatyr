@@ -14,17 +14,21 @@ check concrete step values and return errors, not panic.
 
 `Input` comes only from a trusted backend adapter. `Event.MS` keeps the original
 fact time; `ReceivedAt` is gateway-relative backend receipt time. Proposal expiry
-uses that receipt, so delayed processing and snapshots cannot renew a handle.
+uses that receipt or a conservative original `ProposalBorn`, so delayed
+processing and recovery snapshots cannot renew a handle. `Incomplete` revokes
+domain completeness rather than turning missing lists into known-empty lists.
 Refs and proposal handles are never reused within their owner's lifetime.
 Unknown lists remain nil; known-empty lists stay empty; a nil stat remains
 distinct from a known zero. Snapshots and proofs own their returned records.
 
 `Source` is an audited producer assertion, not participant configuration. Its
 zero value grants no causal authority. Positive dialogue, pickup, learning, and
-return evidence also requires a matching effect completion supplied by the
-trusted adapter. Return proof retains an actual live revival, not a fabricated
-snapshot outcome. Raw receipt matching, readiness fences, and participant result
-ordering belong to the later world-port integration, not to this library change.
+return evidence also requires an attributable handoff supplied by the trusted
+adapter. Dialogue, pickup, and learning require matching effect completion;
+return accepts `Returned` only for the handed-off rise attempt because raw rise
+does not report Done. Return proof retains an actual live revival, not a
+fabricated snapshot outcome. Raw receipt matching and readiness fences belong
+to [backend](../backend/README.md); the runtime orders participant records.
 
 All 11 gateway State methods remain. Start, Confirmed, Witness, and CandidateValid
 return errors for foreign, nil, or wrong-owner action values; Witness also rejects
@@ -43,6 +47,6 @@ GOWORK=off go test -run='^$' -fuzz='^FuzzDecodeMeaning$' -fuzztime=10s -parallel
 
 Conformance reads the unchanged V01-V28 fixture from the exact published protocol
 snapshot. Missing or changed fixtures fail the check; there is no fallback copy.
-The package adds no module dependency or running backend.
+The package imports no bridge or running backend.
 
 License: [AGPL-3.0-or-later](../LICENSE).

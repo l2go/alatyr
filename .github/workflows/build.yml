@@ -150,7 +150,11 @@ jobs:
           printf '%s\n' \
             'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0 h1:rMwRQ7Ky/sqoadBzm0G8x1JznT9qSwVIoEIzajZFh/A=' \
             'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/bridge/go.sum
-          cmp engine/go/bridge/go.sum engine/go/gateway/go.sum
+          printf '%s\n' \
+            'github.com/l2go/alatyr/engine/go/bridge v0.0.0-20261023154142-3ca081d3eba3 h1:LRzxspRJVPH2PA41S5T7tOP2twSG5XHhiKT1hEWiLU0=' \
+            'github.com/l2go/alatyr/engine/go/bridge v0.0.0-20261023154142-3ca081d3eba3/go.mod h1:t3Hi0p9gtFt9mKgVtKfDPJqdCbvXBEBplVfm5EQp4v8=' \
+            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0 h1:rMwRQ7Ky/sqoadBzm0G8x1JznT9qSwVIoEIzajZFh/A=' \
+            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/gateway/go.sum
 
       - name: Vet and test the boundary checker
         env:
@@ -259,6 +263,18 @@ jobs:
             go test -run='^$' -fuzz="^$target$" -fuzztime=5s -parallel=1 -timeout=2m .
           done
 
+      - name: Check raw adapter fuzzing readiness
+        # The seed corpus runs with the tests of every pull request; the search for new inputs runs on main.
+        if: github.event_name != 'pull_request'
+        working-directory: engine/go/gateway
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          targets="$(go test -list '^FuzzRawEvent$' ./backend)"
+          printf '%s\n' "$targets" | grep -Fxq FuzzRawEvent
+          go test -run='^$' -fuzz='^FuzzRawEvent$' -fuzztime=5s -parallel=1 -timeout=2m ./backend
+
       - name: Check world translation fuzzing readiness
         # The seed corpus runs with the tests of every pull request; the search for new inputs runs on main.
         if: github.event_name != 'pull_request'
@@ -284,7 +300,11 @@ jobs:
           printf '%s\n' \
             'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0 h1:rMwRQ7Ky/sqoadBzm0G8x1JznT9qSwVIoEIzajZFh/A=' \
             'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/bridge/go.sum
-          cmp engine/go/bridge/go.sum engine/go/gateway/go.sum
+          printf '%s\n' \
+            'github.com/l2go/alatyr/engine/go/bridge v0.0.0-20261023154142-3ca081d3eba3 h1:LRzxspRJVPH2PA41S5T7tOP2twSG5XHhiKT1hEWiLU0=' \
+            'github.com/l2go/alatyr/engine/go/bridge v0.0.0-20261023154142-3ca081d3eba3/go.mod h1:t3Hi0p9gtFt9mKgVtKfDPJqdCbvXBEBplVfm5EQp4v8=' \
+            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0 h1:rMwRQ7Ky/sqoadBzm0G8x1JznT9qSwVIoEIzajZFh/A=' \
+            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/gateway/go.sum
 
   # Formats, vets, and tests the world tool, then checks that the authored world matches a fresh render.
   # It does not build the server and runs beside the Java build.

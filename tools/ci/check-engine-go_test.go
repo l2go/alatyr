@@ -493,3 +493,60 @@ func TestWorldBridgeDependencyPins(t *testing.T) {
 		})
 	}
 }
+
+func gatewayModule(t *testing.T, root string, p *policy) modulePolicy {
+	t.Helper()
+	m := activeModule(t, p, "gateway")
+	writeFixture(t, root, "engine/go/gateway/go.mod", "module "+modulePrefix+"gateway\n\ngo "+goVersion+"\nrequire (\n"+modulePrefix+"bridge v0.0.0-20261023154142-3ca081d3eba3\n"+modulePrefix+"protocol v0.0.0-20261023084050-3b52c8d267a0\n)\n")
+	return m
+}
+
+func TestGatewayDependencyDirection(t *testing.T) {
+	for _, tc := range []struct {
+		path, body string
+		accepted   bool
+	}{
+		{"root.go", "package gateway\nimport _ \"" + modulePrefix + "protocol\"\n", true},
+		{"meaning/probe.go", "package meaning\nimport _ \"" + modulePrefix + "gateway\"\n", true},
+		{"backend/probe.go", "package backend\nimport _ \"" + modulePrefix + "bridge\"\n", true},
+		{"root.go", "package gateway\nimport _ \"" + modulePrefix + "bridge\"\n", false},
+		{"meaning/probe.go", "package meaning\nimport _ \"" + modulePrefix + "bridge\"\n", false},
+		{"meaning/probe.go", "package meaning\nimport _ \"" + modulePrefix + "gateway/fixture\"\n", false},
+		{"backend/probe.go", "package backend\nimport _ \"" + modulePrefix + "gateway/gatewaytest\"\n", false},
+		{"backend/probe.go", "package backend\nimport _ \"" + modulePrefix + "gateway/fixture\"\n", false},
+		{"fixture/probe.go", "package fixture\nimport _ \"" + modulePrefix + "gateway/meaning\"\n", false},
+		{"backend/probe.go", "package backend\nimport _ \"" + modulePrefix + "world\"\n", false},
+		{"backend/probe_test.go", "package backend\nimport _ \"example.org/foreign\"\n", false},
+		{"tagged.go", "//go:build never_enabled\n\npackage gateway\nimport _ \"" + modulePrefix + "gateway/meaning\"\n", false},
+	} {
+		t.Run(tc.path+fmt.Sprint(tc.accepted), func(t *testing.T) {
+			root, p := fixture(t)
+			m := gatewayModule(t, root, &p)
+			writeFixture(t, root, "engine/go/gateway/"+tc.path, source("AGPL-3.0-or-later", tc.body))
+			err := checkGatewayDeps(root, m)
+			if tc.accepted {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				expectRule(t, err, "I-3")
+			}
+		})
+	}
+}
+
+func TestGatewayDependencyPins(t *testing.T) {
+	for _, directive := range []string{"replace " + modulePrefix + "bridge => ../bridge", "exclude " + modulePrefix + "protocol v0.0.0-20261023084050-3b52c8d267a0", "tool example.org/foreign/cmd/tool", "require example.org/foreign v1.0.0"} {
+		t.Run(strings.Fields(directive)[0], func(t *testing.T) {
+			root, p := fixture(t)
+			m := gatewayModule(t, root, &p)
+			path := filepath.Join(root, "engine/go/gateway/go.mod")
+			b, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeFixture(t, root, "engine/go/gateway/go.mod", string(b)+directive+"\n")
+			expectRule(t, checkGatewayDeps(root, m), "I-3")
+		})
+	}
+}

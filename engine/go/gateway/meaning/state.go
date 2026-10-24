@@ -31,6 +31,9 @@ type Input struct {
 	Event Event
 	// Complete identifies explicitly completed projection domains.
 	Complete []string
+	// Incomplete revokes explicitly lost projection completeness. It also
+	// disqualifies pending learning baselines in the self or skills domains.
+	Incomplete []string
 	// Source is supplied by an audited backend, never taken from a participant.
 	Source Source
 	// ReceivedAt is the backend receive time in gateway-relative milliseconds.
@@ -39,6 +42,12 @@ type Input struct {
 	// Completed is the participant attempt whose matching effect receipt was
 	// validated by the trusted adapter. Zero supplies no delivery evidence.
 	Completed uint64
+	// Returned binds an audited return relocation to a handed-off rise attempt.
+	// Unlike Completed, it does not assert a raw done receipt: rise has none.
+	Returned uint64
+	// ProposalBorn optionally supplies a conservative original proposal birth.
+	// It never replaces the live receive time used for witness eligibility.
+	ProposalBorn *int64
 }
 
 // Operation is the default captured backend step. Selection is a target helper,
@@ -56,6 +65,7 @@ type planned struct {
 	baselineLevel                  *int64
 	baselineSkill                  int32
 	eligible, relocated, completed bool
+	returned                       bool
 	started                        bool
 	owner                          *State
 	riseProof                      wire.Record
@@ -142,6 +152,19 @@ func (s *State) Apply(update gateway.Update, now int64) (gateway.Observation, er
 	if input.ReceivedAt < 0 || input.ReceivedAt > now {
 		return gateway.Observation{}, wire.ErrFrame
 	}
+	for _, domain := range input.Incomplete {
+		switch domain {
+		case "objects", "self", "inventory", "quests", "skills", "trade", "dialogue", "history":
+			s.complete[domain] = false
+			if domain == "self" || domain == "skills" {
+				for _, p := range s.plans {
+					p.eligible = false
+				}
+			}
+		default:
+			return gateway.Observation{}, wire.ErrFrame
+		}
+	}
 	for _, domain := range input.Complete {
 		switch domain {
 		case "objects", "self", "inventory", "quests", "skills", "trade", "dialogue", "history":
@@ -162,7 +185,14 @@ func (s *State) Apply(update gateway.Update, now int64) (gateway.Observation, er
 	ctx := s.context(e)
 	ctx.Ref, ctx.Target = id, target
 	if e.Kind == Spoke || e.Kind == Shop || e.Kind == Offer || e.Kind == Practice {
-		ctx, err = s.proposals.Capture(e, id, input.Event.Complete || e.Kind == Spoke, input.ReceivedAt)
+		born := input.ReceivedAt
+		if input.ProposalBorn != nil {
+			born = *input.ProposalBorn
+			if born < 0 || born > input.ReceivedAt {
+				return gateway.Observation{}, wire.ErrFrame
+			}
+		}
+		ctx, err = s.proposals.Capture(e, id, input.Event.Complete || e.Kind == Spoke, born)
 		if err != nil {
 			return gateway.Observation{}, err
 		}
@@ -551,7 +581,8 @@ func (s *State) Confirmed(a *gateway.Action) (bool, error) {
 }
 
 // Witness is called for eligible actions on a live observation. Only audited
-// producers and matching effect receipts grant causal authority.
+// producers and matching effect receipts grant causal authority. Rise instead
+// requires an attributable handed-off return, a live revival, and checkpoint drain.
 // Foreign Action or Update values return ErrValue; the runtime closes the
 // participant with an internal reason without logging values or error text.
 // Invalid live revival shapes or bounds return a codec error with the same close policy.
@@ -588,6 +619,7 @@ func (s *State) Witness(a *gateway.Action, u gateway.Update) (gateway.Witness, e
 	case Rise:
 		if u.Relocate {
 			p.relocated = input.Source.Return
+			p.returned = input.Returned != 0 && input.Returned == getU(p.record.Fields, 1)
 			p.riseProof = wire.Record{}
 		}
 		if e.Kind == Died && e.ID == s.self {
@@ -602,7 +634,7 @@ func (s *State) Witness(a *gateway.Action, u gateway.Update) (gateway.Witness, e
 				return gateway.WitnessNone, err
 			}
 			p.riseProof = cloneRecord(proof)
-			if p.completed {
+			if p.completed || p.returned {
 				return gateway.WitnessMatch, nil
 			}
 		}
@@ -620,7 +652,7 @@ func (s *State) CandidateValid(a *gateway.Action) (bool, error) {
 	}
 	if a.AfterCheckpoint {
 		_, exists := s.actors[s.self]
-		return p.relocated && p.completed && p.riseProof.Type == wire.Fact && exists && !s.dead[s.self], nil
+		return p.relocated && (p.completed || p.returned) && p.riseProof.Type == wire.Fact && exists && !s.dead[s.self], nil
 	}
 	stats := s.vitals[s.self]
 	return p.completed && p.eligible && p.baselineLevel != nil && stats != nil && stats.Level != nil && *stats.Level == *p.baselineLevel && int64(s.known[p.plan.Command.Item].Level) >= p.plan.Command.Count, nil

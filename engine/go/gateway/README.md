@@ -24,11 +24,28 @@ errors. The runtime closes the participant with an internal reason and does not
 log the value or error text.
 Numeric status and journal APIs cannot retain identity strings or frame content.
 
-The module is a library, not a running server. It imports only the pinned
-protocol module and the standard library. The [meaning](meaning/README.md)
-subpackage supplies the fixed `alatyr/1` dictionary and bounded State. A raw world-port
-adapter, backend contract harness, executable, and end-to-end Java verification
-are separate changes. No backend is opened until the caller binds a participant.
+The module is a library, not a running server. The root runtime imports only the
+protocol module and the standard library. [meaning](meaning/README.md) supplies
+the fixed `alatyr/1` dictionary and bounded State. [backend](backend/README.md)
+adapts an opened `bridge.Port` and its ready snapshot to that runtime;
+[fixture](fixture) supplies a scripted raw port, and
+[gatewaytest](gatewaytest/README.md) drives the actual participant boundary.
+The module pins bridge and protocol without replacements. An executable and
+end-to-end Java verification remain separate changes.
+
+The adapter binds participant attempt, step index, helper/effect/system role,
+command key, and raw attempt before accepting a receipt. Raw Done is not a
+participant outcome. Facts retain receive order and precede their results;
+asynchronous refusal also works without a Fact. The original contact, deadline,
+and shrinking queue budget are not renewed by delayed processing or recovery.
+Relocation fences invalidate old references. A live revival is held until raw
+readiness and participant checkpoint drain, then released once; a timeout cannot
+reopen a terminal attempt.
+
+Detach ends a participant scope without closing its retained raw session. Its
+owner must explicitly Resume within the original retention budget or Close it.
+Recovery creates a fresh participant scope while retaining raw keys and reference
+counters. Cached receipts never create a new outcome or replay a command.
 
 From this directory, run standalone checks with:
 
@@ -38,7 +55,7 @@ GOWORK=off go test -race -count=1 -timeout=2m ./...
 ```
 
 CI also checks formatting, vulnerabilities, dependency boundaries, and bounded
-native fuzzing of the dictionary and stream and WebSocket framing. Core conformance vectors remain
+native fuzzing of raw event translation, the dictionary, and transport framing. Core conformance vectors remain
 owned by the protocol module; the gateway does not implement another record codec.
 
 See [Go components](../../../docs/engine-go/README.md).

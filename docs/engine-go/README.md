@@ -7,7 +7,7 @@ features to move to Go incrementally behind a stable participant interface.
 | Module | Status and responsibility | License |
 |---|---|---|
 | [protocol](../../engine/go/protocol/README.md) | Active transport and session core; a client SDK is planned separately | [Apache-2.0](../../engine/go/protocol/LICENSE) |
-| [gateway](../../engine/go/gateway/README.md) | Bounded participant-session runtime with injected world and dictionary policy | [AGPL-3.0-or-later](../../engine/go/gateway/LICENSE) |
+| [gateway](../../engine/go/gateway/README.md) | Bounded participant runtime, `alatyr/1` dictionary, raw-port adapter, and shared contract driver | [AGPL-3.0-or-later](../../engine/go/gateway/LICENSE) |
 | [bridge](../../engine/go/bridge/README.md) | Bounded world client, profile validation, recovery, and raw receipts; joint endpoint scenarios follow separately | [AGPL-3.0-or-later](../../engine/go/bridge/LICENSE) |
 | [world](../../engine/go/world/README.md) | Ready-character entry, movement, persistence and authored stat content | [AGPL-3.0-or-later](../../engine/go/world/LICENSE) |
 | [worldbridge](../../engine/go/worldbridge/README.md) | Go-world raw port with source-owned facts, receipts, bounded recovery and departure | [AGPL-3.0-or-later](../../engine/go/worldbridge/LICENSE) |

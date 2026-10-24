@@ -216,6 +216,11 @@ func checkTree(root string, p policy) error {
 				return err
 			}
 		}
+		if m.Package == "gateway" {
+			if err := checkGatewayDeps(root, m); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -475,21 +480,57 @@ func checkProtocolDeps(root string, m modulePolicy) error {
 // checkWorldBridgeDeps enforces the adapter's direction for every source file,
 // including tests and disabled build constraints, and for the resolved graph.
 func checkWorldBridgeDeps(root string, m modulePolicy) error {
+	return checkAdapterDeps(root, m, map[string]string{
+		modulePrefix + "bridge":   "v0.0.0-20261023154142-3ca081d3eba3",
+		modulePrefix + "protocol": "v0.0.0-20261023084050-3b52c8d267a0",
+		modulePrefix + "world":    "v0.0.0-20261023214742-fbe46cd27dca",
+	}, nil)
+}
+
+func checkGatewayDeps(root string, m modulePolicy) error {
+	return checkAdapterDeps(root, m, map[string]string{
+		modulePrefix + "bridge":   "v0.0.0-20261023154142-3ca081d3eba3",
+		modulePrefix + "protocol": "v0.0.0-20261023084050-3b52c8d267a0",
+	}, func(path, imp string) bool {
+		rel, err := filepath.Rel(filepath.Join(root, m.Path), path)
+		if err != nil {
+			return false
+		}
+		switch filepath.ToSlash(filepath.Dir(rel)) {
+		case ".":
+			return !strings.HasPrefix(imp, m.Module+"/") && imp != modulePrefix+"bridge" && !strings.HasPrefix(imp, modulePrefix+"bridge/")
+		case "meaning":
+			return !strings.HasPrefix(imp, modulePrefix) || imp == m.Module || imp == m.Module+"/meaning" || imp == modulePrefix+"protocol" || strings.HasPrefix(imp, modulePrefix+"protocol/")
+		case "backend":
+			if imp == m.Module+"/fixture" || imp == m.Module+"/gatewaytest" {
+				// Adapter tests exercise its consumers; production does not
+				// depend on a fixture or the participant test driver.
+				return strings.HasSuffix(path, "_test.go")
+			}
+			return !strings.HasPrefix(imp, m.Module+"/") || imp == m.Module+"/meaning" || imp == m.Module+"/backend"
+		case "fixture":
+			// External examples may import the fixture itself, but never the
+			// runtime, dictionary, or adapter that consumes it.
+			return imp == m.Module+"/fixture" || imp != m.Module && !strings.HasPrefix(imp, m.Module+"/")
+		}
+		return true
+	})
+}
+
+func checkAdapterDeps(root string, m modulePolicy, pins map[string]string, edge func(string, string) bool) error {
 	if m.Phase == "scaffold" {
 		return nil
 	}
 	dir := filepath.Join(root, m.Path)
-	pins := map[string]string{
-		modulePrefix + "bridge":   "v0.0.0-20261023154142-3ca081d3eba3",
-		modulePrefix + "protocol": "v0.0.0-20261023084050-3b52c8d267a0",
-		modulePrefix + "world":    "v0.0.0-20261023214742-fbe46cd27dca",
-	}
 	data, err := goCommand(dir, "off", "mod", "edit", "-json")
 	if err != nil {
 		return errors.New("I-3: cannot read adapter dependencies")
 	}
 	var mod struct {
-		Require                []struct{ Path, Version string }
+		Require []struct {
+			Path, Version string
+			Indirect      bool
+		}
 		Replace, Exclude, Tool []json.RawMessage
 	}
 	if json.Unmarshal(data, &mod) != nil || len(mod.Require) != len(pins) || len(mod.Replace)+len(mod.Exclude)+len(mod.Tool) != 0 {
@@ -497,7 +538,7 @@ func checkWorldBridgeDeps(root string, m modulePolicy) error {
 	}
 	seen := make(map[string]bool, len(pins))
 	for _, req := range mod.Require {
-		if seen[req.Path] || pins[req.Path] != req.Version || req.Version == "" {
+		if seen[req.Path] || pins[req.Path] != req.Version || req.Version == "" || req.Indirect {
 			return errors.New("I-3: unpinned adapter dependency")
 		}
 		seen[req.Path] = true
@@ -528,8 +569,8 @@ func checkWorldBridgeDeps(root string, m modulePolicy) error {
 			return errors.New("I-3: invalid adapter source")
 		}
 		for _, imp := range file.Imports {
-			path, err := strconv.Unquote(imp.Path.Value)
-			if err != nil || !allowed(path) {
+			importPath, err := strconv.Unquote(imp.Path.Value)
+			if err != nil || !allowed(importPath) || edge != nil && !edge(path, importPath) {
 				return errors.New("I-3: import outside adapter boundary")
 			}
 		}
