@@ -18,19 +18,21 @@ import com.l2jfree.gameserver.bridge.wire.Codec;
 class BridgeCloseOutputModelTest
 {
 	private enum Event { TRUE, FALSE, THROW, BEGIN, END, DEADLINE, EOF1, EOF2, CLOSE1, CLOSE2,
-		SHUTDOWN, REPEAT, RELEASE, CHECKPOINT, FACT, BUDGET_END, FRAME2, ADVANCE_SAVE_CLOCK, SAVE_END }
+		SHUTDOWN, REPEAT, RELEASE, CHECKPOINT, FACT, BUDGET_END, FRAME2, ADVANCE_SAVE_CLOCK, SAVE_END,
+		DROP2_LOST, DROP2_FINISH }
 	private static final byte[] FULL = new byte[BridgeLoopback.OUT_QUEUE_BYTES];
 	private static final byte[] OLD = { 1 };
 	private static final byte[] SNAPSHOT = { 2 };
 	private static final byte[] FACT = { 3 };
-	private static final BridgeCheckpointOutput PRODUCER = mock(BridgeCheckpointOutput.class);
+	private static final BridgeCheckpointOutput PRODUCER = mock(BridgeCheckpointOutput.class,
+			org.mockito.Mockito.withSettings().stubOnly());
 	private static final BridgeLoopback LOOP = mock(BridgeLoopback.class);
 
 	@Test
 	void enumerateCloseOutputDeadlineShutdownAndCheckpointOrders()
 	{
 		Set<String> visited = new HashSet<>();
-		for (boolean full : new boolean[] { false, true })
+		for (int full : new int[] { 0, 1, 2 })
 			explore(new ArrayList<>(), 0, full, visited);
 		assertTrue(visited.size() > 1000, "The event cross-product must actually be explored");
 	}
@@ -98,7 +100,35 @@ class BridgeCloseOutputModelTest
 		assertTrue(state.firstBudget - state.now > 0);
 	}
 
-	private static void explore(List<Event> trace, int used, boolean full, Set<String> visited)
+	@Test
+	void shutdownCannotStopInsideTheLostToFallbackMicrostep()
+	{
+		List<Event> trace = List.of(Event.TRUE, Event.DROP2_LOST, Event.SHUTDOWN);
+		State actual = replay(trace, false);
+		actual.check(trace);
+		assertFalse(actual.stopped);
+		actual.drain(trace);
+		assertEquals(1, actual.byes);
+
+		State mutant = new State(false);
+		mutant.ignoreUnsettledDelivery = true;
+		for (Event event : trace) mutant.apply(event);
+		assertTrue(mutant.stopped);
+		assertThrows(AssertionError.class, () -> mutant.check(trace));
+	}
+
+	@Test
+	void aFullCheckpointTailHasAWritableTerminalContinuation()
+	{
+		State state = new State(2);
+		state.apply(Event.TRUE);
+		assertEquals(1, state.recipient);
+		state.drain(List.of(Event.TRUE));
+		assertEquals(1, state.byes);
+		assertEquals(0, state.sockets[1].held);
+	}
+
+	private static void explore(List<Event> trace, int used, int full, Set<String> visited)
 	{
 		State state = replay(trace, full);
 		String key = full + ":" + used + ":" + state.key();
@@ -119,6 +149,11 @@ class BridgeCloseOutputModelTest
 
 	private static State replay(List<Event> trace, boolean full)
 	{
+		return replay(trace, full ? 1 : 0);
+	}
+
+	private static State replay(List<Event> trace, int full)
+	{
 		State state = new State(full);
 		for (Event event : trace) state.apply(event);
 		return state;
@@ -134,14 +169,26 @@ class BridgeCloseOutputModelTest
 		int outcome, recipient = -1, preferred = 1, writer = -1, byes, lastSeq;
 		boolean released, captured, snapshotPending, stopped, lateSuccess, notified;
 		boolean renewBudgetOnReplyLoss;
+		boolean dropPending, ignoreUnsettledDelivery;
 
 		State(boolean full)
+		{
+			this(full ? 1 : 0);
+		}
+
+		State(int full)
 		{
 			owner.sessionTransports.add(sockets[1]);
 			owner.saveDeadline = 10;
 			owner.closeReplyTransport = sockets[1];
 			for (var t : sockets) { t.awaitingResult = true; t.resultDeadline = 10; }
-			if (full) { sockets[1].queued.add(FULL); sockets[1].held = FULL.length; }
+			if (full == 1) { sockets[1].queued.add(FULL); sockets[1].held = FULL.length; }
+			if (full == 2)
+			{
+				sockets[0].lost = true; owner.sessionTransports.remove(sockets[0]);
+				sockets[1].checkpoint = PRODUCER;
+				sockets[1].afterCheckpoint.add(FULL); sockets[1].held = FULL.length;
+			}
 		}
 
 		boolean admits(Event e)
@@ -157,6 +204,8 @@ class BridgeCloseOutputModelTest
 				case RELEASE -> outcome == 0 && !captured && !sockets[0].lost;
 				case CHECKPOINT -> released && outcome == 0 && !sockets[0].lost;
 				case FACT -> captured && outcome == 0 && !sockets[0].lost;
+				case DROP2_LOST -> !dropPending && !sockets[1].lost && !stopped;
+				case DROP2_FINISH -> dropPending;
 				default -> !stopped;
 			};
 		}
@@ -202,6 +251,12 @@ class BridgeCloseOutputModelTest
 					if (n == 1 && renewBudgetOnReplyLoss) owner.saveDeadline = now + 30;
 					if (recipient == n && !sockets[n].saveReplyStarted) { recipient = -1; claim(); }
 				}
+				case DROP2_LOST -> { sockets[1].lost = true; dropPending = true; }
+				case DROP2_FINISH ->
+				{
+					owner.sessionTransports.remove(sockets[1]); dropPending = false;
+					if (recipient == 1 && !sockets[1].saveReplyStarted) { recipient = -1; claim(); }
+				}
 				case CLOSE1 -> { preferred = 0; owner.closeReplyTransport = sockets[0]; }
 				case CLOSE2 -> { preferred = 1; owner.closeReplyTransport = sockets[1]; }
 				case SHUTDOWN, REPEAT ->
@@ -230,7 +285,7 @@ class BridgeCloseOutputModelTest
 						var t = sockets[n];
 						if (t.lost) continue;
 						BridgeLoopback.applyOutputFlags(t);
-						if (n == 0 && snapshotPending)
+						if (n == 0 && snapshotPending && !t.closing)
 						{
 							t.queued.add(SNAPSHOT); t.held++; snapshotPending = false;
 							t.checkpoint = null;
@@ -266,6 +321,7 @@ class BridgeCloseOutputModelTest
 				}
 			}
 			boolean drained = outcome != 0 && Arrays.stream(sockets).allMatch(t -> t.lost || BridgeLoopback.outputDrained(t));
+			synchronized (owner) { if (!ignoreUnsettledDelivery && owner.closeDeliveryPending()) drained = false; }
 			if (firstBudget != 0) stopped = BridgeShutdownBudget.canStop(now,
 					BridgeLoopback.shutdownSaveEnd(firstBudget, 12), drained);
 		}
@@ -279,6 +335,11 @@ class BridgeCloseOutputModelTest
 		void check(List<Event> trace)
 		{
 			assertEquals(10, owner.saveDeadline, "Session result deadline changed: " + trace);
+			synchronized (owner)
+			{
+				if (firstBudget != 0 && now < BridgeLoopback.shutdownSaveEnd(firstBudget, 12) && owner.closeDeliveryPending())
+					assertFalse(stopped, "Shutdown stopped before delivery settled: " + trace);
+			}
 			assertTrue(byes <= 1, trace.toString());
 			if (lateSuccess) assertEquals(2, outcome, trace.toString());
 			for (var t : sockets)
@@ -296,6 +357,7 @@ class BridgeCloseOutputModelTest
 
 		void drain(List<Event> trace)
 		{
+			if (dropPending) apply(Event.DROP2_FINISH);
 			// Fair writable continuation of every prefix. This detects lost pending Bye
 			// and sequence regressions even when the bounded prefix ends inside write.
 			for (int turn = 0; turn < 8; turn++)
@@ -315,7 +377,7 @@ class BridgeCloseOutputModelTest
 		{
 			StringBuilder b = new StringBuilder(now + ":" + outcome + ":" + recipient + ":" + writer + ":"
 					+ byes + ":" + lastSeq + ":" + firstBudget + ":" + snapshotPending + ":" + preferred
-					+ ":" + notified + ":" + released + ":" + captured + ":" + stopped + ":" + lateSuccess);
+					+ ":" + notified + ":" + released + ":" + captured + ":" + stopped + ":" + lateSuccess + ":" + dropPending);
 			for (var t : sockets)
 			{
 				b.append(':').append(t.lost).append(':').append(t.held).append(':').append(t.terminalReply != null);

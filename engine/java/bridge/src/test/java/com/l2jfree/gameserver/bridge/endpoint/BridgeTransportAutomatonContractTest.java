@@ -101,8 +101,8 @@ class BridgeTransportAutomatonContractTest
 		assertThat(capture.indexOf("releaseAfterCheckpointCount =")).isLessThan(capture.indexOf("current.checkpoint = new"));
 		assertThat(method(source, "void close(long budgetMs)")).contains("shutdownBudget.claim(", "shutdownBudget.deadline()", "BridgeShutdownBudget.canStop(");
 		assertThat(method(source, "void close(long budgetMs)")).contains("saveEnd, disconnectsFinished() && shutdownOutputDrained()");
-		assertThat(method(source, "boolean shutdownOutputDrained()")).contains("registered.values()").doesNotContain("selector.keys()");
-		assertThat(method(source, "boolean shutdownOutputDrained()")).contains("ownerOf(source)", "synchronized (owner)", "owner.saveNotification.get()", "owner.sessionTransports");
+		assertThat(method(source, "boolean shutdownOutputDrainedChecked()")).contains("registered.values()").doesNotContain("selector.keys()");
+		assertThat(method(source, "boolean shutdownOutputDrainedChecked()")).contains("ownerOf(source)", "synchronized (owner)", "owner.saveNotification.get()", "owner.sessionTransports", "owner.closeDeliveryPending()");
 		assertThat(method(source, "boolean transportOutputDrained(")).contains("synchronized (source)", "source.cancelRecords", "outputDrained(source)");
 	}
 }

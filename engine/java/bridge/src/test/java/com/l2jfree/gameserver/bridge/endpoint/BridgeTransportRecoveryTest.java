@@ -703,6 +703,10 @@ class BridgeTransportRecoveryTest
 		var saving = new CountDownLatch(1);
 		var release = new CountDownLatch(1);
 		var waiting = new CountDownLatch(1);
+		var selectorHeld = new CountDownLatch(1);
+		var releaseSelector = new CountDownLatch(1);
+		var pendingOutputObserved = new CountDownLatch(1);
+		var holdOnce = new java.util.concurrent.atomic.AtomicBoolean();
 		try (Fixture fixture = new Fixture(20035); Connected connected = new Connected(fixture))
 		{
 			fixture.loop.watch(fixture.client);
@@ -713,13 +717,32 @@ class BridgeTransportRecoveryTest
 				return !outcome.equals("false");
 			}).when(fixture.player).store(true, true);
 			fixture.loop.holdShutdown(deadline -> waiting.countDown(), null);
+			fixture.loop.holdTransportLifecycle(source ->
+			{
+				if (source == fixture.first && saving.getCount() == 0 && holdOnce.compareAndSet(false, true))
+				{
+					selectorHeld.countDown(); awaitLatch(releaseSelector);
+				}
+			}, null, drained ->
+			{
+				assertThat(drained).as("finished save is not drained while selector is held before output").isFalse();
+				pendingOutputObserved.countDown();
+			});
 			fixture.client.requestBridgeDisconnect();
 			assertThat(saving.await(5, TimeUnit.SECONDS)).isTrue();
+			fixture.loop.executeOnSelectorForTest(() -> { }); // Wake S into its real control pass.
+			assertThat(selectorHeld.await(5, TimeUnit.SECONDS)).isTrue();
 			var finished = closeAsync(fixture.loop, 2000);
 			try
 			{
 				assertThat(waiting.await(5, TimeUnit.SECONDS)).isTrue();
 				release.countDown();
+				awaitCondition(fixture.client::isBridgeDisconnectFinished);
+				assertThat(pendingOutputObserved.await(5, TimeUnit.SECONDS)).isTrue();
+				assertThat(fixture.loop.alive()).as("H must not set stopping in the finished-but-undrained window").isTrue();
+				assertThat(finished.isDone()).isFalse();
+				fixture.loop.holdTransportLifecycle(null, null, null);
+				releaseSelector.countDown();
 				connected.peer.socket().setSoTimeout(2000);
 				var input = connected.peer.socket().getInputStream();
 				var reply = Codec.bridge().read(input);
@@ -735,7 +758,7 @@ class BridgeTransportRecoveryTest
 				barrier(fixture.client);
 				verify(fixture.player).store(true, true); verify(fixture.player).deleteMe();
 			}
-			finally { release.countDown(); finished.get(5, TimeUnit.SECONDS); }
+			finally { release.countDown(); releaseSelector.countDown(); finished.get(5, TimeUnit.SECONDS); }
 		}
 	}
 
@@ -785,6 +808,330 @@ class BridgeTransportRecoveryTest
 		}
 	}
 
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "saved", "false", "throw", "frame", "slow" })
+	void aFullCheckpointTailCannotPinTheTerminalReply(String outcome) throws Exception
+	{
+		try (Fixture fixture = new Fixture(20037))
+		{
+			fixture.open();
+			fixture.owner.detach(fixture.first);
+			var replacement = new BridgeLoopback.Transport(new byte[32]);
+			fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+			barrier(fixture.client);
+			assertThat(replacement.checkpoint).isNotNull();
+			assertThat(fixture.first.lost).isTrue();
+			ByteArrayOutputStream encoded = new ByteArrayOutputStream();
+			Codec.bridge().write(encoded, List.of(BridgeFrames.pong(1)));
+			int frameBytes = encoded.size();
+			// Borrow an ordinary frame through a real selector dispatch; a zero write retains its exact tail.
+			byte[] ordinary = encoded.toByteArray();
+			var bytes = new ByteArrayOutputStream();
+			SocketChannel socket = mock(SocketChannel.class);
+			when(socket.write(any(ByteBuffer.class))).thenReturn(0);
+			BridgeLoopback.offer(replacement, ordinary);
+			fixture.loop.executeOnSelectorForTest(() ->
+			{
+				try { assertThat(BridgeLoopback.flush(replacement, socket)).isZero(); }
+				catch (java.io.IOException e) { throw new AssertionError(e); }
+			}).get(5, TimeUnit.SECONDS);
+			assertThat(replacement.writing).isSameAs(ordinary);
+			fixture.owner.sink.deliver(new UserInfo(fixture.player), fixture.player);
+			int factBytes = replacement.afterCheckpoint.peekLast().length;
+			while (replacement.held <= BridgeLoopback.OUT_QUEUE_BYTES - factBytes - 16)
+				fixture.owner.sink.deliver(new UserInfo(fixture.player), fixture.player);
+			while (replacement.held <= BridgeLoopback.OUT_QUEUE_BYTES - frameBytes)
+				fixture.owner.publish(List.of(BridgeFrames.pong(1)));
+			ByteArrayOutputStream bye = new ByteArrayOutputStream();
+			Codec.bridge().write(bye, List.of(BridgeFrames.bye(BridgeFrames.BYE_NORMAL)));
+			assertThat(BridgeLoopback.OUT_QUEUE_BYTES - replacement.held).isLessThan(bye.size());
+			assertThat(replacement.afterCheckpoint).isNotEmpty();
+			assertThat(Codec.bridge().read(new ByteArrayInputStream(replacement.afterCheckpoint.peekFirst())).getFirst().type())
+					.isEqualTo(Schemas.FACT);
+			assertExactHeld(replacement);
+			doAnswer(call ->
+			{
+				if (outcome.equals("throw")) throw new IllegalStateException("save fixture");
+				return !outcome.equals("false");
+			}).when(fixture.player).store(true, true);
+			if (outcome.equals("frame"))
+				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 3)));
+			else if (outcome.equals("slow"))
+				BridgeLoopback.offer(replacement, new byte[BridgeLoopback.OUT_QUEUE_BYTES]);
+			else
+				fixture.loop.acceptFrame(replacement, List.of(close(fixture.id, 2)));
+			if (!outcome.equals("slow")) barrier(fixture.client);
+			when(socket.write(any(ByteBuffer.class))).thenAnswer(call ->
+			{
+				assertExactHeld(replacement);
+				assertThat(replacement.afterCheckpoint).isEmpty();
+				assertThat(replacement.checkpoint).isNull();
+				if (bytes.size() == 0) assertThat(replacement.writing).isSameAs(ordinary);
+				ByteBuffer slice = call.getArgument(0);
+				byte[] copy = new byte[slice.remaining()]; slice.get(copy); bytes.write(copy); return copy.length;
+			});
+			SelectionKey key = key(socket, replacement, false);
+			fixture.loop.account();
+			fixture.loop.serve(key);
+			var input = new ByteArrayInputStream(bytes.toByteArray());
+			assertThat(Codec.bridge().read(input).getFirst().type()).isEqualTo(Schemas.PONG);
+			var result = Codec.bridge().read(input);
+			assertThat(result).hasSize(1);
+			assertThat(result.getFirst().type()).isEqualTo(Schemas.BYE);
+			long reason = outcome.equals("saved") ? BridgeFrames.BYE_NORMAL : outcome.equals("frame")
+					? BridgeFrames.BYE_FRAME : outcome.equals("slow") ? BridgeFrames.BYE_SLOW : BridgeFrames.BYE_INTERNAL;
+			assertThat(result.getFirst().field(1).value().u()).isEqualTo(reason);
+			assertThat(input.available()).isZero();
+			assertExactHeld(replacement);
+			assertThat(replacement.held).isZero();
+			verify(socket).close(); verify(key).cancel();
+			assertThat(fixture.loop.transports()).isZero();
+			barrier(fixture.client);
+			verify(fixture.player).store(true, true); verify(fixture.player).deleteMe();
+		}
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "saved", "false", "throw" })
+	void shutdownWaitsAcrossTheLostRecipientToFallbackMicrostep(String outcome) throws Exception
+	{
+		var replacement = new BridgeLoopback.Transport(new byte[32]);
+		var pending = new CountDownLatch(1);
+		var proceedToLoss = new CountDownLatch(1);
+		var lost = new CountDownLatch(1);
+		var releaseDrop = new CountDownLatch(1);
+		var deliveryPending = new CountDownLatch(1);
+		var closeEnd = new java.util.concurrent.atomic.AtomicLong();
+		try (Fixture fixture = new Fixture(20038); Connected first = new Connected(fixture);
+				Connected reply = new Connected(fixture, replacement); FifoGate fifo = new FifoGate(fixture.client))
+		{
+			fixture.loop.watch(fixture.client);
+			doAnswer(call ->
+			{
+				if (outcome.equals("throw")) throw new IllegalStateException("save fixture");
+				return !outcome.equals("false");
+			}).when(fixture.player).store(true, true);
+			fixture.loop.holdTransportLifecycle(null, source ->
+			{
+				if (source == replacement) { lost.countDown(); awaitLatch(releaseDrop); }
+			}, drained ->
+			{
+				assertThat(drained).as("lost-before-first-byte outcome still owes a live fallback").isFalse();
+				deliveryPending.countDown();
+			});
+			var turn = fixture.loop.executeOnSelectorForTest(() ->
+			{
+				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+				fixture.loop.acceptFrame(replacement, List.of(close(fixture.id, 2)));
+				pending.countDown(); awaitLatch(proceedToLoss);
+				// The latch controls the loss microstep, not a race against the 100ms physical-close clock.
+				synchronized (fixture.owner)
+				{
+					closeEnd.set(System.nanoTime() + TimeUnit.SECONDS.toNanos(5));
+					fixture.owner.outcomeCloseDeadline = closeEnd.get();
+				}
+				fixture.owner.serviceCloseResult();
+				assertThat(fixture.owner.outcomeRecipient).isSameAs(replacement);
+				assertThat(replacement.saveReplyStarted).isFalse();
+				fixture.loop.serve(first.key); // T1 is already visited in this selector turn.
+				fixture.loop.dropForTest(reply.key); // Physical loss before the first reply byte.
+			});
+			java.util.concurrent.CompletableFuture<Void> finished = null;
+			try
+			{
+				assertThat(pending.await(5, TimeUnit.SECONDS)).isTrue();
+				assertThat(replacement.client).isNull(); assertThat(replacement.attempts).isNull();
+				assertThat(fixture.owner.recovery.epoch()).isEqualTo(1);
+				fifo.release(); barrier(fixture.client);
+				assertThat(fixture.client.isBridgeDisconnectFinished()).isTrue();
+				proceedToLoss.countDown();
+				assertThat(lost.await(5, TimeUnit.SECONDS)).isTrue();
+				finished = closeAsync(fixture.loop, 2000);
+				assertThat(deliveryPending.await(5, TimeUnit.SECONDS)).isTrue();
+				assertThat(fixture.loop.alive()).as("H must retain the output stage before fallback settles").isTrue();
+				assertThat(finished.isDone()).isFalse();
+				fixture.loop.holdTransportLifecycle(null, null, null);
+				releaseDrop.countDown(); turn.get(5, TimeUnit.SECONDS);
+				synchronized (fixture.first) { assertThat(fixture.first.closeDeadline).isEqualTo(closeEnd.get()); }
+				first.peer.socket().setSoTimeout(2000);
+				var input = first.peer.socket().getInputStream();
+				var result = Codec.bridge().read(input);
+				assertThat(result).hasSize(1);
+				assertThat(result.getFirst().type()).isEqualTo(Schemas.BYE);
+				assertThat(result.getFirst().field(1).value().u()).isEqualTo(outcome.equals("saved")
+						? BridgeFrames.BYE_NORMAL : BridgeFrames.BYE_INTERNAL);
+				assertThat(input.read()).isEqualTo(-1);
+				reply.peer.socket().setSoTimeout(2000);
+				assertThat(reply.peer.socket().getInputStream().read()).isEqualTo(-1);
+				finished.get(3, TimeUnit.SECONDS);
+				assertThat(first.key.isValid()).isFalse(); assertThat(reply.key.isValid()).isFalse();
+				assertThat(fixture.loop.transports()).isZero();
+				verify(fixture.player).store(true, true); verify(fixture.player).deleteMe();
+			}
+			finally
+			{
+				fifo.release(); proceedToLoss.countDown(); releaseDrop.countDown();
+				if (finished != null) finished.get(5, TimeUnit.SECONDS);
+				turn.get(5, TimeUnit.SECONDS);
+			}
+		}
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "interrupt-wait", "interrupt-join", "wait-error", "disposal-error", "server-error", "selector-error" })
+	void shutdownCleanupSurvivesInterruptAndErrorsWithoutRenewingTheBudget(String path) throws Exception
+	{
+		var saving = new CountDownLatch(1);
+		var releaseSave = new CountDownLatch(1);
+		var waitEntered = new CountDownLatch(1);
+		var disposing = new CountDownLatch(1);
+		var releaseDisposal = new CountDownLatch(1);
+		var claims = new java.util.concurrent.atomic.AtomicInteger();
+		var closingThread = new java.util.concurrent.atomic.AtomicReference<Thread>();
+		var restoredInterrupt = new java.util.concurrent.atomic.AtomicBoolean();
+		var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+		try (Fixture fixture = new Fixture(20039); Connected connected = new Connected(fixture))
+		{
+			int listenerPort = fixture.loop.port();
+			fixture.loop.watch(fixture.client);
+			doAnswer(call -> { saving.countDown(); awaitLatch(releaseSave); return true; })
+					.when(fixture.player).store(true, true);
+			fixture.loop.holdShutdown(deadline ->
+			{
+				claims.incrementAndGet(); waitEntered.countDown();
+				if (path.equals("wait-error")) throw new IllegalStateException("wait fixture");
+			}, () ->
+			{
+				disposing.countDown();
+				if (path.equals("interrupt-join")) awaitLatch(releaseDisposal);
+				if (path.equals("disposal-error")) throw new IllegalStateException("disposal fixture");
+			});
+			fixture.loop.holdListenerClose(resource ->
+			{
+				if (Thread.currentThread() == closingThread.get() && path.equals(resource + "-error"))
+					throw new IllegalStateException(resource + " fixture");
+			});
+			fixture.client.requestBridgeDisconnect(); assertThat(saving.await(5, TimeUnit.SECONDS)).isTrue();
+			Thread closing = new Thread(() ->
+			{
+				try { fixture.loop.close(1000); }
+				catch (Throwable e) { failure.set(e); }
+				finally { restoredInterrupt.set(Thread.currentThread().isInterrupted()); }
+			}, "bridge-test-close");
+			closingThread.set(closing); closing.setDaemon(true); closing.start();
+			try
+			{
+				assertThat(waitEntered.await(5, TimeUnit.SECONDS)).isTrue();
+				if (path.equals("interrupt-wait")) closing.interrupt();
+				if (path.equals("interrupt-join"))
+				{
+					assertThat(disposing.await(5, TimeUnit.SECONDS)).isTrue();
+					closing.interrupt(); releaseDisposal.countDown();
+				}
+				closing.join(3000);
+				assertThat(closing.isAlive()).isFalse();
+				assertThat(restoredInterrupt.get()).isEqualTo(path.startsWith("interrupt-"));
+				if (path.equals("wait-error") || path.equals("server-error") || path.equals("selector-error"))
+					assertThat(failure.get()).isInstanceOf(IllegalStateException.class).hasMessageContaining("fixture");
+				else assertThat(failure.get()).isNull();
+				assertThat(fixture.loop.listenerResourcesClosedForTest()).isTrue();
+				assertThat(fixture.loop.alive()).isFalse();
+				assertThat(connected.accepted.isOpen()).isFalse(); assertThat(connected.key.isValid()).isFalse();
+				assertThat(fixture.loop.transports()).isZero();
+				connected.peer.socket().setSoTimeout(1000);
+				assertThat(connected.peer.socket().getInputStream().read()).isEqualTo(-1);
+				try (var rebound = java.nio.channels.ServerSocketChannel.open())
+				{
+					rebound.bind(new java.net.InetSocketAddress(InetAddress.getLoopbackAddress(), listenerPort));
+				}
+				org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(1), () -> fixture.loop.close());
+				assertThat(claims.get()).isEqualTo(1);
+				releaseSave.countDown(); barrier(fixture.client);
+				assertThat(fixture.loop.listenerResourcesClosedForTest()).isTrue();
+				assertThat(connected.accepted.isOpen()).isFalse(); assertThat(fixture.loop.transports()).isZero();
+				verify(fixture.player).store(true, true); verify(fixture.player).deleteMe();
+			}
+			finally { releaseSave.countDown(); releaseDisposal.countDown(); closing.join(5000); }
+		}
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "cancel", "socket-io", "socket-runtime", "lost-hook", "checkpoint-cancel" })
+	void transportDisposalCompletesAfterEachFailingStep(String step) throws Exception
+	{
+		try (Fixture fixture = new Fixture(20040); var acceptor = java.nio.channels.ServerSocketChannel.open())
+		{
+			fixture.open(); fixture.loop.watch(fixture.client);
+			acceptor.bind(new java.net.InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+			try (SocketChannel peer = SocketChannel.open(acceptor.getLocalAddress()); SocketChannel physical = acceptor.accept();
+					FifoGate fifo = new FifoGate(fixture.client))
+			{
+				// Schedule the one full disconnect on the fixture pool; S only encounters its already-owned request.
+				fixture.client.requestBridgeDisconnect();
+				SocketChannel socket = mock(SocketChannel.class);
+				var socketKey = key(socket, fixture.first, false);
+				var cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+				when(socketKey.isValid()).thenAnswer(call -> !cancelled.get());
+				when(socket.register(any(java.nio.channels.Selector.class), anyInt(), any())).thenReturn(socketKey);
+				when(socket.write(any(ByteBuffer.class))).thenReturn(0);
+				doAnswer(call ->
+				{
+					cancelled.set(true);
+					if (step.equals("cancel")) throw new IllegalStateException("cancel fixture");
+					return null;
+				}).when(socketKey).cancel();
+				doAnswer(call ->
+				{
+					physical.close();
+					if (step.equals("socket-io")) throw new java.io.IOException("socket fixture");
+					if (step.equals("socket-runtime")) throw new IllegalStateException("socket fixture");
+					return null;
+				}).when(socket).close();
+				fixture.loop.registerForTest(socket, fixture.first);
+				if (step.equals("checkpoint-cancel"))
+				{
+					fixture.loop.executeOnSelectorForTest(() ->
+					{
+						var producer = mock(BridgeCheckpointOutput.class);
+						doThrow(new IllegalStateException("producer fixture")).when(producer).cancel();
+						synchronized (fixture.first) { fixture.first.checkpoint = producer; }
+					}).get(5, TimeUnit.SECONDS);
+				}
+				fixture.loop.holdTransportLifecycle(null, source ->
+				{
+					if (step.equals("lost-hook")) throw new IllegalStateException("lost fixture");
+				}, null);
+				fixture.loop.executeOnSelectorForTest(() -> fixture.loop.dropForTest(socketKey)).get(5, TimeUnit.SECONDS);
+				assertThat(physical.isOpen()).isFalse(); assertThat(cancelled.get()).isTrue();
+				assertThat(fixture.first.attemptFence.valid).isFalse();
+				assertThat(fixture.first.physicallyClosed).isTrue(); assertExactHeld(fixture.first);
+				assertThat(fixture.loop.transports()).isZero();
+				assertThat(fixture.owner.sessionTransports).doesNotContain(fixture.first);
+				fixture.loop.executeOnSelectorForTest(() -> fixture.loop.dropForTest(socketKey)).get(5, TimeUnit.SECONDS);
+				verify(socket).close(); verify(socketKey).cancel();
+				assertThat(fixture.loop.alive()).isTrue();
+				peer.socket().setSoTimeout(1000);
+				assertThat(peer.socket().getInputStream().read()).isEqualTo(-1);
+				fifo.release(); barrier(fixture.client);
+				fixture.loop.close(1000);
+				assertThat(fixture.loop.listenerResourcesClosedForTest()).isTrue();
+				barrier(fixture.client);
+				verify(fixture.player).store(true, true); verify(fixture.player).deleteMe();
+			}
+		}
+	}
+
+	private static void assertExactHeld(BridgeLoopback.Transport transport)
+	{
+		synchronized (transport)
+		{
+			int bytes = transport.writing == null ? 0 : transport.writing.length - transport.writingAt;
+			for (byte[] frame : transport.queued) bytes += frame.length;
+			for (byte[] frame : transport.afterCheckpoint) bytes += frame.length;
+			assertThat(transport.held).as("writer tail + queued + afterCheckpoint").isEqualTo(bytes).isNotNegative();
+		}
+	}
+
 	private static java.util.concurrent.CompletableFuture<Void> closeAsync(BridgeLoopback loop, long budgetMs)
 	{
 		var result = new java.util.concurrent.CompletableFuture<Void>();
@@ -804,13 +1151,23 @@ class BridgeTransportRecoveryTest
 
 		Connected(Fixture fixture) throws Exception
 		{
-			fixture.open();
+			this(fixture, fixture.first, true);
+		}
+
+		Connected(Fixture fixture, BridgeLoopback.Transport transport) throws Exception
+		{
+			this(fixture, transport, false);
+		}
+
+		private Connected(Fixture fixture, BridgeLoopback.Transport transport, boolean open) throws Exception
+		{
+			if (open) fixture.open();
 			try (var server = java.nio.channels.ServerSocketChannel.open())
 			{
 				server.bind(new java.net.InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
 				peer = SocketChannel.open(server.getLocalAddress()); accepted = server.accept();
 				accepted.configureBlocking(false);
-				key = fixture.loop.registerForTest(accepted, fixture.first);
+				key = fixture.loop.registerForTest(accepted, transport);
 			}
 		}
 
@@ -1839,6 +2196,23 @@ class BridgeTransportRecoveryTest
 		CountDownLatch completed = new CountDownLatch(1);
 		client.submit(completed::countDown);
 		assertThat(completed.await(5, TimeUnit.SECONDS)).isTrue();
+	}
+
+	private static void awaitLatch(CountDownLatch latch)
+	{
+		try { assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue(); }
+		catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new AssertionError(e); }
+	}
+
+	private static void awaitCondition(java.util.function.BooleanSupplier condition) throws Exception
+	{
+		long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+		while (!condition.getAsBoolean() && System.nanoTime() < end)
+		{
+			if (Thread.currentThread().isInterrupted()) throw new InterruptedException("condition wait");
+			java.util.concurrent.locks.LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+		}
+		assertThat(condition.getAsBoolean()).as("bounded lifecycle condition").isTrue();
 	}
 
 	private static SelectionKey key(SocketChannel channel, BridgeLoopback.Transport transport, boolean read)
