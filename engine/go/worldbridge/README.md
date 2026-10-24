@@ -10,6 +10,9 @@ an existing `bridge.Identity`. The loaded account and character must match that
 identity. It returns only after a complete, ready opening snapshot. The host
 owns `World.Run`; cancellation of the opening request does not stop an admitted
 session. No network listener or character creation is added.
+If opening fails after entry and cleanup also fails, `errors.As` exposes an
+`OpenError` with the exact `Owner` and both causes. The host retries
+`World.Leave(ctx, opening.Owner)`; a failed opening never starts a session owner.
 
 Scenes supply actual coverage and current state. Events supply facts, never
 command effects. Immutable commits supply the owner, cause, outcome, and atomic
@@ -37,7 +40,9 @@ live backlog is bounded by 256 KiB and 1024 updates, including the unread update
 Overflow loses observation, not the live character. `Resume` restores only the
 same incarnation within `ResumeBudget` (30 seconds by default), starts a new
 gateway epoch, and returns copied receipts marked `Replay`. It does not Execute
-again, renew proposals or change receipt identity. Teleport uses the world's
+again, renew proposals or change receipt identity. The original recovery deadline
+bounds both admission and completion, including internal teleport operations.
+Teleport uses the world's
 exact fence, an internal Appear, and a complete checkpoint. Revived remains an
 original live fact rather than a fact fabricated by the snapshot.
 

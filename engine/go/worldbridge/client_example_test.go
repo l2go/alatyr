@@ -5,6 +5,7 @@ package worldbridge_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -15,6 +16,20 @@ import (
 	"github.com/l2go/alatyr/engine/go/world/memstore"
 	"github.com/l2go/alatyr/engine/go/worldbridge"
 )
+
+func ExampleOpenError() {
+	// An opening failure keeps cleanup ownership even without a Client.
+	// Given the host's World, retry World.Leave(ctx, opening.Owner).
+	err := error(&worldbridge.OpenError{Owner: world.Ref{ID: 7, Gen: 2}, Err: errors.Join(context.Canceled, errors.New("save unavailable"))})
+	var opening *worldbridge.OpenError
+	if errors.As(err, &opening) {
+		fmt.Println("retry owner:", opening.Owner)
+		fmt.Println("opening canceled:", errors.Is(err, context.Canceled))
+	}
+	// Output:
+	// retry owner: {7 2}
+	// opening canceled: true
+}
 
 func ExampleOpen() {
 	cat, err := catalog.Load(filepath.Join("..", "..", "..", "world"))

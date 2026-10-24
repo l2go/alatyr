@@ -161,10 +161,11 @@ func (s *session) enqueue(batch bridge.Batch) error {
 	for _, r := range batch.Records {
 		bytes += r.EncodedBytes
 	}
-	if len(s.client.updates) == 0 {
+	unread := len(s.client.updates)
+	if unread == 0 {
 		s.deliveredBytes = 0
 	}
-	if bytes > maxBacklogBytes-s.queueBytes-s.deliveredBytes || len(s.queue) >= maxBacklogUpdates {
+	if bytes > maxBacklogBytes-s.queueBytes-s.deliveredBytes || len(s.queue)+unread >= maxBacklogUpdates {
 		return errCapacity
 	}
 	s.queue = append(s.queue, pending{bridge.Update{Kind: bridge.LiveBatch, Batch: batch, GatewayEpoch: s.epoch}, bytes})
@@ -216,20 +217,22 @@ func (s *session) drain(ctx context.Context) error {
 	return nil
 }
 
-func (s *session) write(ctx context.Context, command bridge.Command, deadline time.Time) result {
+func (s *session) write(ctx, lifetime context.Context, command bridge.Command, deadline time.Time) result {
 	if s.ended || !s.detached.IsZero() {
 		return result{err: portError(bridge.StateError)}
 	}
 	if s.keys[command.Key] {
 		return result{err: portError(bridge.StateError)}
 	}
-	if s.nextAttempt == 0 || len(s.keys) == maxSessionKeys {
+	if s.nextAttempt == 0 || len(s.keys) >= maxSessionKeys {
 		return result{err: portError(bridge.Capacity)}
 	}
 	if err := ctx.Err(); err != nil {
 		return result{err: err}
 	}
-	if err := s.drain(ctx); err != nil {
+	// Notifications belong to the session, not the command being admitted.
+	// A canceled command must not cancel another operation's teleport fence.
+	if err := s.drain(lifetime); err != nil {
 		return result{err: err}
 	}
 	scene, err := s.client.cfg.World.Capture(ctx, s.client.owner)
@@ -244,7 +247,7 @@ func (s *session) write(ctx context.Context, command bridge.Command, deadline ti
 		// A concurrent host teleport can arrive between drain and Capture.
 		// Publish its original correction before Appear/checkpoint, never make
 		// a ready checkpoint that bypasses the relocation's live fence.
-		if err := s.drain(ctx); err != nil {
+		if err := s.drain(lifetime); err != nil {
 			return result{err: err}
 		}
 		scene, err = s.client.cfg.World.Capture(ctx, s.client.owner)
@@ -289,7 +292,7 @@ func (s *session) write(ctx context.Context, command bridge.Command, deadline ti
 		s.receipts[0] = bridge.Receipt{}
 		s.receipts = s.receipts[1:]
 	}
-	if drainErr := s.drain(ctx); drainErr != nil {
+	if drainErr := s.drain(lifetime); drainErr != nil {
 		return result{n: n, err: errors.Join(err, drainErr)}
 	}
 	records, recordErr := encode([]wire.Record{receiptRecord(r)})
@@ -316,35 +319,59 @@ func (s *session) resume(ctx context.Context) result {
 	if s.epoch == math.MaxUint64 {
 		return result{err: portError(bridge.Capacity)}
 	}
+	expires := s.detached.Add(s.client.cfg.ResumeBudget)
+	ctx, cancel := context.WithTimeout(ctx, expires.Sub(s.client.cfg.Now()))
+	defer cancel()
+	fail := func(err error) result {
+		s.sub = world.Subscription{}
+		if !s.client.cfg.Now().Before(expires) {
+			s.ended = true
+			s.failure = bridge.Timeout
+			err = errors.Join(err, portError(bridge.Timeout))
+		}
+		return result{err: err}
+	}
+	if err := ctx.Err(); err != nil {
+		return fail(err)
+	}
 	scene, sub, err := s.client.cfg.World.Subscribe(ctx, s.client.owner)
 	if err != nil {
 		if errors.Is(err, world.ErrStopped) || errors.Is(err, world.ErrNotPresent) {
 			s.ended = true
 			s.failure = bridge.StateError
 		}
-		return result{err: err}
+		return fail(err)
 	}
 	// Relocation is an internal fenced operation, never a participant command.
 	s.sub = sub
+	if err := ctx.Err(); err != nil {
+		return fail(err)
+	}
 	if scene.Self.Teleporting {
 		if err := s.completeRelocation(ctx, scene.End.Fence); err != nil {
-			s.sub = world.Subscription{}
-			return result{err: err}
+			return fail(err)
 		}
 		scene, sub, err = s.client.cfg.World.Subscribe(ctx, s.client.owner)
 		if err != nil {
-			s.sub = world.Subscription{}
-			return result{err: err}
+			return fail(err)
 		}
 	}
 	snap, next, err := s.tr.checkpoint(scene, s.epoch+1, s.nextFact, s.origin)
 	if err != nil || !snap.Ready {
-		s.sub = world.Subscription{}
-		return result{err: errors.Join(err, errSource)}
+		return fail(errors.Join(err, errSource))
+	}
+	replay := make([]bridge.Receipt, len(s.receipts))
+	for i, r := range s.receipts {
+		replay[i] = cloneReceipt(r)
+		replay[i].Replay = true
 	}
 	if err := ctx.Err(); err != nil {
-		s.sub = world.Subscription{}
-		return result{err: err}
+		return fail(err)
+	}
+	// The original loss deadline bounds completion as well as admission.
+	// An admitted world step can finish late, but cannot renew this session.
+	if !s.client.cfg.Now().Before(expires) {
+		return fail(portError(bridge.Timeout))
 	}
 	s.epoch++
 	s.nextFact, s.sourceSeq = next, scene.End.Seq
@@ -355,11 +382,6 @@ func (s *session) resume(ctx context.Context) result {
 	select {
 	case <-s.client.updates:
 	default:
-	}
-	replay := make([]bridge.Receipt, len(s.receipts))
-	for i, r := range s.receipts {
-		replay[i] = cloneReceipt(r)
-		replay[i].Replay = true
 	}
 	return result{recovery: bridge.Recovery{Snapshot: snap, Receipts: replay}}
 }
@@ -423,7 +445,9 @@ func (s *session) event(ctx context.Context, e world.Event) error {
 		return err
 	}
 	if v, ok := e.(world.Teleported); ok && v.Entity == s.client.owner {
-		return s.relocate(ctx, v.Fence)
+		request, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		return s.relocate(request, v.Fence)
 	}
 	return nil
 }
@@ -440,26 +464,61 @@ func (s *session) project(e world.Event) error {
 		return s.replaceObject(world.Observation{Entity: v.Player.Entity, State: v})
 	case world.ObjectGone:
 		s.scene.Objects = slices.DeleteFunc(s.scene.Objects, func(o world.Observation) bool { return o.Entity.ID == v.ObjectID })
+	case world.Moving:
+		s.position(v.ObjectID, v.From)
+	case world.Following:
+		s.position(v.ObjectID, v.From)
+	case world.Stopped:
+		s.position(v.ObjectID, v.Pos)
+	case world.PositionObserved:
+		s.position(v.ObjectID, v.Pos)
+	case world.Teleported:
+		s.position(v.ObjectID, v.Pos)
+	case world.TargetChosen:
+		s.position(v.ObjectID, v.Pos)
+	case world.TargetCleared:
+		s.position(v.ObjectID, v.Pos)
+	case world.PostureChanged:
+		s.position(v.ObjectID, v.Pos)
+	case world.AttackStarted:
+		s.position(v.AttackerID, v.From)
+		s.position(v.TargetID, v.TargetPos)
+	case world.SkillCast:
+		s.position(v.CasterID, v.From)
+		s.position(v.TargetID, v.TargetPos)
+	case world.Died:
+		s.actor(v.ObjectID, func(p *world.Self) { p.Dead = true }, func(n *world.NPCView) { n.Dead = true })
+	case world.Revived:
+		s.actor(v.ObjectID, func(p *world.Self) { p.Dead = false }, func(n *world.NPCView) { n.Dead = false })
 	case world.GaitChanged:
-		if v.ObjectID == s.client.owner.ID {
-			s.scene.Self.Running = v.Running
-		}
-		for i, o := range s.scene.Objects {
-			switch state := o.State.(type) {
-			case world.NPCSeen:
-				if state.NPC.ObjectID == v.ObjectID {
-					state.NPC.Running = v.Running
-					s.scene.Objects[i].State = state
-				}
-			case world.PlayerSeen:
-				if state.Player.Entity.ID == v.ObjectID {
-					state.Player.Running = v.Running
-					s.scene.Objects[i].State = state
-				}
-			}
-		}
+		s.actor(v.ObjectID, func(p *world.Self) { p.Running = v.Running }, func(n *world.NPCView) { n.Running = v.Running })
 	}
 	return nil
+}
+
+// actor changes only source-observed fields. It never captures later state
+// under an earlier event stamp or derives positions by extrapolating movement.
+func (s *session) actor(id int32, player func(*world.Self), npc func(*world.NPCView)) {
+	if id == s.scene.Self.Entity.ID {
+		player(&s.scene.Self)
+	}
+	for i, o := range s.scene.Objects {
+		if o.Entity.ID != id {
+			continue
+		}
+		switch v := o.State.(type) {
+		case world.PlayerSeen:
+			player(&v.Player)
+			s.scene.Objects[i].State = v
+		case world.NPCSeen:
+			npc(&v.NPC)
+			s.scene.Objects[i].State = v
+		}
+	}
+}
+
+func (s *session) position(id int32, pos world.Point) {
+	s.actor(id, func(p *world.Self) { p.Char.X, p.Char.Y, p.Char.Z = pos.X, pos.Y, pos.Z }, func(n *world.NPCView) { n.Pos = pos })
 }
 func (s *session) replaceObject(o world.Observation) error {
 	for i := range s.scene.Objects {
@@ -468,7 +527,7 @@ func (s *session) replaceObject(o world.Observation) error {
 			return nil
 		}
 	}
-	if len(s.scene.Objects) == maxRows {
+	if len(s.scene.Objects) >= maxRows {
 		return errCapacity
 	}
 	s.scene.Objects = append(s.scene.Objects, o)
@@ -535,6 +594,9 @@ drained:
 	}
 	markers, err := encode([]wire.Record{checkpointRecord(wire.CheckpointBegin, s.epoch, false), checkpointRecord(wire.CheckpointEnd, s.epoch, true)})
 	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if err := s.batch(markers[:1], true); err != nil {

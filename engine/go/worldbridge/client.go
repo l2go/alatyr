@@ -65,6 +65,29 @@ type operation struct {
 
 func portError(kind bridge.FailureKind) error { return &bridge.Error{Kind: kind} }
 
+// OpenError reports an opening failure whose incarnation cleanup also failed.
+// Owner is the exact Ref the host may retry with World.Leave. Err retains both
+// the opening and cleanup errors; no client or background retry is started.
+type OpenError struct {
+	Owner world.Ref
+	Err   error
+}
+
+// Error describes the opening and cleanup failures.
+func (e *OpenError) Error() string { return fmt.Sprintf("worldbridge: open cleanup: %v", e.Err) }
+
+// Unwrap exposes both failures to errors.Is and errors.As.
+func (e *OpenError) Unwrap() error { return e.Err }
+
+func cleanupOpen(cfg Config, owner world.Ref, err error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.CloseBudget)
+	defer cancel()
+	if cleanupErr := cfg.World.Leave(ctx, owner); cleanupErr != nil {
+		return &OpenError{Owner: owner, Err: errors.Join(err, cleanupErr)}
+	}
+	return err
+}
+
 func normalizeConfig(cfg Config, id bridge.Identity) (Config, error) {
 	if cfg.World == nil || cfg.Catalog == nil || cfg.Load == nil {
 		return cfg, portError(bridge.ConfigError)
@@ -91,7 +114,8 @@ func normalizeConfig(cfg Config, id bridge.Identity) (Config, error) {
 
 // Open enters a trusted existing character and returns its complete, ready
 // checkpoint. ctx bounds admission only. A failed opening removes only the
-// entered incarnation; cleanup errors are returned alongside the opening error.
+// entered incarnation. If cleanup fails, an OpenError retains its exact Owner
+// for a host-owned World.Leave retry alongside both errors.
 func Open(ctx context.Context, cfg Config, id bridge.Identity) (*Client, bridge.Snapshot, error) {
 	cfg, err := normalizeConfig(cfg, id)
 	if err != nil {
@@ -104,6 +128,9 @@ func Open(ctx context.Context, cfg Config, id bridge.Identity) (*Client, bridge.
 	if _, err := cfg.World.Capture(ctx, world.Ref{}); !errors.Is(err, world.ErrNotPresent) {
 		return nil, bridge.Snapshot{}, fmt.Errorf("worldbridge: world unavailable: %w", err)
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, bridge.Snapshot{}, err
+	}
 	char, err := cfg.Load(ctx, id)
 	if err != nil {
 		return nil, bridge.Snapshot{}, fmt.Errorf("worldbridge: load character: %w", err)
@@ -111,14 +138,15 @@ func Open(ctx context.Context, cfg Config, id bridge.Identity) (*Client, bridge.
 	if char.ObjectID <= 0 || char.Account != id.Account || char.Name != id.Character {
 		return nil, bridge.Snapshot{}, portError(bridge.Authentication)
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, bridge.Snapshot{}, err
+	}
 	entry, err := cfg.World.Enter(ctx, char.Clone())
 	if err != nil {
 		return nil, bridge.Snapshot{}, fmt.Errorf("worldbridge: enter: %w", err)
 	}
 	fail := func(err error) (*Client, bridge.Snapshot, error) {
-		cleanup, cancel := context.WithTimeout(context.Background(), cfg.CloseBudget)
-		defer cancel()
-		return nil, bridge.Snapshot{}, errors.Join(err, cfg.World.Leave(cleanup, entry.Self.Entity))
+		return nil, bridge.Snapshot{}, cleanupOpen(cfg, entry.Self.Entity, err)
 	}
 	scene, sub, err := cfg.World.Subscribe(ctx, entry.Self.Entity)
 	if err != nil {
@@ -217,7 +245,7 @@ func (c *Client) Write(ctx context.Context, command bridge.Command) (uint64, err
 		defer cancel()
 		stop := context.AfterFunc(lifetime, cancel)
 		defer stop()
-		return s.write(request, command, deadline)
+		return s.write(request, lifetime, command, deadline)
 	})
 	return r.n, r.err
 }

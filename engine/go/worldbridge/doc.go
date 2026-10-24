@@ -18,4 +18,6 @@
 // same incarnation in a new epoch and replays copied receipts, never commands.
 // Close waits for departure and reports persistence failure without a hidden
 // retry. The host can retry that captured Owner and must close ports before Run.
+// A failed opening whose cleanup also fails returns an OpenError with the exact
+// incarnation for the same host-owned retry, even though no Client is returned.
 package worldbridge
