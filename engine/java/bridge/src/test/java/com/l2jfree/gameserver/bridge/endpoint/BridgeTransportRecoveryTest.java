@@ -524,6 +524,7 @@ class BridgeTransportRecoveryTest
 			fixture.loop.account();
 			fixture.loop.account();
 			assertThat(fixture.loop.transports()).isEqualTo(2);
+			long expectedDeadline = 0;
 			try
 			{
 				try (var gate = new FifoGate(fixture.client))
@@ -533,12 +534,24 @@ class BridgeTransportRecoveryTest
 							List.of(Field.u(1, true, fixture.id), Field.u(2, true, 2), Field.u(3, true, 0)))));
 					assertThat(replacement.queued).isEmpty();
 					verify(fixture.player, never()).store(true, true);
+					synchronized (fixture.owner)
+					{
+						expectedDeadline = fixture.owner.saveDeadline;
+						assertThat(expectedDeadline).isNotZero();
+						synchronized (fixture.first) { assertThat(fixture.first.resultDeadline).isEqualTo(expectedDeadline); }
+						synchronized (replacement) { assertThat(replacement.resultDeadline).isEqualTo(expectedDeadline); }
+					}
 					if (lostReply)
 					{
 						fixture.loop.serve(replyKey);
 						verify(replySocket).close();
 						verify(replyKey).cancel();
 						assertThat(fixture.loop.transports()).isEqualTo(1);
+						synchronized (fixture.owner)
+						{
+							assertThat(fixture.owner.saveDeadline).isEqualTo(expectedDeadline);
+							assertThat(fixture.owner.sessionTransports).doesNotContain(replacement);
+						}
 					}
 					gate.release();
 					assertThat(saving.await(5, TimeUnit.SECONDS)).isTrue();
@@ -551,7 +564,16 @@ class BridgeTransportRecoveryTest
 					assertThat(replacement.queued).isEmpty();
 					if (save.equals("deadline"))
 					{
-						synchronized (replacement) { replacement.resultDeadline = System.nanoTime() - 1; }
+						// Expire the session budget, not the disposed reply socket's stale copy.
+						expectedDeadline = System.nanoTime() - 1;
+						synchronized (fixture.owner)
+						{
+							fixture.owner.saveDeadline = expectedDeadline;
+							synchronized (fixture.first) { fixture.first.resultDeadline = expectedDeadline; }
+							if (!lostReply)
+								synchronized (replacement) { replacement.resultDeadline = expectedDeadline; }
+						}
+						// The lost case deliberately delivers the late save before T1's expiry turn.
 						if (!lostReply) BridgeLoopback.expire(replacement, System.nanoTime());
 					}
 				}
@@ -561,6 +583,7 @@ class BridgeTransportRecoveryTest
 			barrier(fixture.client);
 			assertThat(fixture.client.isBridgeDisconnectFinished()).isTrue();
 			fixture.owner.serviceCloseResult();
+			synchronized (fixture.owner) { assertThat(fixture.owner.saveDeadline).isEqualTo(expectedDeadline); }
 			assertThat(fixture.first.attemptFence.valid).isFalse();
 			if (!lostReply)
 			{

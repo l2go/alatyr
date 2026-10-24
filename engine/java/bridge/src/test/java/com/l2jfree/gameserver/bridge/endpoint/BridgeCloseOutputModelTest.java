@@ -35,6 +35,60 @@ class BridgeCloseOutputModelTest
 		assertTrue(visited.size() > 1000, "The event cross-product must actually be explored");
 	}
 
+	@Test
+	void replyLossMustNotRenewTheSessionResultBudget()
+	{
+		List<Event> trace = List.of(Event.EOF2, Event.ADVANCE_SAVE_CLOCK, Event.TRUE);
+		State actual = replay(trace, false);
+		actual.check(trace);
+		assertEquals(2, actual.outcome);
+		assertEquals(0, actual.recipient);
+		actual.drain(trace);
+		assertEquals(1, actual.byes);
+
+		// Deliberately inject the regression: losing T2 gives the save a new budget.
+		State mutant = new State(false);
+		mutant.renewBudgetOnReplyLoss = true;
+		for (Event event : trace) mutant.apply(event);
+		assertEquals(1, mutant.outcome, "The mutation must admit the otherwise-late success");
+		AssertionError caught = assertThrows(AssertionError.class, () -> mutant.check(trace));
+		assertTrue(caught.getMessage().contains("Session result deadline changed"));
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "saved", "false", "exception", "deadline",
+			"lost-saved", "lost-false", "lost-exception", "lost-deadline" })
+	void allEightSaveOutcomesUseTheSessionBudgetAfterReplyLoss(String variant)
+	{
+		boolean lost = variant.startsWith("lost-");
+		String save = variant.replace("lost-", "");
+		List<Event> trace = new ArrayList<>();
+		if (lost) trace.add(Event.EOF2);
+		if (save.equals("deadline")) trace.add(Event.ADVANCE_SAVE_CLOCK);
+		trace.add(save.equals("false") ? Event.FALSE : save.equals("exception") ? Event.THROW : Event.TRUE);
+		State state = replay(trace, false);
+		state.check(trace);
+		assertEquals(save.equals("saved") ? 1 : 2, state.outcome, variant);
+		assertEquals(lost ? 0 : 1, state.recipient, variant);
+		state.drain(trace);
+		assertEquals(1, state.byes, variant);
+	}
+
+	@Test
+	void aStaleDeadlineOnTheDisposedReplySocketDoesNotExpireTheSession()
+	{
+		State state = new State(false);
+		state.apply(Event.EOF2);
+		state.sockets[1].resultDeadline = state.now - 1;
+		state.apply(Event.TRUE);
+		List<Event> trace = List.of(Event.EOF2, Event.TRUE);
+		state.check(trace);
+		assertEquals(1, state.outcome);
+		assertEquals(0, state.recipient);
+		state.drain(trace);
+		assertEquals(1, state.byes);
+	}
+
 	private static void explore(List<Event> trace, int used, boolean full, Set<String> visited)
 	{
 		State state = replay(trace, full);
@@ -70,6 +124,7 @@ class BridgeCloseOutputModelTest
 		long now = 1, firstBudget;
 		int outcome, recipient = -1, preferred = 1, writer = -1, byes, lastSeq;
 		boolean released, captured, snapshotPending, stopped, lateSuccess, notified;
+		boolean renewBudgetOnReplyLoss;
 
 		State(boolean full)
 		{
@@ -132,6 +187,8 @@ class BridgeCloseOutputModelTest
 				{
 					int n = e == Event.EOF1 ? 0 : 1;
 					sockets[n].lost = true;
+					owner.sessionTransports.remove(sockets[n]);
+					if (n == 1 && renewBudgetOnReplyLoss) owner.saveDeadline = now + 30;
 					if (recipient == n && !sockets[n].saveReplyStarted) { recipient = -1; claim(); }
 				}
 				case CLOSE1 -> { preferred = 0; owner.closeReplyTransport = sockets[0]; }
@@ -209,6 +266,7 @@ class BridgeCloseOutputModelTest
 
 		void check(List<Event> trace)
 		{
+			assertEquals(10, owner.saveDeadline, "Session result deadline changed: " + trace);
 			assertTrue(byes <= 1, trace.toString());
 			if (lateSuccess) assertEquals(2, outcome, trace.toString());
 			for (var t : sockets)
