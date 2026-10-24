@@ -18,7 +18,7 @@ import com.l2jfree.gameserver.bridge.wire.Codec;
 class BridgeCloseOutputModelTest
 {
 	private enum Event { TRUE, FALSE, THROW, BEGIN, END, DEADLINE, EOF1, EOF2, CLOSE1, CLOSE2,
-		SHUTDOWN, REPEAT, RELEASE, CHECKPOINT, FACT, BUDGET_END, FRAME2, ADVANCE_SAVE_CLOCK }
+		SHUTDOWN, REPEAT, RELEASE, CHECKPOINT, FACT, BUDGET_END, FRAME2, ADVANCE_SAVE_CLOCK, SAVE_END }
 	private static final byte[] FULL = new byte[BridgeLoopback.OUT_QUEUE_BYTES];
 	private static final byte[] OLD = { 1 };
 	private static final byte[] SNAPSHOT = { 2 };
@@ -89,6 +89,15 @@ class BridgeCloseOutputModelTest
 		assertEquals(1, state.byes);
 	}
 
+	@Test
+	void saveEndHandsTheUntouchedReserveToSelectorDisposal()
+	{
+		State state = replay(List.of(Event.SHUTDOWN, Event.SAVE_END), false);
+		assertTrue(state.stopped);
+		assertEquals(0, state.outcome); // The save is still held, so the stage must end by time.
+		assertTrue(state.firstBudget - state.now > 0);
+	}
+
 	private static void explore(List<Event> trace, int used, boolean full, Set<String> visited)
 	{
 		State state = replay(trace, full);
@@ -144,6 +153,7 @@ class BridgeCloseOutputModelTest
 				case END -> writer >= 0;
 				case REPEAT -> firstBudget != 0;
 				case BUDGET_END -> firstBudget != 0;
+				case SAVE_END -> firstBudget != 0 && !stopped;
 				case RELEASE -> outcome == 0 && !captured && !sockets[0].lost;
 				case CHECKPOINT -> released && outcome == 0 && !sockets[0].lost;
 				case FACT -> captured && outcome == 0 && !sockets[0].lost;
@@ -175,6 +185,7 @@ class BridgeCloseOutputModelTest
 					}
 				}
 				case BUDGET_END -> now = firstBudget;
+				case SAVE_END -> now = BridgeLoopback.shutdownSaveEnd(firstBudget, 12);
 				case ADVANCE_SAVE_CLOCK -> now = Math.max(now, 10);
 				case FRAME2 ->
 				{
@@ -255,7 +266,8 @@ class BridgeCloseOutputModelTest
 				}
 			}
 			boolean drained = outcome != 0 && Arrays.stream(sockets).allMatch(t -> t.lost || BridgeLoopback.outputDrained(t));
-			if (firstBudget != 0) stopped = BridgeShutdownBudget.canStop(now, firstBudget, drained);
+			if (firstBudget != 0) stopped = BridgeShutdownBudget.canStop(now,
+					BridgeLoopback.shutdownSaveEnd(firstBudget, 12), drained);
 		}
 
 		void claim()
@@ -271,6 +283,7 @@ class BridgeCloseOutputModelTest
 			if (lateSuccess) assertEquals(2, outcome, trace.toString());
 			for (var t : sockets)
 			{
+				if (!t.releaseAfterCheckpoint) assertEquals(0, t.releaseAfterCheckpointCount, trace.toString());
 				int bytes = t.writing == null ? 0 : t.writing.length;
 				for (byte[] frame : t.queued) bytes += frame.length;
 				for (byte[] frame : t.afterCheckpoint) bytes += frame.length;
@@ -293,7 +306,8 @@ class BridgeCloseOutputModelTest
 				if (writer < 0) break;
 			}
 			check(trace);
-			if (outcome != 0 && recipient >= 0 && !sockets[recipient].lost && (!stopped || now < firstBudget))
+			if (outcome != 0 && recipient >= 0 && !sockets[recipient].lost
+					&& (!stopped || now < BridgeLoopback.shutdownSaveEnd(firstBudget, 12)))
 				assertEquals(1, byes, "Writable continuation lost the outcome: " + trace);
 		}
 

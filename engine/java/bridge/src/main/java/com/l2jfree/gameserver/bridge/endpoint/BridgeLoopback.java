@@ -73,6 +73,11 @@ final class BridgeLoopback implements Runnable
 	private volatile Consumer<Transport> afterResumeGuard;
 	private volatile long shutdownDeadline;
 	private final BridgeShutdownBudget shutdownBudget = new BridgeShutdownBudget();
+	// Only S registers/removes keys. H observes this concurrent registry, never Selector.keys().
+	private final java.util.concurrent.ConcurrentMap<Transport, SelectionKey> registered = new java.util.concurrent.ConcurrentHashMap<>();
+	private final java.util.concurrent.ConcurrentLinkedQueue<Runnable> selectorTestTasks = new java.util.concurrent.ConcurrentLinkedQueue<>();
+	private volatile java.util.function.LongConsumer beforeShutdownWait;
+	private volatile Runnable beforeSelectorDisposal;
 
 	private BridgeLoopback(BridgeSettings settings, GameServerContext context, ServerSocketChannel server,
 			Selector selector)
@@ -167,8 +172,10 @@ final class BridgeLoopback implements Runnable
 				try
 				{
 					selector.select(nextWaitMs());
+					Runnable task;
+					while ((task = selectorTestTasks.poll()) != null) task.run();
 					reapClients();
-					for (SelectionKey key : selector.keys())
+					for (SelectionKey key : registered.values())
 					{
 						if (key.attachment() instanceof Transport)
 						serviceControl((Transport) key.attachment());
@@ -191,11 +198,53 @@ final class BridgeLoopback implements Runnable
 		}
 		finally
 		{
-			// Selector.close cancels keys, but does not close their channels.
-			for (SelectionKey key : List.copyOf(selector.keys()))
-				if (key.attachment() instanceof Transport)
-					drop(key);
+			try
+			{
+				Runnable gate = beforeSelectorDisposal;
+				if (gate != null) gate.run();
+			}
+			finally
+			{
+				// Selector.close cancels keys, but does not close their channels.
+				for (SelectionKey key : List.copyOf(registered.values()))
+					if (key.attachment() instanceof Transport)
+						drop(key);
+			}
 		}
+	}
+
+	/** Test-only dispatch to the real selector; no second writer or executor. */
+	private void onSelector(Runnable task)
+	{
+		selectorTestTasks.add(task);
+		selector.wakeup();
+	}
+
+	/** Test-only gates for observing the shared save/output stage and the disposal reserve. */
+	void holdShutdown(java.util.function.LongConsumer waitGate, Runnable disposalGate)
+	{
+		beforeShutdownWait = waitGate;
+		beforeSelectorDisposal = disposalGate;
+	}
+
+	/** Test-only registration uses the same selector-owned registry and slot accounting. */
+	SelectionKey registerForTest(SocketChannel socket, Transport transport) throws Exception
+	{
+		var result = new java.util.concurrent.CompletableFuture<SelectionKey>();
+		onSelector(() ->
+		{
+			try { result.complete(registerTransport(socket, transport)); }
+			catch (Exception failure) { result.completeExceptionally(failure); }
+		});
+		return result.get(5, TimeUnit.SECONDS);
+	}
+
+	private SelectionKey registerTransport(SocketChannel socket, Transport transport) throws IOException
+	{
+		SelectionKey key = socket.register(selector, SelectionKey.OP_READ, transport);
+		registered.put(transport, key);
+		transports++;
+		return key;
 	}
 
 	/** Test-only gate inside the Session transaction, after the replacement guard. */
@@ -333,8 +382,7 @@ final class BridgeLoopback implements Runnable
 				socket.close();
 				return;
 			}
-			socket.register(selector, SelectionKey.OP_READ, new Transport(settings.secret()));
-			transports++;
+			registerTransport(socket, new Transport(settings.secret()));
 		}
 		catch (IOException e)
 		{
@@ -841,7 +889,7 @@ final class BridgeLoopback implements Runnable
 	{
 		long now = System.nanoTime();
 		long wait = 1000;
-		for (SelectionKey key : selector.keys())
+		for (SelectionKey key : registered.values())
 		{
 			if (!(key.attachment() instanceof Transport))
 				continue;
@@ -875,7 +923,7 @@ final class BridgeLoopback implements Runnable
 
 	private void flushAll() throws IOException
 	{
-		for (SelectionKey key : selector.keys())
+		for (SelectionKey key : registered.values())
 		{
 			if (!key.isValid() || !(key.attachment() instanceof Transport))
 				continue;
@@ -996,6 +1044,7 @@ final class BridgeLoopback implements Runnable
 						transport.queued.add(transport.afterCheckpoint.remove());
 				}
 				transport.releaseAfterCheckpoint = false;
+				transport.releaseAfterCheckpointCount = 0;
 			}
 			if (transport.retire)
 			{
@@ -1762,6 +1811,7 @@ final class BridgeLoopback implements Runnable
 		}
 		if (key.attachment() instanceof Transport source)
 		{
+			registered.remove(source, key);
 			Session owner = source.resumeOwner != null ? source.resumeOwner : source.session;
 			if (owner != null)
 			{
@@ -1817,7 +1867,9 @@ final class BridgeLoopback implements Runnable
 		long saveEnd = shutdownSaveEnd(end, budgetNs);
 		shutdownDeadline = end;
 		stopAdmitting();
-		while (System.nanoTime() < saveEnd && !disconnectsFinished())
+		java.util.function.LongConsumer waitGate = beforeShutdownWait;
+		if (waitGate != null) waitGate.accept(saveEnd);
+		while (!BridgeShutdownBudget.canStop(System.nanoTime(), saveEnd, disconnectsFinished() && shutdownOutputDrained()))
 		{
 			selector.wakeup();
 			try
@@ -1834,14 +1886,7 @@ final class BridgeLoopback implements Runnable
 			System.getLogger(BridgeLoopback.class.getName()).log(System.Logger.Level.WARNING,
 					"Bridge shutdown budget expired with unfinished saves; no parallel save will be started");
 		reapClients();
-		// A finished client publishes its outcome before its finished bit. Give the selector
-		// the remaining original budget to materialize and drain that notification.
-		while (!BridgeShutdownBudget.canStop(System.nanoTime(), end, disconnectsFinished() && shutdownOutputDrained()))
-		{
-			selector.wakeup();
-			try { Thread.sleep(1); }
-			catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
-		}
+		// Save and its final output share saveEnd. The untouched tail is disposal reserve.
 		stopping = true;
 		selector.wakeup();
 		try
@@ -1868,7 +1913,7 @@ final class BridgeLoopback implements Runnable
 
 	private boolean shutdownOutputDrained()
 	{
-		for (SelectionKey key : selector.keys())
+		for (SelectionKey key : registered.values())
 		{
 			if (key.attachment() instanceof Transport source)
 			{

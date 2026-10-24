@@ -378,11 +378,7 @@ class BridgeTransportRecoveryTest
 			{
 				var accepted = server.accept();
 				accepted.configureBlocking(false);
-				var selectorField = BridgeLoopback.class.getDeclaredField("selector");
-				selectorField.setAccessible(true);
-				var selector = (java.nio.channels.Selector)selectorField.get(fixture.loop);
-				var socketKey = accepted.register(selector, SelectionKey.OP_READ, fixture.first);
-				fixture.loop.account();
+				var socketKey = fixture.loop.registerForTest(accepted, fixture.first);
 				fixture.client.requestBridgeDisconnect();
 				assertThat(saving.await(5, TimeUnit.SECONDS)).isTrue();
 				try { fixture.loop.close(1000); }
@@ -627,6 +623,188 @@ class BridgeTransportRecoveryTest
 			return copy.length;
 		});
 		return socket;
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "saved", "false", "throw" })
+	void saveBetweenTheLastWriteAndPostFlushControlStillDeliversBye(String outcome) throws Exception
+	{
+		var saving = new CountDownLatch(1);
+		var release = new CountDownLatch(1);
+		try (Fixture fixture = new Fixture(20034))
+		{
+			fixture.open();
+			doAnswer(call ->
+			{
+				saving.countDown();
+				assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
+				if (outcome.equals("throw")) throw new IllegalStateException("save fixture");
+				return !outcome.equals("false");
+			}).when(fixture.player).store(true, true);
+			var bytes = new ByteArrayOutputStream();
+			SocketChannel socket = writingSocket(bytes);
+			var once = new java.util.concurrent.atomic.AtomicBoolean();
+			when(socket.write(any(ByteBuffer.class))).thenAnswer(call ->
+			{
+				ByteBuffer slice = call.getArgument(0);
+				byte[] copy = new byte[slice.remaining()]; slice.get(copy); bytes.write(copy);
+				if (once.compareAndSet(false, true))
+				{
+					// flush borrowed the last ordinary slice after initial control, outside M.
+					release.countDown(); barrier(fixture.client); barrier(fixture.client);
+					assertThat(fixture.owner.saveNotification.get()).isNotNull();
+				}
+				return copy.length;
+			});
+			ByteArrayOutputStream pong = new ByteArrayOutputStream();
+			Codec.bridge().write(pong, List.of(BridgeFrames.pong(123)));
+			BridgeLoopback.offer(fixture.first, pong.toByteArray());
+			fixture.loop.acceptFrame(fixture.first, List.of(Envelope.of(Schemas.CLOSE,
+					List.of(Field.u(1, true, fixture.id), Field.u(2, true, 1), Field.u(3, true, 0)))));
+			assertThat(saving.await(5, TimeUnit.SECONDS)).isTrue();
+			SelectionKey socketKey = key(socket, fixture.first, false);
+			fixture.loop.account();
+			try
+			{
+				fixture.loop.serve(socketKey);
+				verify(socket, never()).close();
+				verify(socketKey, never()).cancel();
+				fixture.loop.serve(socketKey);
+				var input = new ByteArrayInputStream(bytes.toByteArray());
+				assertThat(Codec.bridge().read(input).getFirst().type()).isEqualTo(Schemas.PONG);
+				var reply = Codec.bridge().read(input);
+				assertThat(reply).hasSize(1);
+				assertThat(reply.getFirst().type()).isEqualTo(Schemas.BYE);
+				assertThat(reply.getFirst().field(1).value().u()).isEqualTo(outcome.equals("saved")
+						? BridgeFrames.BYE_NORMAL : BridgeFrames.BYE_INTERNAL);
+				assertThat(input.available()).isZero();
+				verify(socket).close(); verify(socketKey).cancel();
+				assertThat(fixture.loop.transports()).isZero();
+				verify(fixture.player).store(true, true); verify(fixture.player).deleteMe();
+			}
+			finally { release.countDown(); }
+		}
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "saved", "false", "throw" })
+	void shutdownDrainsTheSaveOutcomeBeforePhysicalEof(String outcome) throws Exception
+	{
+		var saving = new CountDownLatch(1);
+		var release = new CountDownLatch(1);
+		var waiting = new CountDownLatch(1);
+		try (Fixture fixture = new Fixture(20035); Connected connected = new Connected(fixture))
+		{
+			fixture.loop.watch(fixture.client);
+			doAnswer(call ->
+			{
+				saving.countDown(); assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
+				if (outcome.equals("throw")) throw new IllegalStateException("save fixture");
+				return !outcome.equals("false");
+			}).when(fixture.player).store(true, true);
+			fixture.loop.holdShutdown(deadline -> waiting.countDown(), null);
+			fixture.client.requestBridgeDisconnect();
+			assertThat(saving.await(5, TimeUnit.SECONDS)).isTrue();
+			var finished = closeAsync(fixture.loop, 2000);
+			try
+			{
+				assertThat(waiting.await(5, TimeUnit.SECONDS)).isTrue();
+				release.countDown();
+				connected.peer.socket().setSoTimeout(2000);
+				var input = connected.peer.socket().getInputStream();
+				var reply = Codec.bridge().read(input);
+				assertThat(reply).hasSize(1);
+				assertThat(reply.getFirst().type()).isEqualTo(Schemas.BYE);
+				assertThat(reply.getFirst().field(1).value().u()).isEqualTo(outcome.equals("saved")
+						? BridgeFrames.BYE_NORMAL : BridgeFrames.BYE_INTERNAL);
+				assertThat(input.read()).isEqualTo(-1);
+				finished.get(3, TimeUnit.SECONDS);
+				assertThat(connected.accepted.isOpen()).isFalse();
+				assertThat(connected.key.isValid()).isFalse();
+				assertThat(fixture.loop.transports()).isZero();
+				barrier(fixture.client);
+				verify(fixture.player).store(true, true); verify(fixture.player).deleteMe();
+			}
+			finally { release.countDown(); finished.get(5, TimeUnit.SECONDS); }
+		}
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(booleans = { false, true })
+	void stalledSaveLeavesDisposalReserveAndRepeatedCloseCannotRenewIt(boolean concurrent) throws Exception
+	{
+		var saving = new CountDownLatch(1);
+		var release = new CountDownLatch(1);
+		var waiting = new CountDownLatch(1);
+		var saveEnd = new java.util.concurrent.atomic.AtomicLong();
+		var remainingAtDisposal = new java.util.concurrent.atomic.AtomicLong();
+		var claims = new java.util.concurrent.atomic.AtomicInteger();
+		try (Fixture fixture = new Fixture(20036); Connected connected = new Connected(fixture))
+		{
+			fixture.loop.watch(fixture.client);
+			doAnswer(call ->
+			{
+				saving.countDown(); assertThat(release.await(10, TimeUnit.SECONDS)).isTrue(); return true;
+			}).when(fixture.player).store(true, true);
+			fixture.loop.holdShutdown(deadline ->
+			{
+				saveEnd.set(deadline); claims.incrementAndGet(); waiting.countDown();
+			}, () -> remainingAtDisposal.set(saveEnd.get() + 200_000_000L - System.nanoTime()));
+			fixture.client.requestBridgeDisconnect();
+			assertThat(saving.await(5, TimeUnit.SECONDS)).isTrue();
+			var finished = closeAsync(fixture.loop, 2000);
+			try
+			{
+				assertThat(waiting.await(5, TimeUnit.SECONDS)).isTrue();
+				if (!concurrent) finished.get(3, TimeUnit.SECONDS);
+				org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(1), fixture.loop::close);
+				finished.get(3, TimeUnit.SECONDS); // No ISE from the real close with save still held.
+				assertThat(claims.get()).isEqualTo(1);
+				assertThat(remainingAtDisposal.get()).isGreaterThan(1_000_000L);
+				assertThat(connected.accepted.isOpen()).isFalse();
+				assertThat(connected.key.isValid()).isFalse();
+				assertThat(fixture.loop.transports()).isZero();
+				connected.peer.socket().setSoTimeout(1000);
+				assertThat(connected.peer.socket().getInputStream().read()).isEqualTo(-1);
+				release.countDown(); barrier(fixture.client); barrier(fixture.client);
+				assertThat(connected.accepted.isOpen()).isFalse();
+				assertThat(fixture.loop.transports()).isZero();
+				verify(fixture.player).store(true, true); verify(fixture.player).deleteMe();
+			}
+			finally { release.countDown(); finished.get(5, TimeUnit.SECONDS); }
+		}
+	}
+
+	private static java.util.concurrent.CompletableFuture<Void> closeAsync(BridgeLoopback loop, long budgetMs)
+	{
+		var result = new java.util.concurrent.CompletableFuture<Void>();
+		Thread closing = new Thread(() ->
+		{
+			try { loop.close(budgetMs); result.complete(null); }
+			catch (Throwable failure) { result.completeExceptionally(failure); }
+		}, "bridge-test-close");
+		closing.setDaemon(true); closing.start(); return result;
+	}
+
+	private static final class Connected implements AutoCloseable
+	{
+		final SocketChannel peer;
+		final SocketChannel accepted;
+		final SelectionKey key;
+
+		Connected(Fixture fixture) throws Exception
+		{
+			fixture.open();
+			try (var server = java.nio.channels.ServerSocketChannel.open())
+			{
+				server.bind(new java.net.InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+				peer = SocketChannel.open(server.getLocalAddress()); accepted = server.accept();
+				accepted.configureBlocking(false);
+				key = fixture.loop.registerForTest(accepted, fixture.first);
+			}
+		}
+
+		@Override public void close() throws Exception { peer.close(); accepted.close(); }
 	}
 
 	@org.junit.jupiter.params.ParameterizedTest
@@ -1065,6 +1243,16 @@ class BridgeTransportRecoveryTest
 			}).when(fixture.player).completeBridgeTeleport(1);
 			fixture.owner.sink.ownTeleported(1);
 			barrier(fixture.client);
+			assertThat(fixture.first.checkpoint).isNotNull();
+			// Reserve a distinguishable post-capture sequence before S can release the old prefix.
+			fixture.owner.sink.deliver(new UserInfo(fixture.player), fixture.player);
+			long postCaptureSequence;
+			synchronized (fixture.first)
+			{
+				var tail = Codec.bridge().read(new ByteArrayInputStream(fixture.first.afterCheckpoint.peekLast()));
+				assertThat(tail.getLast().type()).isEqualTo(Schemas.FACT);
+				postCaptureSequence = tail.getLast().field(2).value().u();
+			}
 			var records = new ArrayList<Envelope>();
 			var input = new ByteArrayInputStream(bytes.toByteArray());
 			while (input.available() != 0) records.addAll(Codec.bridge().read(input));
@@ -1087,6 +1275,21 @@ class BridgeTransportRecoveryTest
 			assertThat(inside).isFalse();
 			assertThat(ready).isEqualTo(1);
 			assertThat(records).filteredOn(record -> record.type() == Schemas.OPENED).hasSize(live ? 0 : 1);
+			long previousSequence = 0;
+			int readyEndAt = -1, postCaptureAt = -1;
+			for (int i = 0; i < records.size(); i++)
+			{
+				Envelope record = records.get(i);
+				if (record.type() == Schemas.CHECKPOINT && record.field(1).value().u() == Schemas.END
+						&& record.field(3).value().u() == 1) readyEndAt = i;
+				if (record.type() != Schemas.FACT) continue;
+				long sequence = record.field(2).value().u();
+				assertThat(Long.compareUnsigned(sequence, previousSequence)).isPositive();
+				previousSequence = sequence;
+				if (sequence == postCaptureSequence) postCaptureAt = i;
+			}
+			assertThat(readyEndAt).isGreaterThanOrEqualTo(0);
+			assertThat(postCaptureAt).isGreaterThan(readyEndAt);
 		}
 	}
 
