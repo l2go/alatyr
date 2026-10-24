@@ -72,6 +72,7 @@ final class BridgeLoopback implements Runnable
 	private volatile boolean stopping;
 	private volatile Consumer<Transport> afterResumeGuard;
 	private volatile long shutdownDeadline;
+	private final BridgeShutdownBudget shutdownBudget = new BridgeShutdownBudget();
 
 	private BridgeLoopback(BridgeSettings settings, GameServerContext context, ServerSocketChannel server,
 			Selector selector)
@@ -911,7 +912,8 @@ final class BridgeLoopback implements Runnable
 		boolean close;
 		synchronized (transport)
 		{
-			boolean drained = transport.writing == null && transport.queued.isEmpty();
+			applyOutputFlags(transport);
+			boolean drained = outputDrained(transport);
 			close = transport.closing && (drained || System.nanoTime() >= transport.closeDeadline);
 			if (key.isValid())
 				key.interestOps(drained ? SelectionKey.OP_READ : SelectionKey.OP_READ | SelectionKey.OP_WRITE);
@@ -983,8 +985,16 @@ final class BridgeLoopback implements Runnable
 			transport.discardAfterCheckpointCount = 0;
 			if (transport.releaseAfterCheckpoint)
 			{
-				while (!transport.afterCheckpoint.isEmpty())
+				while (transport.releaseAfterCheckpointCount > 0 && !transport.afterCheckpoint.isEmpty())
+				{
 					transport.queued.add(transport.afterCheckpoint.remove());
+					transport.releaseAfterCheckpointCount--;
+				}
+				if (transport.checkpoint == null)
+				{
+					while (!transport.afterCheckpoint.isEmpty())
+						transport.queued.add(transport.afterCheckpoint.remove());
+				}
 				transport.releaseAfterCheckpoint = false;
 			}
 			if (transport.retire)
@@ -1002,21 +1012,25 @@ final class BridgeLoopback implements Runnable
 			else if (transport.terminalReply != null)
 			{
 				byte[] reply = transport.terminalReply;
-				transport.terminalReply = null;
 				transport.openingFacts.clear();
 				transport.openingFactBytes = 0;
 				if (!transport.lost)
 				{
-					if (reply.length > OUT_QUEUE_BYTES - transport.held)
-						transport.slowRequested = true;
-					else
+					if (reply.length <= OUT_QUEUE_BYTES - transport.held)
 					{
 						transport.queued.add(reply);
 						transport.held += reply.length;
+						transport.terminalReply = null;
 					}
 				}
 			}
 		}
+	}
+
+	/** Pending terminal output is not drained merely because the ordinary queue is empty. */
+	static boolean outputDrained(Transport transport)
+	{
+		return transport.writing == null && transport.queued.isEmpty() && transport.terminalReply == null;
 	}
 
 	/** Test seam for the selector's request drain, without acquiring another monitor. */
@@ -1298,12 +1312,20 @@ final class BridgeLoopback implements Runnable
 		{
 			synchronized (this)
 			{
+				// Sample the deadline only after entering the arbitration transaction.
+				serviceCloseResult(System.nanoTime());
+			}
+		}
+
+		/** Controlled-clock entry used by the event-order replay; identical selector transaction. */
+		void serviceCloseResult(long now)
+		{
+			synchronized (this)
+			{
 				List<Envelope> notification = saveNotification.getAndSet(null);
 				if (notification != null)
 				{
-					Transport preferred = closeReplyTransport;
-					boolean expired;
-					synchronized (preferred) { expired = resultExpired(preferred, System.nanoTime()); }
+					boolean expired = closeResultExpired(saveDeadline, now);
 					completeCloseResult(expired ? List.of(BridgeFrames.bye(BridgeFrames.BYE_INTERNAL)) : notification);
 				}
 				if (closeOutcome == null)
@@ -1339,19 +1361,22 @@ final class BridgeLoopback implements Runnable
 			}
 		}
 
-		private boolean claimSaveRecipient(Transport candidate)
+		private boolean claimSaveRecipient(Transport candidate, boolean requireCapacity)
 		{
 			if (candidate == null || !sessionTransports.contains(candidate))
 				return false;
+			byte[] reply = frame(closeOutcome);
 			synchronized (candidate)
 			{
 				if (candidate.physicallyClosed || candidate.lost || candidate.retire || candidate.terminal || candidate.closing
 						|| candidate.cancelRecords != null || candidate.slowRequested
 						|| !candidate.awaitingResult && candidate != transport)
 					return false;
+				if (requireCapacity && reply.length > OUT_QUEUE_BYTES - candidate.held)
+					return false;
 				armResultWait(candidate);
 				// The session has already arbitrated its deadline. Never reinterpret the outcome here.
-				candidate.terminalReply = frame(closeOutcome);
+				candidate.terminalReply = reply;
 				candidate.saveReplyFrame = candidate.terminalReply;
 				candidate.terminal = true;
 				candidate.awaitingResult = false;
@@ -1367,10 +1392,17 @@ final class BridgeLoopback implements Runnable
 
 		private void selectCloseRecipient()
 		{
-			if (claimSaveRecipient(closeReplyTransport) || claimSaveRecipient(transport))
+			// Prefer a recipient that can accept the outcome now. A full but valid
+			// backlog remains retryable if no other live transport has capacity.
+			if (claimSaveRecipient(closeReplyTransport, true) || claimSaveRecipient(transport, true))
 				return;
 			for (Transport candidate : sessionTransports)
-				if (claimSaveRecipient(candidate))
+				if (claimSaveRecipient(candidate, true))
+					return;
+			if (claimSaveRecipient(closeReplyTransport, false) || claimSaveRecipient(transport, false))
+				return;
+			for (Transport candidate : sessionTransports)
+				if (claimSaveRecipient(candidate, false))
 					return;
 			retireOtherTransports(null);
 		}
@@ -1639,6 +1671,9 @@ final class BridgeLoopback implements Runnable
 						current.openingFacts.clear();
 						current.openingFactBytes = 0;
 						current.holdOpeningFacts = false;
+						// Freeze the old generation before post-snapshot facts can enter this queue.
+						if (current.releaseAfterCheckpoint)
+							current.releaseAfterCheckpointCount = current.afterCheckpoint.size();
 						current.checkpoint = new BridgeCheckpointOutput(capture.records(), epoch, retained,
 								current.opened ? null : BridgeFrames.accepted(id, epoch).get(2), !current.reuseCheckpointBegin);
 						current.reuseCheckpointBegin = false;
@@ -1776,7 +1811,9 @@ final class BridgeLoopback implements Runnable
 	void close(long budgetMs)
 	{
 		long budgetNs = Math.max(0, Math.min(30_000, budgetMs)) * 1_000_000L;
-		long end = System.nanoTime() + budgetNs;
+		if (!shutdownBudget.claim(System.nanoTime(), budgetNs))
+			return; // Only the first caller owns the deadline and listener disposal.
+		long end = shutdownBudget.deadline();
 		long saveEnd = shutdownSaveEnd(end, budgetNs);
 		shutdownDeadline = end;
 		stopAdmitting();
@@ -1797,6 +1834,14 @@ final class BridgeLoopback implements Runnable
 			System.getLogger(BridgeLoopback.class.getName()).log(System.Logger.Level.WARNING,
 					"Bridge shutdown budget expired with unfinished saves; no parallel save will be started");
 		reapClients();
+		// A finished client publishes its outcome before its finished bit. Give the selector
+		// the remaining original budget to materialize and drain that notification.
+		while (!BridgeShutdownBudget.canStop(System.nanoTime(), end, disconnectsFinished() && shutdownOutputDrained()))
+		{
+			selector.wakeup();
+			try { Thread.sleep(1); }
+			catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+		}
 		stopping = true;
 		selector.wakeup();
 		try
@@ -1821,10 +1866,52 @@ final class BridgeLoopback implements Runnable
 		}
 	}
 
+	private boolean shutdownOutputDrained()
+	{
+		for (SelectionKey key : selector.keys())
+		{
+			if (key.attachment() instanceof Transport source)
+			{
+				// Finished clients may already have been reaped from sessions. The
+				// registered transport retains its owner until physical disposal.
+				Session owner = ownerOf(source);
+				if (owner != null)
+				{
+					// Do not observe the getAndSet-to-terminalReply gap in selector
+					// arbitration, or a recipient move between two per-socket checks.
+					synchronized (owner)
+					{
+						if (owner.saveNotification.get() != null)
+							return false;
+						for (Transport member : owner.sessionTransports)
+							if (!transportOutputDrained(member))
+								return false;
+					}
+				}
+				else if (!transportOutputDrained(source))
+					return false;
+			}
+		}
+		return true;
+	}
+
+	private static boolean transportOutputDrained(Transport source)
+	{
+		synchronized (source)
+		{
+			return source.lost || source.cancelRecords == null && outputDrained(source);
+		}
+	}
+
 	/** Reserve at most a tenth of the total budget for selector disposal, capped at one second. */
 	static long shutdownSaveEnd(long end, long budgetNs)
 	{
 		return end - Math.min(1_000_000_000L, budgetNs / 10);
+	}
+
+	static boolean closeResultExpired(long deadline, long now)
+	{
+		return deadline != 0 && now - deadline >= 0;
 	}
 
 	/** Blocking write used only for the one-frame refusal of a socket that is about to be closed. */
@@ -1891,6 +1978,7 @@ final class BridgeLoopback implements Runnable
 		int held;
 		boolean retire;
 		boolean releaseAfterCheckpoint;
+		int releaseAfterCheckpointCount;
 		byte[] terminalReply;
 		List<Envelope> cancelRecords;
 		boolean slowRequested;

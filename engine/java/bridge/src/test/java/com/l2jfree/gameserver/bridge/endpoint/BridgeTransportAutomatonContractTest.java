@@ -87,4 +87,20 @@ class BridgeTransportAutomatonContractTest
 		assertThat(method(source, "void run()")).contains("finally", "drop(key)");
 		assertThat(method(source, "void close(long budgetMs)")).contains("saveEnd", "thread.join", "unfinished saves");
 	}
+
+	@Test
+	void theEventModelIsWiredIntoSelectorCaptureAndShutdown() throws Exception
+	{
+		String source = source();
+		String flush = method(source, "void flushKeyThrows(");
+		assertThat(flush.indexOf("owner.serviceCloseResult()")).isLessThan(flush.indexOf("applyOutputFlags(transport)"));
+		assertThat(flush).contains("outputDrained(transport)");
+		assertThat(method(source, "void serviceCloseResult(long now)")).contains("closeResultExpired(saveDeadline, now)");
+		assertThat(method(source, "void completeCloseResult(")).contains("if (closeOutcome != null)", "List.copyOf(records)");
+		String capture = method(source, "void captureCheckpointChecked(");
+		assertThat(capture.indexOf("releaseAfterCheckpointCount =")).isLessThan(capture.indexOf("current.checkpoint = new"));
+		assertThat(method(source, "void close(long budgetMs)")).contains("shutdownBudget.claim(", "shutdownBudget.deadline()", "BridgeShutdownBudget.canStop(");
+		assertThat(method(source, "boolean shutdownOutputDrained()")).contains("ownerOf(source)", "synchronized (owner)", "owner.saveNotification.get()", "owner.sessionTransports");
+		assertThat(method(source, "boolean transportOutputDrained(")).contains("synchronized (source)", "source.cancelRecords", "outputDrained(source)");
+	}
 }
