@@ -2,5 +2,5 @@ github.com/l2go/alatyr/engine/go/bridge v0.0.0-20261023154142-3ca081d3eba3 h1:LR
 github.com/l2go/alatyr/engine/go/bridge v0.0.0-20261023154142-3ca081d3eba3/go.mod h1:t3Hi0p9gtFt9mKgVtKfDPJqdCbvXBEBplVfm5EQp4v8=
 github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0 h1:rMwRQ7Ky/sqoadBzm0G8x1JznT9qSwVIoEIzajZFh/A=
 github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=
-github.com/l2go/alatyr/engine/go/world v0.0.0-20261023203925-ef0408f8cbf8 h1:HoC6WPfA6q4tDwhGHAyn10t1OGcDIi0aPHmuObgdTFk=
-github.com/l2go/alatyr/engine/go/world v0.0.0-20261023203925-ef0408f8cbf8/go.mod h1:B3MvLH4ZMIM1Y3dW1rzu2dTPd2sdvKYmHsLeSDvPxto=
+github.com/l2go/alatyr/engine/go/world v0.0.0-20261023214742-fbe46cd27dca h1:+NHJy1SinzvUCkgcggiAaz+3BarUfREbSWjxZI4TSJA=
+github.com/l2go/alatyr/engine/go/world v0.0.0-20261023214742-fbe46cd27dca/go.mod h1:B3MvLH4ZMIM1Y3dW1rzu2dTPd2sdvKYmHsLeSDvPxto=
