@@ -634,6 +634,8 @@ class BridgeTransportRecoveryTest
 		try (Fixture fixture = new Fixture(20034))
 		{
 			fixture.open();
+			// Fixture.open publishes the snapshot, but does not bind the wire dialogue.
+			assertThat(fixture.first.dialogue.accept(List.of(resume(fixture.id, 1))).resume).isNotNull();
 			doAnswer(call ->
 			{
 				saving.countDown();
@@ -650,9 +652,17 @@ class BridgeTransportRecoveryTest
 				byte[] copy = new byte[slice.remaining()]; slice.get(copy); bytes.write(copy);
 				if (once.compareAndSet(false, true))
 				{
-					// flush borrowed the last ordinary slice after initial control, outside M.
-					release.countDown(); barrier(fixture.client); barrier(fixture.client);
-					assertThat(fixture.owner.saveNotification.get()).isNotNull();
+					// Keep the last ordinary write open until full disconnect publishes through the sink.
+					assertThat(Codec.bridge().read(new ByteArrayInputStream(copy)).getFirst().type()).isEqualTo(Schemas.PONG);
+					assertThat(fixture.owner.closeReplyTransport).isSameAs(fixture.first);
+					release.countDown();
+					long publicationEnd = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+					while (fixture.owner.saveNotification.get() == null && System.nanoTime() < publicationEnd)
+					{
+						if (Thread.currentThread().isInterrupted()) throw new InterruptedException("save publication wait");
+						java.util.concurrent.locks.LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+					}
+					assertThat(fixture.owner.saveNotification.get()).as("Close outcome published before the last ordinary write returns").isNotNull();
 				}
 				return copy.length;
 			});
