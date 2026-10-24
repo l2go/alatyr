@@ -16,6 +16,7 @@ import (
 )
 
 const (
+	operationTimeout    = 10 * time.Second
 	maxBacklogBytes     = 256 << 10
 	maxBacklogUpdates   = 1024
 	maxSessionKeys      = 4096
@@ -445,7 +446,7 @@ func (s *session) event(ctx context.Context, e world.Event) error {
 		return err
 	}
 	if v, ok := e.(world.Teleported); ok && v.Entity == s.client.owner {
-		request, cancel := context.WithTimeout(ctx, 10*time.Second)
+		request, cancel := context.WithTimeout(ctx, operationTimeout)
 		defer cancel()
 		return s.relocate(request, v.Fence)
 	}
@@ -599,7 +600,9 @@ drained:
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.batch(markers[:1], true); err != nil {
+	// Begin may be appended to by its consumer while End is still queued.
+	// Limit capacity so that append cannot overwrite the future marker.
+	if err := s.batch(markers[:1:1], true); err != nil {
 		return err
 	}
 	if err := s.batch(snap.Facts, true); err != nil {

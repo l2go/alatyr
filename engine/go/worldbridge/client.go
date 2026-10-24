@@ -121,7 +121,7 @@ func Open(ctx context.Context, cfg Config, id bridge.Identity) (*Client, bridge.
 	if err != nil {
 		return nil, bridge.Snapshot{}, err
 	}
-	ctx, cancelOpening := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancelOpening := context.WithTimeout(ctx, operationTimeout)
 	defer cancelOpening()
 	// Validate the world's lifecycle without relying on its private fields.
 	// A missing zero Ref is expected from a constructed, running world.
@@ -259,7 +259,7 @@ func (c *Client) Resume(ctx context.Context) (bridge.Recovery, error) {
 	}
 	defer c.resumeBusy.Store(false)
 	r := c.submit(ctx, func(lifetime context.Context, s *session) result {
-		request, cancel := context.WithTimeout(ctx, 10*time.Second)
+		request, cancel := context.WithTimeout(ctx, operationTimeout)
 		defer cancel()
 		stop := context.AfterFunc(lifetime, cancel)
 		defer stop()

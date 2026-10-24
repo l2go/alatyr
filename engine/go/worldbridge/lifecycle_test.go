@@ -82,6 +82,62 @@ func TestWorldPortOverflowResumeDoesNotExecuteAgain(t *testing.T) {
 	})
 }
 
+func TestWorldPortCheckpointBeginAppendKeepsEnd(t *testing.T) {
+	cat := authoredCatalog(t)
+	synctest.Test(t, func(t *testing.T) {
+		cfg, w := startPortWorld(t, cat, memstore.New())
+		c, _ := openPort(t, cfg)
+		if _, err := w.Execute(t.Context(), world.Request{Owner: c.Owner(), Verb: world.VerbTeleport, Position: world.Point{X: -71027, Y: 257883, Z: -3104}}); err != nil {
+			t.Fatal(err)
+		}
+		var begin bridge.Update
+		for range maxBacklogUpdates {
+			u := nextPortUpdate(t, c)
+			if u.Kind != bridge.LiveBatch {
+				t.Fatalf("teleport update: got %v, want LiveBatch", u.Kind)
+			}
+			if len(u.Batch.Records) == 1 && u.Batch.Records[0].Type == wire.Checkpoint && profile.U(u.Batch.Records[0], 1) == uint64(wire.CheckpointBegin) {
+				begin = u
+				break
+			}
+		}
+		if !begin.Batch.Snapshot {
+			t.Fatal("checkpoint Begin missing within bounded updates")
+		}
+
+		// The unread facts batch keeps End queued. Hold its owner while the
+		// consumer appends, so this tests storage ownership, not scheduling.
+		held, release := make(chan struct{}), make(chan struct{})
+		done := make(chan result, 1)
+		go func() {
+			done <- c.submit(t.Context(), func(context.Context, *session) result {
+				close(held)
+				<-release
+				return result{}
+			})
+		}()
+		<-held
+		begin.Batch.Records = append(begin.Batch.Records, wire.Record{Type: wire.Fact})
+		close(release)
+		if r := <-done; r.err != nil {
+			t.Fatal(r.err)
+		}
+
+		facts := nextPortUpdate(t, c)
+		if facts.Kind != bridge.LiveBatch || !facts.Batch.Snapshot || len(facts.Batch.Records) == 0 {
+			t.Fatalf("checkpoint facts: got %+v, want nonempty snapshot batch", facts)
+		}
+		end := nextPortUpdate(t, c)
+		if end.Kind != bridge.LiveBatch || !end.Batch.Snapshot || len(end.Batch.Records) != 1 {
+			t.Fatalf("checkpoint End: got %+v, want single snapshot marker", end)
+		}
+		r := end.Batch.Records[0]
+		if r.Type != wire.Checkpoint || profile.U(r, 1) != uint64(wire.CheckpointEnd) || profile.U(r, 2) != begin.GatewayEpoch || profile.U(r, 3) != 1 || r.EncodedBytes == 0 {
+			t.Fatalf("checkpoint End after Begin append: got %+v, want encoded ready End in epoch %d", r, begin.GatewayEpoch)
+		}
+	})
+}
+
 func TestWorldPortTeleportFenceAndLiveRevival(t *testing.T) {
 	cat := authoredCatalog(t)
 	synctest.Test(t, func(t *testing.T) {
