@@ -3,10 +3,7 @@ go 1.27.1
 toolchain go1.27.3
 
 use (
-	./engine/go/bridge
-	./engine/go/gateway
+	./engine/go
 	./engine/go/protocol
-	./engine/go/world
-	./engine/go/worldbridge
 	./tools/world
 )

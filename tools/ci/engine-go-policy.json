@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "modules": [
     {
       "path": "engine/go/protocol",
@@ -9,30 +9,9 @@
       "phase": "active"
     },
     {
-      "path": "engine/go/gateway",
-      "module": "github.com/l2go/alatyr/engine/go/gateway",
-      "package": "gateway",
-      "license": "AGPL-3.0-or-later",
-      "phase": "active"
-    },
-    {
-      "path": "engine/go/bridge",
-      "module": "github.com/l2go/alatyr/engine/go/bridge",
-      "package": "bridge",
-      "license": "AGPL-3.0-or-later",
-      "phase": "active"
-    },
-    {
-      "path": "engine/go/world",
-      "module": "github.com/l2go/alatyr/engine/go/world",
-      "package": "world",
-      "license": "AGPL-3.0-or-later",
-      "phase": "active"
-    },
-    {
-      "path": "engine/go/worldbridge",
-      "module": "github.com/l2go/alatyr/engine/go/worldbridge",
-      "package": "worldbridge",
+      "path": "engine/go",
+      "module": "github.com/l2go/alatyr/engine/go",
+      "package": "",
       "license": "AGPL-3.0-or-later",
       "phase": "active"
     }
@@ -103,6 +82,81 @@
     {
       "package": "wire",
       "name": "FuzzDecodeFrame"
+    }
+  ],
+  "packages": [
+    {
+      "source": "protocol/**",
+      "imports": [
+        "protocol/**"
+      ]
+    },
+    {
+      "source": "world/**",
+      "imports": [
+        "world/**"
+      ]
+    },
+    {
+      "source": "bridge/**",
+      "imports": [
+        "bridge/**",
+        "protocol/**"
+      ]
+    },
+    {
+      "source": "gateway",
+      "imports": [
+        "gateway",
+        "protocol/**"
+      ]
+    },
+    {
+      "source": "gateway/meaning",
+      "imports": [
+        "gateway",
+        "gateway/meaning",
+        "protocol/**"
+      ]
+    },
+    {
+      "source": "gateway/backend",
+      "imports": [
+        "gateway",
+        "gateway/meaning",
+        "gateway/backend",
+        "bridge/**",
+        "protocol/**"
+      ],
+      "test_imports": [
+        "gateway/fixture",
+        "gateway/gatewaytest"
+      ]
+    },
+    {
+      "source": "gateway/fixture",
+      "imports": [
+        "gateway/fixture",
+        "bridge/**",
+        "protocol/**"
+      ]
+    },
+    {
+      "source": "gateway/gatewaytest",
+      "imports": [
+        "gateway/**",
+        "bridge/**",
+        "protocol/**"
+      ]
+    },
+    {
+      "source": "worldbridge/**",
+      "imports": [
+        "worldbridge/**",
+        "world/**",
+        "bridge/**",
+        "protocol/**"
+      ]
     }
   ]
 }

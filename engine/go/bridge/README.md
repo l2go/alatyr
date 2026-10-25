@@ -1,6 +1,6 @@
 # World bridge client
 
-This module provides a bounded Go client for the Java world endpoint using the
+This package provides a bounded Go client for the Java world endpoint using the
 `bridge/1` profile and the shared protocol codec. It depends on the protocol
 module and the Go standard library.
 
@@ -29,9 +29,13 @@ License: [AGPL-3.0-or-later](LICENSE). The shared protocol fixtures remain under
 the protocol module's Apache-2.0 license.
 
 The protocol dependency is pinned to one published commit. Tests locate the shared
-fixtures through the Go module directory; they do not download a separate copy.
+fixtures through the protocol module directory; they do not download a separate copy.
 
 The client returns raw facts and receipts. Participant outcome policy and gateway
 traces remain separate integration work. All returned views transfer read-only
 ownership to the caller. Do not modify them. Command keys must remain unique for
 the lifetime of a client, including across recovery.
+
+This package belongs to the shared [Go server module](../README.md). Protocol
+remains a separate module; package dependency directions are enforced by the
+repository boundary checker in both workspace and standalone checks.

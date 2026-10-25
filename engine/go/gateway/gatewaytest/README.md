@@ -31,13 +31,13 @@ it never writes or updates fixtures.
 | G09 | `TestG09DetachAndExplicitResume` | handoff-sent; explicit recovery checks are additional |
 | G10 | `TestG10RejectFalseWitnesses` | separate-witness IDs; source, epoch, generation, and deadline checks are additional |
 
-`TestPinnedBridgeContracts` reads the exact published module's unchanged
+`TestPinnedBridgeContracts` resolves the bridge package in the same server module and reads its unchanged
 15-scenario fixture, checks its hash, and fails on a missing fixture or replacement.
 Those port scenarios do not substitute for gateway acceptance. Supplementary
 tests cover malformed-frame atomicity, duplicate mismatch, watch permissions,
 slow-reader isolation, metadata, receipt timing, and bounded retention.
 
-From the gateway module directory:
+From the gateway package directory:
 
 ```sh
 GOWORK=off go test -race -count=1 -timeout=2m ./...

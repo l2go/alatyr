@@ -12,19 +12,21 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
 
-func syntheticPolicy() policy {
-	p := policy{Version: 1, FuzzTargets: []fuzzTarget{}}
-	for _, name := range moduleNames {
-		license := "AGPL-3.0-or-later"
-		if name == "protocol" {
-			license = "Apache-2.0"
-		}
-		p.Modules = append(p.Modules, modulePolicy{"engine/go/" + name, modulePrefix + name, name, license, "scaffold"})
+func syntheticPolicy(t *testing.T) policy {
+	t.Helper()
+	_, file, _, _ := runtime.Caller(0)
+	p, err := loadPolicy(filepath.Join(filepath.Dir(file), "engine-go-policy.json"))
+	if err != nil {
+		t.Fatal(err)
 	}
+	p.Modules[0].Phase = "scaffold"
+	p.FuzzTargets = nil
+	p.Denied = nil
 	for i := 1; i <= 12; i++ {
 		word := fmt.Sprintf("fixture-term-%02d", i)
 		if i == 1 {
@@ -38,11 +40,11 @@ func syntheticPolicy() policy {
 
 func fixture(t *testing.T) (string, policy) {
 	t.Helper()
-	_, source, _, ok := runtime.Caller(0)
+	_, file, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("cannot locate test sources")
 	}
-	repository := filepath.Clean(filepath.Join(filepath.Dir(source), "../.."))
+	repository := filepath.Clean(filepath.Join(filepath.Dir(file), "../.."))
 	root := t.TempDir()
 	// On macOS a temporary directory may be reached through a /var symlink.
 	// Go workspace matching uses absolute directory prefixes, so use one spelling.
@@ -50,13 +52,17 @@ func fixture(t *testing.T) (string, policy) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files := []string{"go.work", "tools/world/go.mod", "tools/world/LICENSE", "docs/engine-go/README.md"}
-	for _, name := range moduleNames {
-		// This fixture models scaffolds even when the real module has become active.
-		// Do not inherit production dependency directives into the synthetic tree.
-		writeFixture(t, root, "engine/go/"+name+"/go.mod", "module "+modulePrefix+name+"\n\ngo "+goVersion+"\n")
-		for _, file := range []string{"doc.go", "README.md", "LICENSE"} {
-			files = append(files, "engine/go/"+name+"/"+file)
+	files := []string{"go.work", "tools/world/go.mod", "tools/world/LICENSE", "docs/engine-go/README.md", "engine/go/go.mod", "engine/go/LICENSE", "engine/go/README.md", "engine/go/protocol/go.mod", "engine/go/protocol/README.md", "engine/go/protocol/LICENSE"}
+	for _, name := range []string{"protocol", "bridge", "world", "worldbridge", "gateway", "gateway/meaning", "gateway/backend", "gateway/fixture", "gateway/gatewaytest"} {
+		license := "AGPL-3.0-or-later"
+		if name == "protocol" {
+			license = "Apache-2.0"
+		}
+		writeFixture(t, root, "engine/go/"+name+"/doc.go", source(license, "package "+filepath.Base(name)+"\n"))
+	}
+	for _, component := range []string{"gateway", "bridge", "world", "worldbridge"} {
+		for _, name := range []string{"README.md", "LICENSE"} {
+			files = append(files, "engine/go/"+component+"/"+name)
 		}
 	}
 	for _, file := range files {
@@ -66,7 +72,7 @@ func fixture(t *testing.T) (string, policy) {
 		}
 		writeFixture(t, root, file, string(data))
 	}
-	return root, syntheticPolicy()
+	return root, syntheticPolicy(t)
 }
 
 func writeFixture(t *testing.T, root, path, data string) {
@@ -87,18 +93,6 @@ func source(license, body string) string {
 func active(p *policy) {
 	p.Modules[0].Phase = "active"
 	p.FuzzTargets = []fuzzTarget{{".", "FuzzDecode"}}
-}
-
-func activeModule(t *testing.T, p *policy, name string) modulePolicy {
-	t.Helper()
-	for i := range p.Modules {
-		if p.Modules[i].Package == name {
-			p.Modules[i].Phase = "active"
-			return p.Modules[i]
-		}
-	}
-	t.Fatalf("missing module %s", name)
-	return modulePolicy{}
 }
 
 func expectRule(t *testing.T, err error, rule string) {
@@ -126,15 +120,23 @@ func TestScaffoldAndFuzzStatus(t *testing.T) {
 }
 
 func TestStructuralBoundaries(t *testing.T) {
-	for _, mutation := range []string{"missing-use", "module-path", "nested-module", "functional-code", "license", "header"} {
+	for _, mutation := range []string{"missing-use", "module-path", "nested-module", "functional-code", "license", "header", "vendor", "parent-license", "package-header", "old-module"} {
 		t.Run(mutation, func(t *testing.T) {
 			root, p := fixture(t)
 			rule := "I-1"
 			switch mutation {
+			case "vendor":
+				writeFixture(t, root, "engine/go/bridge/vendor/example/doc.go", "package example\n")
+			case "parent-license":
+				writeFixture(t, root, "engine/go/LICENSE", "not the license\n")
+			case "package-header":
+				writeFixture(t, root, "engine/go/world/doc.go", "package world\n")
+			case "old-module":
+				writeFixture(t, root, "engine/go/bridge/go.mod", "module "+modulePrefix+"bridge\ngo "+goVersion+"\n")
 			case "missing-use":
 				writeFixture(t, root, "go.work", "go "+goVersion+"\ntoolchain "+toolchainVersion+"\nuse ./tools/world\n")
 			case "module-path":
-				writeFixture(t, root, "engine/go/gateway/go.mod", "module example.org/other\ngo 1.27.1\ntoolchain go1.27.1\n")
+				writeFixture(t, root, "engine/go/go.mod", "module example.org/other\ngo 1.27.1\ntoolchain go1.27.1\n")
 			case "nested-module":
 				writeFixture(t, root, "engine/go/extra/go.mod", "module example.org/extra\ngo 1.27.1\n")
 			case "functional-code":
@@ -239,14 +241,14 @@ func TestStandardLibraryClassification(t *testing.T) {
 		"missingstdlib": false, "./local": false, "../relative": false,
 		"example.org/foreign": false, "vendor/golang.org/x/net/http2": false,
 	} {
-		if got := allowedImport(path, modulePrefix+"protocol", t.TempDir()); got != want {
+		if got := (strings.HasPrefix(path, modulePrefix+"protocol/") || path == modulePrefix+"protocol" || standardImport(path, t.TempDir())); got != want {
 			t.Errorf("classification mismatch for %q: got %t", path, got)
 		}
 	}
 }
 
 func TestPublicContentRules(t *testing.T) {
-	p := syntheticPolicy()
+	p := syntheticPolicy(t)
 	for _, test := range []struct{ value, want string }{
 		{"ordinary English documentation", ""},
 		{"FIXTURE-MARKER", "P01"},
@@ -303,10 +305,24 @@ func TestScannerScopeAndSymlinks(t *testing.T) {
 }
 
 func TestPolicyFailsClosed(t *testing.T) {
-	for _, mutation := range []string{"empty-digests", "duplicate-digest", "bad-length", "active-empty", "scaffold-fuzz", "duplicate-target", "outside-target", "many-targets"} {
+	for _, mutation := range []string{"empty-digests", "duplicate-digest", "bad-length", "active-empty", "scaffold-fuzz", "duplicate-target", "outside-target", "many-targets", "missing-packages", "duplicate-package", "overlap-package", "invalid-source", "invalid-import", "duplicate-import", "parent-scaffold"} {
 		t.Run(mutation, func(t *testing.T) {
-			p := syntheticPolicy()
+			p := syntheticPolicy(t)
 			switch mutation {
+			case "missing-packages":
+				p.Packages = nil
+			case "duplicate-package":
+				p.Packages = append(p.Packages, p.Packages[0])
+			case "overlap-package":
+				p.Packages = append(p.Packages, packagePolicy{Source: "protocol/wire", Imports: []string{"protocol/**"}})
+			case "invalid-source":
+				p.Packages[0].Source = "../protocol"
+			case "invalid-import":
+				p.Packages[0].Imports = []string{"protocol/*"}
+			case "duplicate-import":
+				p.Packages[0].Imports = []string{"protocol/**", "protocol/**"}
+			case "parent-scaffold":
+				p.Modules[1].Phase = "scaffold"
 			case "empty-digests":
 				p.Denied = nil
 			case "duplicate-digest":
@@ -343,20 +359,12 @@ func TestPolicyFailsClosed(t *testing.T) {
 }
 
 func TestDependencyGraphRejectsExternalAndErrors(t *testing.T) {
-	dir := t.TempDir()
-	for _, value := range []string{
-		`{"Standard":true,"ImportPath":"fmt"}`,
-		fmt.Sprintf(`{"Dir":%q,"ImportPath":%q,"Module":{"Path":%q}}`, dir, modulePrefix+"protocol", modulePrefix+"protocol"),
-	} {
-		if err := checkDependencyJSON([]byte(value), modulePrefix+"protocol", dir); err != nil {
-			t.Fatal(err)
-		}
-	}
+	p := syntheticPolicy(t)
 	for _, value := range []string{
 		"", "invalid", `{"Error":{"Err":"bad"}}`,
 		`{"DepsErrors":[{"Err":"bad"}]}`, `{"ImportPath":"external","Module":{"Path":"example.org/external"}}`,
 	} {
-		expectRule(t, checkDependencyJSON([]byte(value), modulePrefix+"protocol", dir), "I-3")
+		expectRule(t, checkDependencyJSON([]byte(value), p), "I-3")
 	}
 }
 
@@ -384,169 +392,217 @@ func TestRunAndPolicyPath(t *testing.T) {
 	expectRule(t, run(root, "../outside.json", false, &out), "policy:")
 }
 
-func TestScaffoldDependencyStillRejected(t *testing.T) {
-	for _, name := range moduleNames {
-		t.Run(name, func(t *testing.T) {
-			root, p := fixture(t)
-			writeFixture(t, root, "engine/go/"+name+"/go.mod", "module "+modulePrefix+name+"\n\ngo "+goVersion+"\nrequire example.org/foreign v1.0.0\n")
-			expectRule(t, checkTree(root, p), "I-3")
-		})
-	}
-}
-
-// The active world must retain the same stdlib-only boundary as the protocol,
-// including tests and files excluded by the current platform or build tags.
-func TestWorldImportsAcrossBuildConstraints(t *testing.T) {
-	for _, test := range []struct{ file, body string }{
-		{"bad.go", "package world\nimport _ \"" + modulePrefix + "bridge\"\n"},
-		{"adapter.go", "package world\nimport _ \"" + modulePrefix + "worldbridge\"\n"},
-		{"bad_test.go", "package world_test\nimport _ \"example.org/foreign\"\n"},
-		{"tagged.go", "//go:build never_enabled\n\npackage world\nimport _ \"example.org/foreign\"\n"},
-		{"bad_plan9.go", "package world\nimport _ \"" + modulePrefix + "protocol\"\n"},
-		{"cgo.go", "package world\nimport \"C\"\n"},
-	} {
-		t.Run(test.file, func(t *testing.T) {
-			root, p := fixture(t)
-			activeModule(t, &p, "world")
-			writeFixture(t, root, "engine/go/world/"+test.file, source("AGPL-3.0-or-later", test.body))
-			expectRule(t, checkTree(root, p), "I-3")
-		})
-	}
-}
-func TestWorldModuleDirectives(t *testing.T) {
-	for _, directive := range []string{"require example.org/foreign v1.0.0", "replace example.org/foreign => ../bridge", "exclude example.org/foreign v1.0.0", "tool example.org/foreign/cmd/tool"} {
-		t.Run(strings.Fields(directive)[0], func(t *testing.T) {
-			root, p := fixture(t)
-			activeModule(t, &p, "world")
-			writeFixture(t, root, "engine/go/world/go.mod", "module "+modulePrefix+"world\ngo "+goVersion+"\n"+directive+"\n")
-			expectRule(t, checkTree(root, p), "I-3")
-		})
-	}
-}
-func TestWorldOwnSubpackages(t *testing.T) {
-	root, p := fixture(t)
-	activeModule(t, &p, "world")
-	writeFixture(t, root, "engine/go/world/catalog/catalog.go", source("AGPL-3.0-or-later", "package catalog\nimport \"encoding/csv\"\nvar NewReader=csv.NewReader\n"))
-	writeFixture(t, root, "engine/go/world/doc_test.go", source("AGPL-3.0-or-later", "package world_test\nimport _ \""+modulePrefix+"world/catalog\"\n"))
-	if err := checkTree(root, p); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func adapterModule(t *testing.T, root string, p *policy) modulePolicy {
-	t.Helper()
-	m := activeModule(t, p, "worldbridge")
-	writeFixture(t, root, "engine/go/worldbridge/go.mod", "module "+modulePrefix+"worldbridge\n\ngo "+goVersion+"\nrequire (\n"+
-		modulePrefix+"bridge v0.0.0-20261023154142-3ca081d3eba3\n"+
-		modulePrefix+"protocol v0.0.0-20261023084050-3b52c8d267a0\n"+
-		modulePrefix+"world v0.0.0-20261023214742-fbe46cd27dca\n)\n")
-	return m
-}
-
-func TestWorldBridgeDependencyDirection(t *testing.T) {
-	for _, tc := range []struct {
-		name, body string
-		accepted   bool
+// These expectations are independent of the policy data: every matrix cell is
+// exercised for both production and test files, including forbidden directions.
+func TestPackageDependencyMatrix(t *testing.T) {
+	rows := []struct {
+		from           string
+		imports, tests []string
 	}{
-		{"own and world", "package worldbridge\nimport ( _ \"" + modulePrefix + "world\"; _ \"" + modulePrefix + "bridge\"; _ \"" + modulePrefix + "protocol\" )\n", true},
-		{"gateway", "package worldbridge\nimport _ \"" + modulePrefix + "gateway\"\n", false},
-		{"tagged foreign", "//go:build never_enabled\n\npackage worldbridge\nimport _ \"example.org/foreign\"\n", false},
-		{"tagged invalid path", "//go:build never_enabled\n\npackage worldbridge\nimport _ \"" + modulePrefix + "world/../bridge\"\n", false},
-		{"test foreign", "package worldbridge_test\nimport _ \"example.org/foreign\"\n", false},
+		{"protocol", []string{"protocol"}, nil},
+		{"world", []string{"world"}, nil},
+		{"bridge", []string{"bridge", "protocol"}, nil},
+		{"gateway", []string{"gateway", "protocol"}, nil},
+		{"gateway/meaning", []string{"gateway", "gateway/meaning", "protocol"}, nil},
+		{"gateway/backend", []string{"gateway", "gateway/meaning", "gateway/backend", "bridge", "protocol"}, []string{"gateway/fixture", "gateway/gatewaytest"}},
+		{"gateway/fixture", []string{"gateway/fixture", "bridge", "protocol"}, nil},
+		{"gateway/gatewaytest", []string{"gateway", "gateway/meaning", "gateway/backend", "gateway/fixture", "gateway/gatewaytest", "bridge", "protocol"}, nil},
+		{"worldbridge", []string{"worldbridge", "world", "bridge", "protocol"}, nil},
+	}
+	root, p := fixture(t)
+	for _, row := range rows {
+		for _, target := range rows {
+			for _, test := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s_to_%s_test=%t", row.from, target.from, test), func(t *testing.T) {
+					want := slices.Contains(row.imports, target.from) || test && slices.Contains(row.tests, target.from)
+					if got := allowedEdge(p, row.from, target.from, test); got != want {
+						t.Fatalf("matrix: got %t, want %t", got, want)
+					}
+					file := "probe.go"
+					if test {
+						file = "probe_test.go"
+					}
+					path := "engine/go/" + row.from + "/" + file
+					license := "AGPL-3.0-or-later"
+					if row.from == "protocol" {
+						license = "Apache-2.0"
+					}
+					writeFixture(t, root, path, source(license, "package "+filepath.Base(row.from)+"\nimport _ \""+modulePrefix+target.from+"\"\n"))
+					err := checkSources(root, p)
+					if removeErr := os.Remove(filepath.Join(root, path)); removeErr != nil {
+						t.Fatal(removeErr)
+					}
+					if want && err != nil {
+						t.Fatal(err)
+					}
+					if !want {
+						expectRule(t, err, "I-3")
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestPackageSelectorsAndUnknownDirectories(t *testing.T) {
+	_, p := fixture(t)
+	for _, tc := range []struct {
+		from, to string
+		want     bool
+	}{
+		{"protocol/wire", "protocol/proto", true},
+		{"world/catalog", "world/storage", true},
+		{"bridge/profile", "bridge/internal/transport", true},
+		{"worldbridge/adapter", "world/catalog", true},
+		{"gateway/backend", "bridge/profile", true},
+		{"gateway/gatewaytest", "gateway/backend/x", false},
+		{"gateway/backend/x", "protocol/wire", false},
+		{"gateway/unknown", "gateway", false},
+		{"foo", "protocol", false},
+		{".", "protocol", false},
+		{"world", "worldish", false},
+		{"protocol", "protocol-other", false},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.from+"_to_"+tc.to, func(t *testing.T) {
+			if got := allowedEdge(p, tc.from, tc.to, false); got != tc.want {
+				t.Fatalf("got %t, want %t", got, tc.want)
+			}
+		})
+	}
+	for _, dir := range []string{"gateway/backend/x", "gateway/unknown", "foo", "."} {
+		t.Run(dir, func(t *testing.T) {
 			root, p := fixture(t)
-			m := adapterModule(t, root, &p)
-			name := "probe.go"
-			if tc.name == "test foreign" {
-				name = "probe_test.go"
-			}
-			writeFixture(t, root, "engine/go/worldbridge/"+name, source("AGPL-3.0-or-later", tc.body))
-			err := checkWorldBridgeDeps(root, m)
-			if tc.accepted {
-				if err != nil {
-					t.Fatal(err)
-				}
-				return
-			}
-			expectRule(t, err, "I-3")
+			writeFixture(t, root, "engine/go/"+dir+"/doc.go", source("AGPL-3.0-or-later", "package probe\n"))
+			expectRule(t, checkSources(root, p), "unknown package")
 		})
 	}
 }
 
-func TestWorldBridgeDependencyPins(t *testing.T) {
+func TestPackageImportsAcrossBuildConstraints(t *testing.T) {
+	for _, tc := range []struct{ file, target string }{
+		{"tagged.go", "example.org/foreign"},
+		{"probe_plan9.go", modulePrefix + "bridge"},
+		{"probe_test.go", modulePrefix + "gateway/gatewaytest"},
+		{"escaped.go", "example.org/for\\x65ign"},
+		{"invalid.go", modulePrefix + "world/../bridge"},
+		{"cgo.go", "C"},
+		{"relative.go", "../world"},
+		{"vendor.go", "vendor/golang.org/x/net/http2"},
+	} {
+		t.Run(tc.file, func(t *testing.T) {
+			root, p := fixture(t)
+			writeFixture(t, root, "engine/go/gateway/meaning/"+tc.file,
+				source("AGPL-3.0-or-later", "//go:build never_enabled\n\npackage meaning\nimport _ \""+tc.target+"\"\n"))
+			expectRule(t, checkSources(root, p), "I-3")
+		})
+	}
+}
+
+func TestServerModuleDirectives(t *testing.T) {
 	for _, directive := range []string{
-		"replace " + modulePrefix + "world => ../world",
-		"exclude " + modulePrefix + "world v0.0.0-20261023214742-fbe46cd27dca",
+		"require example.org/foreign v1.0.0",
+		"replace " + modulePrefix + "protocol => ./protocol",
+		"exclude " + modulePrefix + "protocol " + protocolVersion,
 		"tool example.org/foreign/cmd/tool",
 	} {
 		t.Run(strings.Fields(directive)[0], func(t *testing.T) {
 			root, p := fixture(t)
-			m := adapterModule(t, root, &p)
-			path := filepath.Join(root, "engine/go/worldbridge/go.mod")
-			data, err := os.ReadFile(path)
+			file := "engine/go/go.mod"
+			b, err := os.ReadFile(filepath.Join(root, file))
 			if err != nil {
 				t.Fatal(err)
 			}
-			writeFixture(t, root, "engine/go/worldbridge/go.mod", string(data)+directive+"\n")
-			expectRule(t, checkWorldBridgeDeps(root, m), "I-3")
+			writeFixture(t, root, file, string(b)+directive+"\n")
+			expectRule(t, checkModule(root, p.Modules[1]), "I-3")
+		})
+	}
+	for _, requirement := range []string{"", modulePrefix + "protocol v0.0.0-20261023084051-3b52c8d267a0", modulePrefix + "protocol " + protocolVersion + " // indirect", modulePrefix + "bridge v0.0.0-20261023154142-3ca081d3eba3"} {
+		t.Run(requirement, func(t *testing.T) {
+			root, p := fixture(t)
+			directive := ""
+			if requirement != "" {
+				directive = "require " + requirement + "\n"
+			}
+			writeFixture(t, root, "engine/go/go.mod", "module "+serverModule+"\ngo "+goVersion+"\n"+directive)
+			expectRule(t, checkModule(root, p.Modules[1]), "I-3")
 		})
 	}
 }
 
-func gatewayModule(t *testing.T, root string, p *policy) modulePolicy {
-	t.Helper()
-	m := activeModule(t, p, "gateway")
-	writeFixture(t, root, "engine/go/gateway/go.mod", "module "+modulePrefix+"gateway\n\ngo "+goVersion+"\nrequire (\n"+modulePrefix+"bridge v0.0.0-20261023154142-3ca081d3eba3\n"+modulePrefix+"protocol v0.0.0-20261023084050-3b52c8d267a0\n)\n")
-	return m
-}
-
-func TestGatewayDependencyDirection(t *testing.T) {
-	for _, tc := range []struct {
-		path, body string
-		accepted   bool
-	}{
-		{"root.go", "package gateway\nimport _ \"" + modulePrefix + "protocol\"\n", true},
-		{"meaning/probe.go", "package meaning\nimport _ \"" + modulePrefix + "gateway\"\n", true},
-		{"backend/probe.go", "package backend\nimport _ \"" + modulePrefix + "bridge\"\n", true},
-		{"root.go", "package gateway\nimport _ \"" + modulePrefix + "bridge\"\n", false},
-		{"meaning/probe.go", "package meaning\nimport _ \"" + modulePrefix + "bridge\"\n", false},
-		{"meaning/probe.go", "package meaning\nimport _ \"" + modulePrefix + "gateway/fixture\"\n", false},
-		{"backend/probe.go", "package backend\nimport _ \"" + modulePrefix + "gateway/gatewaytest\"\n", false},
-		{"backend/probe.go", "package backend\nimport _ \"" + modulePrefix + "gateway/fixture\"\n", false},
-		{"fixture/probe.go", "package fixture\nimport _ \"" + modulePrefix + "gateway/meaning\"\n", false},
-		{"backend/probe.go", "package backend\nimport _ \"" + modulePrefix + "world\"\n", false},
-		{"backend/probe_test.go", "package backend\nimport _ \"example.org/foreign\"\n", false},
-		{"tagged.go", "//go:build never_enabled\n\npackage gateway\nimport _ \"" + modulePrefix + "gateway/meaning\"\n", false},
-	} {
-		t.Run(tc.path+fmt.Sprint(tc.accepted), func(t *testing.T) {
-			root, p := fixture(t)
-			m := gatewayModule(t, root, &p)
-			writeFixture(t, root, "engine/go/gateway/"+tc.path, source("AGPL-3.0-or-later", tc.body))
-			err := checkGatewayDeps(root, m)
-			if tc.accepted {
+func TestPackageProviders(t *testing.T) {
+	p := syntheticPolicy(t)
+	dir := t.TempDir()
+	for _, path := range []string{"protocol/wire", "bridge/profile", "world/catalog", "gateway/backend", "worldbridge"} {
+		t.Run(path, func(t *testing.T) {
+			module := serverModule
+			suffix := path
+			if strings.HasPrefix(path, "protocol/") {
+				module += "/protocol"
+				suffix = strings.TrimPrefix(path, "protocol/")
+			}
+			pkg := listedPackage{ImportPath: modulePrefix + path, Dir: filepath.Join(dir, suffix)}
+			pkg.Module = &struct {
+				Path, Version, Dir string
+				Main               bool
+				Replace            json.RawMessage `json:",omitempty"`
+			}{Path: module, Version: protocolVersion, Dir: dir, Main: true}
+			check := func(want bool) {
+				t.Helper()
+				b, err := json.Marshal(pkg)
 				if err != nil {
 					t.Fatal(err)
 				}
-			} else {
-				expectRule(t, err, "I-3")
+				err = checkDependencyJSON(b, p)
+				if want && err != nil {
+					t.Fatal(err)
+				}
+				if !want {
+					expectRule(t, err, "I-3")
+				}
+			}
+			check(true)
+			pkg.Module.Path = modulePrefix + "bridge"
+			check(false)
+			pkg.Module.Path = module
+			pkg.Module.Replace = json.RawMessage(`{"Path":"example.org/substitute"}`)
+			check(false)
+			pkg.Module.Replace = nil
+			pkg.Dir = filepath.Dir(dir)
+			check(false)
+			pkg.Dir = filepath.Join(dir, suffix)
+			if module == modulePrefix+"protocol" {
+				pkg.Module.Main = false
+				pkg.Module.Version = "v1.0.0"
+				check(false)
 			}
 		})
 	}
 }
 
-func TestGatewayDependencyPins(t *testing.T) {
-	for _, directive := range []string{"replace " + modulePrefix + "bridge => ../bridge", "exclude " + modulePrefix + "protocol v0.0.0-20261023084050-3b52c8d267a0", "tool example.org/foreign/cmd/tool", "require example.org/foreign v1.0.0"} {
-		t.Run(strings.Fields(directive)[0], func(t *testing.T) {
-			root, p := fixture(t)
-			m := gatewayModule(t, root, &p)
-			path := filepath.Join(root, "engine/go/gateway/go.mod")
-			b, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			writeFixture(t, root, "engine/go/gateway/go.mod", string(b)+directive+"\n")
-			expectRule(t, checkGatewayDeps(root, m), "I-3")
-		})
+func TestResolvedGraphDependencyDirections(t *testing.T) {
+	p := syntheticPolicy(t)
+	dir := t.TempDir()
+	for _, test := range []bool{false, true} {
+		for _, to := range []string{"bridge", "world", "worldbridge", "gateway/fixture", "gateway/gatewaytest", "gateway/backend/x"} {
+			t.Run(fmt.Sprintf("%s_test=%t", to, test), func(t *testing.T) {
+				from := modulePrefix + "gateway/backend"
+				if test {
+					from += " [" + modulePrefix + "gateway/backend.test]"
+				}
+				value := map[string]any{"ImportPath": from, "Dir": filepath.Join(dir, "gateway/backend"), "Module": map[string]any{"Path": serverModule, "Dir": dir, "Main": true}, "Imports": []string{modulePrefix + to}}
+				b, err := json.Marshal(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = checkDependencyJSON(b, p)
+				want := to == "bridge" || test && (to == "gateway/fixture" || to == "gateway/gatewaytest")
+				if want && err != nil {
+					t.Fatal(err)
+				}
+				if !want {
+					expectRule(t, err, "I-3")
+				}
+			})
+		}
 	}
 }

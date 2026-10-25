@@ -1,6 +1,6 @@
 # Go world port
 
-This AGPL module separates the Go simulation from the raw bridge/1 profile. It
+This AGPL package separates the Go simulation from the raw bridge/1 profile. It
 depends on `world`, `bridge`, `protocol`, and the standard library. The simulation
 does not import protocol packages. All translation helpers are unexported;
 `Client` implements the existing `bridge.Port` without another port interface.
@@ -55,8 +55,12 @@ world shutdown does not implicitly save characters.
 
 `TestPortContract` applies the same capability-neutral scenarios to this client
 and `bridge.Client` over a synthetic endpoint. It does not assert gameplay parity.
-Run `go test -race ./...`, `go vet ./...` and `staticcheck ./...` in this module.
-Repeat with `GOWORK=off` to check the published dependency pins.
+Run `go test -race ./...`, `go vet ./...` and `staticcheck ./...` in this package directory.
+Repeat with `GOWORK=off` to check the published protocol pin.
 
 Not yet: participant encoding, gateway wiring, database stores, new gameplay,
 and Java-world parity.
+
+This package belongs to the shared [Go server module](../README.md). Protocol
+remains a separate module; package dependency directions are enforced by the
+repository boundary checker in both workspace and standalone checks.
