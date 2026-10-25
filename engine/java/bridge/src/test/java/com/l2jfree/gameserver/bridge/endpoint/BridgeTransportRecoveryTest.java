@@ -921,8 +921,12 @@ class BridgeTransportRecoveryTest
 			});
 			var turn = fixture.loop.executeOnSelectorForTest(() ->
 			{
-				fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
-				fixture.loop.acceptFrame(replacement, List.of(close(fixture.id, 2)));
+				try
+				{
+					fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+					fixture.loop.acceptFrame(replacement, List.of(close(fixture.id, 2)));
+				}
+				catch (java.io.IOException e) { throw new AssertionError(e); }
 				pending.countDown(); awaitLatch(proceedToLoss);
 				// The latch controls the loss microstep, not a race against the 100ms physical-close clock.
 				synchronized (fixture.owner)
