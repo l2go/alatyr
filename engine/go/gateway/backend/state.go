@@ -109,12 +109,12 @@ func (s *state) eventInput(r wire.Record, e meaning.Event, at int64) (meaning.In
 	if e.Kind != meaning.Spoke && e.Kind != meaning.Shop && e.Kind != meaning.Offer && e.Kind != meaning.Practice {
 		return in, nil
 	}
-	if !profile.Has(r, 69) {
+	if !profile.Has(r, 74) {
 		return in, wire.ErrFrame
 	}
 	cfg := s.world.session.cfg
-	ms := profile.U(r, 69)
-	if ms > uint64((1<<63-1)/int64(time.Millisecond))-60000 {
+	ms := profile.S(r, 74)
+	if ms < 0 || ms > (1<<63-1)/int64(time.Millisecond)-60000 {
 		return in, wire.ErrFrame
 	}
 	expiry, ok := bridge.ProposalExpiry(cfg.Origin, cfg.Origin.Add(time.Duration(at)*time.Millisecond), int64(ms))

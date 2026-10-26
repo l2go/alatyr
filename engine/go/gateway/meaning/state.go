@@ -224,6 +224,9 @@ func (s *State) Apply(update gateway.Update, now int64) (gateway.Observation, er
 	public := d.Event
 	switch e.Kind {
 	case Appeared, Dropped:
+		// A fresh description replaces spatial state. A producer that still moves
+		// must follow it with fresh motion, never replay the previous position.
+		delete(s.motion, e.ID)
 		s.actors[e.ID] = public
 		if e.Mine {
 			s.self = e.ID

@@ -51,6 +51,10 @@ type ItemTemplate struct {
 	Kind         ItemKind
 	BodyPartName string
 	Weight       int32
+	// Price is the authored reference price; sale to a merchant returns half.
+	Price int64
+	// Sellable permits an unequipped carried item to be offered to a merchant.
+	Sellable bool
 
 	WeaponType                        string
 	PhysicalDamage, RandomDamage      int32
@@ -200,7 +204,7 @@ func (c *Catalog) addItem(t ItemTemplate, err error) error {
 	if err != nil {
 		return err
 	}
-	if t.ID <= 0 || t.Weight < 0 || t.RandomDamage < 0 || t.RandomDamage > 100 {
+	if t.ID <= 0 || t.Weight < 0 || t.Price < 0 || t.RandomDamage < 0 || t.RandomDamage > 100 {
 		return fmt.Errorf("invalid item %d", t.ID)
 	}
 	if _, dup := c.items[t.ID]; dup {
@@ -227,6 +231,8 @@ type Catalog struct {
 	zones      []zone
 	restarts   map[int32]Restart
 	mapRegions []mapRegion
+	shops      map[int32]Shop
+	currency   int32
 }
 
 // Player returns the template of class id.
@@ -269,21 +275,24 @@ func Load(root string) (*Catalog, error) {
 	if err := c.loadGameplay(root); err != nil {
 		return nil, err
 	}
+	if err := c.loadShops(root); err != nil {
+		return nil, err
+	}
 	return c, nil
 }
 func (c *Catalog) weaponRow(r row) error {
-	t := ItemTemplate{ID: r.int("id"), Name: r.str("name"), Kind: Weapon, BodyPartName: r.str("body_part"), Weight: r.int("weight"),
+	t := ItemTemplate{ID: r.int("id"), Name: r.str("name"), Price: optionalPrice(&r), Sellable: optionalSellable(&r), Kind: Weapon, BodyPartName: r.str("body_part"), Weight: r.int("weight"),
 		WeaponType: r.str("weapon_type"), PhysicalDamage: r.int("physical_damage"), MagicDamage: r.int("magic_damage"),
 		RandomDamage: r.int("random_damage"), CritRate: r.int("critical_rate"), AccuracyMod: r.int("accuracy_modifier"),
 		EvasionMod: r.int("evasion_modifier"), AttackSpeed: r.int("attack_speed"), SoulshotCount: r.int("soulshot_count"), SpiritshotCount: r.int("spiritshot_count")}
 	return c.addItem(t, r.err)
 }
 func (c *Catalog) armorRow(r row) error {
-	t := ItemTemplate{ID: r.int("id"), Name: r.str("name"), Kind: Armor, BodyPartName: r.str("body_part"), Weight: r.int("weight"),
+	t := ItemTemplate{ID: r.int("id"), Name: r.str("name"), Price: optionalPrice(&r), Sellable: optionalSellable(&r), Kind: Armor, BodyPartName: r.str("body_part"), Weight: r.int("weight"),
 		ArmorType: r.str("armor_type"), PDef: r.int("physical_defense"), MDef: r.int("magic_defense"), ArmorEvasionMod: r.int("evasion_modifier"), MPBonus: r.int("mp_bonus")}
 	return c.addItem(t, r.err)
 }
 func (c *Catalog) etcRow(r row) error {
-	t := ItemTemplate{ID: r.int("id"), Name: r.str("name"), Kind: EtcItem, Weight: r.int("weight"), EtcType: r.str("item_type"), ConsumeType: r.str("consume_type")}
+	t := ItemTemplate{ID: r.int("id"), Name: r.str("name"), Price: optionalPrice(&r), Sellable: optionalSellable(&r), Kind: EtcItem, Weight: r.int("weight"), EtcType: r.str("item_type"), ConsumeType: r.str("consume_type")}
 	return c.addItem(t, r.err)
 }

@@ -192,6 +192,11 @@ func (t translator) dialogue(d world.Dialogue, origin world.Time) ([]fact, error
 	if !validRef(d.Speaker) || d.Page == "" || d.HTML == "" || len(d.Affordances) > maxRows {
 		return nil, errSource
 	}
+	if len(d.Affordances) > 0 {
+		if offer, ok := d.Affordances[0].Trade(); ok {
+			return t.trade(d, offer.List, d.Affordances[0].Verb == world.VerbSell, origin)
+		}
+	}
 	p, opts, err := choices(d)
 	if err != nil {
 		return nil, err
@@ -311,7 +316,7 @@ func (t translator) checkpoint(s world.Scene, epoch, next uint64, origin world.T
 	domains := []world.Domain{world.DomainSelf, world.DomainObjects, world.DomainInventory, world.DomainSkills, world.DomainDialogue, world.DomainTrade, world.DomainQuests}
 	for _, domain := range domains {
 		c, ok := coverage[domain]
-		if !ok || !c.Complete || c.Absent && domain != world.DomainTrade && domain != world.DomainQuests || (domain == world.DomainTrade || domain == world.DomainQuests) && !c.Absent {
+		if !ok || !c.Complete || c.Absent && domain != world.DomainTrade && domain != world.DomainQuests || domain == world.DomainQuests && !c.Absent {
 			out.Incomplete = append(out.Incomplete, string(domain))
 			continue
 		}
@@ -383,6 +388,10 @@ func (t translator) checkpoint(s world.Scene, epoch, next uint64, origin world.T
 			fs = []fact{f}
 		case world.DomainDialogue:
 			fs, err = t.dialogue(s.Dialogue, origin)
+		case world.DomainQuests:
+			if c.Absent {
+				fs = []fact{{21, "quests", []wire.Field{wire.Items(29, true, []wire.Value{}), boolean(31, true)}}}
+			}
 		}
 		if err != nil {
 			if errors.Is(err, errSource) {

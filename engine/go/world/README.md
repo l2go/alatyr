@@ -133,3 +133,28 @@ not yet: world-to-port adapter and shared port contract; session deduplication a
 This package belongs to the shared [Go server module](../README.md). Protocol
 remains a separate module; package dependency directions are enforced by the
 repository boundary checker in both workspace and standalone checks.
+
+## Authored merchants and restart
+
+Merchant pages issue only catalog-backed buy choices and the authored sell
+choice. Each trade offer binds a live merchant, item, quantity bound, unit price,
+and a one-minute lifetime. A committed trade consumes its offers. The owning
+world loop checks both balances and builds the complete next inventory before
+publishing one atomic resource group. Departure saves that inventory normally.
+
+Buys use merchant_buylist prices without residence tax. Sales require an
+unequipped, sellable authored template and return its reference price divided
+by two. Currency comes from the unique authored asset template. Quantity is
+bounded at 1,000,000; trade lists and resulting inventory allocations at 128
+rows. Inventory rows are counted after removing depleted goods and currency;
+purchases check the final load after payment. Finite stock and restocking rows
+are rejected rather than interpreted as unlimited stock; the current authored
+catalog has unlimited stock.
+
+A dead character can restart only through its explicitly authored normal map
+region. No destination is invented when a region has none. The raw port completes
+the existing fenced Appear transition; a sent return alone cannot prove revival.
+
+Full actor refreshes are followed by fresh movement when the source still moves.
+A repeated appearance replaces retained spatial state, including old motion.
+See the [participant integration tests](../worldtest/README.md).

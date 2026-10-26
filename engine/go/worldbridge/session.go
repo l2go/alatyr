@@ -162,6 +162,13 @@ func (s *session) enqueue(batch bridge.Batch) error {
 	for _, r := range batch.Records {
 		bytes += r.EncodedBytes
 	}
+	for _, receipt := range batch.Receipts {
+		records, err := encode([]wire.Record{receiptRecord(receipt)})
+		if err != nil {
+			return err
+		}
+		bytes += records[0].EncodedBytes
+	}
 	unread := len(s.client.updates)
 	if unread == 0 {
 		s.deliveredBytes = 0
@@ -293,17 +300,14 @@ func (s *session) write(ctx, lifetime context.Context, command bridge.Command, d
 		s.receipts[0] = bridge.Receipt{}
 		s.receipts = s.receipts[1:]
 	}
-	if drainErr := s.drain(lifetime); drainErr != nil {
-		return result{n: n, err: errors.Join(err, drainErr)}
-	}
-	records, recordErr := encode([]wire.Record{receiptRecord(r)})
-	if recordErr != nil {
-		s.detach(errorKind(recordErr))
-		return result{n: n, err: errors.Join(err, recordErr)}
-	}
-	if enqueueErr := s.enqueue(bridge.Batch{Records: records, ReceivedAt: []time.Time{r.ObservedAt}, Receipts: []bridge.Receipt{r}}); enqueueErr != nil {
+	// Port receipts are typed evidence, as in bridge.Client. Encoding them
+	// again as observation records would make consumers decode Result as Fact.
+	if enqueueErr := s.enqueue(bridge.Batch{Receipts: []bridge.Receipt{r}}); enqueueErr != nil {
 		s.detach(bridge.Capacity)
 		return result{n: n, err: errors.Join(err, enqueueErr)}
+	}
+	if drainErr := s.drain(lifetime); drainErr != nil {
+		return result{n: n, err: errors.Join(err, drainErr)}
 	}
 	return result{n: n, err: err}
 }

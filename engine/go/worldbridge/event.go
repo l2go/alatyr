@@ -82,11 +82,9 @@ func (t translator) events(e world.Event, s world.Scene, origin world.Time) ([]f
 		if err != nil {
 			return nil, err
 		}
-		domain := "objects"
-		if v.ObjectID == s.Self.Entity.ID {
-			domain = "self"
-		}
-		return one(16, domain, wire.S(64, true, int64(v.ObjectID)), wire.Obj(25, true, []wire.Field{wire.S(1, true, hp), wire.S(2, true, int64(v.MaxHP)), wire.S(3, true, mp), wire.S(4, true, int64(v.MaxMP))}))
+		// Kind 16 has one dictionary domain even for another observed actor.
+		// The subject ID retains that actor; this is not a completeness claim.
+		return one(16, "self", wire.S(64, true, int64(v.ObjectID)), wire.Obj(25, true, []wire.Field{wire.S(1, true, hp), wire.S(2, true, int64(v.MaxHP)), wire.S(3, true, mp), wire.S(4, true, int64(v.MaxMP))}))
 	case world.AttackStarted:
 		if v.Damage < 0 {
 			return nil, errSource
@@ -146,6 +144,8 @@ func (t translator) events(e world.Event, s world.Scene, origin world.Time) ([]f
 		}
 		f, err := t.known(v.Known)
 		return []fact{f}, err
+	case world.TradeList:
+		return t.trade(v.Dialogue, v.List, v.Sell, origin)
 	case world.LearnList:
 		for _, a := range v.Dialogue.Affordances {
 			if a.Verb != world.VerbLearn {
@@ -169,7 +169,7 @@ func (t translator) events(e world.Event, s world.Scene, origin world.Time) ([]f
 			if !validRef(v.Dialogue.Speaker) || v.Dialogue.Page == "" || v.Dialogue.HTML == "" {
 				return nil, errSource
 			}
-			return one(22, "skills", wire.S(64, true, int64(v.Dialogue.Speaker.ID)), wire.S(22, true, 0), wire.U(69, true, 0), wire.Items(34, true, []wire.Value{}), boolean(31, true))
+			return one(22, "skills", wire.S(64, true, int64(v.Dialogue.Speaker.ID)), wire.S(22, true, 0), wire.U(69, true, 0), wire.S(74, true, 0), wire.Items(34, true, []wire.Value{}), boolean(31, true))
 		}
 		if practice == nil {
 			return nil, errSource

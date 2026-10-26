@@ -207,9 +207,8 @@ func (w *World) capture(s *state, p *player) Scene {
 		{Domain: DomainInventory, Complete: inventoryComplete},
 		{Domain: DomainSkills, Complete: skillsComplete},
 		{Domain: DomainDialogue, Complete: dialogueComplete},
-		// These declarations must be removed when either mechanic is introduced.
-		// No event or command path currently implements trade or quests.
-		{Domain: DomainTrade, Complete: true, Absent: true},
+		// Merchant authority is captured in Dialogue; quests remain absent.
+		{Domain: DomainTrade, Complete: true},
 		{Domain: DomainQuests, Complete: true, Absent: true},
 	}
 	marker.Ready = !p.teleporting

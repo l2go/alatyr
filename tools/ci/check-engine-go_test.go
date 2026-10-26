@@ -606,3 +606,29 @@ func TestResolvedGraphDependencyDirections(t *testing.T) {
 		}
 	}
 }
+
+func TestWorldTestCompositionBoundary(t *testing.T) {
+	p := syntheticPolicy(t)
+	for _, from := range []string{"protocol", "world", "bridge", "gateway", "gateway/meaning", "gateway/backend", "gateway/fixture", "gateway/gatewaytest", "worldbridge"} {
+		t.Run(from, func(t *testing.T) {
+			for _, test := range []bool{false, true} {
+				if allowedEdge(p, from, "worldtest", test) {
+					t.Fatalf("%s acquired composition dependency", from)
+				}
+			}
+		})
+	}
+	for _, to := range []string{"worldtest", "world/catalog", "worldbridge", "gateway", "gateway/backend", "gateway/gatewaytest", "bridge", "protocol/wire"} {
+		if !allowedEdge(p, "worldtest", to, true) {
+			t.Fatalf("composition cannot import %s", to)
+		}
+	}
+	for _, to := range []string{"worldtest/unknown", "gateway/backend/x", "foreign"} {
+		if allowedEdge(p, "worldtest", to, true) {
+			t.Fatalf("composition imported unknown %s", to)
+		}
+	}
+	root, p := fixture(t)
+	writeFixture(t, root, "engine/go/worldtest/probe.go", source("AGPL-3.0-or-later", "package worldtest\nimport _ \"example.org/foreign\"\n"))
+	expectRule(t, checkSources(root, p), "I-3")
+}

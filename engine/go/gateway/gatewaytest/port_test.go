@@ -94,7 +94,7 @@ func rawFact(t testing.TB, e meaning.Event, seq, epoch uint64, extra ...wire.Fie
 		r.Fields = append(r.Fields, wire.Items(68, true, opts))
 	}
 	if e.Kind == meaning.Spoke || e.Kind == meaning.Shop || e.Kind == meaning.Offer || e.Kind == meaning.Practice {
-		r.Fields = append(r.Fields, wire.U(69, true, uint64(e.MS)))
+		r.Fields = append(r.Fields, wire.S(74, true, e.MS))
 	}
 	r.Fields = append(r.Fields, extra...)
 	return r

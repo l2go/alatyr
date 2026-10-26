@@ -14,10 +14,11 @@ import (
 )
 
 type prepared struct {
-	command bridge.Command
-	request world.Request
-	refusal world.Reason
-	cost    int64
+	command        bridge.Command
+	request        world.Request
+	refusal        world.Reason
+	cost           int64
+	pickupTemplate int32
 }
 
 // normalize bounds shape before encoding caller-owned values. The shared codec
@@ -112,7 +113,7 @@ func normalize(c bridge.Command) (bridge.Command, error) {
 			if v.S != 0 && v.S != 1 && v.S != 2 && v.S != 4 && v.S != 6 {
 				return bridge.Command{}, errCommand
 			}
-		} else if v.S <= 0 {
+		} else if v.S < 0 || c.Verb != 8 && v.S == 0 {
 			return bridge.Command{}, errCommand
 		}
 	}
@@ -156,11 +157,14 @@ func prepare(c bridge.Command, s world.Scene, now world.Time) (prepared, error) 
 		p.request.Verb = world.VerbCast
 	case 13:
 		p.request.Verb = world.VerbLearn
-	case 7, 8, 9:
-		p.refusal = world.ReasonUnavailable
-		return p, nil
+	case 7:
+		p.request.Verb = world.VerbBuy
+	case 8:
+		p.request.Verb = world.VerbSell
+	case 9:
+		p.request.Verb = world.VerbRestart
 	}
-	if v, ok := wire.Find(c.Payload, 64); ok {
+	if v, ok := wire.Find(c.Payload, 64); ok && c.Verb != 8 {
 		id := int32(v.S)
 		if id == s.Self.Entity.ID {
 			p.request.Target = s.Self.Entity
@@ -178,6 +182,15 @@ func prepare(c bridge.Command, s world.Scene, now world.Time) (prepared, error) 
 			return p, nil
 		}
 	}
+	if c.Verb == 4 {
+		for _, object := range s.Objects {
+			if object.Entity == p.request.Target {
+				if drop, ok := object.State.(world.ItemDropped); ok && drop.ObjectID == object.Entity.ID {
+					p.pickupTemplate = drop.TemplateID
+				}
+			}
+		}
+	}
 	if v, ok := wire.Find(c.Payload, 18); ok {
 		id, _ := wire.Find(v.Fields, 1)
 		level, _ := wire.Find(v.Fields, 2)
@@ -185,6 +198,30 @@ func prepare(c bridge.Command, s world.Scene, now world.Time) (prepared, error) 
 	}
 	if v, ok := wire.Find(c.Payload, 19); ok {
 		p.request.Ctrl = v.U != 0
+	}
+	if c.Verb == 7 || c.Verb == 8 {
+		list, _ := wire.Find(c.Payload, 14)
+		item, _ := wire.Find(c.Payload, 66)
+		count, _ := wire.Find(c.Payload, 16)
+		object, _ := wire.Find(c.Payload, 64)
+		for _, a := range s.Dialogue.Affordances {
+			terms, ok := a.Trade()
+			if !ok || a.Verb != p.request.Verb || int64(terms.List) != list.S || int64(terms.Item) != item.S || c.Verb == 8 && int64(terms.Object) != object.S || a.Issued > now || a.Expires <= now {
+				continue
+			}
+			if p.request.AffordanceID != 0 {
+				return prepared{}, errSource
+			}
+			if price, ok := wire.Find(c.Payload, 17); ok && price.S != terms.Price {
+				continue
+			}
+			p.request.AffordanceID = a.ID
+			p.request.Target = a.Target
+			p.request.Quantity = count.S
+		}
+		if p.request.AffordanceID == 0 {
+			p.refusal = world.ReasonStale
+		}
 	}
 	if c.Verb == 6 {
 		_, opts, err := choices(s.Dialogue)

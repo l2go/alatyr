@@ -393,3 +393,31 @@ func TestReceiptCopiesDoNotAliasJournal(t *testing.T) {
 		t.Fatal("receipt copy aliases original")
 	}
 }
+
+func TestPortReceiptsAreTypedEvidence(t *testing.T) {
+	cat := authoredCatalog(t)
+	synctest.Test(t, func(t *testing.T) {
+		cfg, _ := startPortWorld(t, cat, memstore.New())
+		port, snapshot := openPort(t, cfg)
+		var target int64
+		for _, r := range snapshot.Facts {
+			if r.Type == wire.Fact && profile.U(r, 1) == 1 && profile.S(r, 64) != 1 {
+				target = profile.S(r, 64)
+				break
+			}
+		}
+		if target == 0 {
+			t.Fatal("authored target absent")
+		}
+		if _, err := port.Write(t.Context(), bridge.Command{Key: 1, Verb: 2, Payload: []wire.Field{wire.S(64, true, target)}}); err != nil {
+			t.Fatal(err)
+		}
+		update := nextPortUpdate(t, port)
+		if update.Kind != bridge.LiveBatch || len(update.Batch.Receipts) != 1 || len(update.Batch.Records) != 0 || len(update.Batch.ReceivedAt) != 0 {
+			t.Fatalf("receipt transport: %+v, want typed evidence before observations", update)
+		}
+		if update.Batch.Receipts[0].Stage != wire.StageDone {
+			t.Fatalf("selection receipt: %+v", update.Batch.Receipts[0])
+		}
+	})
+}

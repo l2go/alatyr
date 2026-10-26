@@ -26,8 +26,9 @@ can authorize a dialogue choice or lesson, and their original expiry is retained
 Choices bind to an affordance's explicit `action` parameter, not just its target.
 Pages, lessons and skills use the event-owned source even if a later scene has
 changed. An affordance refresh does not repeat speech or lesson proposals.
-Trade and quest state is known empty only when the world declares those mechanics
-absent. Money is classified by the authored catalog's `asset` consumption type,
+Merchant proposals retain their exact world-issued identity, price and expiry.
+Buy and sell exchange inventory and currency atomically; their receipts do not
+prove participant completion. Quests remain explicitly absent. Money is classified by the authored catalog's `asset` consumption type,
 not a fixed item ID; distinct asset rows cannot be collapsed into one purse.
 
 One owner serializes `Write`, source observations and `Resume`. A key and attempt
@@ -64,3 +65,8 @@ and Java-world parity.
 This package belongs to the shared [Go server module](../README.md). Protocol
 remains a separate module; package dependency directions are enforced by the
 repository boundary checker in both workspace and standalone checks.
+
+The authored-world participant scenarios run in [worldtest](../worldtest/README.md)
+through the shared gatewaytest driver. Raw receipts are typed evidence delivered
+before their associated live facts; participant facts still precede their result.
+Proposal birth uses the canonical field 74 and never the training-type field 69.

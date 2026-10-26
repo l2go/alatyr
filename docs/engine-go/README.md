@@ -59,3 +59,8 @@ specification is a separate documentation step. This integration does not
 announce a release.
 
 Java builds and server runtime checks run in GitHub Actions.
+
+[Authored-world gateway contracts](../../engine/go/worldtest/README.md) run
+G01–G10 on the real Go world through worldbridge and the shared participant
+driver in the existing `go` job. The test-only composition package cannot be
+imported by the runtime components.

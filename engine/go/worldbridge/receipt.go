@@ -68,7 +68,7 @@ func (t translator) receipt(p prepared, c world.Commit, executionErr error, n, e
 			r.Reason = wire.ReasonInterrupted
 			r.Delivery = wire.DeliveryPartial
 		case world.StageUnknown:
-			if p.command.Verb == 1 || p.command.Verb == 3 || p.command.Verb == 12 {
+			if p.command.Verb == 1 || p.command.Verb == 3 || p.command.Verb == 9 || p.command.Verb == 12 {
 				r.Stage = wire.StageSent
 				r.Reason = wire.ReasonNone
 			}
@@ -184,10 +184,17 @@ func (t translator) effects(p prepared, c world.Commit) ([]wire.Value, bool) {
 					return nil, false
 				}
 				item, ok := t.catalog.Item(v.Resource.TemplateID)
-				if !ok || item.ID != v.Resource.TemplateID || item.ConsumeType == "asset" {
+				if !ok || item.ID != v.Resource.TemplateID {
 					return nil, false
 				}
-				result = append(result, effectValue(1, wire.S(2, true, int64(item.ID)), wire.S(3, true, int64(v.To.Item.ID)), wire.S(4, true, amount)))
+				if item.ConsumeType == "asset" {
+					if p.pickupTemplate != item.ID {
+						return nil, false
+					}
+					result = append(result, effectValue(2, wire.S(4, true, amount)))
+				} else {
+					result = append(result, effectValue(1, wire.S(2, true, int64(item.ID)), wire.S(3, true, int64(v.To.Item.ID)), wire.S(4, true, amount)))
+				}
 				items++
 			case world.ExistenceChanged:
 				if p.command.Verb != 4 || v.Entity != p.request.Target || !v.Before || v.After {

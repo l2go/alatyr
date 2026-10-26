@@ -101,7 +101,7 @@ func TestCheckpointRejectsIncompleteOrUnrepresentableDomains(t *testing.T) {
 		{"unknown inventory", "inventory", func(s *world.Scene) {
 			s.Coverage = slices.DeleteFunc(s.Coverage, func(c world.Coverage) bool { return c.Domain == world.DomainInventory })
 		}},
-		{"trade capability not absent", "trade", func(s *world.Scene) { s.Coverage[5].Absent = false }},
+		{"incomplete trade capture", "trade", func(s *world.Scene) { s.Coverage[5].Complete = false }},
 		{"quest capability not absent", "quests", func(s *world.Scene) { s.Coverage[6].Absent = false }},
 		{"invalid HP", "self", func(s *world.Scene) { s.Self.Char.CurHP = math.NaN() }},
 		{"unknown item", "inventory", func(s *world.Scene) {

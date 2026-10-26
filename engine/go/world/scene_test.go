@@ -38,7 +38,7 @@ func TestCaptureReadsEverySourceWithoutEffects(t *testing.T) {
 			t.Fatalf("capture: got %+v, want complete supported scene", scene)
 		}
 		for _, coverage := range scene.Coverage {
-			if !coverage.Complete || coverage.Absent != (coverage.Domain == DomainTrade || coverage.Domain == DomainQuests) {
+			if !coverage.Complete || coverage.Absent != (coverage.Domain == DomainQuests) {
 				t.Fatalf("coverage: got %+v", coverage)
 			}
 		}
@@ -243,7 +243,7 @@ func TestTeleportFenceAndIncarnation(t *testing.T) {
 
 func TestAbsentDomainsHaveNoEventProducer(t *testing.T) {
 	// Event is sealed by its private method. Inspect every production implementer:
-	// adding a trade/quest event requires removing the absence declarations and
+	// adding a quest event requires removing the absence declaration and
 	// replacing this assertion with real capture tests.
 	files, err := filepath.Glob("*.go")
 	if err != nil {
@@ -268,7 +268,7 @@ func TestAbsentDomainsHaveNoEventProducer(t *testing.T) {
 			}
 			// An exhaustive allowlist is stronger than checking the new name:
 			// any added event requires reviewing the absent capabilities.
-			allowed := []string{"Moving", "Stopped", "LeftWorld", "Announcement", "NPCSeen", "PlayerSeen", "ObjectGone", "SelfChanged", "PositionObserved", "TargetChosen", "TargetDetails", "TargetCleared", "Vitals", "AttackStarted", "DamageNotice", "CombatStance", "GaitChanged", "PostureChanged", "Died", "Animation", "Following", "ZoneChanged", "Teleported", "Revived", "DialoguePage", "LearnList", "SkillsShown", "SkillCast", "SkillLaunched", "SkillCanceled", "SkillReuse", "Rewarded", "LevelChanged", "ItemDropped", "ItemPicked", "InventoryChanged", "ActionIgnored", "AffordancesChanged", "GameClock"}
+			allowed := []string{"Moving", "Stopped", "LeftWorld", "Announcement", "NPCSeen", "PlayerSeen", "ObjectGone", "SelfChanged", "PositionObserved", "TargetChosen", "TargetDetails", "TargetCleared", "Vitals", "AttackStarted", "DamageNotice", "CombatStance", "GaitChanged", "PostureChanged", "Died", "Animation", "Following", "ZoneChanged", "Teleported", "Revived", "DialoguePage", "LearnList", "SkillsShown", "SkillCast", "SkillLaunched", "SkillCanceled", "SkillReuse", "Rewarded", "LevelChanged", "ItemDropped", "ItemPicked", "InventoryChanged", "ActionIgnored", "AffordancesChanged", "GameClock", "TradeList"}
 			if !slices.Contains(allowed, name.Name) {
 				t.Errorf("new event %s requires review of absent mechanics", name.Name)
 			}
@@ -277,7 +277,7 @@ func TestAbsentDomainsHaveNoEventProducer(t *testing.T) {
 }
 
 func TestAbsentMechanicsRefuseBeforeExecution(t *testing.T) {
-	for _, verb := range []Verb{"buy", "sell", "quest"} {
+	for _, verb := range []Verb{"quest"} {
 		t.Run(string(verb), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				var log commitLog

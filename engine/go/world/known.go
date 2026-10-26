@@ -12,6 +12,7 @@ func (w *World) fullInfo(s *state, a actor) {
 	switch v := a.(type) {
 	case *player:
 		v.send(SelfChanged{Self: w.selfOf(v)})
+		w.describeState(s, v, v)
 		var seen *PlayerSeen
 		for _, q := range s.players {
 			if q != v && q.known[v.id] {
@@ -19,11 +20,17 @@ func (w *World) fullInfo(s *state, a actor) {
 					seen = &PlayerSeen{Player: w.selfOf(v)}
 				}
 				q.send(*seen)
+				w.describeState(s, v, q)
 			}
 		}
 	case *npc:
 		now := time.Now()
 		w.broadcastToKnown(s, a, NPCSeen{NPC: v.view(now)})
+		for _, p := range s.players {
+			if p.known[v.id] {
+				w.describeState(s, v, p)
+			}
+		}
 	}
 }
 

@@ -91,7 +91,7 @@ func TestProposalBirthKeepsOriginalSessionClock(t *testing.T) {
 		s, w, _, f := setup(t)
 		defer s.Close()
 		e := meaning.Event{Kind: meaning.Spoke}
-		r := wire.Record{Type: wire.Fact, Fields: []wire.Field{wire.U(69, true, 10)}}
+		r := wire.Record{Type: wire.Fact, Fields: []wire.Field{wire.S(74, true, 10)}}
 		first, err := w.state.eventInput(r, e, 100)
 		if err != nil {
 			t.Fatal(err)
@@ -130,4 +130,34 @@ func TestProposalBirthKeepsOriginalSessionClock(t *testing.T) {
 			t.Fatalf("birth %d -> %d, want 10", *first.ProposalBorn, *later.ProposalBorn)
 		}
 	})
+}
+
+func TestProposalBirthUsesCanonicalField(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		fields []wire.Field
+		valid  bool
+	}{
+		{"canonical", []wire.Field{wire.S(74, true, 10)}, true},
+		{"training-type-is-not-time", []wire.Field{wire.U(69, true, 2), wire.S(74, true, 10)}, true},
+		{"missing", nil, false},
+		{"training-type-only", []wire.Field{wire.U(69, true, 10)}, false},
+		{"negative", []wire.Field{wire.S(74, true, -1)}, false},
+		{"overflow", []wire.Field{wire.S(74, true, 1<<63-1)}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				session, w, _, _ := setup(t)
+				defer session.Close()
+				in, err := w.state.eventInput(wire.Record{Type: wire.Fact, Fields: tc.fields}, meaning.Event{Kind: meaning.Spoke}, 100)
+				if tc.valid {
+					if err != nil || in.ProposalBorn == nil || *in.ProposalBorn != 10 {
+						t.Fatalf("got %+v/%v, want birth 10", in, err)
+					}
+				} else if !errors.Is(err, wire.ErrFrame) {
+					t.Fatalf("got %v, want frame error", err)
+				}
+			})
+		})
+	}
 }

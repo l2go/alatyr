@@ -19,7 +19,7 @@ const (
 	Monster Role = "monster"
 	// Trainer provides authored lessons.
 	Trainer Role = "trainer"
-	// Merchant is an authored role, not an implemented shop capability.
+	// Merchant provides authored shop choices.
 	Merchant Role = "merchant"
 	// Folk is a non-combat NPC.
 	Folk Role = "folk"
