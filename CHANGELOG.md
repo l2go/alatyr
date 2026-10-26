@@ -4,6 +4,15 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ## [Unreleased]
 
+### Added
+
+- A live bridge integration check runs the packaged Java platform with PostgreSQL, the Go bridge client and the participant gateway. It covers dialogue, purchases, sales, learning, transport recovery, saved state, and revival through relocation and checkpoint drain, alongside the ordinary client smoke. The [endpoint guide](docs/engine-go/bridge.md) documents configuration, limits and evidence boundaries.
+
+### Fixed
+
+- Trusted bridge admission runs the ordinary world-entry handler before its initial checkpoint. Bridge configuration now uses the server's defaults and operator overlay. The endpoint remains disabled by default.
+- The Go bridge client accepts the zero list identifier issued by ordinary Java sale offers, while buy commands continue to require a positive shop identifier.
+
 ### Changed
 
 - Gateway, bridge, world, and worldbridge now share the AGPL Go module `github.com/l2go/alatyr/engine/go`. Package import paths are unchanged; consumers must replace former server module requirements, including indirect ones, with the parent module. The Apache-2.0 protocol SDK remains a separate module at its existing pin, with package dependency boundaries enforced by the CI guard.
