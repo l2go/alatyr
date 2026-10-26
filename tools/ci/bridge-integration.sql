@@ -1,5 +1,6 @@
 -- Isolated characters for the live bridge acceptance test. The server has
--- already migrated this disposable database. No production data is imported.
+-- already migrated this disposable database and stopped. Seed before the next
+-- startup loads character names and object IDs. No production data is imported.
 INSERT INTO login.account (name, password_hash) VALUES
     ('bridge-trade', '2jmj7l5rSw0yVb/vlWAYkK/YBwk='),
     ('bridge-rise', '2jmj7l5rSw0yVb/vlWAYkK/YBwk='),

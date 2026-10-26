@@ -9,12 +9,9 @@ run="$root/target/bridge-integration"
 mkdir -p "$run/operator" "$run/work"
 db=""
 server_pid=""
-cleanup() {
-    result=$?
+stop_server() {
+    local failed=0
     if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
-        if [[ "$result" != 0 ]]; then
-            timeout 10 jcmd "$server_pid" Thread.print > "$run/threads.txt" 2>&1 || true
-        fi
         kill -TERM "$server_pid" 2>/dev/null || true
         for ((i=0; i<60; i++)); do
             kill -0 "$server_pid" 2>/dev/null || break
@@ -22,11 +19,21 @@ cleanup() {
         done
         if kill -0 "$server_pid" 2>/dev/null; then
             echo "Bridge integration: server exceeded its 60-second shutdown bound" >&2
+            timeout 10 jcmd "$server_pid" Thread.print > "$run/threads.txt" 2>&1 || true
             kill -KILL "$server_pid" 2>/dev/null || true
-            result=1
+            failed=1
         fi
         wait "$server_pid" || true
     fi
+    server_pid=""
+    return "$failed"
+}
+cleanup() {
+    result=$?
+    if [[ "$result" != 0 && -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
+        timeout 10 jcmd "$server_pid" Thread.print > "$run/threads.txt" 2>&1 || true
+    fi
+    stop_server || result=1
     if [[ -n "$db" ]]; then
         timeout 10 docker logs "$db" > "$run/postgres.log" 2>&1 || true
         timeout 10 docker rm -f "$db" >/dev/null || true
@@ -77,21 +84,32 @@ bridge.port=19016
 bridge.secret=$JAVA_BRIDGE_SECRET
 bridge.grace=30000
 EOF
-(
-    cd "$run/work"
-    exec java -Xms512m -Xmx2g -Dfile.encoding=UTF-8 -Dl2jfree.network.transport=nio \
-        "-Dl2jfree.config.defaults=$distribution/config" "-Dl2jfree.config.operator=$run/operator" \
-        "-Dlogback.configurationFile=$distribution/config/logback.xml" \
-        -cp "$distribution/config:$distribution/libs/*:$distribution/*" com.l2jfree.platform.Platform
-) > "$run/server.log" 2>&1 &
-server_pid=$!
-for ((i=0; i<240; i++)); do
-    kill -0 "$server_pid" || { tail -100 "$run/server.log"; exit 1; }
-    if curl --connect-timeout 1 --max-time 2 -fsS http://127.0.0.1:18080/health/ready >/dev/null 2>&1; then break; fi
-    sleep 1
-done
-curl --connect-timeout 1 --max-time 2 -fsS http://127.0.0.1:18080/health/ready
-timeout 10 docker exec -i "$db" psql -X -U postgres -d bridge -v ON_ERROR_STOP=1 < "$root/tools/ci/bridge-integration.sql"
+start_server() {
+    (
+        cd "$run/work"
+        exec java -Xms512m -Xmx2g -Dfile.encoding=UTF-8 -Dl2jfree.network.transport=nio \
+            "-Dl2jfree.config.defaults=$distribution/config" "-Dl2jfree.config.operator=$run/operator" \
+            "-Dlogback.configurationFile=$distribution/config/logback.xml" \
+            -cp "$distribution/config:$distribution/libs/*:$distribution/*" com.l2jfree.platform.Platform
+    ) >> "$run/server.log" 2>&1 &
+    server_pid=$!
+    for ((i=0; i<240; i++)); do
+        kill -0 "$server_pid" || { tail -100 "$run/server.log"; return 1; }
+        if curl --connect-timeout 1 --max-time 2 -fsS http://127.0.0.1:18080/health/ready >/dev/null 2>&1; then break; fi
+        sleep 1
+    done
+    curl --connect-timeout 1 --max-time 2 -fsS http://127.0.0.1:18080/health/ready
+}
+
+# Migrate with the packaged server, then load fixtures while no process owns
+# cached character names or object IDs. The acceptance process must see the
+# fixture in its startup snapshot just as it sees an operator's existing data.
+echo "Bridge integration: migrate the disposable database" >> "$run/server.log"
+start_server
+stop_server
+timeout 10 docker exec -i "$db" psql -X -U postgres -d bridge -v ON_ERROR_STOP=1 --single-transaction < "$root/tools/ci/bridge-integration.sql"
+echo "Bridge integration: start with persisted acceptance characters" >> "$run/server.log"
+start_server
 
 # The trade test starts this unchanged NC client after its bridge Open has
 # completed, so coexistence is established rather than inferred from timing.

@@ -313,7 +313,9 @@ The [integration runner](../../tools/ci/bridge-integration.sh) uses the distribu
 `./mvnw -B -ntp -Dgroups=integration -Dsurefire.excludedGroups= verify`. It requires Linux, Docker,
 PostgreSQL client commands in the database container, Microsoft JDK 25, and Go 1.27.3. Run
 `bash tools/ci/bridge-integration.sh` in a disposable CI workspace. It creates a database and
-isolated characters, launches the server, then runs `TestJavaBridgeTradeAndRecovery`,
+isolated characters. It first starts the packaged server to migrate the database, stops it,
+loads the fixture in one transaction, and starts it again so character-name and object-ID
+caches include those rows. It then runs `TestJavaBridgeTradeAndRecovery`,
 `TestJavaBridgeLearningPersistsAndAnAlreadyKnownSkillIsNotDone`,
 `TestJavaBridgeReturnCompletesInTheParticipantAndWorld`, and
 `TestJavaBridgeMovingActorSurvivesFreshDescriptions`. Every process and protocol wait is
