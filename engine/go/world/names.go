@@ -31,6 +31,8 @@ const (
 	PlaceCharacter Place = "character"
 	// PlaceInventory is an inventory row.
 	PlaceInventory Place = "inventory"
+	// PlaceMerchant is the authored merchant source or sink.
+	PlaceMerchant Place = "merchant"
 	// PlaceGround is an item on the ground.
 	PlaceGround Place = "ground"
 	// PlaceReward is the source of a world-awarded resource.
@@ -99,6 +101,12 @@ const (
 	VerbChoose Verb = "choose"
 	// VerbLearn requests a trainer lesson.
 	VerbLearn Verb = "learn"
+	// VerbBuy exchanges currency for an issued merchant item.
+	VerbBuy Verb = "buy"
+	// VerbSell exchanges an issued carried item for currency.
+	VerbSell Verb = "sell"
+	// VerbRestart returns a dead character to an authored normal restart point.
+	VerbRestart Verb = "restart"
 	// VerbCast requests use of a skill.
 	VerbCast Verb = "cast"
 )

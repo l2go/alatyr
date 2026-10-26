@@ -312,7 +312,7 @@ type Durability struct {
 	Err    error
 }
 
-// Affordance is the common proposal form for dialogue and learning. Its
+// Affordance is the common proposal form for dialogue, learning and trading. Its
 // identity, target, parameters, costs, issue time and expiry are world-assigned.
 // Rendering text is not an authorization to execute a choice.
 type Affordance struct {

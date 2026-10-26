@@ -6,6 +6,8 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Changed
 
+- The participant gateway now has G01–G10 coverage on the authored Go world without a JVM, using the shared contract driver. Go merchants support atomic buy/sell offers with authored prices, and refreshed actor descriptions no longer retain older motion.
+
 - Gateway, bridge, world, and worldbridge now share the AGPL Go module `github.com/l2go/alatyr/engine/go`. Package import paths are unchanged; consumers must replace former server module requirements, including indirect ones, with the parent module. The Apache-2.0 protocol SDK remains a separate module at its existing pin, with package dependency boundaries enforced by the CI guard.
 
 ## [3.2.1] - 2026-10-23

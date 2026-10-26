@@ -197,6 +197,7 @@ func (w *World) doPickup(s *state, p *player, item int32) {
 		effects = append(effects, ExistenceChanged{Entity: g.ref(), Before: true})
 	}
 	s.group(effects)
+	s.finish(StageDone) // A later AI turn cannot rewrite the original Unknown commitment.
 }
 
 // Pickup starts an intention to collect a known ground item.

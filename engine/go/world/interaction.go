@@ -16,7 +16,7 @@ import (
 )
 
 func (n *npc) npcInstance() bool {
-	return n.tmpl.Role == catalog.Trainer || n.tmpl.Role == catalog.Folk
+	return n.tmpl.Role == catalog.Trainer || n.tmpl.Role == catalog.Folk || n.tmpl.Role == catalog.Merchant
 }
 func (n *npc) trainer() bool { return n.tmpl.Role == catalog.Trainer }
 func (w *World) talk(s *state, p *player, n *npc) bool {
@@ -25,8 +25,12 @@ func (w *World) talk(s *state, p *player, n *npc) bool {
 		return false
 	}
 	w.tryAnimation(s, n, true, true)
-	if n.trainer() {
-		page := fmt.Sprintf("data/html/trainer/%d.htm", n.tmpl.ID)
+	if n.trainer() || n.tmpl.Role == catalog.Merchant {
+		dir := "trainer"
+		if n.tmpl.Role == catalog.Merchant {
+			dir = "merchant"
+		}
+		page := fmt.Sprintf("data/html/%s/%d.htm", dir, n.tmpl.ID)
 		html, ok := w.cat.HTML(page)
 		if ok {
 			w.sendPage(s, p, n, page, strings.ReplaceAll(html, "%objectId%", strconv.Itoa(int(n.id))))

@@ -191,7 +191,7 @@ func TestExecuteRefusalAndDeadline(t *testing.T) {
 		{"expired", VerbMove, 1, false, StageExpired, ""},
 		{"negative deadline", VerbMove, -1, false, StageRefused, ReasonInvalid},
 		{"stale owner", VerbMove, 0, true, StageRefused, ReasonStale},
-		{"unsupported", Verb("buy"), 0, false, StageRefused, ReasonUnavailable},
+		{"unsupported", Verb("quest"), 0, false, StageRefused, ReasonUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {

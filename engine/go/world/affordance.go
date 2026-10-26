@@ -35,15 +35,22 @@ func (s *state) nextAffordance(verb Verb, target Ref) Affordance {
 
 func (w *World) issueChoices(s *state, p *player, n *npc) {
 	s.clearAffordances(p)
-	want := "npc_" + strconv.Itoa(int(n.id)) + "_SkillList"
-	if slices.Contains(p.bypass, want) {
+	for _, action := range p.bypass {
+		allowed := n.trainer() && action == "npc_"+strconv.Itoa(int(n.id))+"_SkillList"
+		if n.tmpl.Role == catalog.Merchant {
+			_, allowed = w.merchantChoice(n, action)
+		}
+		if !allowed {
+			continue
+		}
 		a := s.nextAffordance(VerbChoose, n.ref())
-		a.Parameters = []Parameter{{Name: "action", Value: LabelValue(want)}}
+		a.Parameters = []Parameter{{Name: "action", Value: LabelValue(action)}}
 		if a.ID != 0 {
 			p.affordances = append(p.affordances, a)
 			s.change(p.ref(), PropertyAffordance, UintValue(0), UintValue(a.ID))
 		}
 	}
+
 }
 
 func (w *World) issueLessons(s *state, p *player, n *npc, skills []catalog.SkillLearn) {

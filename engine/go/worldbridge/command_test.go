@@ -70,7 +70,7 @@ func TestUnsupportedMechanicsRefuseWithoutExecution(t *testing.T) {
 		name string
 		verb uint64
 	}{
-		{"buy", 7}, {"sell", 8}, {"rise", 9}, {"other training type", 13},
+		{"other training type", 13},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tr, s := fixture()

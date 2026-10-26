@@ -157,6 +157,17 @@
         "bridge/**",
         "protocol/**"
       ]
+    },
+    {
+      "source": "worldtest",
+      "imports": [
+        "worldtest",
+        "gateway/**",
+        "bridge/**",
+        "protocol/**",
+        "world/**",
+        "worldbridge/**"
+      ]
     }
   ]
 }

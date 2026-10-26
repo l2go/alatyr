@@ -5,6 +5,7 @@ package world
 
 import (
 	"context"
+	"github.com/l2go/alatyr/engine/go/world/catalog"
 	"math"
 	"strconv"
 	"time"
@@ -27,7 +28,8 @@ const (
 // Request describes one bounded world operation. Owner and Target are captured
 // incarnations. Deadline is absolute monotonic world time; zero has no limit.
 // Move uses Position; Cast uses the exact Skill and Target; Choose and Learn
-// use an issued AffordanceID. Appear uses Fence. Unused fields grant no authority.
+// use an issued AffordanceID, as do Buy and Sell with Quantity. Appear uses Fence.
+// Unused fields grant no authority.
 // Intent identity is assigned by the world, not supplied by the caller.
 type Request struct {
 	Owner        Ref
@@ -37,9 +39,11 @@ type Request struct {
 	Position     Point
 	Skill        Skill
 	AffordanceID uint64
-	Fence        Fence
-	Ctrl, Shift  bool
-	Revive       bool
+	// Quantity is the requested count within an issued buy or sell offer.
+	Quantity    int64
+	Fence       Fence
+	Ctrl, Shift bool
+	Revive      bool
 }
 
 // Execute fixes a command outcome and its source-authored groups in Run and
@@ -153,6 +157,22 @@ func (w *World) execute(s *state, p *player, req Request) *Skill {
 			return nil
 		}
 		w.setIntention(s, p, order{intent: intentCast, target: req.Target, cast: &castRequest{skill: sk, target: req.Target, ctrl: req.Ctrl, shift: req.Shift}})
+	case VerbBuy, VerbSell:
+		w.trade(s, p, req)
+	case VerbRestart:
+		restart, ok := w.cat.RestartAt(p.pos.X, p.pos.Y, p.pos.Z)
+		if !p.dead || p.teleporting {
+			s.resolve(StageRefused, ReasonState)
+			return nil
+		}
+		if !ok || len(restart.Normal) == 0 {
+			s.resolve(StageRefused, ReasonUnavailable)
+			return nil
+		}
+		point := restart.Normal[s.rng.IntN(len(restart.Normal))]
+		if err := w.teleport(s, p, Point{X: point.X, Y: point.Y, Z: point.Z}, true); err != nil {
+			s.resolve(StageRefused, ReasonState)
+		}
 	case VerbChoose, VerbLearn:
 		a, ok := p.affordance(req.AffordanceID)
 		if !ok || a.Verb != req.Verb || a.Target != req.Target || a.Expires <= s.now() || s.ref(a.Target.ID) != a.Target {
@@ -160,7 +180,33 @@ func (w *World) execute(s *state, p *player, req Request) *Skill {
 			return nil
 		}
 		n := s.npcs[a.Target.ID]
-		if n == nil || !n.trainer() || !w.canInteract(p, n) || p.teleporting || !w.cat.CanTeach(n.tmpl.ID, p.char.ClassID) {
+		if n == nil || !w.canInteract(p, n) || p.teleporting || p.dead {
+			s.resolve(StageRefused, ReasonState)
+			return nil
+		}
+		if req.Verb == VerbChoose && n.tmpl.Role == catalog.Merchant {
+			if len(a.Parameters) != 1 {
+				s.resolve(StageRefused, ReasonInvalid)
+				return nil
+			}
+			action, ok := a.Parameters[0].Value.Label()
+			if !ok || !affordanceAction(a, action) {
+				s.resolve(StageRefused, ReasonInvalid)
+				return nil
+			}
+			list, ok := w.merchantChoice(n, action)
+			if !ok {
+				s.resolve(StageRefused, ReasonStale)
+				return nil
+			}
+			if !w.showTrade(s, p, n, list) {
+				s.resolve(StageRefused, ReasonState)
+				return nil
+			}
+			s.finish(StageDone)
+			return nil
+		}
+		if !n.trainer() || !w.cat.CanTeach(n.tmpl.ID, p.char.ClassID) {
 			s.resolve(StageRefused, ReasonState)
 			return nil
 		}

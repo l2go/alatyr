@@ -361,6 +361,10 @@ func publishEvent(e Event, at stamp) Event {
 	case Revived:
 		value.stamp = at
 		return value
+	case TradeList:
+		value.stamp = at
+		value.Dialogue = cloneDialogue(value.Dialogue)
+		return value
 	case DialoguePage:
 		value.stamp = at
 		value.Dialogue = cloneDialogue(value.Dialogue)
