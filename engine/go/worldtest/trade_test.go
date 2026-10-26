@@ -136,7 +136,7 @@ func TestMerchantAtomicBuySellAndPersistence(t *testing.T) {
 }
 
 func TestMerchantRefusalsAreAtomic(t *testing.T) {
-	for _, name := range []string{"no-money", "quantity-zero", "quantity-negative", "quantity-cap", "load", "stack-overflow", "currency-overflow", "sell-too-many", "foreign-owner", "foreign-target", "expired", "replaced-offer", "inventory-cap"} {
+	for _, name := range []string{"no-money", "quantity-zero", "quantity-negative", "quantity-cap", "load", "load-overflow", "stack-overflow", "currency-overflow", "sell-too-many", "foreign-owner", "foreign-target", "expired", "replaced-offer", "inventory-cap"} {
 		t.Run(name, func(t *testing.T) {
 			runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
 				char := readyCharacter()
@@ -144,6 +144,14 @@ func TestMerchantRefusalsAreAtomic(t *testing.T) {
 				sell := name == "currency-overflow" || name == "sell-too-many"
 				if name == "load" {
 					char.Items[0].Count = 2_000_000
+				}
+				if name == "inventory-cap" {
+					// 127 draught rows plus currency. One affordable, light weapon
+					// leaves currency and requires the 129th inventory row.
+					char.Items = []world.Item{{ObjectID: 10, TemplateID: 57, Count: 1000, Slot: -1}}
+					for i := range 127 {
+						char.Items = append(char.Items, world.Item{ObjectID: int32(11 + i), TemplateID: 1060, Count: 1, Slot: -1})
+					}
 				}
 				if name == "no-money" {
 					char.Items[0].Count = 1
@@ -154,15 +162,16 @@ func TestMerchantRefusalsAreAtomic(t *testing.T) {
 				if name == "stack-overflow" {
 					char.Items[2].Count = math.MaxInt64
 				}
+				if name == "load-overflow" {
+					char.Items[2].Count = math.MaxInt64/12 + 1
+				}
 				r := newRig(t, cat, char, allSources(), nil)
 				item := int32(1060)
-				if name == "inventory-cap" {
+				if name == "inventory-cap" || name == "load-overflow" {
 					item = 4
 				}
 				req := merchantOffer(t, r, sell, item)
 				switch name {
-				case "inventory-cap":
-					req.Quantity = 128
 				case "quantity-zero":
 					req.Quantity = 0
 				case "quantity-negative":

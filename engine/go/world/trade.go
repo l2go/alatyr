@@ -187,10 +187,6 @@ func (w *World) trade(s *state, p *player, req Request) {
 			refuse(ReasonState)
 			return
 		}
-		if tmpl.Weight > 0 && req.Quantity > (int64(p.stats.MaxLoad())-w.load(p))/int64(tmpl.Weight) {
-			refuse(ReasonState)
-			return
-		}
 	} else {
 		if item < 0 || !tmpl.Sellable || tmpl.ConsumeType == "asset" || p.char.Items[item].Equipped() || p.char.Items[item].TemplateID != terms.Item || itemBefore < req.Quantity || tmpl.Price/2 != terms.Price || coinBefore > math.MaxInt64-total {
 			refuse(ReasonState)
@@ -198,6 +194,27 @@ func (w *World) trade(s *state, p *player, req Request) {
 		}
 		delta = -delta
 		moneyDelta = total
+	}
+	// Count the committed rows, including rows removed by either side of the
+	// exchange. Temporary zero rows must not consume the inventory allowance.
+	rows := int64(len(p.char.Items))
+	if item >= 0 {
+		if itemBefore+delta == 0 {
+			rows--
+		}
+	} else if req.Verb == VerbBuy && !tmpl.Stackable() {
+		rows += req.Quantity
+	} else {
+		rows++
+	}
+	if coin >= 0 && coinBefore+moneyDelta == 0 {
+		rows--
+	} else if coin < 0 && moneyDelta != 0 {
+		rows++
+	}
+	if rows > maxTradeRows {
+		refuse(ReasonState)
+		return
 	}
 	// Build the entire next inventory and reserve all new identities before
 	// publishing either balance. A refusal cannot debit only one side.
@@ -217,9 +234,6 @@ func (w *World) trade(s *state, p *player, req Request) {
 			before = it.Count
 			it.Count += amount
 		} else {
-			if len(items) >= maxTradeRows {
-				return false
-			}
 			id := s.newID()
 			if id == 0 {
 				return false
@@ -254,10 +268,6 @@ func (w *World) trade(s *state, p *player, req Request) {
 		return true
 	}
 	if req.Verb == VerbBuy && !tmpl.Stackable() {
-		if req.Quantity > int64(maxTradeRows-len(items)) {
-			refuse(ReasonState)
-			return
-		}
 		for range req.Quantity {
 			if !assign(terms.Item, -1, 1) {
 				refuse(ReasonState)
@@ -273,6 +283,12 @@ func (w *World) trade(s *state, p *player, req Request) {
 		return
 	}
 	items = slices.DeleteFunc(items, func(it Item) bool { return it.Count == 0 })
+	// Payment may remove currency weight. Check the completed inventory rather
+	// than current load plus the goods; loadItems saturates on overflow.
+	if req.Verb == VerbBuy && w.loadItems(items) > int64(p.stats.MaxLoad()) {
+		refuse(ReasonState)
+		return
+	}
 	for _, change := range changes {
 		if change.Item.Count == 0 {
 			delete(refs, change.Item.ObjectID)

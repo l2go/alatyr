@@ -81,8 +81,12 @@ func (w *World) giveItem(s *state, p *player, n *npc, templateID int32, count in
 	}
 }
 func (w *World) load(p *player) int64 {
+	return w.loadItems(p.char.Items)
+}
+
+func (w *World) loadItems(items []Item) int64 {
 	var total int64
-	for _, it := range p.char.Items {
+	for _, it := range items {
 		t, _ := w.cat.Item(it.TemplateID)
 		if t.Weight > 0 && it.Count > (math.MaxInt64-total)/int64(t.Weight) {
 			return math.MaxInt64

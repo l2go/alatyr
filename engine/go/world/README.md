@@ -146,8 +146,10 @@ Buys use merchant_buylist prices without residence tax. Sales require an
 unequipped, sellable authored template and return its reference price divided
 by two. Currency comes from the unique authored asset template. Quantity is
 bounded at 1,000,000; trade lists and resulting inventory allocations at 128
-rows. Finite stock and restocking rows are rejected rather than interpreted as
-unlimited stock; the current authored catalog has unlimited stock.
+rows. Inventory rows are counted after removing depleted goods and currency;
+purchases check the final load after payment. Finite stock and restocking rows
+are rejected rather than interpreted as unlimited stock; the current authored
+catalog has unlimited stock.
 
 A dead character can restart only through its explicitly authored normal map
 region. No destination is invented when a region has none. The raw port completes
