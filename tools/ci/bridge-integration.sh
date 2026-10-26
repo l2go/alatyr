@@ -115,7 +115,7 @@ start_server
 # completed, so coexistence is established rather than inferred from timing.
 mapfile -t smoke < <(find "$root/engine/java/smoke/target" -maxdepth 1 -name 'l2jfree-smoke-*.jar' ! -name '*sources*')
 [[ ${#smoke[@]} == 1 ]]
-export JAVA_BRIDGE_NC_JAR="${smoke[0]}" JAVA_BRIDGE_NC_PASSWORD="$(openssl rand -hex 16)"
+export JAVA_BRIDGE_NC_JAR="${smoke[0]}" JAVA_BRIDGE_NC_PASSWORD="$(openssl rand -hex 8)"
 export JAVA_BRIDGE_NC_LOG="$run/nc.log"
 export JAVA_BRIDGE_ENDPOINT=127.0.0.1:19016 JAVA_BRIDGE_DB_CONTAINER="$db"
 cd "$root/engine/go"

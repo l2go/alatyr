@@ -29,3 +29,14 @@ VALUES
 INSERT INTO world.item
     (id, item_template_id, owner_player_id, location, count)
 VALUES (1500000010, 57, 1500000001, 'INVENTORY', 600);
+
+-- Character creation normally writes these rows alongside the player. Keep
+-- seeded characters on the same load path instead of invoking missing-row repair.
+INSERT INTO world.player_birthday (player_id, created_on, gift_claimed_year)
+SELECT id, CURRENT_DATE, EXTRACT(YEAR FROM CURRENT_DATE)::smallint
+FROM world.player WHERE id BETWEEN 1500000001 AND 1500000006;
+
+INSERT INTO world.player_recommendation_status
+    (player_id, recommendations_left, recommendations_received, updated_at)
+SELECT id, 3, 0, CURRENT_TIMESTAMP
+FROM world.player WHERE id BETWEEN 1500000001 AND 1500000006;

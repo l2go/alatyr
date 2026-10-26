@@ -1892,6 +1892,17 @@ class BridgeTransportRecoveryTest
 	@Test
 	void aTeleportInsideTheActualEnterWorldDefersOpenedUntilTheQueuedCompletion() throws Exception
 	{
+		actualEnterWorld(true);
+	}
+
+	@Test
+	void actualEnterWorldPublishesSkillsBeforeCaptureWithoutRunningTheBroadcaster() throws Exception
+	{
+		actualEnterWorld(false);
+	}
+
+	private void actualEnterWorld(boolean relocation) throws Exception
+	{
 		try (Fixture fixture = new Fixture(19992))
 		{
 			fixture.first.holdOpeningFacts = true;
@@ -1911,7 +1922,7 @@ class BridgeTransportRecoveryTest
 			when(fixture.player.getStatus().getCurrentHp()).thenReturn(10.0);
 			when(fixture.player.canReceiveAnnualPresent()).thenReturn(-1);
 			doAnswer(call -> { fixture.owner.sink.deliver(new SkillList(fixture.player), fixture.player); return null; })
-					.when(fixture.player).sendSkillList();
+					.when(fixture.player).sendSkillListImpl();
 			doAnswer(call ->
 			{
 				stable.set(false);
@@ -1933,11 +1944,16 @@ class BridgeTransportRecoveryTest
 				try (var world = new OpeningWorld())
 				{
 					// The source handler itself chooses its town relocation while entering a stadium.
-					when(world.olympiad.playerInStadia(fixture.player)).thenReturn(true);
+					when(world.olympiad.playerInStadia(fixture.player)).thenReturn(relocation);
 					assertThat(BridgeAdmission.enterWorld(fixture.client)).isTrue();
-					assertThat(stable).isFalse();
+					verify(fixture.player).sendSkillListImpl();
+					verify(fixture.player, never()).sendSkillList();
+					assertThat(stable.get()).isEqualTo(!relocation);
 					fixture.owner.opened(BridgeFrames.accepted(fixture.id, 1));
-					assertThat(fixture.first.checkpoint).isNull();
+					if (relocation)
+						assertThat(fixture.first.checkpoint).isNull();
+					else
+						assertThat(fixture.first.checkpoint).isNotNull();
 				}
 				catch (Throwable problem) { failure.set(problem); }
 			});
@@ -1948,7 +1964,7 @@ class BridgeTransportRecoveryTest
 			assertThat(records.getFirst().type()).isEqualTo(Schemas.CHECKPOINT);
 			assertThat(records.get(records.size() - 2).field(3).value().u()).isEqualTo(1);
 			assertThat(records.getLast().type()).isEqualTo(Schemas.OPENED);
-			verify(fixture.player).completeBridgeTeleport(1);
+			verify(fixture.player, times(relocation ? 1 : 0)).completeBridgeTeleport(1);
 		}
 	}
 
