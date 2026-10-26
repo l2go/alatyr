@@ -1,6 +1,6 @@
 # Gateway
 
-This module provides a bounded participant-session runtime. A session loop
+This package provides a bounded participant-session runtime. A session loop
 serializes projection policy, attempt admission, control, cached outcomes,
 checkpoint drain, and world writes. The caller supplies the protocol codec,
 world factory, dictionary policy, authenticated identities, and explicit limits.
@@ -24,13 +24,15 @@ errors. The runtime closes the participant with an internal reason and does not
 log the value or error text.
 Numeric status and journal APIs cannot retain identity strings or frame content.
 
-The module is a library, not a running server. The root runtime imports only the
+The package is a library, not a running server. The root runtime imports only the
 protocol module and the standard library. [meaning](meaning/README.md) supplies
 the fixed `alatyr/1` dictionary and bounded State. [backend](backend/README.md)
 adapts an opened `bridge.Port` and its ready snapshot to that runtime;
 [fixture](fixture) supplies a scripted raw port, and
 [gatewaytest](gatewaytest/README.md) drives the actual participant boundary.
-The module pins bridge and protocol without replacements. An executable and
+Gateway and bridge share the [server module](../README.md), which pins only
+protocol without replacements. Package dependency rules are enforced by the
+boundary checker. An executable and
 end-to-end Java verification remain separate changes.
 
 The adapter binds participant attempt, step index, helper/effect/system role,
@@ -47,7 +49,7 @@ owner must explicitly Resume within the original retention budget or Close it.
 Recovery creates a fresh participant scope while retaining raw keys and reference
 counters. Cached receipts never create a new outcome or replay a command.
 
-From this directory, run standalone checks with:
+From this directory, run standalone package checks with:
 
 ```sh
 GOWORK=off go vet ./...

@@ -18,7 +18,8 @@ import (
 )
 
 func TestDependencyBoundary(t *testing.T) {
-	const own = "github.com/l2go/alatyr/engine/go/bridge"
+	const parent = "github.com/l2go/alatyr/engine/go"
+	const own = parent + "/bridge"
 	const protocol = "github.com/l2go/alatyr/engine/go/protocol"
 	const version = "v0.0.0-20261023084050-3b52c8d267a0"
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
@@ -49,7 +50,7 @@ func TestDependencyBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "list", "-deps", "-test", "-json", "./...")
+	cmd := exec.CommandContext(t.Context(), "go", "list", "-deps", "-test", "-json", "./...")
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -74,8 +75,8 @@ func TestDependencyBoundary(t *testing.T) {
 			break
 		}
 		if err != nil {
-			cmd.Wait()
-			t.Fatal(err)
+			waitErr := cmd.Wait()
+			t.Fatal(errors.Join(err, waitErr))
 		}
 		if p.Standard {
 			continue
@@ -88,8 +89,16 @@ func TestDependencyBoundary(t *testing.T) {
 			t.Error("replacement dependency")
 		}
 		switch p.Module.Path {
-		case own:
+		case parent:
+			path, _, _ := strings.Cut(p.ImportPath, " [")
+			path = strings.TrimSuffix(strings.TrimSuffix(path, ".test"), "_test")
+			if path != own && !strings.HasPrefix(path, own+"/") {
+				t.Errorf("package outside bridge boundary: %s", path)
+			}
 		case protocol:
+			if p.ImportPath != protocol && !strings.HasPrefix(p.ImportPath, protocol+"/") {
+				t.Errorf("unexpected protocol package: %s", p.ImportPath)
+			}
 			count++
 			if !p.Module.Main && p.Module.Version != version {
 				t.Error("protocol is not pinned")

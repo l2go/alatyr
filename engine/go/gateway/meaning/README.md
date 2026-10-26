@@ -37,7 +37,7 @@ and never logs the value or error text. Apply and Proof already return errors;
 Validate returns an explicit refusal. A State is discarded after Apply errors,
 including invalid shapes or exhausted bounds, rather than reused partially.
 
-From the gateway module directory:
+From the gateway package directory:
 
 ```sh
 GOWORK=off go vet ./...

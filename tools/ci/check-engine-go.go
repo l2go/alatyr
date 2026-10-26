@@ -34,7 +34,9 @@ import (
 
 const goVersion = "1.27.1"
 const toolchainVersion = "go1.27.3"
-const modulePrefix = "github.com/l2go/alatyr/engine/go/"
+const serverModule = "github.com/l2go/alatyr/engine/go"
+const modulePrefix = serverModule + "/"
+const protocolVersion = "v0.0.0-20261023084050-3b52c8d267a0"
 const apacheSHA256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
 
 type modulePolicy struct {
@@ -56,14 +58,21 @@ type fuzzTarget struct {
 	Name    string `json:"name"`
 }
 
-type policy struct {
-	Version     int            `json:"version"`
-	Modules     []modulePolicy `json:"modules"`
-	Denied      []denyRule     `json:"denied"`
-	FuzzTargets []fuzzTarget   `json:"fuzz_targets"`
+type packagePolicy struct {
+	Source      string   `json:"source"`
+	Imports     []string `json:"imports"`
+	TestImports []string `json:"test_imports,omitempty"`
 }
 
-var moduleNames = []string{"protocol", "gateway", "bridge", "world", "worldbridge"}
+type policy struct {
+	Packages    []packagePolicy `json:"packages"`
+	Version     int             `json:"version"`
+	Modules     []modulePolicy  `json:"modules"`
+	Denied      []denyRule      `json:"denied"`
+	FuzzTargets []fuzzTarget    `json:"fuzz_targets"`
+}
+
+var moduleNames = []string{"protocol", ""}
 var windowsProfile = regexp.MustCompile(`(?i)[a-z]:[\\/](users|documents and settings)[\\/]`)
 var fuzzName = regexp.MustCompile(`^Fuzz[A-Z0-9_][A-Za-z0-9_]*$`)
 
@@ -135,7 +144,7 @@ func loadPolicy(path string) (policy, error) {
 }
 
 func validatePolicy(p policy) error {
-	if p.Version != 1 || len(p.Modules) != len(moduleNames) || len(p.Denied) != 12 {
+	if p.Version != 2 || len(p.Modules) != len(moduleNames) || len(p.Denied) != 12 {
 		return errors.New("policy: invalid version or required lists")
 	}
 	for i, name := range moduleNames {
@@ -144,10 +153,40 @@ func validatePolicy(p policy) error {
 		if name == "protocol" {
 			license = "Apache-2.0"
 		}
-		if m.Path != "engine/go/"+name || m.Module != modulePrefix+name || m.Package != name ||
-			m.License != license || (m.Phase != "scaffold" && m.Phase != "active") {
+		path := "engine/go"
+		module := serverModule
+		if name != "" {
+			path += "/" + name
+			module += "/" + name
+		}
+		if m.Path != path || m.Module != module || m.Package != name ||
+			m.License != license || (m.Phase != "scaffold" && m.Phase != "active") || name == "" && m.Phase != "active" {
 			return errors.New("policy: invalid module boundary")
 		}
+	}
+	selectors := make(map[string]bool)
+	for _, row := range p.Packages {
+		if !validSelector(row.Source) || selectors[row.Source] || len(row.Imports) == 0 {
+			return errors.New("policy: invalid package boundary")
+		}
+		for selector := range selectors {
+			if matches(selector, strings.TrimSuffix(row.Source, "/**")) || matches(row.Source, strings.TrimSuffix(selector, "/**")) {
+				return errors.New("policy: overlapping package boundaries")
+			}
+		}
+		selectors[row.Source] = true
+		for _, list := range [][]string{row.Imports, row.TestImports} {
+			seen := make(map[string]bool)
+			for _, selector := range list {
+				if !validSelector(selector) || seen[selector] {
+					return errors.New("policy: invalid import selector")
+				}
+				seen[selector] = true
+			}
+		}
+	}
+	if len(p.Packages) == 0 {
+		return errors.New("policy: missing package boundaries")
 	}
 	seen := make(map[string]bool)
 	for i, d := range p.Denied {
@@ -205,19 +244,16 @@ func checkTree(root string, p policy) error {
 	if err != nil {
 		return err
 	}
-	for _, m := range p.Modules {
-		if m.Package == "protocol" || m.Package == "world" {
-			if err := checkProtocolDeps(root, m); err != nil {
-				return err
+	if err := checkSources(root, p); err != nil {
+		return err
+	}
+	for _, workspace := range []string{filepath.Join(root, "go.work"), "off"} {
+		for _, m := range p.Modules {
+			data, err := goCommand(filepath.Join(root, m.Path), workspace, "list", "-deps", "-test", "-json", "./...")
+			if err != nil {
+				return errors.New("I-3: cannot resolve dependency graph")
 			}
-		}
-		if m.Package == "worldbridge" {
-			if err := checkWorldBridgeDeps(root, m); err != nil {
-				return err
-			}
-		}
-		if m.Package == "gateway" {
-			if err := checkGatewayDeps(root, m); err != nil {
+			if err := checkDependencyJSON(data, p); err != nil {
 				return err
 			}
 		}
@@ -357,10 +393,10 @@ func checkWorkspace(root string) error {
 		Replace   []json.RawMessage
 	}
 	if json.Unmarshal(data, &work) != nil || work.Go != goVersion || work.Toolchain != toolchainVersion ||
-		len(work.Replace) != 0 || len(work.Use) != len(moduleNames)+1 {
+		len(work.Replace) != 0 || len(work.Use) != 3 {
 		return errors.New("I-1: workspace boundary or version")
 	}
-	expected := map[string]bool{"tools/world": true, "engine/go/protocol": true, "engine/go/gateway": true, "engine/go/bridge": true, "engine/go/world": true, "engine/go/worldbridge": true}
+	expected := map[string]bool{"tools/world": true, "engine/go/protocol": true, "engine/go": true}
 	for _, use := range work.Use {
 		path := filepath.ToSlash(filepath.Clean(use.DiskPath))
 		if filepath.IsAbs(use.DiskPath) || !expected[path] {
@@ -381,37 +417,61 @@ func checkModule(root string, m modulePolicy) error {
 		Module    struct{ Path string }
 		Go        string
 		Toolchain string
-		Require   []json.RawMessage
-		Replace   []json.RawMessage
-		Exclude   []json.RawMessage
-		Tool      []json.RawMessage
+		Require   []struct {
+			Path, Version string
+			Indirect      bool
+		}
+		Replace []json.RawMessage
+		Exclude []json.RawMessage
+		Tool    []json.RawMessage
 	}
 	if json.Unmarshal(data, &mod) != nil || mod.Module.Path != m.Module || mod.Go != goVersion || (mod.Toolchain != "" && mod.Toolchain != "go"+goVersion) {
 		return errors.New("I-1: module path or version")
 	}
-	if (m.Package == "protocol" || m.Package == "world" || m.Phase == "scaffold") &&
-		len(mod.Require)+len(mod.Replace)+len(mod.Exclude)+len(mod.Tool) != 0 {
+	if len(mod.Replace)+len(mod.Exclude)+len(mod.Tool) != 0 {
 		return errors.New("I-3: forbidden module dependency directive")
 	}
-	for _, name := range []string{"doc.go", "README.md", "LICENSE"} {
-		info, err := os.Stat(filepath.Join(dir, name))
-		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
-			return errors.New("I-1: missing module documentation or license")
-		}
-	}
-	license, _ := os.ReadFile(filepath.Join(dir, "LICENSE"))
 	if m.Package == "protocol" {
-		digest := sha256.Sum256(license)
-		if hex.EncodeToString(digest[:]) != apacheSHA256 {
-			return errors.New("I-1: Apache license text differs")
+		if len(mod.Require) != 0 {
+			return errors.New("I-3: forbidden protocol dependency")
 		}
-	} else {
-		agpl, err := os.ReadFile(filepath.Join(root, "tools/world/LICENSE"))
-		if err != nil || len(agpl) == 0 || !bytes.Equal(license, agpl) {
-			return errors.New("I-1: AGPL license text differs")
+	} else if len(mod.Require) != 1 || mod.Require[0].Path != modulePrefix+"protocol" ||
+		mod.Require[0].Version != protocolVersion || mod.Require[0].Indirect {
+		return errors.New("I-3: unpinned server dependency")
+	}
+	components := []string{""}
+	if m.Package == "" {
+		components = append(components, "gateway", "bridge", "world", "worldbridge")
+	}
+	for _, component := range components {
+		componentDir := filepath.Join(dir, component)
+		names := []string{"README.md", "LICENSE"}
+		if m.Package != "" || component != "" {
+			names = append(names, "doc.go")
+		}
+		for _, name := range names {
+			info, err := os.Stat(filepath.Join(componentDir, name))
+			if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+				return errors.New("I-1: missing module documentation or license")
+			}
+		}
+		license, err := os.ReadFile(filepath.Join(componentDir, "LICENSE"))
+		if err != nil {
+			return errors.New("I-1: cannot read license")
+		}
+		if m.Package == "protocol" {
+			digest := sha256.Sum256(license)
+			if hex.EncodeToString(digest[:]) != apacheSHA256 {
+				return errors.New("I-1: Apache license text differs")
+			}
+		} else {
+			agpl, err := os.ReadFile(filepath.Join(root, "tools/world/LICENSE"))
+			if err != nil || len(agpl) == 0 || !bytes.Equal(license, agpl) {
+				return errors.New("I-1: AGPL license text differs")
+			}
 		}
 	}
-	if m.Phase == "scaffold" {
+	if m.Package == "protocol" && m.Phase == "scaffold" {
 		entries, err := os.ReadDir(dir)
 		if err != nil || len(entries) != 4 {
 			return errors.New("I-2: scaffold contains extra files")
@@ -421,7 +481,10 @@ func checkModule(root string, m modulePolicy) error {
 				return errors.New("I-2: scaffold contains extra files")
 			}
 		}
-		data, _ := os.ReadFile(filepath.Join(dir, "doc.go"))
+		data, err := os.ReadFile(filepath.Join(dir, "doc.go"))
+		if err != nil {
+			return errors.New("I-2: cannot read scaffold documentation")
+		}
 		file, err := parser.ParseFile(token.NewFileSet(), "doc.go", data, parser.ParseComments)
 		if err != nil || file.Name.Name != m.Package || len(file.Decls) != 0 || len(file.Imports) != 0 {
 			return errors.New("I-2: scaffold must contain only a package and comments")
@@ -430,6 +493,9 @@ func checkModule(root string, m modulePolicy) error {
 	return filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return errors.New("I-1: cannot read module source")
+		}
+		if entry.IsDir() && path != dir && m.Package == "" && path == filepath.Join(dir, "protocol") {
+			return filepath.SkipDir
 		}
 		if !entry.IsDir() && strings.HasSuffix(path, ".go") {
 			data, err := os.ReadFile(path)
@@ -442,188 +508,48 @@ func checkModule(root string, m modulePolicy) error {
 	})
 }
 
-func checkProtocolDeps(root string, m modulePolicy) error {
-	dir := filepath.Join(root, m.Path)
-	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return errors.New("I-3: cannot read stdlib-only module source")
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return errors.New("I-3: cannot read stdlib-only module source")
-		}
-		file, err := parser.ParseFile(token.NewFileSet(), "source.go", data, parser.ImportsOnly)
-		if err != nil {
-			return errors.New("I-3: invalid stdlib-only module source")
-		}
-		for _, imp := range file.Imports {
-			path, err := strconv.Unquote(imp.Path.Value)
-			if err != nil || !allowedImport(path, m.Module, dir) {
-				return errors.New("I-3: stdlib-only module imports outside its own packages and standard library")
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	data, err := goCommand(dir, filepath.Join(root, "go.work"), "list", "-deps", "-test", "-json", "./...")
-	if err != nil {
-		return errors.New("I-3: cannot resolve stdlib-only module dependency graph")
-	}
-	return checkDependencyJSON(data, m.Module, dir)
+// Selectors name exact package directories, or a root and all descendants.
+func validSelector(s string) bool {
+	path := strings.TrimSuffix(s, "/**")
+	return fs.ValidPath(path) && path != "." && !strings.ContainsAny(path, `\*`)
 }
 
-// checkWorldBridgeDeps enforces the adapter's direction for every source file,
-// including tests and disabled build constraints, and for the resolved graph.
-func checkWorldBridgeDeps(root string, m modulePolicy) error {
-	return checkAdapterDeps(root, m, map[string]string{
-		modulePrefix + "bridge":   "v0.0.0-20261023154142-3ca081d3eba3",
-		modulePrefix + "protocol": "v0.0.0-20261023084050-3b52c8d267a0",
-		modulePrefix + "world":    "v0.0.0-20261023214742-fbe46cd27dca",
-	}, nil)
+func matches(selector, path string) bool {
+	root := strings.TrimSuffix(selector, "/**")
+	return path == root || strings.HasSuffix(selector, "/**") && strings.HasPrefix(path, root+"/")
 }
 
-func checkGatewayDeps(root string, m modulePolicy) error {
-	return checkAdapterDeps(root, m, map[string]string{
-		modulePrefix + "bridge":   "v0.0.0-20261023154142-3ca081d3eba3",
-		modulePrefix + "protocol": "v0.0.0-20261023084050-3b52c8d267a0",
-	}, func(path, imp string) bool {
-		rel, err := filepath.Rel(filepath.Join(root, m.Path), path)
-		if err != nil {
-			return false
-		}
-		switch filepath.ToSlash(filepath.Dir(rel)) {
-		case ".":
-			return !strings.HasPrefix(imp, m.Module+"/") && imp != modulePrefix+"bridge" && !strings.HasPrefix(imp, modulePrefix+"bridge/")
-		case "meaning":
-			return !strings.HasPrefix(imp, modulePrefix) || imp == m.Module || imp == m.Module+"/meaning" || imp == modulePrefix+"protocol" || strings.HasPrefix(imp, modulePrefix+"protocol/")
-		case "backend":
-			if imp == m.Module+"/fixture" || imp == m.Module+"/gatewaytest" {
-				// Adapter tests exercise its consumers; production does not
-				// depend on a fixture or the participant test driver.
-				return strings.HasSuffix(path, "_test.go")
-			}
-			return !strings.HasPrefix(imp, m.Module+"/") || imp == m.Module+"/meaning" || imp == m.Module+"/backend"
-		case "fixture":
-			// External examples may import the fixture itself, but never the
-			// runtime, dictionary, or adapter that consumes it.
-			return imp == m.Module+"/fixture" || imp != m.Module && !strings.HasPrefix(imp, m.Module+"/")
-		}
-		return true
-	})
-}
-
-func checkAdapterDeps(root string, m modulePolicy, pins map[string]string, edge func(string, string) bool) error {
-	if m.Phase == "scaffold" {
-		return nil
-	}
-	dir := filepath.Join(root, m.Path)
-	data, err := goCommand(dir, "off", "mod", "edit", "-json")
-	if err != nil {
-		return errors.New("I-3: cannot read adapter dependencies")
-	}
-	var mod struct {
-		Require []struct {
-			Path, Version string
-			Indirect      bool
-		}
-		Replace, Exclude, Tool []json.RawMessage
-	}
-	if json.Unmarshal(data, &mod) != nil || len(mod.Require) != len(pins) || len(mod.Replace)+len(mod.Exclude)+len(mod.Tool) != 0 {
-		return errors.New("I-3: invalid adapter dependency directives")
-	}
-	seen := make(map[string]bool, len(pins))
-	for _, req := range mod.Require {
-		if seen[req.Path] || pins[req.Path] != req.Version || req.Version == "" || req.Indirect {
-			return errors.New("I-3: unpinned adapter dependency")
-		}
-		seen[req.Path] = true
-	}
-	allowed := func(path string) bool {
-		if !fs.ValidPath(path) || strings.Contains(path, "\\") {
-			return false
-		}
-		if allowedImport(path, m.Module, dir) {
-			return true
-		}
-		for module := range pins {
-			if path == module || strings.HasPrefix(path, module+"/") {
-				return true
-			}
-		}
-		return false
-	}
-	err = filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return errors.New("I-3: cannot read adapter source")
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
-		if err != nil {
-			return errors.New("I-3: invalid adapter source")
-		}
-		for _, imp := range file.Imports {
-			importPath, err := strconv.Unquote(imp.Path.Value)
-			if err != nil || !allowed(importPath) || edge != nil && !edge(path, importPath) {
-				return errors.New("I-3: import outside adapter boundary")
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	data, err = goCommand(dir, filepath.Join(root, "go.work"), "list", "-deps", "-test", "-json", "./...")
-	if err != nil {
-		return errors.New("I-3: cannot resolve adapter graph")
-	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	for {
-		var pkg struct {
-			Standard   bool
-			Error      json.RawMessage
-			DepsErrors []json.RawMessage
-			Module     *struct {
-				Path, Version string
-				Main          bool
-				Replace       json.RawMessage
-			}
-		}
-		err := dec.Decode(&pkg)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil || len(pkg.Error)+len(pkg.DepsErrors) != 0 {
-			return errors.New("I-3: invalid adapter graph")
-		}
-		if pkg.Standard {
-			continue
-		}
-		if pkg.Module == nil || len(pkg.Module.Replace) != 0 {
-			return errors.New("I-3: replaced adapter dependency")
-		}
-		if pkg.Module.Path == m.Module {
-			continue
-		}
-		pin, ok := pins[pkg.Module.Path]
-		if !ok || !pkg.Module.Main && pkg.Module.Version != pin {
-			return errors.New("I-3: external adapter dependency")
+func packageRule(p policy, path string) *packagePolicy {
+	for i := range p.Packages {
+		if matches(p.Packages[i].Source, path) {
+			return &p.Packages[i]
 		}
 	}
 	return nil
 }
 
-func allowedImport(path, module, dir string) bool {
-	if path == module || strings.HasPrefix(path, module+"/") {
-		return fs.ValidPath(path) && !strings.Contains(path, "\\")
+func allowedEdge(p policy, from, to string, test bool) bool {
+	row := packageRule(p, from)
+	if row == nil || packageRule(p, to) == nil {
+		return false
 	}
-	if path == "C" || !fs.ValidPath(path) || strings.Contains(path, "\\") {
+	for _, selector := range row.Imports {
+		if matches(selector, to) {
+			return true
+		}
+	}
+	if test {
+		for _, selector := range row.TestImports {
+			if matches(selector, to) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func standardImport(path, dir string) bool {
+	if path == "C" || !fs.ValidPath(path) || strings.Contains(path, `\`) {
 		return false
 	}
 	pkg, err := build.Default.Import(path, dir, build.FindOnly)
@@ -631,43 +557,126 @@ func allowedImport(path, module, dir string) bool {
 		!strings.Contains(filepath.ToSlash(pkg.Dir), "/src/vendor/")
 }
 
-func checkDependencyJSON(data []byte, module, dir string) error {
-	dec := json.NewDecoder(bytes.NewReader(data))
-	count := 0
-	for {
-		var pkg struct {
-			Standard   bool
-			Dir        string
-			ImportPath string
-			Error      json.RawMessage
-			DepsErrors []json.RawMessage
-			Module     *struct {
-				Path    string
-				Replace json.RawMessage
-			}
+// checkSources reads every Go file, including tests and inactive build tags.
+func checkSources(root string, p policy) error {
+	dir := filepath.Join(root, "engine/go")
+	return filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return errors.New("I-3: cannot read package source")
 		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, filepath.Dir(path))
+		if err != nil {
+			return errors.New("I-3: invalid package directory")
+		}
+		from := filepath.ToSlash(rel)
+		if packageRule(p, from) == nil {
+			return errors.New("I-3: unknown package directory")
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return errors.New("I-3: invalid package source")
+		}
+		for _, imp := range file.Imports {
+			to, err := strconv.Unquote(imp.Path.Value)
+			if err != nil {
+				return errors.New("I-3: invalid import")
+			}
+			if strings.HasPrefix(to, modulePrefix) && fs.ValidPath(to) && !strings.Contains(to, `\`) {
+				if allowedEdge(p, from, strings.TrimPrefix(to, modulePrefix), strings.HasSuffix(path, "_test.go")) {
+					continue
+				}
+			} else if standardImport(to, dir) {
+				continue
+			}
+			return errors.New("I-3: import outside package boundary")
+		}
+		return nil
+	})
+}
+
+type listedPackage struct {
+	Standard                           bool
+	Dir, ImportPath                    string
+	Imports, TestImports, XTestImports []string
+	Error                              json.RawMessage   `json:",omitempty"`
+	DepsErrors                         []json.RawMessage `json:",omitempty"`
+	Module                             *struct {
+		Path, Version, Dir string
+		Main               bool
+		Replace            json.RawMessage `json:",omitempty"`
+	}
+}
+
+// packagePath removes only go list's generated test identities.
+func packagePath(path string) string {
+	base, _, variant := strings.Cut(path, " [")
+	if variant {
+		return strings.TrimSuffix(base, "_test")
+	}
+	return strings.TrimSuffix(base, ".test")
+}
+
+func checkDependencyJSON(data []byte, p policy) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	var packages []listedPackage
+	standard := make(map[string]bool)
+	for {
+		var pkg listedPackage
 		err := dec.Decode(&pkg)
 		if errors.Is(err, io.EOF) {
 			break
 		}
-		if err != nil || len(pkg.Error) > 0 || len(pkg.DepsErrors) > 0 {
+		if err != nil || len(pkg.Error)+len(pkg.DepsErrors) != 0 {
 			return errors.New("I-3: invalid dependency graph")
 		}
-		count++
+		packages = append(packages, pkg)
+		if pkg.Standard {
+			standard[pkg.ImportPath] = true
+		}
+	}
+	if len(packages) == 0 {
+		return errors.New("I-3: empty dependency graph")
+	}
+	for _, pkg := range packages {
 		if pkg.Standard {
 			continue
 		}
-		importPath, _, _ := strings.Cut(pkg.ImportPath, " [")
-		rel, err := filepath.Rel(dir, pkg.Dir)
-		if pkg.Module == nil || pkg.Module.Path != module || len(pkg.Module.Replace) > 0 ||
-			err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) ||
-			!(importPath == module || strings.HasPrefix(importPath, module+"/") ||
-				importPath == module+".test" || importPath == module+"_test") {
-			return errors.New("I-3: external package in stdlib-only module dependency graph")
+		path := packagePath(pkg.ImportPath)
+		rel, ok := strings.CutPrefix(path, modulePrefix)
+		if !ok || packageRule(p, rel) == nil || pkg.Module == nil || len(pkg.Module.Replace) != 0 {
+			return errors.New("I-3: unknown or substituted dependency")
 		}
-	}
-	if count == 0 {
-		return errors.New("I-3: empty dependency graph")
+		module := serverModule
+		if matches("protocol/**", rel) {
+			module += "/protocol"
+		}
+		if pkg.Module.Path != module || module != serverModule && !pkg.Module.Main && pkg.Module.Version != protocolVersion {
+			return errors.New("I-3: unexpected package provider")
+		}
+		suffix := strings.TrimPrefix(path, module)
+		if pkg.Module.Dir == "" || filepath.Clean(pkg.Dir) != filepath.Join(pkg.Module.Dir, filepath.FromSlash(suffix)) {
+			return errors.New("I-3: package directory outside provider")
+		}
+		from := rel
+		for _, list := range []struct {
+			imports []string
+			test    bool
+		}{
+			{pkg.Imports, pkg.ImportPath != path}, {pkg.TestImports, true}, {pkg.XTestImports, true},
+		} {
+			for _, imp := range list.imports {
+				if standard[imp] {
+					continue
+				}
+				to := strings.TrimPrefix(packagePath(imp), modulePrefix)
+				if !allowedEdge(p, from, to, list.test) {
+					return errors.New("I-3: graph import outside package boundary")
+				}
+			}
+		}
 	}
 	return nil
 }

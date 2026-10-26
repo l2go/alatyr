@@ -1,6 +1,6 @@
 # World
 
-An authoritative Go gameplay module, licensed under AGPL-3.0-or-later, with
+An authoritative Go gameplay package, licensed under AGPL-3.0-or-later, with
 standard-library dependencies only. It is not connected to a gateway or world
 adapter. There is no listener, transport codec or database driver.
 
@@ -123,9 +123,13 @@ departure API.
 An accepted command completes even if its caller cancels in flight.
 Leave all characters before cancelling Run; shutdown does not implicitly save.
 
-Verify this module with `go vet ./...` and
+Verify this package with `go vet ./...` and
 `go test -race -count=1 -timeout=60s ./...`.
 Tests use virtual time and synthetic fixtures; authored catalog tests read the
 repository's CC-BY-SA-4.0 world directly, without copying its data.
 
 not yet: world-to-port adapter and shared port contract; session deduplication and replay; shops; healing items and HEAL_STATIC; parity with the Java hunt-reward rules introduced in #263; automatic return without restart0; character creation and authored start points; pgstore.
+
+This package belongs to the shared [Go server module](../README.md). Protocol
+remains a separate module; package dependency directions are enforced by the
+repository boundary checker in both workspace and standalone checks.

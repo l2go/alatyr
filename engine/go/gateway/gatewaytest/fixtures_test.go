@@ -15,19 +15,24 @@ import (
 
 func TestPinnedBridgeContracts(t *testing.T) {
 	const path = "github.com/l2go/alatyr/engine/go/bridge"
-	b, err := exec.CommandContext(t.Context(), "go", "list", "-m", "-json", path).Output()
+	b, err := exec.CommandContext(t.Context(), "go", "list", "-json", path).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var m struct {
-		Dir, Version string
-		Main         bool
-		Replace      json.RawMessage
+	var pkg struct {
+		Dir, ImportPath string
+		Module          *struct {
+			Path, Dir string
+			Main      bool
+			Replace   json.RawMessage
+		}
 	}
-	if err = json.Unmarshal(b, &m); err != nil || m.Dir == "" || len(m.Replace) != 0 || (!m.Main && m.Version != "v0.0.0-20261023154142-3ca081d3eba3") {
-		t.Fatal("missing or substituted bridge snapshot")
+	if err = json.Unmarshal(b, &pkg); err != nil || pkg.Dir == "" || pkg.ImportPath != path ||
+		pkg.Module == nil || pkg.Module.Path != "github.com/l2go/alatyr/engine/go" ||
+		!pkg.Module.Main || len(pkg.Module.Replace) != 0 || pkg.Dir != filepath.Join(pkg.Module.Dir, "bridge") {
+		t.Fatal("missing or substituted bridge package in the server module")
 	}
-	b, err = os.ReadFile(filepath.Join(m.Dir, "testdata", "contracts.json"))
+	b, err = os.ReadFile(filepath.Join(pkg.Dir, "testdata", "contracts.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
