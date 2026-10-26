@@ -119,6 +119,13 @@ func NewState(c Config, policy Policy) (*State, error) {
 	}
 	return &State{config: c, policy: policy, codec: codec, observed: obs, proposals: p, actors: map[int32]Event{}, motion: map[int32]Event{}, dead: map[int32]bool{}, vitals: map[int32]*Stats{}, known: map[int32]Skill{}, inventory: map[int32]Good{}, quests: map[int32]QuestState{}, retained: map[string]wire.Record{}, complete: map[string]bool{}}, nil
 }
+
+// Observed returns a value copy of the latest observation for id, if present.
+// The session loop owns State; calls must be serialized with all other operations.
+func (s *State) Observed(id int32) (Observed, bool) {
+	return s.observed.Lookup(id)
+}
+
 func mergeStats(a, b *Stats) *Stats {
 	if b == nil {
 		return a
