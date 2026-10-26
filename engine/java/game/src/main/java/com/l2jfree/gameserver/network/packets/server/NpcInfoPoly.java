@@ -39,6 +39,7 @@ public class NpcInfoPoly extends L2ServerPacket implements SemanticPacket
 	{
 		BridgeActors.appeared(sink, _obj.getObjectId(), "unknown", _name, _x, _y, _z,
 				_runSpd, _walkSpd, 1, _isRunning, !_isAlikeDead, false, _npcId);
+		BridgeActors.movement(sink, _obj);
 	}
 
 	//   ddddddddddddddddddffffdddcccccSSddd dddddc

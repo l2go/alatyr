@@ -88,6 +88,7 @@ public abstract class AbstractNpcInfo extends L2ServerPacket
 			BridgeActors.appeared(sink, _npc.getObjectId(), BridgeActors.role(_npc, receiver), _name,
 					_x, _y, _z, _runSpd, _walkSpd, _npc.getStat().getMovementSpeedMultiplier(),
 					_npc.isRunning(), !_npc.isAlikeDead(), false, _idTemplate);
+			BridgeActors.movement(sink, _npc);
 		}
 
 		private final L2Npc _npc;
@@ -213,6 +214,7 @@ public abstract class AbstractNpcInfo extends L2ServerPacket
 		{
 			BridgeActors.appeared(sink, _trap.getObjectId(), "unknown", _name, _x, _y, _z,
 					_runSpd, _walkSpd, 1.1, true, !_trap.isAlikeDead(), false, _idTemplate);
+			BridgeActors.movement(sink, _trap);
 		}
 
 		private final L2Trap _trap;
@@ -317,6 +319,7 @@ public abstract class AbstractNpcInfo extends L2ServerPacket
 			BridgeActors.appeared(sink, _summon.getObjectId(), "unknown", _name, _x, _y, _z,
 					_runSpd, _walkSpd, _summon.getStat().getMovementSpeedMultiplier(), true,
 					!_summon.isAlikeDead(), false, _idTemplate);
+			BridgeActors.movement(sink, _summon);
 		}
 
 		private final L2Summon _summon;
@@ -463,6 +466,7 @@ public abstract class AbstractNpcInfo extends L2ServerPacket
 			BridgeActors.appeared(sink, _pc.getObjectId(), "player", _pc.getAppearance().getVisibleName(),
 					_x, _y, _z, _runSpd, _walkSpd, _pc.getStat().getMovementSpeedMultiplier(),
 					_pc.isRunning(), !_pc.isAlikeDead(), false, _pc.getPoly().getPolyId());
+			BridgeActors.movement(sink, _pc);
 		}
 
 		private final L2Player _pc;

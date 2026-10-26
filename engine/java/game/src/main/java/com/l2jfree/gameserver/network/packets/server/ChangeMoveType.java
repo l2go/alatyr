@@ -28,6 +28,7 @@ public class ChangeMoveType extends L2ServerPacket implements SemanticPacket
 	public void describe(FactSink sink, com.l2jfree.gameserver.gameobjects.L2Player receiver)
 	{
 		sink.changeMoveType(_chaObjId, _running);
+		com.l2jfree.gameserver.network.bridge.BridgeActors.movement(sink, _actor);
 	}
 
 	private static final String _S__28_CHANGEMOVETYPE = "[S] 28 ChangeMoveType [ddd]";
@@ -35,10 +36,12 @@ public class ChangeMoveType extends L2ServerPacket implements SemanticPacket
 	public static final int RUN = 1;
 	
 	private final int _chaObjId;
+	private final L2Creature _actor;
 	private final boolean _running;
 	
 	public ChangeMoveType(L2Creature character)
 	{
+		_actor = character;
 		_chaObjId = character.getObjectId();
 		_running = character.isRunning();
 	}

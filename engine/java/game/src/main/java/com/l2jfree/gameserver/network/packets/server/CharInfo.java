@@ -39,6 +39,7 @@ public final class CharInfo extends L2ServerPacket implements SemanticPacket
 		BridgeActors.appeared(sink, _view.getObjectId(), "player", _activeChar.getAppearance().getVisibleName(),
 				_view.getX(), _view.getY(), _view.getZ(), _view.getRunSpd(), _view.getWalkSpd(),
 				_view.getMovementSpeedMultiplier(), _activeChar.isRunning(), !_activeChar.isAlikeDead(), false, null);
+		BridgeActors.movement(sink, _movementActor);
 	}
 
 	private static final String _S__31_CHARINFO =
@@ -46,6 +47,7 @@ public final class CharInfo extends L2ServerPacket implements SemanticPacket
 	
 	private final L2Player _activeChar;
 	private final IPlayerView _view;
+	private final com.l2jfree.gameserver.gameobjects.L2Creature _movementActor;
 	
 	public CharInfo(L2Player cha)
 	{
@@ -53,6 +55,7 @@ public final class CharInfo extends L2ServerPacket implements SemanticPacket
 		_view.refresh();
 		
 		_activeChar = cha;
+		_movementActor = cha;
 	}
 	
 	public CharInfo(L2Decoy decoy)
@@ -66,6 +69,7 @@ public final class CharInfo extends L2ServerPacket implements SemanticPacket
 		_view.refresh();
 		
 		_activeChar = decoy.getOwner();
+		_movementActor = decoy;
 	}
 	
 	@Override

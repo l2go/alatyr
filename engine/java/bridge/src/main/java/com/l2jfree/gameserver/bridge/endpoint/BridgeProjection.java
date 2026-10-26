@@ -68,6 +68,8 @@ final class BridgeProjection
 			{
 				if (flag(fact.fields(), 19))
 					own = id;
+				if (fact.kind() == 1)
+					motion.remove(id);
 				BridgeFact old = actors.get(id);
 				actors.put(id, old == null ? fact : merge(old, fact));
 			}

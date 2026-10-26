@@ -510,3 +510,69 @@ func TestJavaBridgeReturnCompletesInTheParticipantAndWorld(t *testing.T) {
 		t.Fatalf("saved revival=%q, want alive/offline at the town restart point", got)
 	}
 }
+
+// A checkpoint is a fresh description. Its Appeared must be followed by current
+// Moving, including when the observer first enters visibility and later resumes.
+func TestJavaBridgeMovingActorSurvivesFreshDescriptions(t *testing.T) {
+	cfg := javaConfig(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+	mover, initial := openJava(t, ctx, cfg, "bridge-move", "BridgeMover")
+	const actor = int64(1500000005)
+	var origin [3]int32
+	found := false
+	for _, r := range initial.Facts {
+		if profile.U(r, 1) == 1 && profile.S(r, 64) == actor {
+			at, ok := wire.Find(r.Fields, 13)
+			if ok {
+				origin, found = at.XYZ, true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("mover checkpoint omitted its own position")
+	}
+	destination := origin
+	destination[0] += 8000 // Below the source handler's 9900 limit; longer than this test's deadline.
+	mover.write(ctx, bridge.Command{Key: 1, Verb: 1, Payload: []wire.Field{wire.At(11, true, destination[0], destination[1], destination[2])}}, wire.StageSent)
+	mover.fact(ctx, func(r wire.Record) bool { return profile.U(r, 1) == 2 && profile.S(r, 64) == actor })
+	dial := &javaDial{}
+	cfg.DialContext = dial.dial
+	observer, snapshot := openJava(t, ctx, cfg, "bridge-watch", "BridgeWatcher")
+	check := func(snapshot bridge.Snapshot) {
+		t.Helper()
+		appeared, moving := -1, -1
+		for i, r := range snapshot.Facts {
+			if profile.S(r, 64) != actor {
+				continue
+			}
+			switch profile.U(r, 1) {
+			case 1:
+				appeared = i
+			case 2:
+				at, ok := wire.Find(r.Fields, 14)
+				if !ok || at.XYZ != destination {
+					t.Fatalf("moving destination=%v, want %v", at.XYZ, destination)
+				}
+				moving = i
+			}
+		}
+		if appeared < 0 || moving <= appeared {
+			t.Fatalf("fresh actor description lost movement: appeared=%d moving=%d epoch=%d", appeared, moving, snapshot.GatewayEpoch)
+		}
+	}
+	check(snapshot)
+	for epoch := uint64(2); epoch <= 3; epoch++ {
+		dial.lose(t)
+		for observer.next(ctx).Kind != bridge.Detached {
+		}
+		recovered, err := observer.c.Resume(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !recovered.Snapshot.Ready || recovered.Snapshot.GatewayEpoch != epoch {
+			t.Fatalf("resume checkpoint ready=%v epoch=%d, want true/%d", recovered.Snapshot.Ready, recovered.Snapshot.GatewayEpoch, epoch)
+		}
+		check(recovered.Snapshot)
+	}
+}

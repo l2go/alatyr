@@ -12,9 +12,12 @@
  */
 package com.l2jfree.gameserver.network.bridge;
 
+import com.l2jfree.gameserver.gameobjects.L2Creature;
+import com.l2jfree.gameserver.gameobjects.L2Object;
 import com.l2jfree.gameserver.gameobjects.L2Npc;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.gameobjects.instance.L2MerchantInstance;
+import com.l2jfree.gameserver.network.packets.server.MoveToLocation;
 
 /** Copies common actor fields after their owning packet has selected its receiver-visible values. */
 public final class BridgeActors
@@ -26,6 +29,13 @@ public final class BridgeActors
 		if (receiver != null && npc.getTemplate().canTeach(receiver.getClassId()))
 			return "tutor";
 		return npc instanceof L2MerchantInstance ? "provisioner" : "unknown";
+	}
+
+	/** Re-describing an actor replaces its old motion; publish the current destination after Appeared. */
+	public static void movement(FactSink sink, L2Object actor)
+	{
+		if (actor instanceof L2Creature creature && creature.isMoving())
+			new MoveToLocation(creature).describe(sink, null);
 	}
 
 	public static long speed(int base, double multiplier)

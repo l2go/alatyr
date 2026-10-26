@@ -314,8 +314,9 @@ The [integration runner](../../tools/ci/bridge-integration.sh) uses the distribu
 PostgreSQL client commands in the database container, Microsoft JDK 25, and Go 1.27.3. Run
 `bash tools/ci/bridge-integration.sh` in a disposable CI workspace. It creates a database and
 isolated characters, launches the server, then runs `TestJavaBridgeTradeAndRecovery`,
-`TestJavaBridgeLearningPersistsAndAnAlreadyKnownSkillIsNotDone`, and
-`TestJavaBridgeReturnCompletesInTheParticipantAndWorld`. Every process and protocol wait is
+`TestJavaBridgeLearningPersistsAndAnAlreadyKnownSkillIsNotDone`,
+`TestJavaBridgeReturnCompletesInTheParticipantAndWorld`, and
+`TestJavaBridgeMovingActorSurvivesFreshDescriptions`. Every process and protocol wait is
 bounded. Server, database, conventional-client and Go transcripts are retained under
 `target/bridge-integration` as CI artifacts; no live secret is included.
 
@@ -327,6 +328,13 @@ The return scenario starts a dead character with the legacy watchdog disabled,
 requires a live revival and a new ready participant checkpoint, and verifies the spawned
 character through another real client and the committed position in PostgreSQL. The raw return
 receipt remains sent; the participant dictionary alone proves done from live evidence.
+The motion scenario starts a real movement, opens another character into its visibility, and
+requires current movement after the actor description in the initial and two resumed checkpoints.
+
+A fresh appeared observation replaces retained motion. Actor descriptions (including repeated
+CharInfo/NpcInfo and speed changes) therefore emit current moved immediately afterwards while
+the source creature is moving. A stopped creature emits no new moved. Checkpoints order actor
+descriptions before retained current movement, so a fresh description cannot erase its destination.
 
 Other deterministic Java tests cover malformed input, ordinary-client coexistence, queue and
 projection bounds, queued versus started attempts, deadline orders, exact output accounting,

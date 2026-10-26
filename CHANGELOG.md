@@ -10,6 +10,8 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Fixed
 
+- Refresh current bridge movement after actor descriptions and discard stale motion when an actor is described as stopped.
+
 - Trusted bridge admission runs the ordinary world-entry handler before its initial checkpoint. Bridge configuration now uses the server's defaults and operator overlay. The endpoint remains disabled by default.
 - The Go bridge client accepts the zero list identifier issued by ordinary Java sale offers, while buy commands continue to require a positive shop identifier.
 

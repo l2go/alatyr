@@ -267,4 +267,24 @@ class BridgeDeliveryTest
 		assertThat(refresh.field(70).value().u()).isZero();
 		verify(actor, never()).getStat();
 	}
+	@Test
+	void aMovementModeRefreshRestoresCurrentMotionAfterAppeared()
+	{
+		var actor = mock(com.l2jfree.gameserver.gameobjects.L2Creature.class);
+		when(actor.getObjectId()).thenReturn(70);
+		when(actor.isMoving()).thenReturn(true);
+		when(actor.getXdestination()).thenReturn(100);
+		sink.deliver(new ChangeMoveType(actor), player);
+		assertThat(records).hasSize(2);
+		assertThat(records.get(0).getFirst().field(1).value().u()).isEqualTo(1);
+		assertThat(records.get(1).getFirst().field(1).value().u()).isEqualTo(2);
+		assertThat(records.get(1).getFirst().field(14).value().x()).isEqualTo(100);
+		verify(actor, never()).getStat();
+		assertThat(sink.snapshot(1, false).records()).hasSize(2);
+		when(actor.isMoving()).thenReturn(false);
+		sink.deliver(new ChangeMoveType(actor), player);
+		assertThat(records).hasSize(3);
+		assertThat(sink.snapshot(1, false).records()).hasSize(1);
+	}
+
 }
