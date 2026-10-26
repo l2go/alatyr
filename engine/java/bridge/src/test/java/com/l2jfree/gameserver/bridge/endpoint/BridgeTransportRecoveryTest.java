@@ -721,7 +721,7 @@ class BridgeTransportRecoveryTest
 			{
 				if (source == fixture.first && saving.getCount() == 0 && holdOnce.compareAndSet(false, true))
 				{
-					selectorHeld.countDown(); awaitLatch(releaseSelector);
+					selectorHeld.countDown(); awaitLatch(releaseSelector, "releaseSelector");
 				}
 			}, null, drained ->
 			{
@@ -836,12 +836,29 @@ class BridgeTransportRecoveryTest
 				catch (java.io.IOException e) { throw new AssertionError(e); }
 			}).get(5, TimeUnit.SECONDS);
 			assertThat(replacement.writing).isSameAs(ordinary);
+			int beforeFacts = replacement.held;
 			fixture.owner.sink.deliver(new UserInfo(fixture.player), fixture.player);
-			int factBytes = replacement.afterCheckpoint.peekLast().length;
-			while (replacement.held <= BridgeLoopback.OUT_QUEUE_BYTES - factBytes - 16)
+			// UserInfo emits several FACT frames. Reserve the whole packet, including varint growth.
+			int packetBytes = replacement.held - beforeFacts;
+			assertThat(packetBytes).as("initial UserInfo must enqueue facts").isPositive();
+			int maxPackets = BridgeLoopback.OUT_QUEUE_BYTES / packetBytes;
+			for (int i = 0; i < maxPackets && replacement.held <= BridgeLoopback.OUT_QUEUE_BYTES - packetBytes - 32; i++)
+			{
+				int before = replacement.held;
 				fixture.owner.sink.deliver(new UserInfo(fixture.player), fixture.player);
-			while (replacement.held <= BridgeLoopback.OUT_QUEUE_BYTES - frameBytes)
+				packetBytes = replacement.held - before;
+				assertThat(packetBytes).as("UserInfo fill step %s must advance the byte budget", i).isPositive();
+				assertThat(replacement.slowRequested).as("UserInfo fill must leave room for every FACT").isFalse();
+			}
+			int paddingFrames = (BridgeLoopback.OUT_QUEUE_BYTES - replacement.held) / frameBytes;
+			for (int i = 0; i < paddingFrames; i++)
+			{
+				int before = replacement.held;
 				fixture.owner.publish(List.of(BridgeFrames.pong(1)));
+				assertThat(replacement.held - before).as("Pong fill step %s must enqueue one frame", i).isEqualTo(frameBytes);
+			}
+			assertThat(replacement.slowRequested).isFalse();
+			assertThat(fixture.client.isBridgeDisconnectRequested()).isFalse();
 			ByteArrayOutputStream bye = new ByteArrayOutputStream();
 			Codec.bridge().write(bye, List.of(BridgeFrames.bye(BridgeFrames.BYE_NORMAL)));
 			assertThat(BridgeLoopback.OUT_QUEUE_BYTES - replacement.held).isLessThan(bye.size());
@@ -913,7 +930,7 @@ class BridgeTransportRecoveryTest
 			}).when(fixture.player).store(true, true);
 			fixture.loop.holdTransportLifecycle(null, source ->
 			{
-				if (source == replacement) { lost.countDown(); awaitLatch(releaseDrop); }
+				if (source == replacement) { lost.countDown(); awaitLatch(releaseDrop, "releaseDrop"); }
 			}, drained ->
 			{
 				assertThat(drained).as("lost-before-first-byte outcome still owes a live fallback").isFalse();
@@ -927,7 +944,7 @@ class BridgeTransportRecoveryTest
 					fixture.loop.acceptFrame(replacement, List.of(close(fixture.id, 2)));
 				}
 				catch (java.io.IOException e) { throw new AssertionError(e); }
-				pending.countDown(); awaitLatch(proceedToLoss);
+				pending.countDown(); awaitLatch(proceedToLoss, "proceedToLoss");
 				// The latch controls the loss microstep, not a race against the 100ms physical-close clock.
 				synchronized (fixture.owner)
 				{
@@ -998,7 +1015,7 @@ class BridgeTransportRecoveryTest
 		{
 			int listenerPort = fixture.loop.port();
 			fixture.loop.watch(fixture.client);
-			doAnswer(call -> { saving.countDown(); awaitLatch(releaseSave); return true; })
+			doAnswer(call -> { saving.countDown(); awaitLatch(releaseSave, "releaseSave"); return true; })
 					.when(fixture.player).store(true, true);
 			fixture.loop.holdShutdown(deadline ->
 			{
@@ -1007,7 +1024,7 @@ class BridgeTransportRecoveryTest
 			}, () ->
 			{
 				disposing.countDown();
-				if (path.equals("interrupt-join")) awaitLatch(releaseDisposal);
+				if (path.equals("interrupt-join")) awaitLatch(releaseDisposal, "releaseDisposal");
 				if (path.equals("disposal-error")) throw new IllegalStateException("disposal fixture");
 			});
 			fixture.loop.holdListenerClose(resource ->
@@ -2202,9 +2219,9 @@ class BridgeTransportRecoveryTest
 		assertThat(completed.await(5, TimeUnit.SECONDS)).isTrue();
 	}
 
-	private static void awaitLatch(CountDownLatch latch)
+	private static void awaitLatch(CountDownLatch latch, String event)
 	{
-		try { assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue(); }
+		try { assertThat(latch.await(5, TimeUnit.SECONDS)).as("release gate: %s", event).isTrue(); }
 		catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new AssertionError(e); }
 	}
 
