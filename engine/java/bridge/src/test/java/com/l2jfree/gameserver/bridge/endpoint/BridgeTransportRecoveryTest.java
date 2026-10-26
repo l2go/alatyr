@@ -1934,10 +1934,7 @@ class BridgeTransportRecoveryTest
 				{
 					// The source handler itself chooses its town relocation while entering a stadium.
 					when(world.olympiad.playerInStadia(fixture.player)).thenReturn(true);
-					var packet = com.l2jfree.gameserver.network.packets.client.EnterWorld.forBridge();
-					packet.bindDirect(fixture.client);
-					packet.run();
-					assertThat(packet.failed()).isFalse();
+					assertThat(BridgeAdmission.enterWorld(fixture.client)).isTrue();
 					assertThat(stable).isFalse();
 					fixture.owner.opened(BridgeFrames.accepted(fixture.id, 1));
 					assertThat(fixture.first.checkpoint).isNull();

@@ -15,10 +15,11 @@
 package com.l2jfree.gameserver.bridge.endpoint;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
+
+import com.l2jfree.config.L2Properties;
 
 /**
  * Bridge listener settings. A missing file is the disabled default. Values are never logged.
@@ -51,19 +52,17 @@ public final class BridgeSettings
 			throw new IllegalArgumentException("directory");
 		
 		Path file = directory.resolve("bridge.properties");
-		if (!Files.isRegularFile(file))
+		if (!Files.isRegularFile(L2Properties.resolveFile(file.toString()).toPath()))
 			return disabled();
 		
-		Properties properties = new Properties();
-		try (InputStream in = Files.newInputStream(file))
+		try
 		{
-			properties.load(in);
+			return parse(new L2Properties(file.toFile()));
 		}
 		catch (IOException e)
 		{
 			throw new IllegalStateException("Bridge configuration could not be read", e);
 		}
-		return parse(properties);
 	}
 	
 	/**
