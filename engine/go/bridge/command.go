@@ -106,7 +106,7 @@ func validateCommand(c Command) error {
 			if v.S != 0 && v.S != 1 && v.S != 2 && v.S != 4 && v.S != 6 {
 				return failure(StateError)
 			}
-		} else if v.S <= 0 {
+		} else if v.S < 0 || c.Verb == 7 && v.S == 0 {
 			return failure(StateError)
 		}
 	}

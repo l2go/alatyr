@@ -87,6 +87,7 @@ public final class UserInfo extends L2ServerPacket implements SemanticPacket
 		BridgeActors.appeared(sink, view.getObjectId(), "player", _activeChar.getAppearance().getVisibleName(),
 				view.getX(), view.getY(), view.getZ(), view.getRunSpd(), view.getWalkSpd(),
 				view.getMovementSpeedMultiplier(), _activeChar.isRunning(), !_activeChar.isAlikeDead(), true, null);
+		BridgeActors.movement(sink, _activeChar);
 		sink.emit(BridgeFact.of(16, BridgeField.number(64, view.getObjectId()),
 				BridgeField.object(25, BridgeField.number(1, (int)status.getCurrentHp()),
 						BridgeField.number(2, stat.getMaxHp()), BridgeField.number(3, (int)status.getCurrentMp()),

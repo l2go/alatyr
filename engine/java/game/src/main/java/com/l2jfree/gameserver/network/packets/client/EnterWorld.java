@@ -146,7 +146,11 @@ public class EnterWorld extends L2ClientPacket
 		sendPacket(new ItemList(activeChar, false));
 		activeChar.getMacroses().sendUpdate();
 		sendPacket(new ShortCutInit(activeChar));
-		activeChar.sendSkillList();
+		// Bridge admission captures its initial checkpoint when this FIFO task returns.
+		if (getClient().isBridge())
+			activeChar.sendSkillListImpl();
+		else
+			activeChar.sendSkillList();
 		sendPacket(SystemMessageId.WELCOME_TO_LINEAGE);
 		if (Config.SERVER_AGE_LIM >= 18 || Config.SERVER_PVP)
 			sendPacket(SystemMessageId.ENTERED_ADULTS_ONLY_SERVER);

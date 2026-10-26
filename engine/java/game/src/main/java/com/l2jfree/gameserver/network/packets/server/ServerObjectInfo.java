@@ -41,6 +41,7 @@ public final class ServerObjectInfo extends L2ServerPacket implements SemanticPa
 		fields.add(BridgeField.at(13, _x, _y, _z));
 		fields.add(BridgeField.number(73, _idTemplate));
 		sink.emit(new BridgeFact(1, fields));
+		BridgeActors.movement(sink, _activeChar);
 		if (_activeChar.isAutoAttackable(receiver))
 			sink.emit(BridgeFact.of(16, BridgeField.number(64, _activeChar.getObjectId()),
 					BridgeField.object(25, BridgeField.number(1, (int)_activeChar.getCurrentHp()),

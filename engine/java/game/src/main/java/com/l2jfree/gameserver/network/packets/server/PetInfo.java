@@ -38,6 +38,7 @@ public class PetInfo extends L2ServerPacket implements SemanticPacket
 		BridgeActors.appeared(sink, _summon.getObjectId(), "unknown", _summon.getName(),
 				_x, _y, _z, _runSpd, _walkSpd, _multiplier, true, !_summon.isAlikeDead(), false,
 				_summon.getTemplate().getIdTemplate());
+		BridgeActors.movement(sink, _summon);
 	}
 
 	private static final String _S__CA_PETINFO = "[S] b1 PetInfo";

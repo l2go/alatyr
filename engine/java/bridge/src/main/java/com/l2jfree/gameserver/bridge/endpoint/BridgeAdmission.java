@@ -96,13 +96,15 @@ public final class BridgeAdmission
 			}
 
 			published = true;
+			if (!enterWorld(client))
+				return List.of();
 			return BridgeFrames.accepted(newSession(client), 1);
 		}
 		catch (RuntimeException e)
 		{
 			if (published || client.getActiveChar() != null)
 			{
-				client.requestBridgeDisconnect();
+				client.requestBridgeDisconnect(com.l2jfree.gameserver.network.bridge.BridgeFailure.internal());
 				return List.of();
 			}
 			cleanupUnpublished(client);
@@ -110,6 +112,27 @@ public final class BridgeAdmission
 				login.leaveTrusted(account, client);
 			return List.of(BridgeFrames.openedRefused(BridgeFrames.REASON_BACKEND));
 		}
+	}
+
+	/** The caller owns the client FIFO. A teleport queued by entry completes after this task returns. */
+	static boolean enterWorld(L2Client client)
+	{
+		if (client.isBridgeDisconnectRequested())
+			return false;
+		try
+		{
+			var packet = com.l2jfree.gameserver.network.packets.client.EnterWorld.forBridge();
+			packet.bindDirect(client);
+			packet.run();
+			if (!packet.failed())
+				return !client.isBridgeDisconnectRequested();
+		}
+		catch (RuntimeException | Error failure)
+		{
+			// Entry owns the published character already; the one full cleanup must still run.
+		}
+		client.requestBridgeDisconnect(com.l2jfree.gameserver.network.bridge.BridgeFailure.internal());
+		return false;
 	}
 
 	private static int slot(L2Client client, String character)
