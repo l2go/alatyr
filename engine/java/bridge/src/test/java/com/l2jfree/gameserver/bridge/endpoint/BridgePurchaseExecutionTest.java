@@ -36,14 +36,14 @@ import com.l2jfree.gameserver.network.packets.client.RequestBuyItem;
 /** Runs the existing purchase handler with isolated world dependencies, without transport recovery. */
 class BridgePurchaseExecutionTest
 {
-	@ParameterizedTest
+	@ParameterizedTest(name = "{displayName}: scenario={0}")
 	@ValueSource(ints = { 0, 1, 2 })
 	void liveDuplicateRunsTheActualPurchaseHandlerOnce(int scenario)
 	{
 		runActualPurchase(scenario);
 	}
 
-	@ParameterizedTest
+	@ParameterizedTest(name = "{displayName}: scenario={0}")
 	@ValueSource(ints = { 3, 4, 5, 6 })
 	void socketLossBeforeDuringAndAfterPurchaseResumesWithoutBuyingTwice(int scenario)
 	{

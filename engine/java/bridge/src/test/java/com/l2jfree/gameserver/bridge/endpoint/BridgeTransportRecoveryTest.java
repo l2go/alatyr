@@ -34,6 +34,12 @@ import com.l2jfree.gameserver.bridge.wire.Envelope;
 import com.l2jfree.gameserver.bridge.wire.Field;
 import com.l2jfree.gameserver.bridge.wire.Schemas;
 import com.l2jfree.gameserver.gameobjects.L2Player;
+import com.l2jfree.gameserver.network.bridge.BridgeEffect;
+import com.l2jfree.gameserver.network.bridge.EffectLedger;
+import com.l2jfree.gameserver.network.packets.L2ClientPacket;
+import com.l2jfree.gameserver.network.packets.client.RequestSellItem;
+import com.l2jfree.gameserver.gameobjects.itemcontainer.PlayerInventory;
+import com.l2jfree.gameserver.model.items.L2ItemInstance;
 import com.l2jfree.gameserver.network.L2Client;
 import com.l2jfree.gameserver.network.packets.server.*;
 import com.l2jfree.network.NetworkServer;
@@ -904,7 +910,16 @@ class BridgeTransportRecoveryTest
 			verify(socket).close(); verify(key).cancel();
 			assertThat(fixture.loop.transports()).isZero();
 			barrier(fixture.client);
-			verify(fixture.player).store(true, true); verify(fixture.player).deleteMe();
+			if (outcome.equals("slow"))
+			{
+				assertThat(fixture.client.isBridgeDisconnectRequested()).isFalse();
+				assertThat(fixture.owner.transport).isNull();
+				verify(fixture.player, never()).store(true, true); verify(fixture.player, never()).deleteMe();
+			}
+			else
+			{
+				verify(fixture.player).store(true, true); verify(fixture.player).deleteMe();
+			}
 		}
 	}
 
@@ -1140,6 +1155,160 @@ class BridgeTransportRecoveryTest
 				verify(fixture.player).store(true, true); verify(fixture.player).deleteMe();
 			}
 		}
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest(name = "{displayName}: verb={0}, loss={1}")
+	@org.junit.jupiter.params.provider.CsvSource({ "7,eof", "7,overflow", "8,eof", "8,overflow",
+			"4,eof", "4,overflow", "13,eof", "13,overflow" })
+	void transportLossInsideAnExecutionRetainsItsReceiptsWithoutRunningAgain(int verb, String loss) throws Exception
+	{
+		try (Fixture fixture = new Fixture(20041))
+		{
+			fixture.open();
+			assertExecutionSurvivesLoss(fixture, verb, BridgeOutcome.DONE, () -> new L2ClientPacket()
+			{
+				@Override protected void readImpl() { throw new AssertionError("direct execution never reads"); }
+				@Override public String getType() { return "bridge loss fixture"; }
+				@Override protected void runImpl()
+				{
+					// Exercise the shared lifecycle with receipts on both sides of the loss, without world setup.
+					var player = fixture.player;
+					if (verb == 13)
+					{
+						EffectLedger.expectLearningCost(player, 0, 5, 0, 0);
+						EffectLedger.record(player,
+								BridgeEffect.sp(-5, 10, 5));
+					}
+					else
+						EffectLedger.record(player, verb == 7
+								? BridgeEffect.coin(-10) : verb == 8
+								? BridgeEffect.item(1060, 70, -2)
+								: BridgeEffect.target(70));
+					loseDuringExecution(fixture, loss);
+					EffectLedger.record(player, verb == 13
+							? BridgeEffect.skill(100, 0, 1) : verb == 8
+							? BridgeEffect.coin(10)
+							: BridgeEffect.item(1060, 70, 2));
+				}
+			});
+		}
+	}
+
+	@org.junit.jupiter.params.ParameterizedTest(name = "{displayName}: price={0}, loss={1}")
+	@org.junit.jupiter.params.provider.CsvSource({ "0,eof", "0,overflow", "10,eof", "10,overflow" })
+	void transportLossInsideTheSaleHandlerDoesNotRepeatTheDestruction(int referencePrice, String loss) throws Exception
+	{
+		int packetCap = com.l2jfree.Config.MAX_ITEM_IN_PACKET;
+		com.l2jfree.Config.MAX_ITEM_IN_PACKET = 1;
+		try (Fixture fixture = new Fixture(20042))
+		{
+			fixture.open();
+			var inventory = mock(PlayerInventory.class);
+			var item = mock(L2ItemInstance.class);
+			when(fixture.player.isGM()).thenReturn(true);
+			when(fixture.player.getInventory()).thenReturn(inventory);
+			when(inventory.getItems()).thenReturn(new L2ItemInstance[0]);
+			when(fixture.player.checkItemManipulation(70, 2, "sell")).thenReturn(item);
+			when(item.isSellable()).thenReturn(true);
+			when(item.getReferencePrice()).thenReturn(referencePrice);
+			when(inventory.destroyItem(eq("Sell"), eq(70), eq(2L), eq(fixture.player), any())).thenAnswer(call ->
+			{
+				EffectLedger.record(fixture.player,
+						BridgeEffect.item(1060, 70, -2));
+				loseDuringExecution(fixture, loss);
+				return item;
+			});
+			doAnswer(call ->
+			{
+				long paid = call.getArgument(1);
+				if (paid != 0) EffectLedger.record(fixture.player,
+						BridgeEffect.coin(paid));
+				return null;
+			}).when(fixture.player).addAdena(eq("Sell"), anyLong(), any(), eq(false));
+			assertExecutionSurvivesLoss(fixture, 8, referencePrice == 0 ? BridgeOutcome.UNKNOWN : BridgeOutcome.DONE,
+					() -> RequestSellItem.forBridge(0, 70, 1060, 2));
+			verify(inventory).destroyItem("Sell", 70, 2L, fixture.player, null);
+			verify(fixture.player).addAdena("Sell", (long)referencePrice, null, false);
+		}
+		finally { com.l2jfree.Config.MAX_ITEM_IN_PACKET = packetCap; }
+	}
+
+	private static void loseDuringExecution(Fixture fixture, String loss)
+	{
+		try
+		{
+			var socket = mock(SocketChannel.class);
+			if (loss.equals("eof")) when(socket.read(any(ByteBuffer.class))).thenReturn(-1);
+			else
+			{
+				BridgeLoopback.offer(fixture.first, new byte[BridgeLoopback.OUT_QUEUE_BYTES]);
+				BridgeLoopback.offer(fixture.first, new byte[1]);
+				when(socket.write(any(ByteBuffer.class))).thenAnswer(call ->
+				{
+					ByteBuffer buffer = call.getArgument(0);
+					int size = buffer.remaining(); buffer.position(buffer.limit()); return size;
+				});
+			}
+			fixture.loop.account();
+			fixture.loop.serve(key(socket, fixture.first, loss.equals("eof")));
+			verify(socket).close();
+			assertThat(fixture.first.physicallyClosed).isTrue();
+			assertThat(fixture.first.terminal).as("loss must not claim a session-fatal terminal").isFalse();
+			assertThat(fixture.first.attemptFence.closing).isFalse();
+			assertThat(fixture.client.isBridgeDisconnectRequested()).isFalse();
+			assertThat(fixture.owner.transport).isNull();
+			assertThat(fixture.owner.recovery.epoch()).isEqualTo(1);
+			verify(fixture.player, never()).store(true, true);
+		}
+		catch (java.io.IOException failure) { throw new AssertionError(failure); }
+	}
+
+	private static void assertExecutionSurvivesLoss(Fixture fixture, int verb, int expectedStage,
+			java.util.function.Supplier<L2ClientPacket> packet) throws Exception
+	{
+		var executions = new java.util.concurrent.atomic.AtomicInteger();
+		var receipt = new java.util.concurrent.atomic.AtomicReference<byte[]>();
+		java.util.function.Supplier<byte[]> execution = () ->
+		{
+			executions.incrementAndGet();
+			var attempt = BridgeExecution.run(fixture.client, packet.get());
+			assertThat(attempt.isFailed()).isFalse();
+			assertThat(attempt.isLedgerIncomplete()).isFalse();
+			assertThat(EffectLedger.isActive()).isFalse();
+			int stage = verb == 13 ? BridgeOutcome.learn(attempt, 100, 1) : BridgeOutcome.match(attempt, verb, 1060, 70, 2);
+			assertThat(stage).isEqualTo(expectedStage);
+			byte[] result = BridgeResults.encode(1, verb, stage, 0, attempt);
+			receipt.set(result);
+			return result;
+		};
+		byte[] normalized = { (byte)verb };
+		fixture.owner.attempts.accept(1, normalized, execution);
+		fixture.owner.attempts.accept(1, normalized, execution);
+		barrier(fixture.client);
+		assertThat(receipt.get()).isNotNull();
+		assertThat(executions.get()).isEqualTo(1);
+		assertThat(fixture.client.isBridgeDisconnectRequested()).isFalse();
+		var replacement = new BridgeLoopback.Transport(new byte[32]);
+		fixture.loop.acceptFrame(replacement, List.of(resume(fixture.id, 2)));
+		barrier(fixture.client);
+		var records = fixture.drain(replacement);
+		int ready = -1, result = -1;
+		for (int i = 0; i < records.size(); i++)
+		{
+			Envelope record = records.get(i);
+			if (record.type() == Schemas.CHECKPOINT && record.field(1).value().u() == Schemas.END
+					&& record.field(3).value().u() == 1) ready = i;
+			if (record.type() == Schemas.RESULT) result = i;
+		}
+		assertThat(ready).isGreaterThanOrEqualTo(0);
+		assertThat(result).isGreaterThan(ready);
+		assertThat(records).filteredOn(record -> record.type() == Schemas.RESULT).hasSize(1);
+		assertThat(Codec.bridge().encode(List.of(records.get(result)))).containsExactly(receipt.get());
+		fixture.owner.attempts.accept(1, normalized, execution);
+		var replay = fixture.drain(replacement).stream().filter(record -> record.type() == Schemas.RESULT).toList();
+		assertThat(replay).hasSize(1);
+		assertThat(Codec.bridge().encode(replay)).containsExactly(receipt.get());
+		assertThat(executions.get()).isEqualTo(1);
 	}
 
 	private static void assertExactHeld(BridgeLoopback.Transport transport)

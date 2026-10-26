@@ -890,7 +890,9 @@ final class BridgeLoopback implements Runnable
 		transport.lost = transport.session != null;
 		if (transport.lost)
 			transport.attemptFence.valid = false;
-		claimTerminal(transport, List.of(BridgeFrames.bye(BridgeFrames.BYE_SLOW)));
+		// A slow consumer loses its transport, not its resumable session or started attempt.
+		transport.terminalReply = frame(List.of(BridgeFrames.bye(BridgeFrames.BYE_SLOW)));
+		armClose(transport);
 	}
 
 	/** After a bye, the socket closes once the queue has been written, and in any case within 100 ms. */
@@ -1558,7 +1560,8 @@ final class BridgeLoopback implements Runnable
 					initialOpening = source.epoch == 1 && !source.opened;
 					source.lost = true;
 					source.attemptFence.valid = false;
-					source.retire = true;
+					// A transport-only Bye may already be draining while the session enters grace.
+					if (!source.closing) source.retire = true;
 					armClose(source);
 					source.checkpointDeadline = 0;
 				}
