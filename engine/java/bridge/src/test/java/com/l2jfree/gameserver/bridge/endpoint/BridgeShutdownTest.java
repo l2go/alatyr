@@ -31,6 +31,14 @@ import com.l2jfree.gameserver.network.L2Client;
  */
 class BridgeShutdownTest
 {
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.CsvSource({ "0,0", "200,180", "1000,900", "30000,29000" })
+	void aSmallShutdownBudgetStillLeavesTimeForItsSave(long budgetMs, long saveMs)
+	{
+		long end = budgetMs * 1_000_000L;
+		assertThat(BridgeLoopback.shutdownSaveEnd(end, end)).isEqualTo(saveMs * 1_000_000L);
+	}
+
 	@Test
 	void shutdownWaitsForASlowSaveAndNotPastTheBudget() throws Exception
 	{

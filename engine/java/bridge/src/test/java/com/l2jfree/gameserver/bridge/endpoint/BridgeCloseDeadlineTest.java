@@ -33,6 +33,120 @@ import com.l2jfree.gameserver.bridge.endpoint.BridgeLoopback.Transport;
  */
 class BridgeCloseDeadlineTest
 {
+	@org.junit.jupiter.params.ParameterizedTest
+	@org.junit.jupiter.params.provider.ValueSource(strings = { "eof", "close", "malformed", "auth", "opening", "read", "write" })
+	void unboundTerminalEventsNeverCreateASessionAndReleaseTheirOnlySlot(String event) throws Exception
+	{
+		BridgeLoopback loop = listener();
+		Transport transport = new Transport(new byte[32]);
+		SocketChannel socket = mock(SocketChannel.class);
+		when(socket.write(any(ByteBuffer.class))).thenAnswer(call -> ((ByteBuffer)call.getArgument(0)).remaining());
+		when(socket.read(any(ByteBuffer.class))).thenReturn(-1);
+		SelectionKey key = mock(SelectionKey.class);
+		when(key.isValid()).thenReturn(true);
+		when(key.channel()).thenReturn(socket);
+		when(key.attachment()).thenReturn(transport);
+		when(key.isReadable()).thenReturn(event.equals("eof"));
+		try
+		{
+			loop.account();
+			switch (event)
+			{
+				case "opening" -> BridgeLoopback.expire(transport, transport.openingDeadline);
+				case "read" -> { transport.readDeadline = 1; BridgeLoopback.expire(transport, 1); }
+				case "write" -> { transport.writeDeadline = 1; BridgeLoopback.expire(transport, 1); }
+				case "close" -> loop.acceptFrame(transport, java.util.List.of(com.l2jfree.gameserver.bridge.wire.Envelope.of(
+						com.l2jfree.gameserver.bridge.wire.Schemas.CLOSE, java.util.List.of(
+						com.l2jfree.gameserver.bridge.wire.Field.u(1, true, 1), com.l2jfree.gameserver.bridge.wire.Field.u(2, true, 1),
+						com.l2jfree.gameserver.bridge.wire.Field.u(3, true, 0)))));
+				case "malformed" -> loop.acceptFrame(transport, java.util.List.of(BridgeFrames.pong(1)));
+				case "auth" -> loop.acceptFrame(transport, java.util.List.of(com.l2jfree.gameserver.bridge.wire.Envelope.of(
+						com.l2jfree.gameserver.bridge.wire.Schemas.RESUME, java.util.List.of(
+						com.l2jfree.gameserver.bridge.wire.Field.u(1, true, 1), com.l2jfree.gameserver.bridge.wire.Field.u(2, true, 2),
+						com.l2jfree.gameserver.bridge.wire.Field.data(3, true, new byte[] { 1 }),
+						com.l2jfree.gameserver.bridge.wire.Field.data(4, true, "bridge/1".getBytes(java.nio.charset.StandardCharsets.UTF_8))))));
+				default -> { }
+			}
+			loop.serve(key);
+			assertThat(transport.client).isNull();
+			assertThat(transport.session).isNull();
+			assertThat(transport.physicallyClosed).isTrue();
+			verify(socket).close();
+			verify(key).cancel();
+			assertThat(loop.transports()).isZero();
+			loop.serve(key); // Even a stale key cannot release the slot or close the channel twice.
+			verify(socket, org.mockito.Mockito.times(1)).close();
+			assertThat(loop.transports()).isZero();
+		}
+		finally { loop.close(); }
+	}
+
+	@Test
+	void shutdownClosesAnIdleAcceptedPhysicalSocketWithoutTheOpeningWait() throws Exception
+	{
+		BridgeLoopback loop = listener();
+		try (var server = java.nio.channels.ServerSocketChannel.open())
+		{
+			server.bind(new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), 0));
+			try (var peer = SocketChannel.open(server.getLocalAddress()))
+			{
+				SocketChannel accepted = server.accept();
+				loop.receive(accepted);
+				assertThat(loop.transports()).isEqualTo(1);
+				loop.close(100);
+				assertThat(accepted.isOpen()).isFalse();
+				assertThat(accepted.keyFor(getSelector(loop))).isNull();
+				assertThat(loop.transports()).isZero();
+				peer.socket().setSoTimeout(1000);
+				assertThat(peer.socket().getInputStream().read()).isEqualTo(-1);
+			}
+		}
+		finally { if (loop.alive()) loop.close(0); }
+	}
+
+	private static java.nio.channels.Selector getSelector(BridgeLoopback loop) throws Exception
+	{
+		var field = BridgeLoopback.class.getDeclaredField("selector");
+		field.setAccessible(true);
+		return (java.nio.channels.Selector)field.get(loop);
+	}
+
+	@Test
+	void aCompleteFrameResetCannotBeExpiredByConcurrentSinkPublication() throws Exception
+	{
+		BridgeLoopback loop = listener();
+		Transport transport = new Transport(new byte[32]);
+		transport.opened = true;
+		var frame = new java.io.ByteArrayOutputStream();
+		com.l2jfree.gameserver.bridge.wire.Codec.bridge().write(frame, java.util.List.of(BridgeFrames.pong(1)));
+		transport.pending.write(frame.toByteArray());
+		synchronized (transport) { transport.readDeadline = System.nanoTime() - 1; }
+		var reset = new java.util.concurrent.CountDownLatch(1);
+		var published = new java.util.concurrent.CountDownLatch(1);
+		Thread sender = new Thread(() ->
+		{
+			try
+			{
+				if (!reset.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("reset gate");
+				loop.fromSink(transport, java.util.List.of(BridgeFrames.pong(2)));
+			}
+			catch (InterruptedException failure) { throw new AssertionError(failure); }
+			finally { published.countDown(); }
+		});
+		try
+		{
+			sender.start();
+			assertThat(BridgeLoopback.takeFrame(transport)).isNotNull();
+			reset.countDown();
+			assertThat(published.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+			loop.serviceControl(transport);
+			assertThat(transport.readDeadline).isZero();
+			assertThat(transport.terminal).isFalse();
+			assertThat(transport.closing).isFalse();
+		}
+		finally { reset.countDown(); sender.join(5000); loop.close(); }
+	}
+
 	@Test
 	void openingExpiresAtTenSecondsEvenWithoutAnInputByte()
 	{
@@ -41,6 +155,7 @@ class BridgeCloseDeadlineTest
 		BridgeLoopback.expire(transport, transport.openingDeadline - 1);
 		assertThat(transport.closing).isFalse();
 		BridgeLoopback.expire(transport, transport.openingDeadline);
+		BridgeLoopback.applyOutputFlags(transport);
 		assertThat(transport.closing).isTrue();
 		assertThat(transport.queued).hasSize(1);
 		BridgeLoopback.expire(transport, transport.openingDeadline + 1);
@@ -83,6 +198,7 @@ class BridgeCloseDeadlineTest
 		transport.readDeadline = System.nanoTime() - 1;
 		BridgeLoopback.expire(transport);
 		assertThat(transport.closing).isTrue();
+		BridgeLoopback.applyOutputFlags(transport);
 		assertThat(transport.queued).hasSize(1);
 	}
 

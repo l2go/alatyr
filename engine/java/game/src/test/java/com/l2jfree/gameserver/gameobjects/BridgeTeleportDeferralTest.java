@@ -48,6 +48,34 @@ import com.l2jfree.gameserver.network.L2Client;
 class BridgeTeleportDeferralTest
 {
 	@Test
+	void checkpointCaptureUsesTheRelocationLockAndRejectsUnfinishedOrClosingScenes()
+	{
+		Probe probe = new Probe();
+		doCallRealMethod().when(probe.player).markBridgeSession();
+		doCallRealMethod().when(probe.player).captureBridgeScene(any(Runnable.class));
+		when(probe.client.isBridge()).thenReturn(true);
+		probe.player.markBridgeSession();
+		var captures = new java.util.concurrent.atomic.AtomicInteger();
+		Runnable capture = () ->
+		{
+			assertThat(probe.player._teleportLock.isHeldByCurrentThread()).isTrue();
+			captures.incrementAndGet();
+		};
+		when(probe.player.isTeleporting()).thenReturn(true);
+		assertThat(probe.player.captureBridgeScene(capture)).isFalse();
+		when(probe.player.isTeleporting()).thenReturn(false);
+		probe.player._bridgeCompleting = true;
+		assertThat(probe.player.captureBridgeScene(capture)).isFalse();
+		probe.player._bridgeCompleting = false;
+		assertThat(probe.player.captureBridgeScene(capture)).isTrue();
+		assertThat(captures).hasValue(1);
+		when(probe.client.isBridgeDisconnectRequested()).thenReturn(true);
+		assertThat(probe.player.captureBridgeScene(capture)).isFalse();
+		assertThat(captures).hasValue(1);
+		assertThat(probe.player._teleportLock.isHeldByCurrentThread()).isFalse();
+	}
+
+	@Test
 	void aTeleportDuringCompletionRunsAfterTheCompletionInOrder()
 	{
 		Probe probe = new Probe();

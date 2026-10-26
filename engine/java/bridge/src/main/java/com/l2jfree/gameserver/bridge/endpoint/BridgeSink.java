@@ -52,6 +52,9 @@ public final class BridgeSink implements ClientSink
 	private long _sequence;
 	private boolean _failed;
 	private final Map<Integer, ActorView> _actors = new HashMap<>();
+	private final BridgeProjection _projection = new BridgeProjection();
+	private long _epoch = 1;
+	private Runnable _afterTeleport;
 
 	private record ActorView(Map<Integer, BridgeField> fields, Long run, Long walk) {}
 	
@@ -67,6 +70,34 @@ public final class BridgeSink implements ClientSink
 			throw new IllegalArgumentException("client");
 		
 		_client = client;
+	}
+
+	void afterTeleport(Runnable continuation)
+	{
+		_afterTeleport = continuation;
+	}
+
+	record Capture(List<Envelope> records, boolean ready) {
+		Capture { records = List.copyOf(records); }
+	}
+
+	/** Copies state and reserves its sequence range under one leaf monitor, without consulting the model. */
+	synchronized Capture snapshot(long epoch, boolean completeObjects)
+	{
+		return snapshot(epoch, completeObjects, false);
+	}
+
+	synchronized Capture snapshot(long epoch, boolean completeObjects, boolean includeRelocation)
+	{
+		_epoch = epoch;
+		if (completeObjects)
+			_projection.completeObjects();
+		var result = new ArrayList<Envelope>();
+		long ms = Math.max(0, (System.nanoTime() - _born) / 1_000_000);
+		var snapshot = _projection.capture(ms, includeRelocation);
+		for (BridgeFact fact : snapshot.facts())
+			result.add(SemanticFacts.envelope(fact, _sequence = Math.incrementExact(_sequence), ms, _epoch, domain(fact.kind())));
+		return new Capture(result, snapshot.ready());
 	}
 	
 	@Override
@@ -98,12 +129,14 @@ public final class BridgeSink implements ClientSink
 			long sequence = _sequence;
 			for (BridgeFact fact : stage.facts)
 				records.add(SemanticFacts.envelope(fact, sequence = Math.incrementExact(sequence),
-						stage.ms, 1, domain(fact.kind())));
+						stage.ms, _epoch, domain(fact.kind())));
 			// Validate every observation before any delivery or receipt becomes visible.
 			Codec codec = Codec.bridge();
 			for (Envelope record : records)
 				codec.encode(List.of(record));
 			stage.validateActors();
+			for (int i = 0; i < stage.facts.size(); i++)
+				_projection.observe(stage.facts.get(i), _sequence + i + 1, stage.ms);
 			if (_outbound != null)
 				for (Envelope record : records)
 					_outbound.accept(List.of(record));
@@ -160,6 +193,8 @@ public final class BridgeSink implements ClientSink
 		final List<BridgeFact> facts = new ArrayList<>();
 		final List<Integer> messages = new ArrayList<>();
 		final Map<Integer, ActorView> changes = new HashMap<>();
+		boolean relocated;
+		int relocationOwner;
 
 		Stage(L2Player player) { this.player = player; }
 
@@ -175,6 +210,13 @@ public final class BridgeSink implements ClientSink
 			int id = rawId(fact);
 			if (id == 0)
 				return;
+			if (fact.kind() == 4 && fact.fields().stream().anyMatch(field -> field.number() == 67
+					&& ((BridgeValue.Flag)field.value()).value()))
+			{
+				relocated = true;
+				relocationOwner = id;
+				changes.keySet().removeIf(key -> key != id);
+			}
 			if (fact.kind() == 10)
 			{
 				changes.put(id, null);
@@ -200,7 +242,8 @@ public final class BridgeSink implements ClientSink
 
 		private ActorView view(int id)
 		{
-			return changes.containsKey(id) ? changes.get(id) : _actors.get(id);
+			return changes.containsKey(id) ? changes.get(id)
+					: relocated && id != relocationOwner ? null : _actors.get(id);
 		}
 
 		@Override
@@ -237,12 +280,13 @@ public final class BridgeSink implements ClientSink
 
 		void validateActors()
 		{
-			int count = _actors.size();
+			int count = relocated ? _actors.containsKey(relocationOwner) ? 1 : 0 : _actors.size();
 			for (var change : changes.entrySet())
 			{
-				if (change.getValue() == null && _actors.containsKey(change.getKey()))
+				boolean present = _actors.containsKey(change.getKey()) && (!relocated || change.getKey() == relocationOwner);
+				if (change.getValue() == null && present)
 					count--;
-				else if (change.getValue() != null && !_actors.containsKey(change.getKey()))
+				else if (change.getValue() != null && !present)
 					count++;
 			}
 			if (count > 4096)
@@ -251,6 +295,8 @@ public final class BridgeSink implements ClientSink
 
 		void commitActors()
 		{
+			if (relocated)
+				_actors.keySet().removeIf(key -> key != relocationOwner);
 			for (var change : changes.entrySet())
 				if (change.getValue() == null)
 					_actors.remove(change.getKey());
@@ -280,6 +326,8 @@ public final class BridgeSink implements ClientSink
 			L2Player player = client.getActiveChar();
 			if (player != null)
 				player.completeBridgeTeleport(generation);
+			if (_afterTeleport != null)
+				_afterTeleport.run();
 		});
 	}
 }

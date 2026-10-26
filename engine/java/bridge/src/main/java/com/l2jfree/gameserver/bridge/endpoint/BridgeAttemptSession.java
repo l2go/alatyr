@@ -24,7 +24,30 @@ final class BridgeAttemptSession
 {
 	private final BridgeIntents intents = new BridgeIntents();
 	private final Consumer<Runnable> submit;
-	private final Consumer<byte[]> outbound;
+	private Consumer<byte[]> outbound;
+	private record Queued(byte[] refusal, Fence fence) {}
+	/** A reader invalidates the source fence before any queued task can begin. No callback or lock is needed. */
+	static final class Fence
+	{
+		volatile boolean valid = true;
+		volatile boolean ready = true;
+		volatile boolean closing;
+		volatile long generation = 1;
+		volatile long readyGeneration = 1;
+
+		boolean isReady() { return ready && readyGeneration == generation; }
+
+		/** Called under the owning transport monitor; takes no additional lock. */
+		void invalidateReadiness()
+		{
+			generation = Math.incrementExact(generation);
+			ready = false;
+		}
+	}
+	private final java.util.Map<Long, Queued> queued = new java.util.HashMap<>();
+	private boolean detached;
+	private volatile long epoch = 1;
+	private Fence activeFence;
 
 	BridgeAttemptSession(Consumer<Runnable> submit, Consumer<byte[]> outbound)
 	{
@@ -37,7 +60,70 @@ final class BridgeAttemptSession
 		intents.markReady();
 	}
 
+	void ready(Fence fence)
+	{
+		ready(fence, fence.generation);
+	}
+
+	synchronized void ready(Fence fence, long generation)
+	{
+		if (!detached && activeFence == fence && fence.valid && fence.generation == generation)
+		{
+			// A concurrent relocation can invalidate after the check. Matching generations, not the
+			// boolean alone, prevent that late grant from reopening admission for the new scene.
+			fence.readyGeneration = generation;
+			fence.ready = true;
+			intents.markReady();
+		}
+	}
+
+	synchronized void bindFence(Fence fence)
+	{
+		activeFence = fence;
+	}
+
+	void checkpoint()
+	{
+		intents.markNotReady();
+	}
+
+	java.util.List<byte[]> retainedResults()
+	{
+		return intents.retainedResults();
+	}
+
+	/** Reader-side cancellation; running work is absent from queued and keeps its one terminal outcome. */
+	synchronized void detach()
+	{
+		detached = true;
+		intents.markNotReady();
+		for (var entry : queued.entrySet())
+			intents.complete(entry.getKey(), entry.getValue().refusal());
+		queued.clear();
+	}
+
+	/** Rebinds output without running any work. The checkpoint owner publishes this copy before admission opens. */
+	synchronized java.util.List<byte[]> resume(long nextEpoch, Consumer<byte[]> output)
+	{
+		epoch = nextEpoch;
+		outbound = java.util.Objects.requireNonNull(output);
+		detached = false;
+		intents.markNotReady();
+		return intents.retainedResults();
+	}
+
+	synchronized void resume(long nextEpoch, Consumer<byte[]> output, Fence fence)
+	{
+		resume(nextEpoch, output);
+		activeFence = fence;
+	}
+
 	BridgeIntents.Decision accept(L2Client client, Envelope intent)
+	{
+		return accept(client, intent, null);
+	}
+
+	BridgeIntents.Decision accept(L2Client client, Envelope intent, Fence fence)
 	{
 		long n = intent.field(1).value().u();
 		long verb = intent.field(2).value().u();
@@ -46,8 +132,8 @@ final class BridgeAttemptSession
 			if (intent.encodedBytes() > 4096)
 				throw com.l2jfree.gameserver.bridge.wire.WireException.frame();
 			byte[] identity = intent.unsupportedHash().clone();
-			return accept(n, identity, () -> BridgeResults.encode(n, verb, 3, 9, null),
-					BridgeResults.encode(n, verb, 3, 1, null));
+			return accept(n, verb, identity, () -> BridgeResults.encode(n, verb, 3, 9, null),
+					BridgeResults.encode(n, verb, 3, 1, null), BridgeResults.transportLost(n, verb), fence);
 		}
 		long received = System.nanoTime();
 		long ttl = intent.field(4) == null ? 5000 : intent.field(4).value().u();
@@ -68,18 +154,18 @@ final class BridgeAttemptSession
 			throw com.l2jfree.gameserver.bridge.wire.WireException.frame();
 		// Decode our own canonical bytes to sever all receive-side mutable arrays before FIFO submission.
 		Envelope acceptedIntent = Codec.bridge().decode(normalized).get(0);
-		return accept(n, normalized, () -> execute(client, acceptedIntent, n, verb, received, ttl),
-				BridgeResults.encode(n, verb, 3, 1, null));
+		return accept(n, verb, normalized, () -> execute(client, acceptedIntent, n, verb, received, ttl, fence),
+				BridgeResults.encode(n, verb, 3, 1, null), BridgeResults.transportLost(n, verb), fence);
 	}
 
-	private byte[] execute(L2Client client, Envelope intent, long n, long verb, long received, long ttl)
+	private byte[] execute(L2Client client, Envelope intent, long n, long verb, long received, long ttl, Fence fence)
 		{
 			if (client.isBridgeDisconnectRequested())
 				return BridgeResults.encode(n, verb, 3, 16, null);
 			if (client.getState() != L2Client.GameClientState.IN_GAME
 					|| client.getActiveChar() == null)
 				return BridgeResults.encode(n, verb, 3, 1, null);
-			if (intent.field(3).value().u() != 1)
+			if (intent.field(3).value().u() != epoch)
 				return BridgeResults.encode(n, verb, 3, 1, null);
 			if (ttl < 0 || ttl > 5000)
 				return BridgeResults.encode(n, verb, 3, 10, null);
@@ -120,6 +206,12 @@ final class BridgeAttemptSession
 				{
 					if (source == null || BridgeOutcome.match(active, 4, takenItem, source.getObjectId(), takenCount) == BridgeOutcome.DONE)
 						return;
+					if (fence != null && !fence.valid || intent.field(3).value().u() != epoch
+							|| client.isBridgeDisconnectRequested())
+					{
+						active.markInterrupted();
+						return;
+					}
 					if (client.isBridgeDisconnectRequested() || client.getState() != L2Client.GameClientState.IN_GAME
 							|| com.l2jfree.gameserver.model.world.L2World.getInstance().findObject(source.getObjectId()) != source
 							|| !source.isVisible())
@@ -157,32 +249,66 @@ final class BridgeAttemptSession
 
 	BridgeIntents.Decision accept(long n, byte[] normalized, Supplier<byte[]> execution)
 	{
-		return accept(n, normalized, execution, BridgeResults.encode(n, 0, 3, 1, null));
+		return accept(n, 0, normalized, execution, BridgeResults.encode(n, 0, 3, 1, null),
+				BridgeResults.transportLost(n, 0), null);
 	}
 
-	private synchronized BridgeIntents.Decision accept(long n, byte[] normalized, Supplier<byte[]> execution, byte[] notReady)
+	private BridgeIntents.Decision accept(long n, long verb, byte[] normalized, Supplier<byte[]> execution, byte[] notReady,
+			byte[] transportLost, Fence fence)
 	{
-		BridgeIntents.Decision decision = intents.offer(n, normalized);
-		if (decision.kind == BridgeIntents.Kind.NOT_READY)
+		BridgeIntents.Decision decision;
+		byte[] immediate = null;
+		Consumer<byte[]> target;
+		synchronized (this)
 		{
-			intents.complete(n, notReady);
-			outbound.accept(intents.result(n));
+			// Recheck under the admission monitor: EOF or replacement may win after the reader's outer check.
+			// A stale reader is ignored, never registered against the replacement epoch or thrown into the selector.
+			if (detached || fence != null && (!fence.valid || activeFence != fence))
+				return null;
+			if (fence != null && !fence.isReady())
+				intents.markNotReady();
+			decision = intents.offer(n, normalized);
+			if (decision.kind == BridgeIntents.Kind.NOT_READY)
+			{
+				intents.complete(n, notReady);
+				immediate = intents.result(n);
+			}
+			else if (decision.kind == BridgeIntents.Kind.REPLAY)
+				immediate = intents.result(n);
+			else if (decision.kind == BridgeIntents.Kind.UNRECOVERABLE)
+				immediate = BridgeResults.encode(n, 0, 5, 20, null);
+			else if (decision.kind == BridgeIntents.Kind.ACCEPTED)
+				queued.put(n, new Queued(transportLost, fence));
+			target = outbound;
 		}
-		else if (decision.kind == BridgeIntents.Kind.REPLAY)
-		{
-			byte[] result = intents.result(n);
-			if (result != null)
-				outbound.accept(result);
-		}
-		else if (decision.kind == BridgeIntents.Kind.UNRECOVERABLE)
-			outbound.accept(BridgeResults.encode(n, 0, 5, 20, null));
-		else if (decision.kind == BridgeIntents.Kind.ACCEPTED)
+		if (immediate != null)
+			target.accept(immediate);
+		if (decision.kind == BridgeIntents.Kind.ACCEPTED)
 		{
 			submit.accept(() ->
 			{
-				byte[] result = execution.get();
-				intents.complete(n, result);
-				outbound.accept(intents.result(n));
+				boolean canceled;
+				boolean unavailable;
+				synchronized (BridgeAttemptSession.this)
+				{
+					Queued entry = queued.remove(n);
+					if (entry == null)
+						return;
+					canceled = entry.fence() != null && !entry.fence().valid;
+					unavailable = entry.fence() != null && !entry.fence().isReady();
+				}
+				byte[] result = canceled ? fence != null && fence.closing
+						? BridgeResults.encode(n, verb, 3, 16, null) : transportLost : unavailable ? notReady : execution.get();
+				Consumer<byte[]> destination;
+				byte[] retained;
+				synchronized (BridgeAttemptSession.this)
+				{
+					intents.complete(n, result);
+					retained = intents.result(n);
+					destination = detached ? null : outbound;
+				}
+				if (destination != null && retained != null)
+					destination.accept(retained);
 			});
 		}
 		return decision;
