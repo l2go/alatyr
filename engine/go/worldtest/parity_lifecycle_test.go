@@ -55,9 +55,13 @@ func parityHuntPickup(r *parityRig) parityResult {
 		dx, dy := int64(s.Point[0])-int64(drop.Event.X), int64(s.Point[1])-int64(drop.Event.Y)
 		return dx*dx+dy*dy < 100
 	})
+	// A killing hit can still own a protected attack animation. In the
+	// reference world a pickup queued behind it has no synchronous receipt.
+	// Let the authored attack and movement finish before requesting the take.
+	r.advance(2 * time.Second)
 	request := r.intent(4, 4, r.ref(drop.Event.ID, 20))
 	r.p.Send(request)
-	r.p.Result(4, wire.StageSent)
+	r.result(4, wire.StageSent)
 	r.advance(100 * time.Millisecond)
 	out.Outcomes = append(out.Outcomes, r.outcome(4, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1))
 	out.Order = r.causalOrder(4, "take")
@@ -242,7 +246,7 @@ func parityRewardSides(r *parityRig, name string) parityResult {
 	r.advance(16 * time.Second)
 	before := r.current()
 	r.p.Send(r.intent(1, 4, r.ref(foreignDrop, 20)))
-	r.p.Result(1, wire.StageSent)
+	r.result(1, wire.StageSent)
 	r.advance(5100 * time.Millisecond)
 	// Neither an ordinary refusal nor an unproven approach may transfer it.
 	after := r.current()
@@ -254,21 +258,9 @@ func parityRewardSides(r *parityRig, name string) parityResult {
 	if respawned.ID == npc.ID {
 		r.t.Fatal("NPC respawn reused a retired instance")
 	}
-	gone, appeared := -1, -1
-	for i, f := range r.p.Records {
-		if f.Type != wire.Fact {
-			continue
-		}
-		d, err := meaning.EventValue(f)
-		if err != nil {
-			r.t.Fatal(err)
-		}
-		if gatewaytest.U(f, 1) == 5 && d.Event.ID == npc.ID {
-			gone = i
-		}
-		if gatewaytest.U(f, 1) == 1 && d.Event.ID == respawned.ID {
-			appeared = i
-		}
+	gone, appeared, err := parityLifeOrder(r.p.Records, npc.ID, respawned.ID)
+	if err != nil {
+		r.t.Fatal(err)
 	}
 	if gone < 0 || appeared <= gone {
 		r.t.Fatalf("NPC lifecycle order gone/appeared=%d/%d", gone, appeared)
@@ -302,3 +294,23 @@ func parityRewardSides(r *parityRig, name string) parityResult {
 }
 
 func fmtKey(name string, index int) string { return name + "-" + strconv.Itoa(index) }
+
+func parityLifeOrder(records []wire.Record, oldID, nextID int32) (int, int, error) {
+	gone, appeared := -1, -1
+	for i, f := range records {
+		if f.Type != wire.Fact {
+			continue
+		}
+		d, err := meaning.EventValue(f)
+		if err != nil {
+			return -1, -1, err
+		}
+		if gone < 0 && d.Event.Kind == meaning.Gone && d.Event.ID == oldID {
+			gone = i
+		}
+		if appeared < 0 && d.Event.Kind == meaning.Appeared && d.Event.ID == nextID {
+			appeared = i
+		}
+	}
+	return gone, appeared, nil
+}

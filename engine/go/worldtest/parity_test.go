@@ -62,7 +62,7 @@ func TestOkolitsaParity(t *testing.T) {
 
 func (r *parityRig) outcome(n uint64, stage wire.Stage, reason wire.Reason, delivery wire.Delivery, causes int) string {
 	r.t.Helper()
-	rec := r.p.Result(n, stage)
+	rec := r.result(n, stage)
 	r.sync()
 	if gatewaytest.U(rec, 3) != uint64(reason) || gatewaytest.U(rec, 7) != uint64(delivery) {
 		r.t.Fatalf("attempt %d outcome: %+v, want %v/%v/%v", n, rec, stage, reason, delivery)
@@ -98,6 +98,13 @@ func (r *parityRig) causalOrder(n uint64, label string) []string {
 func runParityCase(r *parityRig, name string) parityResult {
 	r.t.Helper()
 	out := parityResult{Balances: make(map[string]int64), Checks: make(map[string]bool)}
+	// Finish the remote save while the participant and test context are live.
+	// Cleanup remains a fallback, not a race against reader/context shutdown.
+	defer func() {
+		if !r.closed && !r.t.Failed() {
+			r.save()
+		}
+	}()
 	switch name {
 	case "g01":
 		target := r.actor(30001)
@@ -138,15 +145,15 @@ func runParityCase(r *parityRig, name string) parityResult {
 	case "g04-buy", "g04-sell":
 		sell := name == "g04-sell"
 		target := r.actor(30002)
-		r.p.Send(r.intent(1, 5, r.ref(target.ID, 10)))
+		r.p.Send(r.intent(1, 11, r.ref(target.ID, 10)))
 		out.Outcomes = append(out.Outcomes, r.outcome(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1))
 		choice, kind, verb, price := 0, uint64(12), uint64(7), int64(12)
 		if sell {
 			choice, kind, verb, price = 1, 13, 8, 6
 		}
 		r.choose(2, choice)
-		r.p.Result(2, wire.StageSent)
-		list, err := meaning.EventValue(r.p.Fact(kind))
+		r.result(2, wire.StageSent)
+		list, err := meaning.EventValue(r.fact(kind))
 		if err != nil {
 			r.t.Fatal(err)
 		}
@@ -164,7 +171,7 @@ func runParityCase(r *parityRig, name string) parityResult {
 		}
 		request := r.intent(3, verb, wire.S(14, true, int64(list.Event.List)), wire.U(15, true, list.Context.Offers[row]), wire.S(16, true, 1), wire.S(17, true, price))
 		r.p.Send(request)
-		r.p.Result(3, wire.StageSent)
+		r.result(3, wire.StageSent)
 		wantCoin, wantItem := int64(988), int64(4)
 		if sell {
 			wantCoin, wantItem = 1006, 2
@@ -189,7 +196,7 @@ func runParityCase(r *parityRig, name string) parityResult {
 		// A new Intent uses the still-live list, while the duplicate above
 		// retains its terminal outcome without another raw write.
 		r.p.Send(r.intent(4, verb, wire.S(14, true, int64(list.Event.List)), wire.U(15, true, list.Context.Offers[row]), wire.S(16, true, 1), wire.S(17, true, price)))
-		r.p.Result(4, wire.StageSent)
+		r.result(4, wire.StageSent)
 		if sell {
 			wantCoin += 6
 			wantItem--
@@ -214,11 +221,11 @@ func runParityCase(r *parityRig, name string) parityResult {
 		out.Checks["duplicate-replays"], out.Checks["saved-offline"] = true, true
 	case "g05", "learning-next":
 		target := r.actor(30001)
-		r.p.Send(r.intent(1, 5, r.ref(target.ID, 10)))
+		r.p.Send(r.intent(1, 11, r.ref(target.ID, 10)))
 		r.outcome(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 		r.choose(2, 0)
-		r.p.Result(2, wire.StageSent)
-		lesson, err := meaning.EventValue(r.p.Fact(22))
+		r.result(2, wire.StageSent)
+		lesson, err := meaning.EventValue(r.fact(22))
 		if err != nil {
 			r.t.Fatal(err)
 		}
@@ -237,7 +244,7 @@ func runParityCase(r *parityRig, name string) parityResult {
 		}
 		request := r.intent(3, 13, wire.S(14, true, int64(lesson.Event.List)), wire.U(15, true, lesson.Context.Offers[row]))
 		r.p.Send(request)
-		r.p.Result(3, wire.StageSent)
+		r.result(3, wire.StageSent)
 		r.advance(4 * time.Second)
 		for _, f := range r.p.Records {
 			if f.Type == wire.Result && gatewaytest.U(f, 1) == 3 && gatewaytest.U(f, 2) != uint64(wire.StageSent) {
@@ -281,6 +288,21 @@ func runParityCase(r *parityRig, name string) parityResult {
 				r.harm(world.Ref{}, r.owner, 1000000)
 			}
 			r.wait(func() bool { return r.current().Dead })
+			r.wait(func() bool {
+				for _, f := range r.p.Records {
+					if f.Type != wire.Fact {
+						continue
+					}
+					d, err := meaning.EventValue(f)
+					if err != nil {
+						r.t.Fatal(err)
+					}
+					if d.Event.Kind == meaning.Died && d.Event.ID == r.owner.ID {
+						return true
+					}
+				}
+				return false
+			})
 		}
 		r.p.Send(r.intent(1, 9))
 		out.Outcomes = append(out.Outcomes, r.outcome(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1))
@@ -324,7 +346,7 @@ func runParityCase(r *parityRig, name string) parityResult {
 		r.p.Send(r.intent(1, 5, r.ref(target.ID, 10)))
 		r.sync()
 		if !before {
-			r.p.Result(1, wire.StageSent)
+			r.result(1, wire.StageSent)
 		}
 		r.closed = true
 		if err := r.port.Close(); err != nil {
@@ -343,9 +365,9 @@ func runParityCase(r *parityRig, name string) parityResult {
 		return parityResume(r)
 	case "g10":
 		target := r.actor(30001)
-		r.p.Send(r.intent(1, 5, r.ref(target.ID, 10)))
-		r.p.Result(1, wire.StageSent)
-		r.p.Fact(11)
+		r.p.Send(r.intent(1, 11, r.ref(target.ID, 10)))
+		r.result(1, wire.StageSent)
+		r.fact(11)
 		r.advance(5100 * time.Millisecond)
 		out.Outcomes = append(out.Outcomes, r.outcome(1, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0))
 		out.Checks["unattributed-speech-cannot-complete"] = true

@@ -257,6 +257,38 @@ func (r *parityRig) wait(f func() bool) {
 	}
 }
 
+// result waits for asynchronous runtime work before using the unchanged shared
+// driver. A terminal mismatch fails immediately; no evidence window is extended.
+func (r *parityRig) result(n uint64, stage wire.Stage) wire.Record {
+	r.t.Helper()
+	r.wait(func() bool {
+		for _, f := range r.p.Records {
+			if f.Type == wire.Result && gatewaytest.U(f, 1) == n && gatewaytest.U(f, 2) == uint64(stage) {
+				return true
+			}
+		}
+		for _, f := range r.p.Records {
+			if f.Type == wire.Result && gatewaytest.U(f, 1) == n && gatewaytest.U(f, 2) != uint64(wire.StageSent) {
+				r.t.Fatalf("attempt %d terminal mismatch: got %+v, want stage %v; raw commands=%+v", n, f, stage, r.port.commands())
+			}
+		}
+		return false
+	})
+	return r.p.Result(n, stage)
+}
+func (r *parityRig) fact(kind uint64) wire.Record {
+	r.t.Helper()
+	r.wait(func() bool {
+		for _, f := range r.p.Records {
+			if f.Type == wire.Fact && gatewaytest.U(f, 1) == kind {
+				return true
+			}
+		}
+		return false
+	})
+	return r.p.Fact(kind)
+}
+
 func (r *parityRig) actor(template int32) world.Ref {
 	r.t.Helper()
 	if r.engine == "go" {

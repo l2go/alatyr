@@ -11,8 +11,11 @@ control socket only in this disposable CI process. It calls existing item and
 party mechanics and applies explicit synthetic harm through normal HP handling.
 It does not transform production classes, forge bridge evidence, or enter the
 published distribution. Client operations run on the admitted player's FIFO.
-A timed-out operation fails its scenario and is never retried. The process owns
-the socket; the integration shell owns and terminates the process and database.
+A timed-out operation fails its scenario and is never retried. Neutral harm uses
+an actual non-player source (the probe itself), because the reference HP handler
+rejects a null attacker before accounting. This changes no Java production class.
+The process owns the socket; the integration shell owns and terminates the
+process and database.
 
 Comparison uses outcomes, causal publication order, conserved balances, and
 visibility. It does not compare packet bytes, text, role labels, or timer values.
@@ -27,3 +30,9 @@ known boundary of the live comparison, covered separately by Go reward tests.
 Run the integration shell only in CI after packaging the Java platform. Local Go
 checks run `go test ./worldtest ./world/... ./worldbridge`; the Java half requires
 the isolated integration environment and is otherwise omitted.
+
+The two Go test packages run sequentially against the single Java process. The
+parity cases close and verify their remote save before participant cleanup.
+Participant observation waits allow asynchronous delivery within the original
+runtime evidence windows; a mismatched terminal result fails immediately. The
+shared driver and frozen contract oracles are unchanged.

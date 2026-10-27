@@ -19,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import com.l2jfree.gameserver.gameobjects.L2Attackable;
+import com.l2jfree.gameserver.gameobjects.L2Creature;
 import com.l2jfree.gameserver.gameobjects.L2Player;
 import com.l2jfree.gameserver.gameobjects.ai.CtrlIntention;
 import com.l2jfree.gameserver.model.party.L2Party;
@@ -136,7 +137,10 @@ public final class WorldFixture {
             }
             case "damage": {
                 L2Attackable npc = monster(owner, Integer.parseInt(f[3]));
-                L2Player attacker = Integer.parseInt(f[5]) == 0 ? null : player(Integer.parseInt(f[5]));
+                // CreatureStatus rejects a null attacker before HP accounting.
+                // Self harm is a real non-player source: the hunt ledger binds it
+                // to neutral, with no acting player and no forged reward input.
+                L2Creature attacker = Integer.parseInt(f[5]) == 0 ? npc : player(Integer.parseInt(f[5]));
                 double damage = Double.parseDouble(f[4]);
                 if (!Double.isFinite(damage) || damage <= 0 || damage > 1000000) throw new IllegalArgumentException("damage bound");
                 npc.reduceCurrentHp(damage, attacker);

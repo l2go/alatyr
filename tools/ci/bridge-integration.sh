@@ -146,4 +146,4 @@ export JAVA_BRIDGE_NC_JAR="${smoke[0]}" JAVA_BRIDGE_NC_PASSWORD="$(openssl rand 
 export JAVA_BRIDGE_NC_LOG="$run/nc.log"
 export JAVA_BRIDGE_ENDPOINT=127.0.0.1:19016 JAVA_BRIDGE_DB_CONTAINER="$db"
 cd "$root/engine/go"
-go test -race -count=1 -v -timeout=8m ./gateway/backend ./worldtest -run '^(TestJavaBridge|TestOkolitsaParity)' 2>&1 | tee "$run/go.log"
+go test -race -p=1 -count=1 -v -timeout=8m ./gateway/backend ./worldtest -run '^(TestJavaBridge|TestOkolitsaParity)' 2>&1 | tee "$run/go.log"
