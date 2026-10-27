@@ -5,7 +5,9 @@
 // Run owns all mutable state. Commands return detached snapshots and buffered
 // semantic events. Movement, combat, learning and visibility share that owner.
 // Persistence runs on the caller's goroutine, not inside the world loop.
-// The caller must leave characters before stopping Run.
+// The caller leaves characters before stopping Run when possible. On every
+// return Run publishes detached Final checkpoints. The host joins all admitted
+// callers and their store I/O before persisting those remaining characters.
 //
 // # Transition commitments
 //

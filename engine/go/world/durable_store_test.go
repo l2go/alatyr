@@ -6,6 +6,7 @@ package world
 import (
 	"context"
 	"errors"
+	"github.com/l2go/alatyr/engine/go/world/catalog"
 	"reflect"
 	"slices"
 	"testing"
@@ -106,4 +107,116 @@ func TestDurableIDRangeNeverEscapesReservation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIDExhaustionStopsRunAndPublishesFinalState(t *testing.T) {
+	for _, path := range []string{"ground", "reward", "spawn"} {
+		t.Run(path, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				w := New(syntheticCatalog(t), &testStore{})
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				done := make(chan error, 1)
+				go func() { done <- w.Run(ctx) }()
+				entry := enterTest(t, w, ctx, syntheticCharacter(1))
+				err := w.do(ctx, func(s *state) {
+					s.ids.limit = s.ids.last
+					p := s.players[1]
+					p.char.SP = 17
+					n := &npc{}
+					switch path {
+					case "ground":
+						w.dropOnGround(s, n, p, 9001, 1)
+					case "reward":
+						w.giveItem(s, p, n, 9001, 1)
+					case "spawn":
+						w.spawnNPC(s, catalog.Spawn{}, catalog.NPCTemplate{})
+					}
+				})
+				if !errors.Is(err, ErrExhausted) {
+					t.Fatalf("allocation: %v", err)
+				}
+				if err := <-done; !errors.Is(err, ErrExhausted) {
+					t.Fatalf("Run: %v", err)
+				}
+				if _, err := w.Capture(ctx, entry.Self.Entity); !errors.Is(err, ErrStopped) {
+					t.Fatalf("loop still ready: %v", err)
+				}
+				final, err := w.Final(ctx)
+				if err != nil || len(final) != 1 || final[0].Owner != entry.Self.Entity || final[0].Character.SP != 17 {
+					t.Fatalf("final: %+v/%v", final, err)
+				}
+				final[0].Character.SP = 999
+				originalCount := final[0].Character.Items[0].Count
+				final[0].Character.Items[0].Count++
+				again, err := w.Final(ctx)
+				if err != nil || again[0].Character.SP != 17 || len(again[0].Character.Items) == 0 || again[0].Character.Items[0].Count != originalCount {
+					t.Fatalf("final snapshot aliases caller: %+v/%v", again, err)
+				}
+			})
+		})
+	}
+}
+
+func TestFinalCheckpointIncludesInFlightLearning(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		store := &durableStore{started: make(chan Character, 1), release: make(chan struct{})}
+		w := New(syntheticCatalog(t), store)
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() { done <- w.Run(ctx) }()
+		entry := enterTest(t, w, ctx, syntheticCharacter(1))
+		teacher := objectOf(t, w, ctx, 9102)
+		w.Action(ctx, 1, teacher)
+		w.Action(ctx, 1, teacher)
+		w.Bypass(ctx, 1, fmtChoice(teacher))
+		learning := make(chan error, 1)
+		go func() { learning <- w.Learn(t.Context(), 1, 9202, 1) }()
+		captured := <-store.started
+		// Freeze while external I/O owns a detached snapshot. The final world
+		// snapshot must already contain the committed SP and skill.
+		cancel()
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		final, err := w.Final(t.Context())
+		if err != nil || len(final) != 1 || final[0].Owner != entry.Self.Entity || final[0].Character.SP != captured.SP || !reflect.DeepEqual(final[0].Character.Skills, captured.Skills) {
+			t.Fatalf("in-flight checkpoint: %+v/%v", final, err)
+		}
+		close(store.release)
+		if err := <-learning; !errors.Is(err, ErrStopped) {
+			t.Fatalf("late write did not join stopped world: %v", err)
+		}
+	})
+}
+
+type failedDepartureStore struct{}
+
+func (failedDepartureStore) PutCharacter(context.Context, Character) error {
+	return errors.New("departure failed")
+}
+
+func TestFinalCheckpointRetainsFailedDeparture(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := New(syntheticCatalog(t), failedDepartureStore{})
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		done := make(chan error, 1)
+		go func() { done <- w.Run(ctx) }()
+		entry := enterTest(t, w, ctx, syntheticCharacter(1))
+		if err := w.Leave(ctx, entry.Self.Entity); err == nil {
+			t.Fatal("departure unexpectedly saved")
+		}
+		if _, err := w.Capture(ctx, entry.Self.Entity); !errors.Is(err, ErrNotPresent) {
+			t.Fatalf("failed departure still live: %v", err)
+		}
+		cancel()
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		final, err := w.Final(t.Context())
+		if err != nil || len(final) != 1 || final[0].Owner != entry.Self.Entity || final[0].Character.ObjectID != 1 {
+			t.Fatalf("pending departure lost: %+v/%v", final, err)
+		}
+	})
 }

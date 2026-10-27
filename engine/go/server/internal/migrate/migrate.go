@@ -130,7 +130,7 @@ func Apply(ctx context.Context, dsn string) (result error) {
 		return fmt.Errorf("migrate: goose up: %w", err)
 	}
 	// Account for identities in unsupported tables before reserving new ranges.
-	for _, table := range []string{"player", "item", "clan", "crest", "couple", "ground_item"} {
+	for _, table := range []string{"player", "item", "clan", "crest", "couple", "ground_item", "player_shortcut"} {
 		var exists bool
 		if err := db.QueryRowContext(ctx, "SELECT to_regclass($1) IS NOT NULL", "world."+table).Scan(&exists); err != nil {
 			return err
@@ -139,6 +139,9 @@ func Apply(ctx context.Context, dsn string) (result error) {
 			continue
 		}
 		maximum := "coalesce((SELECT max(id) FROM world." + table + "),0)"
+		if table == "player_shortcut" {
+			maximum = "coalesce((SELECT max(target_id) FROM world.player_shortcut WHERE shortcut_type_id=1 AND target_id>0),0)"
+		}
 		if table == "clan" {
 			maximum += ",coalesce((SELECT max(crest_id) FROM world.clan),0),coalesce((SELECT max(large_crest_id) FROM world.clan),0),coalesce((SELECT max(alliance_crest_id) FROM world.clan),0)"
 		}

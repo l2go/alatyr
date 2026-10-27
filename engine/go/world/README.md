@@ -121,7 +121,11 @@ returns `RefusalError` with `ReasonStale`, inspectable with `errors.As`.
 departure. Both operations require a captured incarnation; there is no ID-only
 departure API.
 An accepted command completes even if its caller cancels in flight.
-Leave all characters before cancelling Run; shutdown does not implicitly save.
+Leave all characters before cancelling Run when possible. On any return,
+including identity exhaustion, Run freezes final checkpoints for live characters
+and pending departures. After joining every admitted caller and its in-flight
+store I/O, the host persists the detached copies returned by `World.Final`.
+The world loop performs no store I/O; Final neither saves nor consumes a snapshot.
 
 Verify this package with `go vet ./...` and
 `go test -race -count=1 -timeout=60s ./...`.

@@ -159,7 +159,7 @@ func (s *Store) UsedIDs(ctx context.Context) ([]int32, error) {
 	}
 	defer s.release()
 	var ids []int32
-	for _, table := range []string{"player", "item", "clan", "crest", "couple", "ground_item"} {
+	for _, table := range []string{"player", "item", "clan", "crest", "couple", "ground_item", "player_shortcut"} {
 		var exists bool
 		if err := s.conn.QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", "world."+table).Scan(&exists); err != nil {
 			return nil, err
@@ -168,6 +168,9 @@ func (s *Store) UsedIDs(ctx context.Context) ([]int32, error) {
 			continue
 		}
 		query := "SELECT id FROM " + table
+		if table == "player_shortcut" {
+			query = "SELECT target_id FROM player_shortcut WHERE shortcut_type_id=1 AND target_id>0"
+		}
 		if table == "clan" {
 			query += " UNION ALL SELECT crest_id FROM clan WHERE crest_id IS NOT NULL UNION ALL SELECT large_crest_id FROM clan WHERE large_crest_id IS NOT NULL UNION ALL SELECT alliance_crest_id FROM clan WHERE alliance_crest_id IS NOT NULL"
 		}
@@ -192,4 +195,35 @@ func (s *Store) ReserveIDs(ctx context.Context) (first, last int32, err error) {
    WHERE singleton AND high_water <= 2146435071 RETURNING high_water-1048575,high_water`).Scan(&first, &last)
 	})
 	return first, last, err
+}
+
+// Character resolves both names using PostgreSQL citext in one consistent
+// snapshot, returning the database spelling rather than a host-side case fold.
+func (s *Store) Character(ctx context.Context, account, name string) (world.Character, error) {
+	if err := s.acquire(ctx); err != nil {
+		return world.Character{}, err
+	}
+	defer s.release()
+	var found world.Character
+	err := pgx.BeginTxFunc(ctx, s.conn, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		var id int32
+		if err := tx.QueryRow(ctx, "SELECT id FROM player WHERE account_name=$1 AND name=$2", account, name).Scan(&id); err != nil {
+			return err
+		}
+		chars, err := readCharacters(ctx, tx, account)
+		if err != nil {
+			return err
+		}
+		for _, c := range chars {
+			if c.ObjectID == id {
+				found = c
+				return nil
+			}
+		}
+		return pgx.ErrNoRows
+	})
+	if err != nil {
+		return world.Character{}, fmt.Errorf("pgstore: character: %w", err)
+	}
+	return found, nil
 }

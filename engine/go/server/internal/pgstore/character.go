@@ -215,7 +215,9 @@ func (s *Store) PutCharacter(ctx context.Context, c world.Character) error {
 				VALUES ($1, $2, $3, $4, $5, $6)
 				ON CONFLICT (id) DO UPDATE SET item_template_id = EXCLUDED.item_template_id,
 					owner_player_id = EXCLUDED.owner_player_id, owner_clan_id = NULL, owner_pet_id = NULL,
-					location = EXCLUDED.location, location_slot = EXCLUDED.location_slot, count = EXCLUDED.count
+					location_slot = CASE WHEN item.location='INVENTORY' AND EXCLUDED.location='INVENTORY'
+                        THEN item.location_slot ELSE EXCLUDED.location_slot END,
+                    location = EXCLUDED.location, count = EXCLUDED.count
                 WHERE item.owner_player_id = EXCLUDED.owner_player_id
                 AND item.location IN ('INVENTORY', 'PAPERDOLL')`,
 				it.ObjectID, it.TemplateID, c.ObjectID, loc, slot, it.Count); err != nil {

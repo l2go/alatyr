@@ -204,7 +204,8 @@ func TestGooseBaselinesFlywayWithoutDataLoss(t *testing.T) {
 	dsn := database(t)
 	legacy := flyway(t, dsn)
 	execTest(t, legacy, `INSERT INTO player(id,account_name,name,race_id,active_class_id,base_class_id,level,sp,title,karma) VALUES(1,'example','Walker',0,0,0,2,20,'Original',7);
- INSERT INTO item(id,item_template_id,owner_player_id,location,count,enchant_level) VALUES(2,999999,1,'INVENTORY',7,9),(3,999998,1,'WAREHOUSE',2,4);
+ INSERT INTO item(id,item_template_id,owner_player_id,location,count,enchant_level,location_slot) VALUES(2,999999,1,'INVENTORY',7,9,42),(3,999998,1,'WAREHOUSE',2,4,17);
+ INSERT INTO player_shortcut VALUES(1,0,0,0,1,300000004,0),(1,0,0,1,2,2000000000,1);
  INSERT INTO player_skill VALUES(1,0,999999,1),(1,1,999998,3);
  INSERT INTO player_quest_variable VALUES(1,'legacy','flag','preserved');
  INSERT INTO clan(id,name,leader_player_id,crest_id,large_crest_id,alliance_crest_id) VALUES(7,'Legacy',1,300000001,300000002,300000003)`)
@@ -221,13 +222,16 @@ func TestGooseBaselinesFlywayWithoutDataLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []int32{300000001, 300000002, 300000003} {
+	for _, id := range []int32{1, 2, 3, 7, 300000001, 300000002, 300000003, 300000004} {
 		if !slices.Contains(ids, id) {
-			t.Fatalf("persisted crest identity %d not reserved", id)
+			t.Fatalf("persisted object identity %d not reserved", id)
 		}
 	}
 	first, _, err := s.ReserveIDs(t.Context())
-	if err != nil || first <= 300000003 {
+	if slices.Contains(ids, 2000000000) {
+		t.Fatal("skill shortcut treated as object identity")
+	}
+	if err != nil || first != 300000005 {
 		t.Fatalf("range collides with legacy identities: %d/%v", first, err)
 	}
 	c := loadTest(t, s)
@@ -240,8 +244,8 @@ func TestGooseBaselinesFlywayWithoutDataLoss(t *testing.T) {
 	var preserved bool
 	if err := legacy.QueryRow(t.Context(), `SELECT
   (SELECT title='Original' AND karma=7 FROM player WHERE id=1)
-  AND (SELECT enchant_level=9 FROM item WHERE id=2)
-  AND (SELECT enchant_level=4 AND location='WAREHOUSE' FROM item WHERE id=3)
+  AND (SELECT enchant_level=9 AND location_slot=42 FROM item WHERE id=2)
+  AND (SELECT enchant_level=4 AND location_slot=17 AND location='WAREHOUSE' FROM item WHERE id=3)
   AND EXISTS(SELECT 1 FROM player_skill WHERE player_id=1 AND class_index=1 AND skill_id=999998)
   AND (SELECT count(*)=10 FROM flyway_schema_history)`).Scan(&preserved); err != nil || !preserved {
 		t.Fatalf("legacy data changed: %v/%v", preserved, err)
@@ -249,7 +253,13 @@ func TestGooseBaselinesFlywayWithoutDataLoss(t *testing.T) {
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	openTest(t, dsn) // Reapplying the goose history is harmless.
+	// Folding must also run for a database with an existing goose history.
+	execTest(t, legacy, "UPDATE player_shortcut SET target_id=600000000 WHERE shortcut_type_id=1")
+	reopened := openTest(t, dsn)
+	first, _, err = reopened.ReserveIDs(t.Context())
+	if err != nil || first != 600000001 {
+		t.Fatalf("existing goose shortcut high water: %d/%v", first, err)
+	}
 }
 
 func TestGooseRejectsUnrecognizedHistory(t *testing.T) {
@@ -372,4 +382,59 @@ func TestGooseRejectsFutureHistory(t *testing.T) {
 		future.Close()
 		t.Fatal("future goose version accepted")
 	}
+}
+
+func TestPostgresCitextCharacterIdentity(t *testing.T) {
+	s := openTest(t, database(t))
+	c := character()
+	c.Account = "Example"
+	c.Name = "Walker"
+	if err := s.PutCharacter(t.Context(), c); err != nil {
+		t.Fatal(err)
+	}
+	for _, binding := range [][2]string{{"example", "walker"}, {"EXAMPLE", "WALKER"}, {"Example", "Walker"}} {
+		got, err := s.Character(t.Context(), binding[0], binding[1])
+		if err != nil || !reflect.DeepEqual(got, c) {
+			t.Fatalf("canonical identity: %+v/%v", got, err)
+		}
+	}
+	for _, binding := range [][2]string{{"other", "Walker"}, {"Example", "other"}} {
+		if _, err := s.Character(t.Context(), binding[0], binding[1]); !errors.Is(err, pgx.ErrNoRows) {
+			t.Fatalf("foreign binding: %v", err)
+		}
+	}
+}
+
+func TestInventoryOrderAndEquipmentTransitions(t *testing.T) {
+	s := openTest(t, database(t))
+	c := character()
+	if err := s.PutCharacter(t.Context(), c); err != nil {
+		t.Fatal(err)
+	}
+	execTest(t, s.conn, "UPDATE item SET location_slot=42 WHERE id=2")
+	for range 2 {
+		if err := s.PutCharacter(t.Context(), c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var location string
+	var slot int
+	check := func(wantLocation string, wantSlot int) {
+		t.Helper()
+		err := s.conn.QueryRow(t.Context(), "SELECT location::text,location_slot FROM item WHERE id=2").Scan(&location, &slot)
+		if err != nil || location != wantLocation || slot != wantSlot {
+			t.Fatalf("location=%s/%d: %v", location, slot, err)
+		}
+	}
+	check("INVENTORY", 42)
+	c.Items[0].Slot = 7
+	if err := s.PutCharacter(t.Context(), c); err != nil {
+		t.Fatal(err)
+	}
+	check("PAPERDOLL", 7)
+	c.Items[0].Slot = -1
+	if err := s.PutCharacter(t.Context(), c); err != nil {
+		t.Fatal(err)
+	}
+	check("INVENTORY", 0)
 }

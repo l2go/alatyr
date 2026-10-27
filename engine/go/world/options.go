@@ -122,7 +122,11 @@ func WithExperienceLevels(thresholds []int64) (Option, error) {
 }
 
 func (s *state) newID() int32 {
-	return s.ids.next()
+	id := s.ids.next()
+	if id == 0 {
+		s.err = ErrExhausted
+	}
+	return id
 }
 
 // WithIDRange restricts generated identities to a host-reserved durable range.

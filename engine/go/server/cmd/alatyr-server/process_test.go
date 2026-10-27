@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -77,7 +78,7 @@ func TestParticipantProcessRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := Config{HTTPAddress: address(), StreamAddress: address(), WorldPath: root, WorldName: "authored", ShutdownSeconds: 5, DatabaseSeconds: 3,
-		Participants: []Participant{{ID: "one", Account: c.Account, Character: c.Name, TokenSHA256: hex.EncodeToString(digest[:])}}}
+		Participants: []Participant{{ID: "one", Account: strings.ToUpper(c.Account), Character: strings.ToLower(c.Name), TokenSHA256: hex.EncodeToString(digest[:])}}}
 	data, err := json.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +154,7 @@ func TestParticipantProcessRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	stream := &gateway.Stream{Conn: conn, Limit: 8192}
-	codec, err := meaning.NewCodec(limits())
+	codec, err := meaning.NewCodec(limits(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,6 +170,7 @@ func TestParticipantProcessRestart(t *testing.T) {
 	}
 	send(wire.Record{Type: wire.Hello, Fields: []wire.Field{wire.U(1, true, 1), wire.U(2, true, 1), wire.Data(3, true, meaning.Meaning), wire.U(4, true, uint64(wire.ParticipantPerson)), wire.U(5, true, uint64(wire.ModeAct))}})
 	var control uint64
+	welcomed := false
 	ready := false
 	read := func() []wire.Record {
 		t.Helper()
@@ -183,8 +185,17 @@ func TestParticipantProcessRestart(t *testing.T) {
 
 		return rs
 	}
-	for !ready || control == 0 {
+	for !ready || control == 0 || !welcomed {
 		for _, r := range read() {
+			if r.Type == wire.Welcome {
+				welcomed = true
+				advertised, ok := wire.Find(r.Fields, 7)
+				meaningID, _ := wire.Find(r.Fields, 2)
+				worldName, _ := wire.Find(r.Fields, 3)
+				if !ok || !reflect.DeepEqual(advertised.Fields, limits(len(cfg.Participants)).LimitsFields()) || testUint(r, 1) != meaning.WireVersion || string(meaningID.Data) != meaning.Meaning || string(worldName.Data) != cfg.WorldName {
+					t.Fatalf("Welcome policy mismatch: %+v", r)
+				}
+			}
 			if r.Type == wire.Checkpoint && testUint(r, 1) == uint64(wire.CheckpointEnd) && testUint(r, 3) == 1 {
 				ready = true
 			}

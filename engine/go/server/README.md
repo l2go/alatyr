@@ -49,12 +49,17 @@ The registry grants access only to existing characters; no participant-supplied
 account or character name is trusted. Import a trusted Character JSON snapshot
 with `-import-character character.json` before serving a new database. Provisioning
 never chooses starting equipment, position or progression metadata implicitly.
+Account and character bindings use PostgreSQL citext equality; the bridge receives
+the canonical stored spelling.
 
 HTTP exposes `/participant` (binary WebSocket), `/healthz` (process liveness)
 and `/readyz` (world loop and leased database connection). WebSocket requests
 need `Authorization: Bearer <token>` and the matching Origin and Host. Public
 access requires a same-host TLS proxy. Set `ProxyHosts` and `ProxyOrigins` to
-explicit public allowlists; the proxy must overwrite X-Forwarded-Proto and pass
+explicit public allowlists. `ProxyPeers` optionally lists numeric trusted source
+IPs; by default the source must equal the numeric HTTP listener address, including
+IPv6 loopback. Peer checks never trust X-Forwarded-For. The proxy must overwrite
+X-Forwarded-Proto and pass
 the bearer token. Both application listeners accept only numeric loopback binds.
 Do not put tokens in URLs or logs. Browsers need a trusted proxy that supplies
 the Authorization header after authenticating the user.
@@ -69,9 +74,19 @@ Limits are explicit: 64 registered participants, four connections per participan
 8192 bytes per frame, 128 objects/list rows, eight pending attempts, 64 results,
 16 intent burst / eight per second, eight service burst / four per second. A
 process reserves 1,048,576 object identities durably before spawning; exhaustion
-stops the world, and unused identities are burned on restart. Shutdown closes
-listeners and participant ports before canceling the world, retries failed
-saves using the original Ref, and reports unresolved persistence errors.
+stops the world with an error, and unused identities are burned on restart.
+Welcome carries the same limits and millisecond deadlines used by the codec,
+projection, attempts and gateway. The sent diagnostic ring and file diagnostics
+are disabled (fields 9 and 31-34 are zero); projection and checkpoint budgets
+are each 262144 bytes. Wire and dictionary negotiation use their shared constants.
+
+Shutdown closes admission and listeners, joins participant ports, retries failed
+saves using the original Ref, and joins the world. Run freezes detached final
+checkpoints on every exit, including autonomous exhaustion. After all port I/O
+has finished, the host persists any remaining live or pending characters through
+the same compatibility store. It reports persistence errors and fails readiness
+when the world is stopped. A final save has the configured ShutdownSeconds budget;
+an exhausted or unreachable database can still prevent durable shutdown.
 
 Check all three module roots in workspace and GOWORK=off modes with vet,
 `go test -race ./...`, Staticcheck and govulncheck. PostgreSQL tests skip without
@@ -87,7 +102,7 @@ build modules and rejects reverse imports and application packages outside its
 matrix. Extra checksums retained by tidy for upstream tests are not build inputs.
 
 The `go-postgres` job sets `ALATYR_REQUIRE_POSTGRES=1`, so a missing DSN fails.
-It validates the JSON test stream against the closed eight-test list in
+It validates the JSON test stream against the closed test list in
 `postgres-tests.txt` beside this guide. A missing, skipped or duplicate
 test cannot satisfy that gate. Ordinary Go checks have no database and skip
 only the PostgreSQL scenarios.

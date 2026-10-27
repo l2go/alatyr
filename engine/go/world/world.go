@@ -16,7 +16,8 @@ import (
 )
 
 // Run owns mutable gameplay until cancellation or identity exhaustion.
-// Shutdown closes notifications but does not save characters implicitly.
+// Shutdown publishes detached final checkpoints and closes notifications.
+// The host joins in-flight callers before persisting Final checkpoints.
 func (w *World) Run(ctx context.Context) error {
 	if w.s == nil {
 		return ErrUninitialized
@@ -26,6 +27,7 @@ func (w *World) Run(ctx context.Context) error {
 	}
 	defer close(w.stopped)
 	defer func() {
+		w.final = w.finalCheckpoints()
 		for _, p := range w.s.players {
 			p.close(CloseStop)
 		}
@@ -132,6 +134,7 @@ type World struct {
 	ground          Ground
 	durability      func(Durability)
 	idFirst, idLast int32
+	final           []Checkpoint
 }
 type state struct {
 	players                                                         map[int32]*player
@@ -212,4 +215,46 @@ func (w *World) flush(s *state) {
 		}
 		p.outbox = nil
 	}
+}
+
+// Checkpoint is one final incarnation and its detached character snapshot.
+// It carries no authority to reopen or replace an incarnation.
+type Checkpoint struct {
+	// Owner identifies the final live or pending incarnation.
+	Owner Ref
+	// Character is the complete detached snapshot for the host-owned store.
+	Character Character
+}
+
+func (w *World) finalCheckpoints() []Checkpoint {
+	out := make([]Checkpoint, 0, len(w.s.players)+len(w.s.pending))
+	for _, p := range w.s.players {
+		c := w.selfOf(p).Char
+		c.LastAccess = time.Now().UnixMilli()
+		out = append(out, Checkpoint{p.ref(), c})
+	}
+	for _, p := range w.s.pending {
+		out = append(out, Checkpoint{p.owner, p.char.Clone()})
+	}
+	return out
+}
+
+// Final waits for Run to stop and returns independent final checkpoints, including
+// failed departures. The host must join all admitted callers before saving them,
+// so an older in-flight learning write cannot overwrite the final SP balance.
+// Repeating Final neither consumes a checkpoint nor retries database I/O.
+func (w *World) Final(ctx context.Context) ([]Checkpoint, error) {
+	if w.s == nil {
+		return nil, ErrUninitialized
+	}
+	select {
+	case <-w.stopped:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	out := make([]Checkpoint, len(w.final))
+	for i, c := range w.final {
+		out[i] = Checkpoint{c.Owner, c.Character.Clone()}
+	}
+	return out, nil
 }

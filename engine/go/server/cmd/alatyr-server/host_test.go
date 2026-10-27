@@ -28,7 +28,7 @@ func configTest() Config {
 		Participants: []Participant{{ID: "one", Account: "example", Character: "Walker", TokenSHA256: hex.EncodeToString(digest[:])}}}
 }
 func TestAdmissionConfiguration(t *testing.T) {
-	for _, kind := range []string{"wildcard", "hostname", "empty", "duplicates", "shared-token", "bad-digest", "missing-proxy-origin", "unbounded-shutdown", "duplicate-listener"} {
+	for _, kind := range []string{"wildcard", "hostname", "empty", "duplicates", "shared-token", "bad-digest", "missing-proxy-origin", "unbounded-shutdown", "duplicate-listener", "invalid-proxy-peer", "proxy-peer-without-proxy"} {
 		t.Run(kind, func(t *testing.T) {
 			c := configTest()
 			switch kind {
@@ -51,6 +51,12 @@ func TestAdmissionConfiguration(t *testing.T) {
 				c.ProxyHosts = []string{"example.test"}
 			case "unbounded-shutdown":
 				c.ShutdownSeconds = 61
+			case "invalid-proxy-peer":
+				c.ProxyHosts = []string{"play.example"}
+				c.ProxyOrigins = []string{"https://play.example"}
+				c.ProxyPeers = []string{"localhost"}
+			case "proxy-peer-without-proxy":
+				c.ProxyPeers = []string{"::1"}
 			case "duplicate-listener":
 				c.StreamAddress = c.HTTPAddress
 			}
@@ -93,6 +99,10 @@ func TestBearerAuthenticationAndRedactedRefusals(t *testing.T) {
 
 type canceledStore struct{ memstore.Store }
 
+func (*canceledStore) Character(context.Context, string, string) (world.Character, error) {
+	return world.Character{}, context.Canceled
+}
+
 func (*canceledStore) UsedIDs(context.Context) ([]int32, error) { return nil, context.Canceled }
 func (*canceledStore) ReserveIDs(context.Context) (int32, int32, error) {
 	panic("called after startup failed")
@@ -112,6 +122,19 @@ func TestStartupFailureDoesNotStartWorld(t *testing.T) {
 func (*canceledStore) PutLearning(context.Context, world.Character) error { return context.Canceled }
 
 type hostMemoryStore struct{ memstore.Store }
+
+func (s *hostMemoryStore) Character(ctx context.Context, account, name string) (world.Character, error) {
+	chars, err := s.Characters(ctx, account)
+	if err != nil {
+		return world.Character{}, err
+	}
+	for _, c := range chars {
+		if strings.EqualFold(c.Name, name) {
+			return c, nil
+		}
+	}
+	return world.Character{}, errors.New("character absent")
+}
 
 func (*hostMemoryStore) UsedIDs(context.Context) ([]int32, error) { return []int32{1, 2}, nil }
 func (*hostMemoryStore) ReserveIDs(context.Context) (int32, int32, error) {
@@ -148,7 +171,7 @@ func TestOpenAuthoredCharacterPreservesHiddenTemplates(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: limits(), Origin: time.Now()}}
+	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: limits(1), Origin: time.Now()}}
 	port, state, err := r.open(t.Context(), "one")
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +226,7 @@ func TestFailedDepartureRetriesOriginalRefBeforeReload(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: limits(), Origin: time.Now()}}
+	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: limits(1), Origin: time.Now()}}
 	port, _, err := r.open(ctx, "one")
 	if err != nil {
 		t.Fatal(err)

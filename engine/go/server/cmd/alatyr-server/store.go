@@ -55,6 +55,18 @@ func (s *characterStore) restore(c world.Character) world.Character {
 	c = c.Clone()
 	s.mu.Lock()
 	h := s.hidden[c.ObjectID]
+	live := make(map[int32]bool, len(c.Skills))
+	for _, k := range c.Skills {
+		live[k.ID] = true
+	}
+	retained := make([]world.Skill, 0, len(h.skills))
+	for _, k := range h.skills {
+		if !live[k.ID] {
+			retained = append(retained, k)
+		}
+	}
+	h.skills = retained
+	s.hidden[c.ObjectID] = h
 	s.mu.Unlock()
 	c.Items = append(c.Items, h.items...)
 	c.Skills = append(c.Skills, h.skills...)

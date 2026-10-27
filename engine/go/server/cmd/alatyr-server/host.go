@@ -30,7 +30,7 @@ import (
 type Store interface {
 	world.Store
 	PutLearning(context.Context, world.Character) error
-	Characters(context.Context, string) ([]world.Character, error)
+	Character(context.Context, string, string) (world.Character, error)
 	UsedIDs(context.Context) ([]int32, error)
 	ReserveIDs(context.Context) (int32, int32, error)
 	Ping(context.Context) error
@@ -61,8 +61,13 @@ type runtime struct {
 
 // Run owns the listeners, gateway, raw ports and World.Run. On every exit it
 // closes admission, joins opening handlers, closes ports, retries fenced saves,
-// and only then cancels the world. The caller closes Store after Run returns.
+// then joins Run and persists its detached final checkpoints, including on a
+// fatal world exit. The caller closes Store after Run returns.
 func Run(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store) error {
+	return serve(ctx, cfg, cat, store)
+}
+
+func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, options ...world.Option) error {
 	if cat == nil || store == nil {
 		return errors.New("host: missing world dependencies")
 	}
@@ -82,7 +87,8 @@ func Run(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store) err
 		return err
 	}
 	characters := &characterStore{store: store, catalog: cat, hidden: make(map[int32]hidden)}
-	w := world.New(cat, characters, world.WithReservedIDs(ids), world.WithIDRange(first, last))
+	options = append([]world.Option{world.WithReservedIDs(ids), world.WithIDRange(first, last)}, options...)
+	w := world.New(cat, characters, options...)
 	life, cancel := context.WithCancel(context.Background())
 	worldDone := make(chan error, 1)
 	go func() { worldDone <- w.Run(life) }()
@@ -90,7 +96,7 @@ func Run(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store) err
 	r := &runtime{cfg: cfg, store: store, characters: characters, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool)}
 	r.openingCancel = make(map[string]context.CancelFunc)
 	origin := time.Now()
-	mc := limits()
+	mc := limits(len(admissions))
 	r.meaningConfig = backend.Config{Meaning: mc, Origin: origin, Policy: meaning.Policy{Classify: classify}}
 	codec, err := meaning.NewCodec(mc)
 	if err != nil {
@@ -102,11 +108,11 @@ func Run(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store) err
 	for id := range admissions {
 		identities[id] = gateway.Identity{Act: true}
 	}
-	r.gateway, err = gateway.New(gateway.Config{Codec: codec, Factory: r.open, Origin: origin, Identities: identities,
-		Versions: []uint64{1}, Meanings: []string{meaning.Meaning}, World: cfg.WorldName, Limits: mc.LimitsFields(), Attempts: mc.Attempts,
-		FrameBytes: mc.Wire.FrameBytes, OutBytes: 262144, Sessions: len(admissions), Connections: 4, Teleports: 8,
-		IntentBurst: 16, IntentRate: 8, ServiceBurst: 8, ServiceRate: 4, Hello: 5 * time.Second, Write: time.Second, Checkpoint: 10 * time.Second,
-		Ping: 15 * time.Second, Pong: 30 * time.Second, Batch: 10 * time.Millisecond, TargetWait: 1500 * time.Millisecond, Shutdown: time.Duration(cfg.ShutdownSeconds) * time.Second})
+	policy := gatewayPolicy(mc)
+	policy.Codec, policy.Factory, policy.Origin, policy.Identities = codec, r.open, origin, identities
+	policy.World = cfg.WorldName
+	policy.Shutdown = time.Duration(cfg.ShutdownSeconds) * time.Second
+	r.gateway, err = gateway.New(policy)
 	if err != nil {
 		cancel()
 		<-worldDone
@@ -167,12 +173,28 @@ func Run(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store) err
 		drain, cancelDrain := context.WithTimeout(context.Background(), time.Duration(cfg.ShutdownSeconds)*time.Second)
 		defer cancelDrain()
 		for owner := range failed {
-			if err := w.Leave(drain, owner); err != nil {
+			if err := w.Leave(drain, owner); err != nil && !errors.Is(err, world.ErrStopped) {
 				errs = append(errs, err)
 			}
 		}
 		cancel()
 		return errors.Join(errs...)
+	}
+	// Joining all admitted ports before final persistence also joins in-flight
+	// learning/departure I/O. An older write cannot overwrite this final checkpoint.
+	finish := func(runErr error, worldEnded bool) error {
+		runErr = errors.Join(runErr, stop())
+		if !worldEnded {
+			runErr = errors.Join(runErr, <-worldDone)
+		}
+		finalCtx, cancelFinal := context.WithTimeout(context.Background(), time.Duration(cfg.ShutdownSeconds)*time.Second)
+		defer cancelFinal()
+		checkpoints, err := w.Final(finalCtx)
+		runErr = errors.Join(runErr, err)
+		for _, checkpoint := range checkpoints {
+			runErr = errors.Join(runErr, characters.PutCharacter(finalCtx, checkpoint.Character))
+		}
+		return runErr
 	}
 	for _, address := range []string{cfg.HTTPAddress, cfg.StreamAddress} {
 		if address == "" {
@@ -180,16 +202,15 @@ func Run(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store) err
 		}
 		l, err := net.Listen("tcp", address)
 		if err != nil {
-			err = errors.Join(err, stop())
-			return errors.Join(err, <-worldDone)
+			return finish(err, false)
 		}
 		listeners = append(listeners, l)
 		owners.Add(1)
 		if address == cfg.HTTPAddress {
-			server = &http.Server{Handler: r.handler(l.Addr().String()), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8192}
+			server = &http.Server{Handler: r.handler(l.Addr().String()), ReadHeaderTimeout: policy.Hello, IdleTimeout: policy.Pong, MaxHeaderBytes: policy.FrameBytes}
 			go func() {
 				defer owners.Done()
-				if err := server.Serve(&boundedListener{Listener: l, slots: make(chan struct{}, len(admissions)*4+64)}); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				if err := server.Serve(&boundedListener{Listener: l, slots: make(chan struct{}, policy.Sessions*policy.Connections+64)}); err != nil && !errors.Is(err, http.ErrServerClosed) {
 					errorsOut <- err
 				}
 			}()
@@ -241,11 +262,7 @@ func Run(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store) err
 	case runErr = <-worldDone:
 		worldEnded = true
 	}
-	runErr = errors.Join(runErr, stop())
-	if !worldEnded {
-		runErr = errors.Join(runErr, <-worldDone)
-	}
-	return runErr
+	return finish(runErr, worldEnded)
 }
 
 func (r *runtime) open(ctx context.Context, id string) (gateway.World, gateway.State, error) {
@@ -279,49 +296,41 @@ func (r *runtime) open(ctx context.Context, id string) (gateway.World, gateway.S
 			}
 		}
 	}
-	p, snapshot, err := worldbridge.Open(ctx, worldbridge.Config{World: r.world, Catalog: r.cat, Load: func(ctx context.Context, id bridge.Identity) (world.Character, error) {
-		chars, err := r.store.Characters(ctx, id.Account)
+	// Resolve both names with PostgreSQL citext semantics, then pass the stored
+	// canonical spelling to the byte-exact bridge identity fence.
+	c, err := r.store.Character(ctx, a.identity.Account, a.identity.Character)
+	if err != nil {
+		return nil, nil, err
+	}
+	r.mu.Lock()
+	var retry []world.Ref
+	for owner := range r.failed {
+		if owner.ID == c.ObjectID {
+			retry = append(retry, owner)
+		}
+	}
+	r.mu.Unlock()
+	for _, owner := range retry {
+		if err := r.world.Leave(ctx, owner); err != nil {
+			return nil, nil, err
+		}
+		r.mu.Lock()
+		delete(r.failed, owner)
+		r.mu.Unlock()
+	}
+	if len(retry) > 0 {
+		c, err = r.store.Character(ctx, a.identity.Account, a.identity.Character)
 		if err != nil {
-			return world.Character{}, err
+			return nil, nil, err
 		}
-		for _, c := range chars {
-			if c.Account == id.Account && c.Name == id.Character {
-				r.mu.Lock()
-				var retry []world.Ref
-				for owner := range r.failed {
-					if owner.ID == c.ObjectID {
-						retry = append(retry, owner)
-					}
-				}
-				r.mu.Unlock()
-				for _, owner := range retry {
-					if err := r.world.Leave(ctx, owner); err != nil {
-						return world.Character{}, err
-					}
-					r.mu.Lock()
-					delete(r.failed, owner)
-					r.mu.Unlock()
-				}
-				if len(retry) > 0 {
-					fresh, err := r.store.Characters(ctx, id.Account)
-					if err != nil {
-						return world.Character{}, err
-					}
-					for _, saved := range fresh {
-						if saved.ObjectID == c.ObjectID && saved.Account == id.Account && saved.Name == id.Character {
-							c = saved
-							break
-						}
-					}
-				}
-				if c.ClassID != c.BaseClass {
-					return world.Character{}, errors.New("host: active subclasses are unsupported")
-				}
-				return r.characters.load(c), nil
-			}
-		}
-		return world.Character{}, gateway.ErrAuth
-	}}, a.identity)
+	}
+	if c.ClassID != c.BaseClass {
+		return nil, nil, errors.New("host: active subclasses are unsupported")
+	}
+	identity := bridge.Identity{Account: c.Account, Character: c.Name}
+	p, snapshot, err := worldbridge.Open(ctx, worldbridge.Config{World: r.world, Catalog: r.cat, Load: func(context.Context, bridge.Identity) (world.Character, error) {
+		return r.characters.load(c), nil
+	}}, identity)
 	if err != nil {
 		var opening *worldbridge.OpenError
 		if errors.As(err, &opening) {
@@ -362,7 +371,7 @@ func (r *runtime) authenticate(token string) string {
 }
 
 func (r *runtime) accept(ctx context.Context, c net.Conn) error {
-	if err := c.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	if err := c.SetReadDeadline(time.Now().Add(gatewayPolicy(r.meaningConfig.Meaning).Hello)); err != nil {
 		return err
 	}
 	var token [65]byte
@@ -376,7 +385,7 @@ func (r *runtime) accept(ctx context.Context, c net.Conn) error {
 	if id == "" {
 		return gateway.ErrAuth
 	}
-	return r.gateway.Bind(ctx, id, &gateway.Stream{Conn: c, Limit: 8192})
+	return r.gateway.Bind(ctx, id, &gateway.Stream{Conn: c, Limit: r.meaningConfig.Meaning.Wire.FrameBytes})
 }
 
 func (r *runtime) handler(address string) http.Handler {
@@ -417,6 +426,11 @@ func (r *runtime) handler(address string) http.Handler {
 		if len(r.cfg.ProxyHosts) > 0 {
 			h.Config.Proxy = true
 			h.Config.Hosts = r.cfg.ProxyHosts
+			h.Config.ProxyPeers = r.cfg.ProxyPeers
+			if len(h.Config.ProxyPeers) == 0 {
+				peer, _, _ := net.SplitHostPort(address)
+				h.Config.ProxyPeers = []string{peer}
+			}
 			h.Config.Origins = r.cfg.ProxyOrigins
 			h.Config.IdentityHeader = "X-Alatyr-Identity"
 			h.Config.SchemeHeader = "X-Forwarded-Proto"

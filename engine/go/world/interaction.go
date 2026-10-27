@@ -94,7 +94,7 @@ func (w *World) showSkillList(s *state, p *player, n *npc) {
 // durable store; PutSkill remains the fallback for in-memory adapters. A failed
 // write retains the learned skill and spent SP for the fenced Leave retry.
 func (w *World) Learn(ctx context.Context, id, skillID, level int32) error {
-	if _, ok := w.skillStore(); !ok {
+	if !w.canStoreSkills() {
 		return errors.New("world: store cannot persist skills")
 	}
 	var learnt *Skill
@@ -126,12 +126,12 @@ type skillStore interface {
 	PutSkill(context.Context, int32, Skill) error
 }
 
-func (w *World) skillStore() (skillStore, bool) {
-	store, ok := w.store.(skillStore)
-	if !ok {
-		_, ok = w.store.(learningStore)
+func (w *World) canStoreSkills() bool {
+	if _, ok := w.store.(learningStore); ok {
+		return true
 	}
-	return store, ok
+	_, ok := w.store.(skillStore)
+	return ok
 }
 
 func (w *World) learn(s *state, p *player, skillID, level int32) (*Skill, error) {
@@ -139,7 +139,7 @@ func (w *World) learn(s *state, p *player, skillID, level int32) (*Skill, error)
 }
 
 func (w *World) learnFrom(s *state, p *player, n *npc, skillID, level int32) (*Skill, error) {
-	if _, ok := w.skillStore(); !ok {
+	if !w.canStoreSkills() {
 		s.resolve(StageRefused, ReasonUnavailable)
 		return nil, errors.New("world: store cannot persist skills")
 	}
@@ -183,8 +183,7 @@ func (w *World) learnFrom(s *state, p *player, n *npc, skillID, level int32) (*S
 }
 
 func (w *World) saveSkill(ctx context.Context, id int32, k Skill, command IntentID) error {
-	store, ok := w.skillStore()
-	if !ok {
+	if !w.canStoreSkills() {
 		return errors.New("world: store cannot persist skills")
 	}
 	var saveErr error
@@ -205,7 +204,7 @@ func (w *World) saveSkill(ctx context.Context, id int32, k Skill, command Intent
 			saveErr = durable.PutLearning(ctx, c)
 		}
 	} else {
-		saveErr = store.PutSkill(ctx, id, k)
+		saveErr = w.store.(skillStore).PutSkill(ctx, id, k)
 	}
 	if w.durability != nil {
 		w.durability(Durability{Intent: command, Time: Time(time.Since(w.started)), Err: saveErr})
