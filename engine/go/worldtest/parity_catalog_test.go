@@ -4,8 +4,10 @@
 package worldtest
 
 import (
+	"bytes"
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -64,43 +66,79 @@ func writeParityCatalog(t *testing.T, root string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		records, err := csv.NewReader(strings.NewReader(string(data))).ReadAll()
-		if err != nil || len(records) < 2 {
-			t.Fatalf("fixture table %s: %v", name, err)
+		records, quoted := parityCSV(t, data)
+		if len(records) < 2 {
+			t.Fatalf("fixture table %s has no authored rows", name)
 		}
+		// COPY distinguishes an unquoted empty (NULL) from a quoted empty
+		// string. Do not round-trip authored rows through csv.Writer.
 		var out strings.Builder
-		writer := csv.NewWriter(&out)
-		for _, record := range records {
-			if err := writer.Write(record); err != nil {
-				t.Fatal(err)
+		out.Write(data)
+		if data[len(data)-1] != '\n' {
+			out.WriteByte('\n')
+		}
+		key := "npc_template_id"
+		if name == "npc_template" {
+			key = "id"
+		}
+		column := -1
+		for i, name := range records[0] {
+			if name == key {
+				column = i
 			}
 		}
+		if column < 0 {
+			t.Fatalf("fixture table %s has no %s", name, key)
+		}
+		template := -1
+		for i, record := range records[1:] {
+			if record[column] == "18003" {
+				template = i + 1
+				break
+			}
+		}
+		if template < 0 {
+			t.Fatalf("fixture table %s has no authored forager row", name)
+		}
 		for _, row := range rows {
-			base := make(map[string]string)
-			if name == "npc_template" {
-				for _, record := range records[1:] {
-					if record[0] == "18003" {
-						for i, key := range records[0] {
-							base[key] = record[i]
-						}
+			for key := range row {
+				found := false
+				for _, column := range records[0] {
+					if column == key {
+						found = true
 						break
 					}
 				}
+				if !found {
+					t.Fatalf("fixture table %s has no column %s", name, key)
+				}
 			}
-			for key, value := range row {
-				base[key] = value
+			for i, column := range records[0] {
+				if i > 0 {
+					out.WriteByte(',')
+				}
+				value := records[template][i]
+				if replacement, ok := row[column]; ok {
+					value = replacement
+				}
+				if value == "" && quoted[template][i] {
+					out.WriteString(`""`)
+					continue
+				}
+				// The standard encoder handles commas, quotes and line breaks;
+				// quoted-empty metadata above preserves PostgreSQL NULL semantics.
+				var cell strings.Builder
+				writer := csv.NewWriter(&cell)
+				if err := writer.Write([]string{value}); err != nil {
+					t.Fatal(err)
+				}
+				writer.Flush()
+				if err := writer.Error(); err != nil {
+					t.Fatal(err)
+				}
+				out.WriteString(strings.TrimSuffix(cell.String(), "\n"))
 			}
-			var record []string
-			for _, key := range records[0] {
-				record = append(record, base[key])
-			}
-			if err := writer.Write(record); err != nil {
-				t.Fatal(err)
-			}
-		}
-		writer.Flush()
-		if err := writer.Error(); err != nil {
-			t.Fatal(err)
+			out.WriteByte('\n')
 		}
 		if err := os.WriteFile(path, []byte(out.String()), 0600); err != nil {
 			t.Fatal(err)
@@ -122,6 +160,39 @@ func writeParityCatalog(t *testing.T, root string) {
 	appendRows("npc_template", npcs)
 	appendRows("spawn", spawns)
 	appendRows("drop", drops)
+}
+
+// parityCSV retains the one piece of COPY metadata that encoding/csv drops:
+// whether an empty field was quoted. FieldPos reports byte positions in input.
+func parityCSV(t *testing.T, data []byte) ([][]string, [][]bool) {
+	t.Helper()
+	starts := []int{0}
+	for i, b := range data {
+		if b == '\n' {
+			starts = append(starts, i+1)
+		}
+	}
+	reader := csv.NewReader(bytes.NewReader(data))
+	var records [][]string
+	var quoted [][]bool
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		flags := make([]bool, len(record))
+		for i := range record {
+			line, column := reader.FieldPos(i)
+			offset := starts[line-1] + column - 1
+			flags[i] = offset < len(data) && data[offset] == '"'
+		}
+		records = append(records, record)
+		quoted = append(quoted, flags)
+	}
+	return records, quoted
 }
 
 func paritySQL() string {
