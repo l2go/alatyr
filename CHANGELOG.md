@@ -14,6 +14,8 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Fixed
 
+- The participant adapter recognizes complete bridge buy/sell packets without an optional completeness flag; explicitly incomplete lists remain non-actionable.
+
 - Bridge admission publishes its initial skill list before checkpoint capture, without depending on the asynchronous packet broadcaster.
 
 - Refresh current bridge movement after actor descriptions and discard stale motion when an actor is described as stopped.

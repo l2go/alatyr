@@ -38,7 +38,7 @@ func TestParityCatalogMatchesJavaCopySchema(t *testing.T) {
 	}{
 		{"npc_template", 3, "id client_template_id name max_hp hp_regen reward_exp reward_sp level"},
 		{"spawn", 3, "spawn_group id npc_template_id npc_count x y z heading respawn_delay_s period_of_day"},
-		{"drop", 9, "npc_template_id item_template_id category min_count max_count chance"},
+		{"drop", 10, "npc_template_id item_template_id category min_count max_count chance"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			original, err := os.ReadFile(filepath.Join(source, tc.name+".csv"))

@@ -157,6 +157,10 @@ func writeParityCatalog(t *testing.T, root string) {
 			drops = append(drops, map[string]string{"npc_template_id": id, "item_template_id": strconv.Itoa(item), "category": strconv.Itoa(j), "min_count": count, "max_count": count, "chance": "1000000"})
 		}
 	}
+	// Keep the authored forager table intact and append a distinct guaranteed
+	// item category for the participant pickup witness. Currency-only pickup
+	// is not certified by the reference bridge's receipt matcher.
+	drops = append(drops, map[string]string{"npc_template_id": "18003", "item_template_id": "1060", "category": "3", "min_count": "1", "max_count": "1", "chance": "1000000"})
 	appendRows("npc_template", npcs)
 	appendRows("spawn", spawns)
 	appendRows("drop", drops)

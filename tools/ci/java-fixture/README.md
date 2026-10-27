@@ -4,7 +4,8 @@
 `gatewaytest` on the Go world and on the packaged Java bridge. Initial characters
 and SQL are derived from one fixture. Three additional monsters use fixed reward
 tables so that party and neutral shares have exact comparable balances. The
-ordinary authored hunt still uses the world's real drop table.
+ordinary authored hunt retains its original drop rows. A separate guaranteed
+draught category is appended for its participant item-transfer witness.
 
 The temporary `WorldFixture` agent exposes a bounded, authenticated loopback
 control socket only in this disposable CI process. It calls existing item and
@@ -19,8 +20,11 @@ process and database.
 
 Comparison uses outcomes, causal publication order, conserved balances, and
 visibility. It does not compare packet bytes, text, role labels, or timer values.
-Ordinary drop counts are checked against the authored range and conserved through
-pickup and Close. Exact allocations use fixed tables and the 14 explicit reward
+The ordinary coin roll is checked against the authored range. A guaranteed
+additional draught is picked up and its exact inventory delta is retained through
+Close. The reference receipt matcher cannot certify currency-only pickups, so
+this shared Done case uses an ordinary item; the existing Go currency-pickup
+regression remains unchanged. Exact allocations use fixed tables and the 14 explicit reward
 vectors consumed by both `hunt.jsh` and `world/hunt` tests. Facts are not sorted.
 
 The Java neutral-finisher path omits the highest-attacker drop penalty. The Go

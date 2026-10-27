@@ -28,6 +28,7 @@ func parityHuntPickup(r *parityRig) parityResult {
 	r.p.Send(r.intent(2, 3, r.ref(target.ID, 10)))
 	out.Outcomes = append(out.Outcomes, r.outcome(2, wire.StageSent, wire.ReasonNone, wire.DeliveryBackend, 0))
 	var drop meaning.DecodedEvent
+	var coinCount int64
 	r.wait(func() bool {
 		for _, f := range r.p.Records {
 			if f.Type != wire.Fact || gatewaytest.U(f, 1) != 8 {
@@ -37,16 +38,21 @@ func parityHuntPickup(r *parityRig) parityResult {
 			if err != nil {
 				r.t.Fatal(err)
 			}
-			if len(d.Event.Goods) == 1 && d.Event.Goods[0].ID == 57 {
+			if len(d.Event.Goods) != 1 {
+				continue
+			}
+			if d.Event.Goods[0].ID == 57 {
+				coinCount = d.Event.Goods[0].Count
+			}
+			if d.Event.Goods[0].ID == 1060 && drop.Event.ID == 0 {
 				drop = d
-				return true
 			}
 		}
-		return false
+		return drop.Event.ID != 0 && coinCount != 0
 	})
 	count := drop.Event.Goods[0].Count
-	if count < 4 || count > 8 {
-		r.t.Fatalf("ordinary authored coin roll=%d, want 4..8", count)
+	if coinCount < 4 || coinCount > 8 || count != 1 {
+		r.t.Fatalf("authored coins/probe draught=%d/%d, want 4..8/1", coinCount, count)
 	}
 	r.p.Send(r.intent(3, 1, wire.At(11, true, drop.Event.X, drop.Event.Y, drop.Event.Z)))
 	r.outcome(3, wire.StageSent, wire.ReasonNone, wire.DeliveryBackend, 0)
@@ -66,8 +72,8 @@ func parityHuntPickup(r *parityRig) parityResult {
 	out.Outcomes = append(out.Outcomes, r.outcome(4, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1))
 	out.Order = r.causalOrder(4, "take")
 	state := r.current()
-	if state.XP != 156 || state.SP != 108 || state.count(57) != 1000+count {
-		r.t.Fatalf("hunt x1/pickup balances: %+v, observed coins=%d", state, count)
+	if state.XP != 156 || state.SP != 108 || state.count(57) != 1000 || state.count(1060) != 3+count {
+		r.t.Fatalf("hunt x1/pickup balances: %+v, observed draughts=%d", state, count)
 	}
 	writesBefore := len(r.port.commands())
 	r.p.Send(request)
@@ -80,17 +86,19 @@ func parityHuntPickup(r *parityRig) parityResult {
 		}
 		return done == 2
 	})
-	if len(r.port.commands()) != writesBefore || r.current().count(57) != state.count(57) {
+	if len(r.port.commands()) != writesBefore || r.current().count(57) != state.count(57) || r.current().count(1060) != state.count(1060) {
 		r.t.Fatal("pickup replay changed world")
 	}
 	saved := r.save()
-	if saved.XP != state.XP || saved.SP != state.SP || saved.count(57) != state.count(57) {
+	if saved.XP != state.XP || saved.SP != state.SP || saved.count(57) != state.count(57) || saved.count(1060) != state.count(1060) {
 		r.t.Fatal("hunt rewards did not survive Close")
 	}
-	// The normal Java table is intentionally random. Its exact observed count
-	// must be conserved; the shared deterministic vectors test exact allocation.
+	// The authored coin roll remains random. A guaranteed extra draught row
+	// provides a shared item-transfer witness: the reference bridge does not
+	// certify currency-only pickups. Coins remain on the ground in this case.
 	out.Balances["xp"], out.Balances["sp"] = saved.XP, int64(saved.SP)
-	out.Checks["observed-coin-count-conserved"], out.Checks["ordinary-roll-4-to-8"], out.Checks["saved-offline"] = true, true, true
+	out.Balances["draughts"], out.Balances["coins"] = saved.count(1060), saved.count(57)
+	out.Checks["observed-item-count-conserved"], out.Checks["ordinary-roll-4-to-8"], out.Checks["saved-offline"] = true, true, true
 	return out
 }
 
@@ -98,7 +106,7 @@ func parityResume(r *parityRig) parityResult {
 	out := parityResult{Checks: make(map[string]bool), Balances: make(map[string]int64)}
 	target := r.actor(30001)
 	old := r.ref(target.ID, 10)
-	r.p.Send(r.intent(1, 5, old))
+	r.p.Send(r.intent(1, 11, old))
 	r.outcome(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 	oldSession := r.p.Session
 	beforeState := r.current()
