@@ -18,7 +18,7 @@
 // never proves execution of a command.
 //
 // Groups are indivisible. For learning, the SP transfer and the capability
-// change belong to one group. The subsequent external PutSkill write has its
+// change belong to one group. The subsequent external learning write has its
 // own Durability signal; its failure cannot rewrite the in-memory commitment
 // or claim a rollback. Commitments do not promise storage transactions.
 //

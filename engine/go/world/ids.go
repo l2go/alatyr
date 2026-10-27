@@ -9,9 +9,10 @@ import (
 )
 
 type ids struct {
-	mu   sync.Mutex
-	last int32
-	used []int32
+	mu    sync.Mutex
+	last  int32
+	limit int32
+	used  []int32
 }
 
 const firstObjectID = 1 << 28
@@ -20,19 +21,19 @@ func newIDs(used []int32) *ids {
 	used = slices.Clone(used)
 	slices.Sort(used)
 	i, _ := slices.BinarySearch(used, firstObjectID)
-	return &ids{last: firstObjectID - 1, used: slices.Compact(used[i:])}
+	return &ids{last: firstObjectID - 1, limit: 1<<31 - 1, used: slices.Compact(used[i:])}
 }
 
 func (d *ids) next() int32 {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.last == 1<<31-1 {
+	if d.last >= d.limit {
 		return 0
 	}
 	d.last++
 	for len(d.used) > 0 && d.used[0] <= d.last {
 		if d.used[0] == d.last {
-			if d.last == 1<<31-1 {
+			if d.last >= d.limit {
 				return 0
 			}
 			d.last++

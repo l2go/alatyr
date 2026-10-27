@@ -110,6 +110,8 @@ var (
 )
 
 // Store persists detached characters. The host owns retries and transactions.
+// Durable implementations also provide PutLearning(context.Context, Character)
+// to atomically persist a captured SP balance and its learned skills.
 type Store interface {
 	PutCharacter(context.Context, Character) error
 }
@@ -117,18 +119,19 @@ type Store interface {
 // World is a single-owner gameplay simulation. Construct it with New.
 // The zero value returns ErrUninitialized instead of starting a loop.
 type World struct {
-	cat           *catalog.Catalog
-	store         Store
-	cmds          chan func(*state)
-	stopped       chan struct{}
-	running       atomic.Bool
-	s             *state
-	items         *itemlog.Log
-	started       time.Time
-	experience    []int64
-	announcements []string
-	ground        Ground
-	durability    func(Durability)
+	cat             *catalog.Catalog
+	store           Store
+	cmds            chan func(*state)
+	stopped         chan struct{}
+	running         atomic.Bool
+	s               *state
+	items           *itemlog.Log
+	started         time.Time
+	experience      []int64
+	announcements   []string
+	ground          Ground
+	durability      func(Durability)
+	idFirst, idLast int32
 }
 type state struct {
 	players                                                         map[int32]*player
@@ -188,6 +191,9 @@ func New(cat *catalog.Catalog, store Store, options ...Option) *World {
 		used = append(used, id)
 	}
 	w.s.ids = newIDs(used)
+	if w.idFirst > 0 {
+		w.s.ids.last, w.s.ids.limit = w.idFirst-1, w.idLast
+	}
 	if cat != nil {
 		w.s.rule(RuleSpawn, func() { w.spawnAll(w.s) })
 	}

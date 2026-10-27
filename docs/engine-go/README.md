@@ -1,11 +1,12 @@
 # Go components
 
-The Java server remains the authoritative world. Go components provide the path
-toward a participant-facing gateway and an adapter to that world, allowing server
-features to move to Go incrementally behind a stable participant interface.
+The participant gateway can run over the Java bridge or the authored Go world.
+The Go participant application adds durable PostgreSQL storage behind the same
+participant interface; the Java runtime remains a separate deployment.
 
 | Component | Status and responsibility | License |
 |---|---|---|
+| [server](../../engine/go/server/README.md) | Checkout-built participant application, pgx storage, goose migrations and bounded shutdown | [AGPL-3.0-or-later](../../engine/go/server/LICENSE) |
 | [protocol](../../engine/go/protocol/README.md) | Active transport and session core; a client SDK is planned separately | [Apache-2.0](../../engine/go/protocol/LICENSE) |
 | [gateway](../../engine/go/gateway/README.md) | Bounded participant runtime, `alatyr/1` dictionary, raw-port adapter, and shared contract driver | [AGPL-3.0-or-later](../../engine/go/gateway/LICENSE) |
 | [bridge](../../engine/go/bridge/README.md) | Bounded world client, profile validation, recovery, and raw receipts; [Java endpoint contract and live integration](bridge.md) | [AGPL-3.0-or-later](../../engine/go/bridge/LICENSE) |
@@ -14,7 +15,10 @@ features to move to Go incrementally behind a stable participant interface.
 
 The server packages gateway, bridge, world, and worldbridge share the
 [AGPL module](../../engine/go/README.md) `github.com/l2go/alatyr/engine/go`.
-Protocol remains a separate Apache-2.0 module. Package import paths are stable;
+Protocol remains a separate Apache-2.0 module. The nested `server` application
+module imports the parent from the same checkout with its sole `replace` on `..`.
+Only the application requires pgx and goose; the reusable parent keeps protocol
+as its only dependency. Package import paths are stable;
 server consumers migrate their module requirements to the parent and remove
 all former server module requirements, including indirect ones.
 
@@ -31,6 +35,11 @@ The dependency checker denies package imports unless the matrix allows them:
 | `gateway/fixture` | fixture, bridge, protocol |
 | `gateway/gatewaytest` | gateway packages, bridge, protocol |
 | `worldbridge/**` | worldbridge, world, bridge, protocol |
+| `server/internal/pgstore` | world, pgstore; pinned pgx, pgxpool and pgconn |
+| `server/internal/migrate` | migrate; goose root PostgreSQL Provider API and pgx/stdlib |
+| `server/cmd/alatyr-server` | pgstore, migrate, world, worldbridge, bridge, gateway, meaning, backend, protocol |
+| application tests | the same matrix plus the internal PostgreSQL test fixture |
+| `server/internal/pgtest` | test-only database fixture using migrate and pinned pgx |
 
 Component names include their subpackages except the exact gateway directories.
 Unknown package directories, including new gateway descendants, require an
@@ -46,10 +55,13 @@ standard library. World-specific behavior belongs outside this core.
 
 The `go` CI job checks module boundaries, licenses, public content, formatting,
 dependencies, unit and race tests, and vulnerabilities. Codec fuzzing is active:
-all eight targets must exist and execute successfully. Both module roots
-(`engine/go` and `engine/go/protocol`) receive vet and race tests in the workspace
+all eight targets must exist and execute successfully. All three module roots
+(`engine/go`, `engine/go/protocol` and `engine/go/server`) receive vet and race tests in the workspace
 and with `GOWORK=off`, plus Staticcheck and vulnerability checks with tests.
-The workspace also contains the independent `tools/world` module.
+The workspace also contains the independent `tools/world` module. A separate
+`go-postgres` job provisions PostgreSQL 18 and proves rollback, atomic learning,
+Flyway baseline compatibility, and participant state after a process restart.
+Database tests skip in ordinary Go checks when no test DSN is configured.
 
 The Java endpoint, Go world adapter and participant gateway have separate
 implementation and evidence boundaries. The integration job checks the Java
