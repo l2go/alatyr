@@ -139,3 +139,24 @@ findTeacher:
 	// skill: 257 0 -> 1
 	// skill saved: true
 }
+
+func ExampleWorld_Final() {
+	ctx, cancel := context.WithCancel(context.Background())
+	w := world.New(nil, memstore.New())
+	done := make(chan error, 1)
+	go func() { done <- w.Run(ctx) }()
+	cancel()
+	if err := <-done; err != nil {
+		fmt.Println(err)
+		return
+	}
+	// Join admitted callers before saving these snapshots. Final itself performs
+	// no I/O and also works when Run stopped with an exhaustion error.
+	checkpoints, err := w.Final(context.Background())
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println("remaining characters:", len(checkpoints))
+	// Output: remaining characters: 0
+}

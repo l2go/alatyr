@@ -79,6 +79,11 @@ func awaitReceipt(t *testing.T, p bridge.Port, key uint64) bridge.Receipt {
 		if len(u.Batch.Records) != len(u.Batch.ReceivedAt) {
 			t.Fatal("record timestamps differ in length")
 		}
+		for _, record := range u.Batch.Records {
+			if record.Type == wire.Result {
+				t.Fatal("typed receipt duplicated as an observation")
+			}
+		}
 		for _, r := range u.Batch.Receipts {
 			if r.Key == key {
 				return r

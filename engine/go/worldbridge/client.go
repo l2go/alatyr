@@ -24,7 +24,8 @@ import (
 // cancellation. Store implementations must honor their operation contexts.
 // ResumeBudget defaults to 30 seconds (1 to 300 seconds); CloseBudget defaults
 // to 100 milliseconds (also its maximum). Now defaults to time.Now and must
-// be safe for concurrent calls. Hosts close their ports before stopping Run.
+// be safe for concurrent calls. Hosts close ports before stopping Run when
+// possible; after a fatal Run exit they join ports before saving World.Final.
 type Config struct {
 	World                     *world.World
 	Catalog                   *catalog.Catalog

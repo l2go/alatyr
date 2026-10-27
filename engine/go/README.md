@@ -22,11 +22,14 @@ GOWORK=off go vet ./...
 GOWORK=off go test -race -count=1 -timeout=2m ./...
 ```
 
-Check protocol separately from its directory in both modes. The parent `./...`
+Check protocol and the [participant application](server/README.md) separately
+from their directories in both modes. The application is a third module with a
+single local replacement for this parent; pgx and goose stay out of client
+dependency graphs. The parent `./...`
 does not include a nested module. The repository boundary checker enforces
 package dependency directions, module ownership, the protocol pin, licenses,
 and public content. See [Go components](../../docs/engine-go/README.md).
 
 The [AGPL-3.0-or-later license](LICENSE) covers this module's root files and
-all server packages, including worldbridge. The nested protocol module retains
+all server packages, including worldbridge. The nested server application has its own AGPL license. The protocol module retains
 its [Apache-2.0 license](protocol/LICENSE).

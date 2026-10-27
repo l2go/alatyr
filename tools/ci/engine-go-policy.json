@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "modules": [
     {
       "path": "engine/go/protocol",
@@ -12,6 +12,13 @@
       "path": "engine/go",
       "module": "github.com/l2go/alatyr/engine/go",
       "package": "",
+      "license": "AGPL-3.0-or-later",
+      "phase": "active"
+    },
+    {
+      "path": "engine/go/server",
+      "module": "github.com/l2go/alatyr/engine/go/server",
+      "package": "server",
       "license": "AGPL-3.0-or-later",
       "phase": "active"
     }
@@ -159,6 +166,63 @@
       ]
     },
     {
+      "source": "server/internal/pgstore",
+      "imports": [
+        "server/internal/pgstore",
+        "world/**"
+      ],
+      "test_imports": [
+        "server/internal/pgtest",
+        "server/internal/migrate"
+      ],
+      "external_imports": [
+        "github.com/jackc/pgx/v5",
+        "github.com/jackc/pgx/v5/pgxpool",
+        "github.com/jackc/pgx/v5/pgconn"
+      ]
+    },
+    {
+      "source": "server/internal/migrate",
+      "imports": [
+        "server/internal/migrate"
+      ],
+      "test_imports": [
+        "server/internal/pgtest"
+      ],
+      "external_imports": [
+        "github.com/pressly/goose/v3",
+        "github.com/jackc/pgx/v5/stdlib"
+      ]
+    },
+    {
+      "source": "server/internal/pgtest",
+      "imports": [
+        "server/internal/pgtest"
+      ],
+      "external_imports": [
+        "github.com/jackc/pgx/v5",
+        "github.com/jackc/pgx/v5/pgxpool"
+      ]
+    },
+    {
+      "source": "server/cmd/alatyr-server",
+      "imports": [
+        "server/cmd/alatyr-server",
+        "server/internal/pgstore",
+        "server/internal/migrate",
+        "world/**",
+        "worldbridge/**",
+        "gateway",
+        "gateway/meaning",
+        "gateway/backend",
+        "bridge/**",
+        "protocol/**"
+      ],
+      "test_imports": [
+        "server/internal/pgtest"
+      ]
+    },
+    {
       "source": "worldtest",
       "imports": [
         "worldtest",
@@ -169,5 +233,17 @@
         "worldbridge/**"
       ]
     }
-  ]
+  ],
+  "external": {
+    "github.com/jackc/pgx/v5": "v5.11.0",
+    "github.com/pressly/goose/v3": "v3.29.0",
+    "github.com/jackc/pgpassfile": "v1.0.0",
+    "github.com/jackc/pgservicefile": "v0.0.0-20240606120523-5a60cdf6a761",
+    "github.com/jackc/puddle/v2": "v2.2.3",
+    "github.com/mfridman/interpolate": "v0.0.2",
+    "github.com/sethvargo/go-retry": "v0.5.0",
+    "go.uber.org/multierr": "v1.11.0",
+    "golang.org/x/sync": "v0.24.0",
+    "golang.org/x/text": "v0.43.0"
+  }
 }

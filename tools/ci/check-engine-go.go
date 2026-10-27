@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -59,20 +60,35 @@ type fuzzTarget struct {
 }
 
 type packagePolicy struct {
-	Source      string   `json:"source"`
-	Imports     []string `json:"imports"`
-	TestImports []string `json:"test_imports,omitempty"`
+	Source          string   `json:"source"`
+	Imports         []string `json:"imports"`
+	TestImports     []string `json:"test_imports,omitempty"`
+	ExternalImports []string `json:"external_imports,omitempty"`
 }
 
 type policy struct {
-	Packages    []packagePolicy `json:"packages"`
-	Version     int             `json:"version"`
-	Modules     []modulePolicy  `json:"modules"`
-	Denied      []denyRule      `json:"denied"`
-	FuzzTargets []fuzzTarget    `json:"fuzz_targets"`
+	ExternalModules map[string]string `json:"external"`
+	Packages        []packagePolicy   `json:"packages"`
+	Version         int               `json:"version"`
+	Modules         []modulePolicy    `json:"modules"`
+	Denied          []denyRule        `json:"denied"`
+	FuzzTargets     []fuzzTarget      `json:"fuzz_targets"`
 }
 
-var moduleNames = []string{"protocol", ""}
+var externalModules = map[string]string{
+	"github.com/jackc/pgx/v5":         "v5.11.0",
+	"github.com/pressly/goose/v3":     "v3.29.0",
+	"github.com/jackc/pgpassfile":     "v1.0.0",
+	"github.com/jackc/pgservicefile":  "v0.0.0-20240606120523-5a60cdf6a761",
+	"github.com/jackc/puddle/v2":      "v2.2.3",
+	"github.com/mfridman/interpolate": "v0.0.2",
+	"github.com/sethvargo/go-retry":   "v0.5.0",
+	"go.uber.org/multierr":            "v1.11.0",
+	"golang.org/x/sync":               "v0.24.0",
+	"golang.org/x/text":               "v0.43.0",
+}
+
+var moduleNames = []string{"protocol", "", "server"}
 var windowsProfile = regexp.MustCompile(`(?i)[a-z]:[\\/](users|documents and settings)[\\/]`)
 var fuzzName = regexp.MustCompile(`^Fuzz[A-Z0-9_][A-Za-z0-9_]*$`)
 
@@ -86,13 +102,34 @@ var codecMarkers = []string{
 func main() {
 	root := flag.String("root", ".", "repository root")
 	policyPath := flag.String("policy", "tools/ci/engine-go-policy.json", "policy relative to root")
+	postgresResults := flag.String("postgres-results", "", "verify required PostgreSQL test JSON")
 	fuzz := flag.Bool("fuzz", false, "run the configured codec fuzz targets")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "policy: unexpected arguments")
 		os.Exit(1)
 	}
-	err := run(*root, *policyPath, *fuzz, os.Stdout)
+	var err error
+	if *postgresResults != "" {
+		file, openErr := os.Open(*postgresResults)
+		if openErr != nil {
+			err = errors.New("postgres: cannot read results")
+		} else {
+			list, listErr := os.Open(filepath.Join(*root, "engine/go/server/postgres-tests.txt"))
+			if listErr != nil {
+				err = errors.New("postgres: cannot read required tests")
+			} else {
+				required, loadErr := loadPostgresTests(list)
+				err = errors.Join(loadErr, list.Close())
+				if err == nil {
+					err = checkPostgresResults(file, required)
+				}
+			}
+			err = errors.Join(err, file.Close())
+		}
+	} else {
+		err = run(*root, *policyPath, *fuzz, os.Stdout)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -144,7 +181,15 @@ func loadPolicy(path string) (policy, error) {
 }
 
 func validatePolicy(p policy) error {
-	if p.Version != 2 || len(p.Modules) != len(moduleNames) || len(p.Denied) != 12 {
+	if len(p.ExternalModules) != len(externalModules) {
+		return errors.New("policy: external module set")
+	}
+	for path, version := range externalModules {
+		if p.ExternalModules[path] != version {
+			return errors.New("policy: external module pin")
+		}
+	}
+	if p.Version != 3 || len(p.Modules) != len(moduleNames) || len(p.Denied) != 12 {
 		return errors.New("policy: invalid version or required lists")
 	}
 	for i, name := range moduleNames {
@@ -160,7 +205,7 @@ func validatePolicy(p policy) error {
 			module += "/" + name
 		}
 		if m.Path != path || m.Module != module || m.Package != name ||
-			m.License != license || (m.Phase != "scaffold" && m.Phase != "active") || name == "" && m.Phase != "active" {
+			m.License != license || (m.Phase != "scaffold" && m.Phase != "active") || name != "protocol" && m.Phase != "active" {
 			return errors.New("policy: invalid module boundary")
 		}
 	}
@@ -175,7 +220,10 @@ func validatePolicy(p policy) error {
 			}
 		}
 		selectors[row.Source] = true
-		for _, list := range [][]string{row.Imports, row.TestImports} {
+		if len(row.ExternalImports) > 0 && row.Source != "server/internal/pgstore" && row.Source != "server/internal/migrate" && row.Source != "server/internal/pgtest" {
+			return errors.New("policy: external imports outside application")
+		}
+		for _, list := range [][]string{row.Imports, row.TestImports, row.ExternalImports} {
 			seen := make(map[string]bool)
 			for _, selector := range list {
 				if !validSelector(selector) || seen[selector] {
@@ -253,7 +301,7 @@ func checkTree(root string, p policy) error {
 			if err != nil {
 				return errors.New("I-3: cannot resolve dependency graph")
 			}
-			if err := checkDependencyJSON(data, p); err != nil {
+			if err := checkDependencyJSON(data, p, graphContext{root, m.Module, workspace != "off"}); err != nil {
 				return err
 			}
 		}
@@ -393,10 +441,10 @@ func checkWorkspace(root string) error {
 		Replace   []json.RawMessage
 	}
 	if json.Unmarshal(data, &work) != nil || work.Go != goVersion || work.Toolchain != toolchainVersion ||
-		len(work.Replace) != 0 || len(work.Use) != 3 {
+		len(work.Replace) != 0 || len(work.Use) != 4 {
 		return errors.New("I-1: workspace boundary or version")
 	}
-	expected := map[string]bool{"tools/world": true, "engine/go/protocol": true, "engine/go": true}
+	expected := map[string]bool{"tools/world": true, "engine/go/protocol": true, "engine/go": true, "engine/go/server": true}
 	for _, use := range work.Use {
 		path := filepath.ToSlash(filepath.Clean(use.DiskPath))
 		if filepath.IsAbs(use.DiskPath) || !expected[path] {
@@ -421,17 +469,40 @@ func checkModule(root string, m modulePolicy) error {
 			Path, Version string
 			Indirect      bool
 		}
-		Replace []json.RawMessage
+		Replace []struct {
+			Old, New struct{ Path, Version string }
+		}
 		Exclude []json.RawMessage
 		Tool    []json.RawMessage
 	}
 	if json.Unmarshal(data, &mod) != nil || mod.Module.Path != m.Module || mod.Go != goVersion || (mod.Toolchain != "" && mod.Toolchain != "go"+goVersion) {
 		return errors.New("I-1: module path or version")
 	}
-	if len(mod.Replace)+len(mod.Exclude)+len(mod.Tool) != 0 {
+	if len(mod.Exclude)+len(mod.Tool) != 0 || m.Package != "server" && len(mod.Replace) != 0 {
 		return errors.New("I-3: forbidden module dependency directive")
 	}
-	if m.Package == "protocol" {
+	if m.Package == "server" {
+		protocolDirect, err := applicationImports(dir, modulePrefix+"protocol")
+		if err != nil {
+			return err
+		}
+		if len(mod.Replace) != 1 || mod.Replace[0].Old.Path != serverModule || mod.Replace[0].Old.Version != "" || mod.Replace[0].New.Path != "../" || mod.Replace[0].New.Version != "" {
+			return errors.New("I-3: application must replace only its parent")
+		}
+		expected := map[string]string{serverModule: "v0.0.0", modulePrefix + "protocol": protocolVersion}
+		for path, version := range externalModules {
+			expected[path] = version
+		}
+		if len(mod.Require) != len(expected) {
+			return errors.New("I-3: application dependency set")
+		}
+		for _, req := range mod.Require {
+			direct := req.Path == serverModule || req.Path == modulePrefix+"protocol" && protocolDirect || req.Path == "github.com/jackc/pgx/v5" || req.Path == "github.com/pressly/goose/v3"
+			if expected[req.Path] != req.Version || req.Indirect == direct {
+				return errors.New("I-3: unpinned application dependency")
+			}
+		}
+	} else if m.Package == "protocol" {
 		if len(mod.Require) != 0 {
 			return errors.New("I-3: forbidden protocol dependency")
 		}
@@ -446,7 +517,7 @@ func checkModule(root string, m modulePolicy) error {
 	for _, component := range components {
 		componentDir := filepath.Join(dir, component)
 		names := []string{"README.md", "LICENSE"}
-		if m.Package != "" || component != "" {
+		if m.Package != "" && m.Package != "server" || component != "" {
 			names = append(names, "doc.go")
 		}
 		for _, name := range names {
@@ -508,6 +579,33 @@ func checkModule(root string, m modulePolicy) error {
 	})
 }
 
+func applicationImports(dir, module string) (bool, error) {
+	direct := false
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return errors.New("I-3: cannot read application imports")
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return errors.New("I-3: invalid application imports")
+		}
+		for _, imp := range file.Imports {
+			value, err := strconv.Unquote(imp.Path.Value)
+			if err != nil {
+				return errors.New("I-3: invalid application import")
+			}
+			if matches(module+"/**", value) {
+				direct = true
+			}
+		}
+		return nil
+	})
+	return direct, err
+}
+
 // Selectors name exact package directories, or a root and all descendants.
 func validSelector(s string) bool {
 	path := strings.TrimSuffix(s, "/**")
@@ -548,6 +646,23 @@ func allowedEdge(p policy, from, to string, test bool) bool {
 	return false
 }
 
+func externalImport(p policy, from, to string) bool {
+	row := packageRule(p, from)
+	if row == nil {
+		return false
+	}
+	for _, selector := range row.ExternalImports {
+		if matches(selector, to) {
+			for module := range p.ExternalModules {
+				if matches(module+"/**", to) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func standardImport(path, dir string) bool {
 	if path == "C" || !fs.ValidPath(path) || strings.Contains(path, `\`) {
 		return false
@@ -575,9 +690,17 @@ func checkSources(root string, p policy) error {
 		if packageRule(p, from) == nil {
 			return errors.New("I-3: unknown package directory")
 		}
-		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if strings.HasPrefix(from, "server/") {
+			if info, err := os.Stat(filepath.Join(filepath.Dir(path), "doc.go")); err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+				return errors.New("I-1: missing application package documentation")
+			}
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 		if err != nil {
 			return errors.New("I-3: invalid package source")
+		}
+		if err := checkMigrationAPI(file); err != nil {
+			return err
 		}
 		for _, imp := range file.Imports {
 			to, err := strconv.Unquote(imp.Path.Value)
@@ -588,6 +711,8 @@ func checkSources(root string, p policy) error {
 				if allowedEdge(p, from, strings.TrimPrefix(to, modulePrefix), strings.HasSuffix(path, "_test.go")) {
 					continue
 				}
+			} else if externalImport(p, from, to) {
+				continue
 			} else if standardImport(to, dir) {
 				continue
 			}
@@ -595,6 +720,86 @@ func checkSources(root string, p policy) error {
 		}
 		return nil
 	})
+}
+
+// checkMigrationAPI keeps goose on its PostgreSQL Provider API. Global helpers,
+// driver registries and dot imports would bypass per-provider configuration.
+func checkMigrationAPI(file *ast.File) error {
+	alias := ""
+	for _, imp := range file.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			return errors.New("I-3: invalid migration import")
+		}
+		if strings.Contains(path, ".") && imp.Name != nil && imp.Name.Name == "." {
+			return errors.New("I-3: external dot import")
+		}
+		if path == "github.com/pressly/goose/v3" {
+			alias = "goose"
+			if imp.Name != nil {
+				alias = imp.Name.Name
+			}
+			if alias == "_" {
+				return errors.New("I-3: goose side-effect import")
+			}
+		}
+	}
+	if alias == "" {
+		return nil
+	}
+	var failure error
+	allowed := map[string]bool{"NewProvider": true, "DialectPostgres": true, "WithTableName": true, "WithDisableGlobalRegistry": true, "WithSlog": true}
+	ast.Inspect(file, func(node ast.Node) bool {
+		if selector, ok := node.(*ast.SelectorExpr); ok {
+			if id, ok := selector.X.(*ast.Ident); ok && id.Name == alias && !allowed[selector.Sel.Name] {
+				failure = errors.New("I-3: goose API outside PostgreSQL provider")
+			}
+		}
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		id, ok := selector.X.(*ast.Ident)
+		if !ok || id.Name != alias || selector.Sel.Name != "NewProvider" {
+			return true
+		}
+		postgres := false
+		registry := false
+		if len(call.Args) > 0 {
+			if dialect, ok := call.Args[0].(*ast.SelectorExpr); ok {
+				if id, ok := dialect.X.(*ast.Ident); ok && id.Name == alias && dialect.Sel.Name == "DialectPostgres" {
+					postgres = true
+				}
+			}
+		}
+		for _, arg := range call.Args {
+			option, ok := arg.(*ast.CallExpr)
+			if !ok || len(option.Args) != 1 {
+				continue
+			}
+			f, ok := option.Fun.(*ast.SelectorExpr)
+			if !ok || f.Sel.Name != "WithDisableGlobalRegistry" {
+				continue
+			}
+			id, ok := f.X.(*ast.Ident)
+			if !ok || id.Name != alias {
+				continue
+			}
+			value, ok := option.Args[0].(*ast.Ident)
+			if ok && value.Name == "true" {
+				registry = true
+			}
+		}
+		if !postgres || !registry {
+			failure = errors.New("I-3: goose provider must use PostgreSQL without globals")
+		}
+		return true
+	})
+	return failure
 }
 
 type listedPackage struct {
@@ -619,7 +824,12 @@ func packagePath(path string) string {
 	return strings.TrimSuffix(base, ".test")
 }
 
-func checkDependencyJSON(data []byte, p policy) error {
+type graphContext struct {
+	Root, Main string
+	Workspace  bool
+}
+
+func checkDependencyJSON(data []byte, p policy, modes ...graphContext) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	var packages []listedPackage
 	standard := make(map[string]bool)
@@ -646,15 +856,51 @@ func checkDependencyJSON(data []byte, p policy) error {
 		}
 		path := packagePath(pkg.ImportPath)
 		rel, ok := strings.CutPrefix(path, modulePrefix)
-		if !ok || packageRule(p, rel) == nil || pkg.Module == nil || len(pkg.Module.Replace) != 0 {
+		if !ok {
+			if pkg.Module == nil || p.ExternalModules[pkg.Module.Path] != pkg.Module.Version || len(pkg.Module.Replace) != 0 || !matches(pkg.Module.Path+"/**", path) || pkg.Module.Dir == "" || filepath.Clean(pkg.Dir) != filepath.Join(pkg.Module.Dir, filepath.FromSlash(strings.TrimPrefix(path, pkg.Module.Path))) {
+				return errors.New("I-3: unexpected external provider")
+			}
+			continue
+		}
+		if packageRule(p, rel) == nil || pkg.Module == nil {
 			return errors.New("I-3: unknown or substituted dependency")
 		}
 		module := serverModule
+		if matches("server/**", rel) {
+			module += "/server"
+		}
 		if matches("protocol/**", rel) {
 			module += "/protocol"
 		}
-		if pkg.Module.Path != module || module != serverModule && !pkg.Module.Main && pkg.Module.Version != protocolVersion {
+		if pkg.Module.Path != module {
 			return errors.New("I-3: unexpected package provider")
+		}
+		if len(modes) == 1 {
+			mode := modes[0]
+			local := module == serverModule || module == modulePrefix+"server" || mode.Workspace || mode.Main == module
+			if local {
+				expected := filepath.Join(mode.Root, "engine/go")
+				if module != serverModule {
+					expected = filepath.Join(expected, strings.TrimPrefix(module, modulePrefix))
+				}
+				if filepath.Clean(pkg.Module.Dir) != filepath.Clean(expected) {
+					return errors.New("I-3: package provider outside checkout")
+				}
+			}
+			if mode.Workspace {
+				if len(pkg.Module.Replace) != 0 || pkg.Module.Version != "" {
+					return errors.New("I-3: substituted workspace provider")
+				}
+			} else if mode.Main == modulePrefix+"server" && module == serverModule {
+				var replacement struct{ Path, Dir string }
+				if pkg.Module.Version != "v0.0.0" || json.Unmarshal(pkg.Module.Replace, &replacement) != nil || replacement.Path != "../" || filepath.Clean(replacement.Dir) != filepath.Join(mode.Root, "engine/go") {
+					return errors.New("I-3: application parent replacement")
+				}
+			} else if len(pkg.Module.Replace) != 0 || module == mode.Main && pkg.Module.Version != "" {
+				return errors.New("I-3: substituted package provider")
+			}
+		} else if len(pkg.Module.Replace) != 0 {
+			return errors.New("I-3: substituted dependency")
 		}
 		suffix := strings.TrimPrefix(path, module)
 		if pkg.Module.Dir == "" || filepath.Clean(pkg.Dir) != filepath.Join(pkg.Module.Dir, filepath.FromSlash(suffix)) {
@@ -668,11 +914,11 @@ func checkDependencyJSON(data []byte, p policy) error {
 			{pkg.Imports, pkg.ImportPath != path}, {pkg.TestImports, true}, {pkg.XTestImports, true},
 		} {
 			for _, imp := range list.imports {
-				if standard[imp] {
+				if standard[imp] || standardImport(imp, pkg.Dir) {
 					continue
 				}
 				to := strings.TrimPrefix(packagePath(imp), modulePrefix)
-				if !allowedEdge(p, from, to, list.test) {
+				if !allowedEdge(p, from, to, list.test) && !externalImport(p, from, packagePath(imp)) {
 					return errors.New("I-3: graph import outside package boundary")
 				}
 			}
@@ -743,4 +989,75 @@ func replaceEnv(env []string, values map[string]string) []string {
 		result = append(result, key+"="+value)
 	}
 	return result
+}
+
+type postgresTest struct{ Package, Test string }
+
+func loadPostgresTests(reader io.Reader) ([]postgresTest, error) {
+	scanner := bufio.NewScanner(reader)
+	var required []postgresTest
+	seen := make(map[postgresTest]bool)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 2 || !strings.HasPrefix(fields[0], modulePrefix+"server/") || !fs.ValidPath(fields[0]) || !regexp.MustCompile(`^Test[A-Z0-9_][A-Za-z0-9_]*$`).MatchString(fields[1]) {
+			return nil, errors.New("postgres: invalid required test")
+		}
+		test := postgresTest{fields[0], fields[1]}
+		if seen[test] {
+			return nil, errors.New("postgres: duplicate required test")
+		}
+		seen[test] = true
+		required = append(required, test)
+	}
+	if scanner.Err() != nil || len(required) == 0 {
+		return nil, errors.New("postgres: empty or unreadable required tests")
+	}
+	return required, nil
+}
+
+func checkPostgresResults(reader io.Reader, required []postgresTest) error {
+	if len(required) == 0 {
+		return errors.New("postgres: empty required tests")
+	}
+	dec := json.NewDecoder(reader)
+	passed := make(map[string]int)
+	started := make(map[string]int)
+	for {
+		var event struct{ Action, Package, Test string }
+		err := dec.Decode(&event)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return errors.New("postgres: invalid test JSON")
+		}
+		if event.Action == "fail" {
+			return errors.New("postgres: test failed")
+		}
+		for _, required := range required {
+			if event.Package != required.Package || event.Test != required.Test {
+				continue
+			}
+			key := event.Package + "/" + event.Test
+			switch event.Action {
+			case "skip":
+				return errors.New("postgres: required test skipped")
+			case "run":
+				started[key]++
+			case "pass":
+				passed[key]++
+			}
+		}
+	}
+	for _, required := range required {
+		key := required.Package + "/" + required.Test
+		if started[key] != 1 || passed[key] != 1 {
+			return errors.New("postgres: required tests did not execute exactly once")
+		}
+	}
+	return nil
 }
