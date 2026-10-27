@@ -7,8 +7,10 @@ world factory, dictionary policy, authenticated identities, and explicit limits.
 
 The runtime supports length-prefixed streams, in-memory pipes, and binary
 WebSockets. The HTTP handler checks host and origin before admission and accepts
-forwarded identity only from a configured IPv4 loopback proxy. It is not a login
-service; a forwarded header from a remote peer is never an identity.
+forwarded identity only from numeric source IPs in `HTTPConfig.ProxyPeers`.
+An empty allowlist preserves the historical 127.0.0.1 default. The check uses
+the socket peer, never X-Forwarded-For. The host owns proxy authentication and
+forwarding-header sanitation.
 
 Opening reserves an identity and capacity before calling the world factory,
 without holding the shared admission lock across I/O. The admission context

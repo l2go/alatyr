@@ -85,3 +85,36 @@ func TestStreamAndWebSocketBounds(t *testing.T) {
 		}
 	}
 }
+
+func TestProxySourceAllowlist(t *testing.T) {
+	for _, tc := range []struct {
+		name, remote string
+		peers        []string
+		want         int
+	}{
+		{"legacy-ipv4", "127.0.0.1:321", nil, 400},
+		{"configured-ipv6", "[::1]:321", []string{"::1"}, 400},
+		{"other-loopback", "127.0.0.2:321", []string{"127.0.0.2"}, 400},
+		{"unlisted-ipv4", "127.0.0.1:321", []string{"::1"}, 401},
+		{"remote-spoof", "192.0.2.1:321", []string{"::1"}, 401},
+		{"hostname", "localhost:321", []string{"localhost"}, 401},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := newTestGateway(t, testConfig(t))
+			h := HTTP{Gateway: g, Config: HTTPConfig{Proxy: true, ProxyPeers: tc.peers, Hosts: []string{"play.example"}, Origins: []string{"https://play.example"}, IdentityHeader: "X-Identity", SchemeHeader: "X-Forwarded-Proto"}}
+			r := httptest.NewRequest("GET", "https://play.example/participant", nil)
+			r.RemoteAddr = tc.remote
+			r.Header.Set("Origin", "https://play.example")
+			r.Header.Set("X-Forwarded-Proto", "https")
+			r.Header.Set("X-Identity", "one")
+			r.Header.Set("X-Forwarded-For", "::1")
+			response := httptest.NewRecorder()
+			h.ServeHTTP(response, r)
+			// Trusted requests reach upgrade validation. Untrusted peers fail before
+			// admission, even when they claim a trusted forwarded source address.
+			if response.Code != tc.want {
+				t.Fatalf("status %d, want %d", response.Code, tc.want)
+			}
+		})
+	}
+}

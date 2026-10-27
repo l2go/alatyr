@@ -54,7 +54,8 @@ departure/save result. An unread update can be replaced by the final `Closed`.
 `CloseBudget` defaults to 100 milliseconds. Stores must honor their contexts.
 There is no automatic persistence retry: after failure the host owns retrying
 `World.Leave(ctx, client.Owner())`. Close all ports before stopping `World.Run`;
-world shutdown does not implicitly save characters.
+after a fatal Run exit, join all ports and persist `World.Final` checkpoints
+through the same store. The world loop itself performs no persistence I/O.
 
 `TestPortContract` applies the same capability-neutral scenarios to this client
 and `bridge.Client` over a synthetic endpoint. It does not assert gameplay parity.
@@ -72,3 +73,12 @@ The authored-world participant scenarios run in [worldtest](../worldtest/README.
 through the shared gatewaytest driver. Raw receipts are typed evidence delivered
 before their associated live facts; participant facts still precede their result.
 Proposal birth uses the canonical field 74 and never the training-type field 69.
+
+Go-world NPC roles are source-owned labels: `creature` identifies a monster,
+`folk` an ordinary resident, `tutor` a trainer, and `provisioner` a merchant.
+The participant host grants Strike/Cast to creatures and Talk/Cast to folk,
+tutors and provisioners. The dictionary treats these labels as opaque strings;
+a label alone grants no command authority in the world. Java currently reports
+monsters and ordinary residents as `unknown`. Cross-world parity must compare
+the explicit capabilities and command outcomes as well as this documented label
+difference; this adapter does not change the Java bridge.

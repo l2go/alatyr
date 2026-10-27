@@ -20,12 +20,15 @@ import (
 )
 
 // HTTPConfig admits a configured loopback origin, or explicit hosts and origins
-// behind a trusted IPv4 loopback proxy. Forwarded headers are never authentication
+// behind a proxy with explicitly trusted source IPs. Forwarded headers are never authentication
 // from a remote peer. LocalAddress may use port zero with http.LocalAddrContextKey.
 type HTTPConfig struct {
-	Proxy                        bool
-	LocalIdentity, LocalAddress  string
-	Origins, Hosts               []string
+	Proxy                       bool
+	LocalIdentity, LocalAddress string
+	Origins, Hosts              []string
+	// ProxyPeers contains numeric trusted source IPs. Empty preserves the
+	// historical IPv4 loopback default. Forwarded headers never select the peer.
+	ProxyPeers                   []string
 	IdentityHeader, SchemeHeader string
 }
 
@@ -160,7 +163,22 @@ func (h HTTP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	identity := h.Config.LocalIdentity
 	if h.Config.Proxy {
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil || host != "127.0.0.1" {
+		peers := h.Config.ProxyPeers
+		if len(peers) == 0 {
+			peers = []string{"127.0.0.1"}
+		}
+		trusted := false
+		if err == nil {
+			peer := net.ParseIP(host)
+			for _, allowed := range peers {
+				ip := net.ParseIP(allowed)
+				if peer != nil && ip != nil && peer.Equal(ip) {
+					trusted = true
+					break
+				}
+			}
+		}
+		if !trusted {
 			http.Error(w, "participant unavailable", http.StatusUnauthorized)
 			return
 		}

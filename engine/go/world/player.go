@@ -216,6 +216,17 @@ func (w *World) selfOf(p *player) Self {
 	return Self{Entity: p.ref(), Char: c, RunSpeed: p.stats.RunSpeed(), WalkSpeed: p.stats.WalkSpeed(), Dead: p.dead, Running: p.running, Sitting: p.sitting, Teleporting: p.teleporting, PAtk: p.stats.PAtk(), PDef: p.stats.PDef(), PDefKnown: p.stats.PDefKnown()}
 }
 
+// savedCharacter captures the same complete durable state for departure and
+// fatal shutdown. Runtime-only party membership and life fences are not saved.
+func (w *World) savedCharacter(p *player) Character {
+	c := w.selfOf(p).Char
+	// The reference schema stores whole vital points; active values may be fractional.
+	c.CurHP, c.CurMP, c.CurCP = math.Round(c.CurHP), math.Round(c.CurMP), math.Round(c.CurCP)
+	// Missing templates have no active authority but remain part of durable state.
+	c.Items = append(c.Items, p.unavailableItems...)
+	return c
+}
+
 // Enter loads a ready character at its stored position. It grants no items,
 // skills or quests and does not select a start point.
 func (w *World) Enter(ctx context.Context, c Character) (Entry, error) {
@@ -458,13 +469,7 @@ func (w *World) leave(ctx context.Context, owner Ref, voluntary bool) error {
 					s.finish(StageRefused)
 					return
 				}
-				c = w.selfOf(p).Char
-				// The reference character schema stores whole vital points. Keep
-				// the same detached Close snapshot in memory and durable stores.
-				c.CurHP, c.CurMP, c.CurCP = math.Round(c.CurHP), math.Round(c.CurMP), math.Round(c.CurCP)
-				// Missing templates stay outside the active world but survive a
-				// complete Store snapshot; a later catalog may recognize them.
-				c.Items = append(c.Items, p.unavailableItems...)
+				c = w.savedCharacter(p)
 				p.attackSeq++
 				p.castSeq++
 				s.setAttacking(p.base(), 0)

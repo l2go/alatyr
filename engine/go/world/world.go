@@ -17,7 +17,8 @@ import (
 )
 
 // Run owns mutable gameplay until cancellation or identity exhaustion.
-// Shutdown closes notifications but does not save characters implicitly.
+// Shutdown publishes detached final checkpoints and closes notifications.
+// The host joins in-flight callers before persisting Final checkpoints.
 func (w *World) Run(ctx context.Context) error {
 	if w.s == nil {
 		return ErrUninitialized
@@ -27,6 +28,7 @@ func (w *World) Run(ctx context.Context) error {
 	}
 	defer close(w.stopped)
 	defer func() {
+		w.final = w.finalCheckpoints()
 		for _, p := range w.s.players {
 			p.close(CloseStop)
 		}
@@ -111,6 +113,8 @@ var (
 )
 
 // Store persists detached characters. The host owns retries and transactions.
+// Durable implementations also provide PutLearning(context.Context, Character)
+// to atomically persist a captured SP balance and its learned skills.
 type Store interface {
 	PutCharacter(context.Context, Character) error
 }
@@ -118,19 +122,21 @@ type Store interface {
 // World is a single-owner gameplay simulation. Construct it with New.
 // The zero value returns ErrUninitialized instead of starting a loop.
 type World struct {
-	cat           *catalog.Catalog
-	store         Store
-	cmds          chan func(*state)
-	stopped       chan struct{}
-	running       atomic.Bool
-	s             *state
-	items         *itemlog.Log
-	started       time.Time
-	experience    []int64
-	announcements []string
-	ground        Ground
-	logger        *slog.Logger
-	durability    func(Durability)
+	cat             *catalog.Catalog
+	store           Store
+	cmds            chan func(*state)
+	stopped         chan struct{}
+	running         atomic.Bool
+	s               *state
+	items           *itemlog.Log
+	started         time.Time
+	experience      []int64
+	announcements   []string
+	ground          Ground
+	logger          *slog.Logger
+	durability      func(Durability)
+	idFirst, idLast int32
+	final           []Checkpoint
 }
 type state struct {
 	players                                                         map[int32]*player
@@ -193,6 +199,9 @@ func New(cat *catalog.Catalog, store Store, options ...Option) *World {
 		used = append(used, id)
 	}
 	w.s.ids = newIDs(used)
+	if w.idFirst > 0 {
+		w.s.ids.last, w.s.ids.limit = w.idFirst-1, w.idLast
+	}
 	if cat != nil {
 		w.s.rule(RuleSpawn, func() { w.spawnAll(w.s) })
 	}
@@ -211,4 +220,46 @@ func (w *World) flush(s *state) {
 		}
 		p.outbox = nil
 	}
+}
+
+// Checkpoint is one final incarnation and its detached character snapshot.
+// It carries no authority to reopen or replace an incarnation.
+type Checkpoint struct {
+	// Owner identifies the final live or pending incarnation.
+	Owner Ref
+	// Character is the complete detached snapshot for the host-owned store.
+	Character Character
+}
+
+func (w *World) finalCheckpoints() []Checkpoint {
+	out := make([]Checkpoint, 0, len(w.s.players)+len(w.s.pending))
+	for _, p := range w.s.players {
+		c := w.savedCharacter(p)
+		c.LastAccess = time.Now().UnixMilli()
+		out = append(out, Checkpoint{p.ref(), c})
+	}
+	for _, p := range w.s.pending {
+		out = append(out, Checkpoint{p.owner, p.char.Clone()})
+	}
+	return out
+}
+
+// Final waits for Run to stop and returns independent final checkpoints, including
+// failed departures. The host must join all admitted callers before saving them,
+// so an older in-flight learning write cannot overwrite the final SP balance.
+// Repeating Final neither consumes a checkpoint nor retries database I/O.
+func (w *World) Final(ctx context.Context) ([]Checkpoint, error) {
+	if w.s == nil {
+		return nil, ErrUninitialized
+	}
+	select {
+	case <-w.stopped:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	out := make([]Checkpoint, len(w.final))
+	for i, c := range w.final {
+		out[i] = Checkpoint{c.Owner, c.Character.Clone()}
+	}
+	return out, nil
 }

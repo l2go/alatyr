@@ -52,13 +52,24 @@ func fixture(t *testing.T) (string, policy) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files := []string{"go.work", "tools/world/go.mod", "tools/world/LICENSE", "docs/engine-go/README.md", "engine/go/go.mod", "engine/go/LICENSE", "engine/go/README.md", "engine/go/protocol/go.mod", "engine/go/protocol/README.md", "engine/go/protocol/LICENSE"}
+	files := []string{"go.work", "tools/world/go.mod", "tools/world/LICENSE", "docs/engine-go/README.md", "engine/go/go.mod", "engine/go/LICENSE", "engine/go/README.md", "engine/go/server/go.mod", "engine/go/server/go.sum", "engine/go/server/LICENSE", "engine/go/server/README.md", "engine/go/protocol/go.mod", "engine/go/protocol/README.md", "engine/go/protocol/LICENSE"}
 	for _, name := range []string{"protocol", "bridge", "world", "worldbridge", "gateway", "gateway/meaning", "gateway/backend", "gateway/fixture", "gateway/gatewaytest"} {
 		license := "AGPL-3.0-or-later"
 		if name == "protocol" {
 			license = "Apache-2.0"
 		}
 		writeFixture(t, root, "engine/go/"+name+"/doc.go", source(license, "package "+filepath.Base(name)+"\n"))
+	}
+	for _, component := range []string{"server/internal/pgstore", "server/internal/migrate", "server/internal/pgtest", "server/cmd/alatyr-server"} {
+		name := filepath.Base(component)
+		if strings.HasPrefix(component, "server/cmd/") {
+			name = "main"
+		}
+		body := "package " + name + "\n"
+		if name == "main" {
+			body += "import _ " + fmt.Sprintf("%q", modulePrefix+"protocol") + "\n"
+		}
+		writeFixture(t, root, "engine/go/"+component+"/doc.go", source("AGPL-3.0-or-later", body))
 	}
 	for _, component := range []string{"gateway", "bridge", "world", "worldbridge"} {
 		for _, name := range []string{"README.md", "LICENSE"} {
@@ -574,7 +585,7 @@ func TestPackageProviders(t *testing.T) {
 			if module == modulePrefix+"protocol" {
 				pkg.Module.Main = false
 				pkg.Module.Version = "v1.0.0"
-				check(false)
+				check(true)
 			}
 		})
 	}
@@ -606,6 +617,388 @@ func TestResolvedGraphDependencyDirections(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestApplicationModuleBoundaries(t *testing.T) {
+	for _, tc := range []struct{ name, old, replacement string }{
+		{"missing-replace", "replace " + serverModule + " => ../", ""},
+		{"wrong-target", "=> ../", "=> ../../"},
+		{"uncanonical-parent", "=> ../", "=> .."},
+		{"parent-pseudoversion", serverModule + " v0.0.0", serverModule + " " + protocolVersion},
+		{"protocol-newer", modulePrefix + "protocol " + protocolVersion, modulePrefix + "protocol v0.0.0-20261023084051-3b52c8d267a0"},
+		{"transitive-direct", "github.com/jackc/puddle/v2 v2.2.3 // indirect", "github.com/jackc/puddle/v2 v2.2.3"},
+		{"absolute-target", "=> ../", "=> /tmp/other"},
+		{"versioned-target", "=> ../", "=> example.org/other v1.0.0"},
+		{"wrong-module", "replace " + serverModule + " =>", "replace " + modulePrefix + "protocol =>"},
+		{"extra-replace", "", "replace example.org/other => ../\n"},
+		{"exclude", "", "exclude example.org/other v1.0.0\n"},
+		{"tool", "", "tool example.org/other/cmd/run\n"},
+		{"unpinned-pgx", "github.com/jackc/pgx/v5 v5.11.0", "github.com/jackc/pgx/v5 v5.10.0"},
+		{"indirect-pgx", "github.com/jackc/pgx/v5 v5.11.0", "github.com/jackc/pgx/v5 v5.11.0 // indirect"},
+		{"unpinned-goose", "github.com/pressly/goose/v3 v3.29.0", "github.com/pressly/goose/v3 v3.28.0"},
+		{"unknown-dependency", "", "require example.org/other v1.0.0\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, p := fixture(t)
+			file := "engine/go/server/go.mod"
+			data, err := os.ReadFile(filepath.Join(root, file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := string(data)
+			if tc.old == "" {
+				s += tc.replacement
+			} else {
+				s = strings.Replace(s, tc.old, tc.replacement, 1)
+			}
+			writeFixture(t, root, file, s)
+			expectRule(t, checkModule(root, p.Modules[2]), "I-3")
+		})
+	}
+}
+
+func TestExternalSourceBoundaries(t *testing.T) {
+	for _, from := range []string{"world", "world/catalog", "gateway", "gateway/backend", "bridge", "worldbridge", "protocol/wire", "server/cmd/alatyr-server"} {
+		for _, target := range []string{"github.com/jackc/pgx/v5", "github.com/pressly/goose/v3", modulePrefix + "server/internal/pgstore"} {
+			if from == "server/cmd/alatyr-server" && target == modulePrefix+"server/internal/pgstore" {
+				continue
+			}
+			t.Run(from+"_"+target, func(t *testing.T) {
+				root, p := fixture(t)
+				writeFixture(t, root, "engine/go/"+from+"/probe_plan9_test.go", source("AGPL-3.0-or-later", "//go:build never_enabled\n\npackage "+"probe"+"\nimport _ "+fmt.Sprintf("%q", target)+"\n"))
+				expectRule(t, checkSources(root, p), "I-3")
+			})
+		}
+	}
+	for _, target := range []string{"github.com/pressly/goose/v3/cmd/goose", "github.com/pressly/goose/v3/database", "github.com/lib/pq", "modernc.org/sqlite", "github.com/go-sql-driver/mysql"} {
+		t.Run(target, func(t *testing.T) {
+			root, p := fixture(t)
+			writeFixture(t, root, "engine/go/server/internal/pgstore/probe.go", source("AGPL-3.0-or-later", "package pgstore\nimport _ "+fmt.Sprintf("%q", target)+"\n"))
+			expectRule(t, checkSources(root, p), "I-3")
+		})
+	}
+}
+
+func TestExternalGraphPinsAndDirections(t *testing.T) {
+	p := syntheticPolicy(t)
+	dir := t.TempDir()
+	for _, tc := range []struct{ name, path, version, replace string }{
+		{"wrong-version", "github.com/jackc/pgx/v5", "v5.10.0", ""},
+		{"unknown", "example.org/external", "v1.0.0", ""},
+		{"substitution", "github.com/jackc/pgx/v5", "v5.11.0", `{"Path":"../"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			value := map[string]any{"ImportPath": tc.path, "Dir": dir, "Module": map[string]any{"Path": tc.path, "Dir": dir, "Version": tc.version}}
+			if tc.replace != "" {
+				value["Module"].(map[string]any)["Replace"] = json.RawMessage(tc.replace)
+			}
+			data, err := json.Marshal(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expectRule(t, checkDependencyJSON(data, p), "I-3")
+		})
+	}
+	for _, from := range []string{"world", "gateway", "worldbridge", "protocol/wire"} {
+		for _, target := range []string{"github.com/jackc/pgx/v5", modulePrefix + "server/internal/pgstore"} {
+			t.Run(from+"_"+target, func(t *testing.T) {
+				module := serverModule
+				suffix := from
+				if strings.HasPrefix(from, "protocol/") {
+					module += "/protocol"
+					suffix = strings.TrimPrefix(from, "protocol/")
+				}
+				value := map[string]any{"ImportPath": modulePrefix + from, "Dir": filepath.Join(dir, suffix), "Module": map[string]any{"Path": module, "Dir": dir, "Main": true}, "Imports": []string{target}}
+				data, err := json.Marshal(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				expectRule(t, checkDependencyJSON(data, p), "I-3")
+			})
+		}
+	}
+}
+
+func TestGooseProviderOnlyAPI(t *testing.T) {
+	for _, body := range []string{
+		`import "github.com/pressly/goose/v3"; func f(){ goose.Up(nil,".") }`,
+		`import "github.com/pressly/goose/v3"; var dialect=goose.DialectMySQL`,
+		`import "github.com/pressly/goose/v3"; func f(){ goose.NewProvider(goose.DialectPostgres,nil,nil) }`,
+		`import "github.com/pressly/goose/v3"; func f(){ goose.NewProvider(goose.DialectPostgres,nil,nil,goose.WithDisableGlobalRegistry(false)) }`,
+		`import "github.com/pressly/goose/v3"; func f(){ goose.NewProvider("postgres",nil,nil,goose.WithDisableGlobalRegistry(true)) }`,
+		`import _ "github.com/pressly/goose/v3"`,
+		`import . "github.com/pressly/goose/v3"`,
+	} {
+		root, p := fixture(t)
+		writeFixture(t, root, "engine/go/server/internal/migrate/probe.go", source("AGPL-3.0-or-later", "package migrate\n"+body+"\n"))
+		expectRule(t, checkSources(root, p), "I-3")
+	}
+	root, p := fixture(t)
+	writeFixture(t, root, "engine/go/server/internal/migrate/probe.go", source("AGPL-3.0-or-later", `package migrate
+ import g "github.com/pressly/goose/v3"
+ func f(){g.NewProvider(g.DialectPostgres,nil,nil,g.WithDisableGlobalRegistry(true))}
+ `))
+	if err := checkSources(root, p); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestApplicationPolicyAndWorkspace(t *testing.T) {
+	for _, kind := range []string{"application-scaffold", "external-core", "unknown-pin", "changed-pin"} {
+		t.Run(kind, func(t *testing.T) {
+			p := syntheticPolicy(t)
+			switch kind {
+			case "application-scaffold":
+				p.Modules[2].Phase = "scaffold"
+			case "external-core":
+				p.Packages[1].ExternalImports = []string{"github.com/jackc/pgx/v5/**"}
+			case "unknown-pin":
+				p.ExternalModules["example.org/unknown"] = "v1.0.0"
+			case "changed-pin":
+				p.ExternalModules["github.com/jackc/pgx/v5"] = "v5.10.0"
+			}
+			expectRule(t, validatePolicy(p), "policy:")
+		})
+	}
+	root, _ := fixture(t)
+	data, err := os.ReadFile(filepath.Join(root, "go.work"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, root, "go.work", strings.Replace(string(data), "\t./engine/go/server\n", "", 1))
+	expectRule(t, checkWorkspace(root), "I-1")
+}
+
+func TestPostgresResultGateRejectsMissingOrSkippedTests(t *testing.T) {
+	var events []map[string]string
+	for _, required := range requiredPostgresTests(t) {
+		events = append(events, map[string]string{"Action": "run", "Package": required.Package, "Test": required.Test}, map[string]string{"Action": "pass", "Package": required.Package, "Test": required.Test})
+	}
+	encode := func(events []map[string]string) []byte {
+		t.Helper()
+		var out bytes.Buffer
+		for _, event := range events {
+			if err := json.NewEncoder(&out).Encode(event); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return out.Bytes()
+	}
+	if err := checkPostgresResults(bytes.NewReader(encode(events)), requiredPostgresTests(t)); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"zero", "missing", "skip", "duplicate", "fail", "wrong-package", "only-subtest", "pass-without-run", "invalid"} {
+		t.Run(kind, func(t *testing.T) {
+			data := encode(events)
+			var changed []map[string]string
+			if err := json.Unmarshal([]byte("["+strings.ReplaceAll(strings.TrimSpace(string(data)), "}\n{", "},{")+"]"), &changed); err != nil {
+				t.Fatal(err)
+			}
+			switch kind {
+			case "zero":
+				changed = nil
+			case "missing":
+				changed = changed[2:]
+			case "skip":
+				changed[1]["Action"] = "skip"
+			case "duplicate":
+				changed = append(changed, changed[1])
+			case "fail":
+				changed[1]["Action"] = "fail"
+			case "wrong-package":
+				changed[1]["Package"] = "example.org/other"
+			case "only-subtest":
+				changed[1]["Test"] += "/subtest"
+			case "pass-without-run":
+				changed = changed[1:]
+			}
+			if kind == "invalid" {
+				data = []byte("not JSON")
+			} else {
+				data = encode(changed)
+			}
+			expectRule(t, checkPostgresResults(bytes.NewReader(data), requiredPostgresTests(t)), "postgres:")
+		})
+	}
+}
+
+func TestApplicationProvidersAndFiles(t *testing.T) {
+	for _, kind := range []string{"missing-license", "wrong-license", "missing-readme", "missing-package-doc", "unknown-package", "parent-provider", "outside-parent-replacement"} {
+		t.Run(kind, func(t *testing.T) {
+			root, p := fixture(t)
+			switch kind {
+			case "missing-license", "missing-readme":
+				name := "LICENSE"
+				if kind == "missing-readme" {
+					name = "README.md"
+				}
+				if err := os.Remove(filepath.Join(root, "engine/go/server", name)); err != nil {
+					t.Fatal(err)
+				}
+				expectRule(t, checkModule(root, p.Modules[2]), "I-1")
+			case "wrong-license":
+				writeFixture(t, root, "engine/go/server/LICENSE", "different license\n")
+				expectRule(t, checkModule(root, p.Modules[2]), "I-1")
+			case "missing-package-doc":
+				if err := os.Remove(filepath.Join(root, "engine/go/server/internal/pgstore/doc.go")); err != nil {
+					t.Fatal(err)
+				}
+				writeFixture(t, root, "engine/go/server/internal/pgstore/store.go", source("AGPL-3.0-or-later", "package pgstore\n"))
+				expectRule(t, checkSources(root, p), "I-1")
+			case "unknown-package":
+				writeFixture(t, root, "engine/go/server/internal/unknown/doc.go", source("AGPL-3.0-or-later", "package unknown\n"))
+				expectRule(t, checkSources(root, p), "I-3")
+			case "parent-provider":
+				value := map[string]any{"ImportPath": modulePrefix + "server/internal/pgstore", "Dir": filepath.Join(root, "server/internal/pgstore"), "Module": map[string]any{"Path": serverModule, "Dir": root, "Main": true}}
+				data, err := json.Marshal(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				expectRule(t, checkDependencyJSON(data, p), "I-3")
+			case "outside-parent-replacement":
+				outside := t.TempDir()
+				value := map[string]any{"ImportPath": modulePrefix + "world", "Dir": filepath.Join(outside, "world"), "Module": map[string]any{"Path": serverModule, "Dir": outside, "Replace": map[string]any{"Path": "../", "Dir": outside}}}
+				data, err := json.Marshal(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				expectRule(t, checkDependencyJSON(data, p, graphContext{root, modulePrefix + "server", false}), "I-3")
+			}
+		})
+	}
+}
+
+func requiredPostgresTests(t *testing.T) []postgresTest {
+	t.Helper()
+	_, file, _, _ := runtime.Caller(0)
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(file), "../../engine/go/server/postgres-tests.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := loadPostgresTests(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return list
+}
+
+func TestPostgresManifestRejectsEmptyAndInvalidLists(t *testing.T) {
+	for _, data := range []string{"", "# only a comment\n", "example.org/other TestOne", "github.com/l2go/alatyr/engine/go/server/internal/pgstore TestOne extra", "github.com/l2go/alatyr/engine/go/server/internal/pgstore TestOne/subtest", "github.com/l2go/alatyr/engine/go/server/internal/pgstore TestOne\ngithub.com/l2go/alatyr/engine/go/server/internal/pgstore TestOne\n"} {
+		if _, err := loadPostgresTests(strings.NewReader(data)); err == nil {
+			t.Fatalf("invalid test manifest accepted: %q", data)
+		}
+	}
+	if err := checkPostgresResults(strings.NewReader(""), nil); err == nil {
+		t.Fatal("empty manifest accepted")
+	}
+}
+
+func TestGraphModesUseProviderPathAndDirectory(t *testing.T) {
+	p := syntheticPolicy(t)
+	root := t.TempDir()
+	parent := filepath.Join(root, "engine/go")
+	makePackage := func(module, path, dir, version string, main bool, replace any) map[string]any {
+		provider := map[string]any{"Path": module, "Dir": dir, "Version": version, "Main": main}
+		if replace != nil {
+			provider["Replace"] = replace
+		}
+		return map[string]any{"ImportPath": path, "Dir": filepath.Join(dir, strings.TrimPrefix(path, module)), "Module": provider}
+	}
+	check := func(pkg map[string]any, mode graphContext, want bool) {
+		t.Helper()
+		data, err := json.Marshal(pkg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = checkDependencyJSON(data, p, mode)
+		if want && err != nil {
+			t.Fatal(err)
+		}
+		if !want {
+			expectRule(t, err, "I-3")
+		}
+	}
+	workspace := graphContext{root, modulePrefix + "server", true}
+	for _, main := range []bool{false, true} {
+		for _, module := range []string{serverModule, modulePrefix + "protocol", modulePrefix + "server"} {
+			dir := parent
+			rel := "world"
+			if module != serverModule {
+				dir = filepath.Join(parent, strings.TrimPrefix(module, modulePrefix))
+				rel = "wire"
+				if module == modulePrefix+"server" {
+					rel = "internal/pgstore"
+				}
+			}
+			check(makePackage(module, module+"/"+rel, dir, "", main, nil), workspace, true)
+		}
+	}
+	off := graphContext{root, modulePrefix + "server", false}
+	valid := map[string]any{"Path": "../", "Dir": parent}
+	check(makePackage(serverModule, modulePrefix+"world", parent, "v0.0.0", false, valid), off, true)
+	for _, kind := range []string{"missing-replace", "wrong-version", "wrong-directory", "wrong-target", "workspace-replace", "workspace-version"} {
+		t.Run(kind, func(t *testing.T) {
+			version := "v0.0.0"
+			dir := parent
+			replacement := any(valid)
+			mode := off
+			switch kind {
+			case "missing-replace":
+				replacement = nil
+			case "wrong-version":
+				version = protocolVersion
+			case "wrong-directory":
+				dir = t.TempDir()
+			case "wrong-target":
+				replacement = map[string]any{"Path": "..", "Dir": parent}
+			case "workspace-replace":
+				version = ""
+				mode = workspace
+			case "workspace-version":
+				replacement = nil
+				mode = workspace
+			}
+			check(makePackage(serverModule, modulePrefix+"world", dir, version, true, replacement), mode, false)
+		})
+	}
+	// In workspace a pin does not appear in graph metadata. The module-file gate
+	// remains responsible for the protocol requirement, including indirect form.
+	protocolDir := filepath.Join(parent, "protocol")
+	check(makePackage(modulePrefix+"protocol", modulePrefix+"protocol/wire", protocolDir, "", true, nil), workspace, true)
+}
+
+func TestApplicationMatrixSpecificExternalEdges(t *testing.T) {
+	for _, tc := range []struct{ from, target string }{
+		{"server/internal/migrate", "github.com/jackc/pgx/v5"},
+		{"server/internal/pgstore", "github.com/jackc/pgx/v5/stdlib"},
+		{"server/internal/pgtest", "github.com/pressly/goose/v3"},
+		{"server/internal/pgtest", modulePrefix + "server/internal/migrate"},
+	} {
+		root, p := fixture(t)
+		writeFixture(t, root, "engine/go/"+tc.from+"/probe.go", source("AGPL-3.0-or-later", "package probe\nimport _ "+fmt.Sprintf("%q", tc.target)+"\n"))
+		expectRule(t, checkSources(root, p), "I-3")
+	}
+	root, p := fixture(t)
+	writeFixture(t, root, "engine/go/server/internal/pgstore/probe.go", "// SPDX-License-Identifier: AGPL-3.0-or-later\npackage pgstore\n")
+	expectRule(t, checkModule(root, p.Modules[2]), "I-1")
+}
+
+func TestApplicationProtocolIndirectMatchesSources(t *testing.T) {
+	root, p := fixture(t)
+	writeFixture(t, root, "engine/go/server/cmd/alatyr-server/doc.go", source("AGPL-3.0-or-later", "package main\n"))
+	file := "engine/go/server/go.mod"
+	data, err := os.ReadFile(filepath.Join(root, file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	indirect := strings.Replace(string(data), modulePrefix+"protocol "+protocolVersion, modulePrefix+"protocol "+protocolVersion+" // indirect", 1)
+	writeFixture(t, root, file, indirect)
+	if err := checkModule(root, p.Modules[2]); err != nil {
+		t.Fatal(err)
+	}
+	without := strings.Replace(indirect, modulePrefix+"protocol "+protocolVersion+" // indirect", "", 1)
+	writeFixture(t, root, file, without)
+	expectRule(t, checkModule(root, p.Modules[2]), "I-3")
 }
 
 func TestWorldTestCompositionBoundary(t *testing.T) {

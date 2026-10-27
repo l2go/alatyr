@@ -144,10 +144,12 @@ jobs:
           go work sync
           git diff --exit-code -- go.work go.work.sum tools/world/go.mod tools/world/go.sum engine/go
           test ! -e go.work.sum
-          test "$(find engine/go -name go.mod -type f | sort)" = "$(printf '%s\n' engine/go/go.mod engine/go/protocol/go.mod)"
+          test "$(find engine/go -name go.mod -type f | sort)" = "$(printf '%s\n' engine/go/go.mod engine/go/protocol/go.mod engine/go/server/go.mod)"
           for module in tools/world engine/go/protocol; do
             test ! -e "$module/go.sum"
           done
+          (cd engine/go/server && GOWORK=off go mod tidy -diff)
+          (cd engine/go && GOWORK=off go mod tidy -diff)
           printf '%s\n' \
             'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0 h1:rMwRQ7Ky/sqoadBzm0G8x1JznT9qSwVIoEIzajZFh/A=' \
             'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/go.sum
@@ -165,14 +167,14 @@ jobs:
           GOWORK: "off"
         run: |
           set -euo pipefail
-          for module in engine/go engine/go/protocol; do
+          for module in engine/go engine/go/protocol engine/go/server; do
             (cd "$module" && go vet ./... && go test -race -count=1 -timeout=2m ./...)
           done
 
       - name: Check each module in the workspace
         run: |
           set -euo pipefail
-          for module in engine/go engine/go/protocol; do
+          for module in engine/go engine/go/protocol engine/go/server; do
             (cd "$module" && go vet ./... && go test -race -count=1 -timeout=2m ./...)
           done
 
@@ -193,7 +195,7 @@ jobs:
           GOWORK: "off"
         run: |
           set -euo pipefail
-          for module in engine/go engine/go/protocol; do
+          for module in engine/go engine/go/protocol engine/go/server; do
             (cd "$module" && staticcheck ./...)
           done
           staticcheck ./tools/ci/*.go
@@ -208,7 +210,7 @@ jobs:
           GOWORK: "off"
         run: |
           set -euo pipefail
-          for module in engine/go engine/go/protocol; do
+          for module in engine/go engine/go/protocol engine/go/server; do
             (cd "$module" && govulncheck -test ./...)
           done
 
@@ -290,7 +292,7 @@ jobs:
           set -euo pipefail
           git diff --exit-code
           test ! -e go.work.sum
-          test "$(find engine/go -name go.mod -type f | sort)" = "$(printf '%s\n' engine/go/go.mod engine/go/protocol/go.mod)"
+          test "$(find engine/go -name go.mod -type f | sort)" = "$(printf '%s\n' engine/go/go.mod engine/go/protocol/go.mod engine/go/server/go.mod)"
           for module in tools/world engine/go/protocol; do
             test ! -e "$module/go.sum"
           done
@@ -444,6 +446,26 @@ jobs:
           name: l2jfree-dist
           if-no-files-found: error
           path: dist/*
+
+  go-postgres:
+    name: go-postgres
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.go == 'true') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      GOTOOLCHAIN: local
+      GOMAXPROCS: "2"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.3"
+          cache: false
+      - name: Verify persistence, baseline and participant process restart
+        run: bash tools/ci/go-postgres.sh
 
   integration:
     needs: changes
@@ -886,7 +908,7 @@ jobs:
   # it requires the guards and the Go checks (passed, or skipped because Go did not change). After a merge it also
   # requires the image of every platform, and Go must have run.
   image:
-    needs: [guards, go, image-platform]
+    needs: [guards, go, go-postgres, image-platform]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -897,20 +919,23 @@ jobs:
           EVENT: ${{ github.event_name }}
           GUARDS: ${{ needs.guards.result }}
           GO_RESULT: ${{ needs.go.result }}
+          GO_POSTGRES_RESULT: ${{ needs.go-postgres.result }}
           IMAGE: ${{ needs.image-platform.result }}
         run: |
           set -euo pipefail
           test "$GUARDS" = success || { echo "::error::the guards did not pass: $GUARDS"; exit 1; }
           if [ "$EVENT" = pull_request ]; then
+            test "$GO_POSTGRES_RESULT" = success -o "$GO_POSTGRES_RESULT" = skipped || { echo "::error::the PostgreSQL Go checks did not pass: $GO_POSTGRES_RESULT"; exit 1; }
             test "$GO_RESULT" = success -o "$GO_RESULT" = skipped || { echo "::error::the Go checks did not pass: $GO_RESULT"; exit 1; }
             exit 0
           fi
+          test "$GO_POSTGRES_RESULT" = success || { echo "::error::the PostgreSQL Go checks did not pass: $GO_POSTGRES_RESULT"; exit 1; }
           test "$GO_RESULT" = success || { echo "::error::the Go checks did not pass: $GO_RESULT"; exit 1; }
           test "$IMAGE" = success || { echo "::error::the image of a platform did not pass: $IMAGE"; exit 1; }
 
   # Names the verified digests edge and sha-* only when every check of the commit passed.
   image-index:
-    needs: [image, guards, build, integration, go, world]
+    needs: [image, guards, build, integration, go, go-postgres, world]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15

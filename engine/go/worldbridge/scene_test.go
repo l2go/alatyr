@@ -15,6 +15,7 @@ import (
 	"github.com/l2go/alatyr/engine/go/bridge/profile"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/world"
+	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
 
 func TestCheckpointUsesCapturedSourcesAndKnownEmpty(t *testing.T) {
@@ -57,7 +58,7 @@ func TestCheckpointUsesCapturedSourcesAndKnownEmpty(t *testing.T) {
 			}
 		}
 	}
-	for _, k := range []uint64{1, 14, 16, 22, 23, 24} {
+	for _, k := range []uint64{1, 14, 16, 21, 22, 23, 24} {
 		if !seen[k] {
 			t.Fatalf("missing source kind %d", k)
 		}
@@ -384,5 +385,26 @@ func TestUnknownDisplaySkillIsIncomplete(t *testing.T) {
 	cp, _, err := tr.checkpoint(s, 1, 1, 0)
 	if err != nil || cp.Ready || !slices.Contains(cp.Incomplete, "skills") {
 		t.Fatalf("got %+v/%v, want incomplete display mapping", cp, err)
+	}
+}
+
+func TestAuthoredNPCRolesRemainExplicit(t *testing.T) {
+	tr, s := fixture()
+	v := s.Objects[0].State.(world.NPCSeen).NPC
+	for _, tc := range []struct {
+		role catalog.Role
+		want string
+	}{
+		{catalog.Monster, "creature"}, {catalog.Folk, "folk"}, {catalog.Trainer, "tutor"}, {catalog.Merchant, "provisioner"},
+	} {
+		v.Template.Role = tc.role
+		f, err := tr.npc(v, 7)
+		if err != nil {
+			t.Fatal(err)
+		}
+		role, ok := wire.Find(f.fields, 11)
+		if !ok || string(role.Data) != tc.want {
+			t.Fatalf("%s role got %q, want %q", tc.role, role.Data, tc.want)
+		}
 	}
 }

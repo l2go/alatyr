@@ -1,0 +1,13 @@
+# Every entry must run once and pass in the PostgreSQL job.
+github.com/l2go/alatyr/engine/go/server/cmd/alatyr-server TestParticipantProcessRestart
+github.com/l2go/alatyr/engine/go/server/internal/pgstore TestPostgresSnapshotAndLease
+github.com/l2go/alatyr/engine/go/server/internal/pgstore TestLearningTransactionRollbackAndIdempotentRetry
+github.com/l2go/alatyr/engine/go/server/internal/pgstore TestSnapshotRollbackAndOwnership
+github.com/l2go/alatyr/engine/go/server/internal/pgstore TestGooseBaselinesFlywayWithoutDataLoss
+github.com/l2go/alatyr/engine/go/server/internal/pgstore TestGooseRejectsUnrecognizedHistory
+github.com/l2go/alatyr/engine/go/server/internal/pgstore TestGooseRejectsFutureHistory
+github.com/l2go/alatyr/engine/go/server/internal/pgstore TestWorldLearningUsesPostgresAtomicPort
+github.com/l2go/alatyr/engine/go/server/cmd/alatyr-server TestParticipantFatalWorldExitPersists
+github.com/l2go/alatyr/engine/go/server/cmd/alatyr-server TestHiddenSkillReplacementPersists
+github.com/l2go/alatyr/engine/go/server/internal/pgstore TestPostgresCitextCharacterIdentity
+github.com/l2go/alatyr/engine/go/server/internal/pgstore TestInventoryOrderAndEquipmentTransitions

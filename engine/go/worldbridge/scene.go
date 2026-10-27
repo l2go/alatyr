@@ -51,6 +51,10 @@ func (t translator) npc(v world.NPCView, class int32) (fact, error) {
 		role = "tutor"
 	} else if v.Template.Role == catalog.Merchant {
 		role = "provisioner"
+	} else if v.Template.Role == catalog.Monster {
+		role = "creature"
+	} else if v.Template.Role == catalog.Folk {
+		role = "folk"
 	}
 	speed := v.Template.WalkSpeed
 	if v.Running {

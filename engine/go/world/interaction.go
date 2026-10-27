@@ -89,11 +89,12 @@ func (w *World) showSkillList(s *state, p *player, n *npc) {
 	}
 }
 
-// Learn reserves a trainer offer and spends SP in the loop. PutSkill executes
-// on the caller; a failed write retains the learned skill for Leave to save.
-// A host whose Store lacks PutSkill cannot learn a skill.
+// Learn reserves a trainer offer and spends SP in the loop. Persistence runs
+// on the caller. PutLearning captures the SP balance and skills together for a
+// durable store; PutSkill remains the fallback for in-memory adapters. A failed
+// write retains the learned skill and spent SP for the fenced Leave retry.
 func (w *World) Learn(ctx context.Context, id, skillID, level int32) error {
-	if _, ok := w.skillStore(); !ok {
+	if !w.canStoreSkills() {
 		return errors.New("world: store cannot persist skills")
 	}
 	var learnt *Skill
@@ -115,13 +116,22 @@ func (w *World) Learn(ctx context.Context, id, skillID, level int32) error {
 	return w.saveSkill(ctx, id, *learnt, command)
 }
 
+// learningStore persists a captured SP balance and skills atomically. The
+// durable host uses this port; skillStore remains for in-memory adapters.
+type learningStore interface {
+	PutLearning(context.Context, Character) error
+}
+
 type skillStore interface {
 	PutSkill(context.Context, int32, Skill) error
 }
 
-func (w *World) skillStore() (skillStore, bool) {
-	store, ok := w.store.(skillStore)
-	return store, ok
+func (w *World) canStoreSkills() bool {
+	if _, ok := w.store.(learningStore); ok {
+		return true
+	}
+	_, ok := w.store.(skillStore)
+	return ok
 }
 
 func (w *World) learn(s *state, p *player, skillID, level int32) (*Skill, error) {
@@ -129,7 +139,7 @@ func (w *World) learn(s *state, p *player, skillID, level int32) (*Skill, error)
 }
 
 func (w *World) learnFrom(s *state, p *player, n *npc, skillID, level int32) (*Skill, error) {
-	if _, ok := w.skillStore(); !ok {
+	if !w.canStoreSkills() {
 		s.resolve(StageRefused, ReasonUnavailable)
 		return nil, errors.New("world: store cannot persist skills")
 	}
@@ -173,16 +183,34 @@ func (w *World) learnFrom(s *state, p *player, n *npc, skillID, level int32) (*S
 }
 
 func (w *World) saveSkill(ctx context.Context, id int32, k Skill, command IntentID) error {
-	store, ok := w.skillStore()
-	if !ok {
+	if !w.canStoreSkills() {
 		return errors.New("world: store cannot persist skills")
 	}
-	saveErr := store.PutSkill(ctx, id, k)
+	var saveErr error
+	if durable, ok := w.store.(learningStore); ok {
+		var c Character
+		captureErr := w.do(ctx, func(s *state) {
+			p := s.players[id]
+			if p == nil || p.ref() != command.Owner {
+				saveErr = &RefusalError{Owner: command.Owner, Reason: ReasonStale}
+				return
+			}
+			c = p.char.Clone()
+		})
+		if captureErr != nil {
+			saveErr = captureErr
+		}
+		if saveErr == nil {
+			saveErr = durable.PutLearning(ctx, c)
+		}
+	} else {
+		saveErr = w.store.(skillStore).PutSkill(ctx, id, k)
+	}
 	if w.durability != nil {
 		w.durability(Durability{Intent: command, Time: Time(time.Since(w.started)), Err: saveErr})
 	}
 	clearErr := w.do(context.Background(), func(s *state) {
-		if p, ok := s.players[id]; ok {
+		if p, ok := s.players[id]; ok && p.ref() == command.Owner {
 			p.learningWrite = false
 		}
 	})
