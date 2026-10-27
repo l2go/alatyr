@@ -1,10 +1,8 @@
 name: build
 
-# The pipeline. A pull request runs only the checks of the parts it changes: the Java build and the database
-# tests, the Go modules, or the authored world; a change of documentation alone runs none of them. The image is built
-# for main: after a merge the image jobs build both platforms, rehearse the operator's first week on them, and
-# publish the image, signed and attested. The release workflow promotes that image to a version. A manual run
-# (workflow_dispatch) runs everything, including the image and the measurements.
+# Pull requests check the changed Go modules, deployment scripts, and authored
+# world. Main builds and verifies both native image platforms, then signs and
+# publishes their index. Release promotes that verified digest without rebuilding.
 
 on:
   push:
@@ -31,7 +29,6 @@ jobs:
     permissions:
       contents: read
     outputs:
-      java: ${{ steps.paths.outputs.java }}
       go: ${{ steps.paths.outputs.go }}
       world: ${{ steps.paths.outputs.world }}
     steps:
@@ -49,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT" != pull_request ]; then
-            printf '%s\n' java=true go=true world=true >> "$GITHUB_OUTPUT"
+            printf '%s\n' go=true world=true >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git diff --name-only --no-renames HEAD^1 HEAD
@@ -205,6 +202,14 @@ jobs:
           set -euo pipefail
           actionlint .github/workflows/*.yml
 
+      - name: Check deployment and release scripts
+        run: |
+          set -euo pipefail
+          bash deploy/image/test-init-secrets.sh
+          bash deploy/release/test-bundle.sh
+          bash deploy/test-checks.sh
+          bash -n deploy/*.sh deploy/image/bin/* deploy/postgres/init/*.sh
+
       - name: Check module vulnerabilities
         env:
           GOWORK: "off"
@@ -301,7 +306,7 @@ jobs:
             'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/go.sum
 
   # Formats, vets, and tests the world tool, then checks that the authored world matches a fresh render.
-  # It does not build the server and runs beside the Java build.
+  # It runs independently of the application image.
   world:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.world == 'true') }}
@@ -353,100 +358,6 @@ jobs:
             ${{ runner.temp }}/world-render/world/catalog
             ${{ runner.temp }}/world-render/world/data
 
-  build:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.java == 'true') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          # Build metadata and version info need only the checked out commit.
-          fetch-depth: 1
-
-      - name: Set up Microsoft Build of OpenJDK 25
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          distribution: microsoft
-          java-version: "25"
-          cache: maven
-
-      # The release bundle script is tested here, before it is ever used for a release.
-      - name: Test the release bundle script
-        run: bash deploy/release/test-bundle.sh
-
-      # Unit tests run in this job. Tests tagged integration need PostgreSQL and run
-      # in the integration job. Surefire excludes that tag unless -Dgroups is set.
-      - name: Build, test, and package with Java 25
-        run: >-
-          ./mvnw -B -ntp
-          -Dl2jfree.build.revision=${{ github.sha }}
-          install
-
-      - name: Verify the platform distribution
-        shell: bash
-        run: |
-          mapfile -t archives < <(find engine/java/platform/target -maxdepth 1 -name 'l2jfree-platform-*-dist.zip' -print)
-          if [[ ${#archives[@]} -ne 1 ]]; then
-            echo "Expected one platform distribution, found ${#archives[@]}"
-            exit 1
-          fi
-          archive="${archives[0]}"
-          entries="$(unzip -Z1 "$archive")"
-          if grep -Evq '^l2jfree/' <<< "$entries"; then
-            echo "Every entry of the platform distribution must be under l2jfree/: $archive"
-            exit 1
-          fi
-          require_entry() {
-            if ! grep -Eq "$1" <<< "$entries"; then
-              echo "The platform distribution is missing an entry that matches $1: $archive"
-              exit 1
-            fi
-          }
-          require_entry '^l2jfree/l2jfree-platform(-[^/]+)?\.jar$'
-          require_entry '^l2jfree/config/server\.properties$'
-          require_entry '^l2jfree/config/loginserver\.properties$'
-          require_entry '^l2jfree/config/telnet\.properties$'
-          require_entry '^l2jfree/config/logback\.xml$'
-          require_entry '^l2jfree/agents/opentelemetry-javaagent\.jar$'
-          require_entry '^l2jfree/world/world\.properties$'
-          require_entry '^l2jfree/world/LICENSE$'
-          require_entry '^l2jfree/world/catalog/npc_template\.csv$'
-          world_top="$(grep -E '^l2jfree/world/[^/]' <<< "$entries" | sed -E 's|^l2jfree/world/([^/]+).*|\1|' | sort -u)"
-          expected_top="$(printf '%s\n' LICENSE catalog data world.properties)"
-          if [[ "$world_top" != "$expected_top" ]]; then
-            echo "The world in the archive is not only world.properties, LICENSE, catalog, and data:"
-            printf '%s\n' "$world_top"
-            exit 1
-          fi
-          if grep -Eq '(^|/)scripts\.cfg$|\.class$|\.py$' <<< "$entries"; then
-            echo "The platform distribution contains a script list, bytecode, or Python: $archive"
-            exit 1
-          fi
-          if grep -Eq '^l2jfree/(data|catalog)/' <<< "$entries"; then
-            echo "The platform distribution still has l2jfree/data or l2jfree/catalog: $archive"
-            exit 1
-          fi
-          if ! unzip -p "$archive" l2jfree/world/world.properties | grep -qx 'world.id=buyan-okolitsa'; then
-            echo "The archive passport is not world.id=buyan-okolitsa: $archive"
-            exit 1
-          fi
-
-      - name: Collect the verified distributions
-        shell: bash
-        run: |
-          version="$(./mvnw -q -N org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate -Dexpression=project.version -DforceStdout)"
-          mkdir -p dist
-          cp "engine/java/platform/target/l2jfree-platform-${version}-dist.zip" dist/
-          cp "engine/java/smoke/target/l2jfree-smoke-${version}.jar" dist/l2jfree-smoke.jar
-
-      - name: Upload the verified distributions
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: l2jfree-dist
-          if-no-files-found: error
-          path: dist/*
-
   go-postgres:
     name: go-postgres
     needs: changes
@@ -464,71 +375,14 @@ jobs:
         with:
           go-version: "1.27.3"
           cache: false
-      - name: Verify persistence, baseline and participant process restart
+      - name: Verify fresh-schema persistence and participant process restart
         run: bash tools/ci/go-postgres.sh
 
-  integration:
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.java == 'true' || needs.changes.outputs.go == 'true' || needs.changes.outputs.world == 'true') }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          fetch-depth: 1
-
-      - name: Set up Microsoft Build of OpenJDK 25
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          distribution: microsoft
-          java-version: "25"
-          cache: maven
-
-      - name: Run the PostgreSQL integration tests
-        run: |
-          ./mvnw -B -ntp \
-            -Dgroups=integration \
-            -Dsurefire.excludedGroups= \
-            -Dl2jfree.build.revision=${{ github.sha }} \
-            verify
-          reports="$(find engine/java/game/target/surefire-reports engine/java/login/target/surefire-reports -name 'TEST-*.xml' | wc -l | tr -d '[:space:]')"
-          expected="$(grep -rl '@Tag("integration")' --include='*.java' engine/java/game/src/test engine/java/login/src/test | wc -l | tr -d '[:space:]')"
-          echo "integration reports: ${reports} of ${expected} tagged classes"
-          test "${expected}" -gt 0
-          test "${reports}" -ge "${expected}"
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: "1.27.3"
-          cache: false
-
-      - name: Compare Okolitsa on the Go world and the live Java bridge
-        run: bash tools/ci/bridge-integration.sh
-
-      - name: Upload what the database checks wrote
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: l2jfree-database-checks
-          if-no-files-found: ignore
-          path: |
-            engine/java/game/target/statement-check.txt
-            engine/java/game/target/database-docs/*
-            target/bridge-integration/server.log
-            target/bridge-integration/postgres.log
-            target/bridge-integration/nc.log
-            target/bridge-integration/go.log
-            target/bridge-integration/hunt-model.log
-            target/bridge-integration/threads.txt
-
-  # Builds the image of each platform from the verified distribution and starts it: the server must come up on the native
-  # transport and admit a client. The rest of the operator's first week (the load, the roles, a restart, a backup and
-  # its restore, an update) does not depend on the platform and is rehearsed on amd64. On main the job pushes each
-  # image by digest, signed and attested. It runs after a merge and on request, not for a pull request. Only
-  # image-index names a digest edge and sha-*, and only after every check of the commit passed.
+  # Build and exercise both architectures natively. No deployment is published
+  # until its participant restart/restore checks and content checks pass.
   image-platform:
     name: image (${{ matrix.arch }}, ${{ matrix.runner }})
-    needs: build
+    needs: [go, go-postgres, world, guards]
     if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
@@ -546,296 +400,56 @@ jobs:
       id-token: write
       attestations: write
     env:
-      REGISTRY_IMAGE: ghcr.io/l2go/l2jfree
+      REGISTRY_IMAGE: ghcr.io/l2go/alatyr
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 1
 
-      - name: Download the verified distributions
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          name: l2jfree-dist
-          path: dist
-
-      # The smoke client is a Java program: it logs in, enters the world, and leaves.
-      - name: Set up Microsoft Build of OpenJDK 25
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          distribution: microsoft
-          java-version: "25"
-
-      - name: Stage the image context
-        run: |
-          unzip -q dist/l2jfree-platform-*-dist.zip -d deploy/image
-          test -f deploy/image/l2jfree/config/server.properties
-          test -d deploy/image/l2jfree/libs
-
-      - name: Check the script that creates the passwords
-        if: matrix.arch == 'amd64'
-        run: deploy/image/test-init-secrets.sh
+          go-version: "1.27.3"
+          cache: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
-      - name: Build the image
+      - name: Build the application image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
-          context: deploy/image
+          context: .
+          file: deploy/image/Dockerfile
           platforms: linux/${{ matrix.arch }}
           load: true
-          tags: l2jfree:ci
-          cache-from: type=gha,scope=image-${{ matrix.arch }}
-          cache-to: type=gha,scope=image-${{ matrix.arch }},mode=max
+          tags: alatyr:ci
+          cache-from: type=gha,scope=go-image-${{ matrix.arch }}
+          cache-to: type=gha,scope=go-image-${{ matrix.arch }},mode=max
 
-      - name: Verify the image content
+      - name: Verify image content, user and authored world
         run: |
-          deploy/verify-image.sh l2jfree:ci linux/${{ matrix.arch }}
-          docker image inspect l2jfree:ci --format '{{.Size}} bytes' | tee image-size.txt
+          deploy/verify-image.sh alatyr:ci linux/${{ matrix.arch }}
+          deploy/check-image-world.sh alatyr:ci
+          docker image inspect alatyr:ci --format '{{.Size}} bytes' > image-size.txt
 
-      - name: Check the image world matches the repository
-        run: deploy/check-image-world.sh l2jfree:ci
+      - name: Exercise readiness, live shutdown, restart and backup restore
+        env:
+          GOTOOLCHAIN: local
+          GOMAXPROCS: "2"
+        run: bash deploy/check-server.sh alatyr:ci
 
-      - name: Upload the image file list
+      - name: Keep image verification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: image-file-list-${{ matrix.arch }}
+          name: image-evidence-${{ matrix.arch }}
           if-no-files-found: warn
           path: |
             image-size.txt
             image-file-list.txt
             image-world-manifest.txt
-
-      # Every client of the load test comes from the address of the Docker gateway, and one address may open only so many
-      # connections in a short time. The operator directory raises the limits, as an operator behind such an address does.
-      - name: Raise the accept limits of the stack for the load
-        if: matrix.arch == 'amd64'
-        run: |
-          docker volume create l2jfree_config
-          docker run --rm --entrypoint bash -v l2jfree_config:/var/lib/l2jfree/config l2jfree:ci -c '
-            for file in server loginserver; do
-              printf "AcceptWarn = 1000\nAcceptReject = 2000\nAcceptWarnLong = 3000\nAcceptRejectLong = 6000\n" \
-                > "/var/lib/l2jfree/config/$file.properties"
-            done'
-
-      - name: Start the stack with Docker Compose
-        env:
-          L2JFREE_IMAGE: l2jfree:ci
-        run: docker compose -f deploy/compose.yaml up -d --wait --wait-timeout 600
-
-      - name: Probe the login and world ports
-        run: |
-          python3 deploy/probe/login_init.py --host 127.0.0.1 --port 2106 --timeout 60
-          python3 deploy/probe/login_init.py --host 127.0.0.1 --port 7777 --timeout 60 --connect-only
-
-      # The first session uses an account that the second session, after the restart, must find again with its character.
-      - name: Take a client through a whole session
-        run: |
-          password="$(openssl rand -hex 8)"
-          echo "::add-mask::$password"
-          echo "SMOKE_PASSWORD=$password" >> "$GITHUB_ENV"
-          java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --account smokesave --password "$password" --existing-characters 0
-
-      # Many clients at once, each with an account of its own: accounts, characters, and ids are made concurrently.
-      - name: Take many clients through a session at once
-        if: matrix.arch == 'amd64'
-        run: java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --sessions 24 --parallel 6
-
-      # Each module reaches the schemas it owns and nothing else.
-      - name: Check what each database role may reach
-        if: matrix.arch == 'amd64'
-        env:
-          L2JFREE_IMAGE: l2jfree:ci
-        run: deploy/probe/check-roles.sh
-
-      # Each start of this image is checked on its own window: one passport, no scripts, no ERROR.
-      # WARN lines stay visible as a group named by the stage. A warning about items without a template
-      # is not an error. It is required only when a step passes --expect-unknown-items.
-      - name: Check the server log for the world and for errors
-        env:
-          L2JFREE_IMAGE: l2jfree:ci
-        run: |
-          deploy/probe/check-server-window.sh first-start
-          # the transport of both ports: a native transport that cannot be loaded would leave the server on NIO unnoticed
-          test "$(grep -c 'Accepting connections on .* (transport epoll' image-server-logs/first-start.log)" -ge 2 \
-            || { echo "::error::the ports do not run on the epoll transport"; grep -E 'Transport|Accepting' image-server-logs/first-start.log | head; exit 1; }
-
-      # The deploy guides change a setting with this command. The extra key is in no default file, so the server names
-      # it in a warning when it reads the file, which shows after the restart that the command wrote where the server reads.
-      - name: Change a setting the way the deploy guides do
-        if: matrix.arch == 'amd64'
-        env:
-          L2JFREE_IMAGE: l2jfree:ci
-        run: |
-          printf 'MaximumOnlineUsers = 50\nGuideProbe = 1\n' \
-            | docker compose -f deploy/compose.yaml exec -T server tee /var/lib/l2jfree/config/server.properties >/dev/null
-          docker compose -f deploy/compose.yaml exec -T server stat -c '%U %a %n' /var/lib/l2jfree/config/server.properties
-
-      - name: Restart the server and probe again
-        if: matrix.arch == 'amd64'
-        env:
-          L2JFREE_IMAGE: l2jfree:ci
-        run: |
-          since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          docker compose -f deploy/compose.yaml restart server
-          docker compose -f deploy/compose.yaml up -d --wait --wait-timeout 600
-          # the restart read the setting of the step before
-          docker compose -f deploy/compose.yaml logs --no-color server | grep -q "operator file 'server.properties' sets 'GuideProbe'" \
-            || { echo "::error::the server did not read the file that the command of the deploy guides wrote"; exit 1; }
-          python3 deploy/probe/login_init.py --host 127.0.0.1 --port 2106 --timeout 60
-          python3 deploy/probe/login_init.py --host 127.0.0.1 --port 7777 --timeout 60 --connect-only
-          # the account and the character of the first session survived the restart
-          java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --account smokesave --password "$SMOKE_PASSWORD" --existing-characters 1
-          # and an account that is new after the restart works as well
-          java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240
-          deploy/probe/check-server-window.sh restart --since "$since"
-
-      # The flight recording runs from the start and keeps its chunks in the log volume.
-      - name: Check the flight recording
-        if: matrix.arch == 'amd64'
-        env:
-          L2JFREE_IMAGE: l2jfree:ci
-        run: |
-          chunks="$(docker compose -f deploy/compose.yaml exec -T server bash -c 'find /var/lib/l2jfree/log/jfr -name "*.jfr" -size +0 | wc -l')"
-          echo "$chunks flight recording chunks in the log volume"
-          test "$chunks" -ge 1 || { echo "::error::the log volume holds no flight recording"; exit 1; }
-
-      # One command collects what an incident needs, from a server that keeps running.
-      - name: Capture the state of the running stack
-        if: matrix.arch == 'amd64'
-        env:
-          L2JFREE_IMAGE: l2jfree:ci
-        run: |
-          deploy/probe/capture.sh capture
-          ls -l capture
-          test -s capture/server.log
-          grep -q 'Full thread dump' capture/thread-dump.txt || { echo "::error::the capture has no thread dump"; exit 1; }
-          test "$(grep -c '| "' capture/thread-dump.txt)" -gt 20 || { echo "::error::the thread dump holds too few threads"; exit 1; }
-          grep -q 'rows)' capture/pg_stat_statements.txt || { echo "::error::the capture has no statement statistics"; exit 1; }
-          grep -q 'rows)' capture/pg_stat_activity.txt || { echo "::error::the capture has no session list"; exit 1; }
-          # the server is still serving
-          python3 deploy/probe/login_init.py --host 127.0.0.1 --port 2106 --timeout 60
-
-      # The server stops when asked: within the time Docker gives it, without being killed, and after it saved the
-      # state of the world. A save that never ends shows as a kill (exit code 137).
-      - name: Stop the server and check how it stops
-        if: matrix.arch == 'amd64'
-        env:
-          L2JFREE_IMAGE: l2jfree:ci
-        run: |
-          begin="$(date +%s)"
-          docker compose -f deploy/compose.yaml stop -t 60 server
-          seconds="$(( $(date +%s) - begin ))"
-          code="$(docker inspect -f '{{.State.ExitCode}}' l2jfree-server-1)"
-          echo "stopped in $seconds s with exit code $code"
-          docker compose -f deploy/compose.yaml logs --no-color --tail 300 server > stop.log
-          test "$seconds" -lt 30 || { echo "::error::the server needed $seconds s to stop"; exit 1; }
-          test "$code" = 0 -o "$code" = 143 || { echo "::error::the server did not stop by itself (exit code $code)"; exit 1; }
-          grep -q 'Data saved. All players disconnected' stop.log \
-            || { echo "::error::the stop did not log that the players were saved"; exit 1; }
-
-      # The backup and the restore of the deployment guide, run as the guide writes them: a dump of the two schemas, a
-      # stack destroyed with its volumes, a clean start, the restore, and the account of the first session finds its
-      # character again. The server is stopped by the step before, and the database is still running.
-      - name: Rehearse the backup and the restore
-        if: matrix.arch == 'amd64'
-        env:
-          L2JFREE_IMAGE: l2jfree:ci
-        run: |
-          set -euo pipefail
-          compose="docker compose -f deploy/compose.yaml"
-          account_count() {
-            $compose exec -T db psql -U postgres -d l2jfree -Atc "SELECT count(*) FROM login.account WHERE name = 'smokesave'"
-          }
-          test "$(account_count)" = 1
-          $compose exec -T db pg_dump -U postgres -d l2jfree -n login -n world -Fc > l2jfree-backup.dump
-          test -s l2jfree-backup.dump
-          $compose exec -T db pg_restore -l < l2jfree-backup.dump > backup.list
-          grep -q 'TABLE DATA login account' backup.list || { echo "::error::the dump holds no accounts"; exit 1; }
-          grep -q 'TABLE DATA world player' backup.list || { echo "::error::the dump holds no players"; exit 1; }
-          if grep -q ' catalog ' backup.list; then echo "::error::the dump holds the catalog, which the image brings"; exit 1; fi
-
-          since_clean="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          $compose down -v
-          $compose up -d --wait --wait-timeout 600
-          test "$(account_count)" = 0 || { echo "::error::the clean stack already has the account"; exit 1; }
-          deploy/probe/check-server-window.sh backup-clean --since "$since_clean"
-
-          $compose stop server
-          $compose exec -T db psql -U postgres -d l2jfree \
-            -c 'DROP SCHEMA IF EXISTS report, catalog, world, login CASCADE' \
-            -c 'CREATE SCHEMA catalog AUTHORIZATION l2jfree_world' \
-            -c 'CREATE SCHEMA report AUTHORIZATION l2jfree_world'
-          $compose exec -T db pg_restore -U postgres -d l2jfree --exit-on-error < l2jfree-backup.dump
-          test "$(account_count)" = 1 || { echo "::error::the restore did not bring the account back"; exit 1; }
-          since_restore="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          $compose start server
-          $compose up -d --wait --wait-timeout 600
-
-          python3 deploy/probe/login_init.py --host 127.0.0.1 --port 2106 --timeout 60
-          # the same account, with the password of the first session, finds its characters: the first session made one
-          # and the session after the restart another
-          java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --account smokesave --password "$SMOKE_PASSWORD" --existing-characters 2
-          # the roles of the restored database still reach only their own schema
-          deploy/probe/check-roles.sh
-          deploy/probe/check-server-window.sh backup-restore --since "$since_restore"
-
-      # The update of the image as the runbook writes it: a stack on the image that is published now (edge) is replaced
-      # by the image of this commit, on the same volumes. The account and the character of the old image must survive
-      # the migrations of the new one.
-      - name: Rehearse the update of the image
-        if: matrix.arch == 'amd64'
-        env:
-          NEW_IMAGE: l2jfree:ci
-          OLD_IMAGE: ghcr.io/l2go/l2jfree:edge
-        run: |
-          set -euo pipefail
-          compose="docker compose -f deploy/compose.yaml"
-          if ! docker pull "$OLD_IMAGE"; then
-            echo "::warning::$OLD_IMAGE cannot be pulled, so the update was not rehearsed"
-            exit 0
-          fi
-          L2JFREE_IMAGE=l2jfree:ci $compose down -v
-          L2JFREE_IMAGE="$OLD_IMAGE" $compose up -d --wait --wait-timeout 600
-          password="$(openssl rand -hex 8)"
-          echo "::add-mask::$password"
-          java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --account smokeupdate --password "$password" --existing-characters 0
-
-          since_new="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          L2JFREE_IMAGE="$NEW_IMAGE" $compose up -d --wait --wait-timeout 600
-          test "$(docker inspect -f '{{.Config.Image}}' l2jfree-server-1)" = "$NEW_IMAGE"
-          python3 deploy/probe/login_init.py --host 127.0.0.1 --port 2106 --timeout 60
-          java -jar dist/l2jfree-smoke.jar --host 127.0.0.1 --timeout-seconds 240 --account smokeupdate --password "$password" --existing-characters 1
-          # edge already ships this authored catalog, so the inventory created above still has templates.
-          # The unknown-item warning belongs to a catalog cutover, not to this update.
-          deploy/probe/check-server-window.sh update --since "$since_new"
-
-      - name: Upload the server logs
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: image-server-logs-${{ matrix.arch }}
-          if-no-files-found: warn
-          path: image-server-logs/
-
-      - name: Show the service logs after a failure
-        if: failure()
-        env:
-          L2JFREE_IMAGE: l2jfree:ci
-        run: |
-          echo "::group::server, last 200 lines"
-          docker compose -f deploy/compose.yaml logs --no-color --tail 200 server || true
-          echo "::endgroup::"
-          echo "::group::db and secrets, last 50 lines"
-          docker compose -f deploy/compose.yaml logs --no-color --tail 50 db secrets || true
-          echo "::endgroup::"
-
-      - name: Stop the stack
-        if: always()
-        env:
-          L2JFREE_IMAGE: l2jfree:ci
-        run: docker compose -f deploy/compose.yaml down -v || true
+            image-server.log
+            image-postgres.log
+            image-participant-tests.jsonl
 
       - name: Log in to the registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -850,11 +464,12 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
-          context: deploy/image
+          context: .
+          file: deploy/image/Dockerfile
           platforms: linux/${{ matrix.arch }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           provenance: mode=max
-          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-from: type=gha,scope=go-image-${{ matrix.arch }}
 
       - name: Install cosign
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -935,7 +550,7 @@ jobs:
 
   # Names the verified digests edge and sha-* only when every check of the commit passed.
   image-index:
-    needs: [image, guards, build, integration, go, go-postgres, world]
+    needs: [image, guards, go, go-postgres, world]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -945,7 +560,7 @@ jobs:
       id-token: write
       attestations: write
     env:
-      REGISTRY_IMAGE: ghcr.io/l2go/l2jfree
+      REGISTRY_IMAGE: ghcr.io/l2go/alatyr
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
@@ -983,103 +598,3 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: deploy/verify-published-image.sh "$REGISTRY_IMAGE@${{ steps.merge.outputs.digest }}"
-
-  # Measures the start of the server under G1 and ZGC, with and without the AOT cache. It runs on request (workflow_dispatch),
-  # reports, and never fails the pipeline: a shared runner is too noisy to gate on, a run takes about twenty minutes,
-  # and the numbers are read by a person.
-  startup:
-    if: github.event_name == 'workflow_dispatch'
-    needs: [build]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 50
-    continue-on-error: true
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          fetch-depth: 1
-
-      - name: Download the verified distributions
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: l2jfree-dist
-          path: dist
-
-      - name: Stage the image context
-        run: unzip -q dist/l2jfree-platform-*-dist.zip -d deploy/image
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
-
-      - name: Build the image
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
-        with:
-          context: deploy/image
-          load: true
-          tags: l2jfree:ci
-          cache-from: type=gha
-
-      - name: Measure the start
-        run: |
-          mkdir -p startup
-          python3 deploy/measure/startup.py --image l2jfree:ci --runs 3 --output startup | tee startup/table.txt
-          {
-            echo "### Start of the server, from the start of the JVM to the open ports"
-            echo
-            cat startup/startup.md
-            echo
-            echo "Cold is the first start on an empty database, without a cache. New container is the next start in a new container on the loaded database. Restart is a restart of that container. Resident memory is read ten seconds after the ports open. Runner: $(nproc) CPUs, $(free -m | awk '/Mem:/ {print $2}') MiB."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Keep the numbers
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: startup-measurement
-          path: startup
-          if-no-files-found: ignore
-
-  # The line coverage of all the tests, unit and database, reported on request. It gates nothing: the numbers show
-  # which packages no test reaches, so that tests are added where the code is least covered.
-  coverage:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    continue-on-error: true
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          fetch-depth: 1
-
-      - name: Set up Microsoft Build of OpenJDK 25
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          distribution: microsoft
-          java-version: "25"
-          cache: maven
-
-      - name: Run every test with coverage
-        run: ./mvnw -B -ntp -Pcoverage -Dsurefire.excludedGroups= -Dl2jfree.build.revision=${{ github.sha }} verify
-
-      - name: Summarize the coverage
-        if: always()
-        run: |
-          python3 tools/ci/coverage-summary.py --root . | tee coverage.md
-          {
-            echo "### Line coverage of the tests"
-            echo
-            cat coverage.md
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Keep the reports
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: coverage
-          if-no-files-found: ignore
-          path: |
-            coverage.md
-            */target/site/jacoco

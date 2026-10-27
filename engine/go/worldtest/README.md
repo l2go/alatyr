@@ -3,7 +3,7 @@
 This test composition runs G01–G10 through the existing `gatewaytest` participant
 transport, the production gateway/backend, and a real `worldbridge.Client` over
 `world.World`. It loads the repository's authored world and uses `memstore`.
-No JVM, image, database, alternative driver, or generated oracle is needed.
+The deterministic suite needs no image, database, alternative driver or generated oracle.
 
 The `go` job's workspace and standalone `./...` runs include this package.
 Run it directly from `engine/go` with `go test -race ./worldtest`, then repeat

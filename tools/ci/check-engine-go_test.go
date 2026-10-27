@@ -1043,3 +1043,16 @@ func TestHuntCalculationBoundary(t *testing.T) {
 	writeFixture(t, root, "engine/go/world/hunt/probe.go", source("AGPL-3.0-or-later", "package hunt\nimport _ \"github.com/l2go/alatyr/engine/go/world\"\n"))
 	expectRule(t, checkSources(root, p), "I-3")
 }
+
+func TestRetiredRuntimeCannotReturn(t *testing.T) {
+	for _, path := range []string{"engine/java/source.txt", "pom.xml", ".mvn/settings.xml", "mvnw", "mvnw.cmd", "tools/ci/bridge-integration.sh", "tools/ci/bridge-integration.sql", "engine/go/gateway/backend/java_integration_test.go", "tools/ci/coverage-summary.py", "deploy/measure/start.sh", "deploy/probe/start.sh"} {
+		t.Run(path, func(t *testing.T) {
+			root := t.TempDir()
+			if err := checkRuntime(root); err != nil {
+				t.Fatal(err)
+			}
+			writeFixture(t, root, path, "retired")
+			expectRule(t, checkRuntime(root), "runtime:")
+		})
+	}
+}

@@ -6,28 +6,19 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Added
 
-- The participant acceptance suite compares the same Okolitsa scenarios on the Go world and the live Java bridge, with shared reward vectors and saved-state checks.
-- The Go world now settles per-life hunting contributions and party rewards, supports equipment and healing items, and keeps experience at x1 regardless of stored vitality.
-- A PostgreSQL-backed Go participant server, built from `engine/go/server`, with authenticated HTTP and stream admission, health and readiness endpoints, fenced shutdown saves, and durable object ID ranges. Learning writes skills and the SP balance in one transaction. Embedded goose migrations create an unseeded Go schema or accept the complete Java Flyway baseline without deleting player data.
-
-- A live bridge integration check runs the packaged Java platform with PostgreSQL, the Go bridge client and the participant gateway. It covers dialogue, purchases, sales, learning, transport recovery, saved state, and revival through relocation and checkpoint drain, alongside the ordinary client smoke. The [endpoint guide](docs/engine-go/bridge.md) documents configuration, limits and evidence boundaries.
-
-### Fixed
-
-- The participant adapter recognizes complete bridge buy/sell packets without an optional completeness flag; explicitly incomplete lists remain non-actionable.
-
-- Bridge admission publishes its initial skill list before checkpoint capture, without depending on the asynchronous packet broadcaster.
-
-- Refresh current bridge movement after actor descriptions and discard stale motion when an actor is described as stopped.
-
-- Trusted bridge admission runs the ordinary world-entry handler before its initial checkpoint. Bridge configuration now uses the server's defaults and operator overlay. The endpoint remains disabled by default.
-- The Go bridge client accepts the zero list identifier issued by ordinary Java sale offers, while buy commands continue to require a positive shop identifier.
+- The Go world settles per-life hunting contributions and party rewards, supports equipment and healing items, and keeps experience at x1 regardless of stored vitality.
+- Alatyr ships the authored Go world and participant gateway as `ghcr.io/l2go/alatyr`, for linux/amd64 and linux/arm64. Compose supplies PostgreSQL 18, file-based credentials, a static participant registry and operator character import. Native image checks cover readiness, authenticated entry, live shutdown persistence, restart and backup restore.
+- PostgreSQL persistence saves learned skills and the SP balance in one transaction. Detached final checkpoints preserve participants when the world stops itself.
 
 ### Changed
 
-- The participant gateway now has G01–G10 coverage on the authored Go world without a JVM, using the shared contract driver. Go merchants support atomic buy/sell offers with authored prices and capacity checks on the resulting inventory, and refreshed actor descriptions no longer retain older motion.
+- Deployments begin with a fresh dedicated database managed by goose. Foreign database objects are refused before migration; previous player databases are not imported.
+- Release promotion, signatures, provenance, vulnerability scans and image retention use the new image name. Releases promote the tested digest without rebuilding.
+- Gateway, bridge, world and worldbridge share one AGPL Go module; the nested server application alone requires database modules. The Apache-2.0 protocol module and its pin remain independent. Go-world contracts exercise the participant gateway with the shared deterministic driver.
 
-- Gateway, bridge, world, and worldbridge now share the AGPL Go module `github.com/l2go/alatyr/engine/go`. Package import paths are unchanged; consumers must replace former server module requirements, including indirect ones, with the parent module. The Apache-2.0 protocol SDK remains a separate module at its existing pin, with package dependency boundaries enforced by the CI guard.
+### Removed
+
+- The previous server implementation, build system, native-client transport, database import path and runtime-specific integration jobs. The shared Go raw-port contract and its controlled-peer tests remain.
 
 ## [3.2.1] - 2026-10-23
 

@@ -1,0 +1,17 @@
+{
+  "HTTPAddress": "0.0.0.0:8080",
+  "StreamAddress": "",
+  "WorldPath": "/opt/alatyr/world",
+  "WorldName": "buyan-okolitsa",
+  "DatabaseSeconds": 5,
+  "ShutdownSeconds": 15,
+  "ProxyHosts": ["play.example"],
+  "ProxyOrigins": ["https://play.example"],
+  "ProxyPeers": ["192.0.2.1"],
+  "Participants": [{
+    "ID": "walker",
+    "Account": "example",
+    "Character": "Walker",
+    "TokenSHA256": "REPLACE_WITH_SHA256_OF_A_RANDOM_64_CHARACTER_HEX_TOKEN"
+  }]
+}

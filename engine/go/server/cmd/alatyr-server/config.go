@@ -22,9 +22,9 @@ import (
 // Participant binds an unguessable bearer-token digest to one existing character.
 type Participant struct{ ID, Account, Character, TokenSHA256 string }
 
-// Config is immutable after validation. Both listeners must bind numeric loopback
-// addresses. Public HTTP runs behind a TLS proxy on the same host; it must strip
-// incoming forwarding headers and set X-Forwarded-Proto itself.
+// Config is immutable after validation. Stream stays on numeric loopback. HTTP
+// may bind a container interface only with explicit proxy peers, hosts and origins.
+// The trusted TLS proxy strips incoming forwarding headers and sets the scheme.
 type Config struct {
 	HTTPAddress, StreamAddress, WorldPath, WorldName string
 	ProxyHosts, ProxyOrigins, ProxyPeers             []string
@@ -38,13 +38,20 @@ type admission struct {
 }
 
 func (c Config) validate() (map[string]admission, error) {
-	for _, address := range []string{c.HTTPAddress, c.StreamAddress} {
-		if address == "" {
+	for _, listener := range []struct {
+		address string
+		http    bool
+	}{{c.HTTPAddress, true}, {c.StreamAddress, false}} {
+		if listener.address == "" {
 			continue
 		}
-		host, _, err := net.SplitHostPort(address)
-		if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
-			return nil, errors.New("host: listeners must use numeric loopback addresses")
+		host, _, err := net.SplitHostPort(listener.address)
+		ip := net.ParseIP(host)
+		if err != nil || ip == nil {
+			return nil, errors.New("host: listeners require numeric IP addresses")
+		}
+		if !ip.IsLoopback() && (!listener.http || len(c.ProxyPeers) == 0 || len(c.ProxyHosts) == 0 || len(c.ProxyOrigins) == 0) {
+			return nil, errors.New("host: non-loopback HTTP requires explicit trusted proxy configuration")
 		}
 	}
 	if c.HTTPAddress != "" && c.HTTPAddress == c.StreamAddress {

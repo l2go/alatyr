@@ -1,91 +1,144 @@
-# Deploy
+# Deploy Alatyr
 
-The server runs in one container beside PostgreSQL 18 and needs Docker Compose. Run every command below from the `deploy` directory of a checkout.
+The stack runs `ghcr.io/l2go/alatyr` and PostgreSQL 18 on amd64 or arm64.
+Commands below assume a POSIX shell and Docker Compose. The image carries the
+Go executable and authored world; configuration and state stay outside it.
+
+## Prepare a deployment
+
+Start with a fresh dedicated database. Databases from another implementation
+are refused before migration. Keep the old deployment and its backups separate.
+The new Compose project is `alatyr`; it does not reuse earlier project volumes.
+
+From this directory, prepare operator-owned files:
 
 ```sh
+mkdir -p config
+cp server.example.json config/server.json
+cp character.example.json config/character.json
+```
+
+Edit `config/server.json`:
+
+- Keep the image's `WorldPath` at `/opt/alatyr/world` and HTTP port at `8080`.
+- Set `WorldName`, `ProxyHosts` and `ProxyOrigins` to the intended world and exact
+  public Host/Origin values, such as `play.example` and `https://play.example`.
+- Set `ProxyPeers` to the numeric source IPs the server actually sees from your
+  trusted proxy. A host proxy normally reaches the container from its Docker
+  network gateway. Discover it after `docker compose create` with
+  `docker network inspect alatyr_default --format '{{(index .IPAM.Config 0).Gateway}}'`.
+  A container proxy needs its own explicitly assigned source IP. Do not allow
+  untrusted clients as proxy peers; X-Forwarded-For never selects the peer.
+- Replace the participant example with your registry. Every entry binds an ID,
+  account, character name and SHA-256 digest of a random 64-character hex token.
+  Generate a token with `openssl rand -hex 32`, retain it securely, and put only
+  its digest in `TokenSHA256`. There is no account registration endpoint.
+
+The TLS proxy must authenticate the user, supply `Authorization: Bearer <token>`,
+strip incoming forwarding/identity headers and set `X-Forwarded-Proto: https`.
+It must forward WebSocket upgrades, preserve the configured Host, and permit
+only the configured Origin. Never place a token in a URL or access log.
+The default published address is loopback: `127.0.0.1:8080`.
+
+Edit `config/character.json` as a trusted operator snapshot. The example names
+an explicit authored position, class, level and balances; these are example
+values, not automatic starting rules. Choose unique positive object IDs and
+valid authored templates. The account and character names must match the
+registry using PostgreSQL citext equality. Keep the JSON readable by UID 10001;
+it carries no bearer token or database password.
+
+## Initialize and start
+
+```sh
+docker compose up -d --wait db
+docker compose run --rm --no-deps server -import-character /run/alatyr/config/character.json
 docker compose up -d --wait
 ```
 
-The first start creates the database passwords, migrates the schemas, and loads the game content. It takes a few minutes. Passwords and game data stay in Docker volumes, so later starts are quick. The command returns when login answers on port 2106 and the world on 7777.
+The first command creates credentials and an isolated application database role.
+Only the database mounts the password volume; only the server mounts its DSN
+file. The application role owns `world`, is not a superuser, and cannot create
+roles or databases. Goose creates the player-state tables. No game-content
+schema is loaded into PostgreSQL: the catalog is read from image files.
+
+Import additional characters only while the server is stopped. A running server
+holds a database lease and rejects a second writer. Import updates a trusted
+snapshot; it does not invent equipment, rewards or spawn positions. Remove
+unneeded import JSON from the mounted directory after provisioning.
+
+## Configuration and operations
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `ALATYR_IMAGE` | `ghcr.io/l2go/alatyr:edge` | Select an image, preferably by verified digest |
+| `ALATYR_BIND` | `127.0.0.1` | Published HTTP address on the Docker host |
+| `ALATYR_HTTP_PORT` | `8080` | Published HTTP port; the application still listens on 8080 |
+| `ALATYR_CONFIG_DIR` | `./config` | Read-only directory containing `server.json` |
+
+The application reads `ALATYR_DATABASE_URL_FILE` from its secret volume.
+Standalone execution also accepts `ALATYR_DATABASE_URL`; choosing both is an
+error. The container entrypoint uses `exec`, so termination signals reach Go.
+Its root is read-only, capabilities are dropped, and the default memory limit
+is 256 MiB (`GOMEMLIMIT=192MiB`); these are deployment limits, not measured RSS.
+The configured shutdown budgets must fit the 60-second Compose stop grace.
 
 | Task | Command |
 |---|---|
-| Status | `docker compose ps` |
-| Log | `docker compose logs -f server` |
-| Update | `docker compose pull && docker compose up -d --wait` |
-| Stop | `docker compose down` |
-| Stop and delete all data | `docker compose down -v` |
+| Status and health | `docker compose ps` |
+| Logs | `docker compose logs -f server` |
+| Check readiness inside the container | `docker compose exec server /opt/alatyr/bin/alatyr-server -healthcheck http://127.0.0.1:8080/readyz` |
+| Apply edited configuration | `docker compose restart server` |
+| Stop while preserving volumes | `docker compose down` |
 
-## Settings
+`/healthz` reports process liveness. `/readyz` also checks the leased database
+connection and the live world loop. Docker health uses readiness. Shutdown stops
+admission, joins port operations and saves participants. A persistence failure or
+world ID exhaustion exits with an error. Inspect logs before restarting after
+such a failure. Do not remove volumes to repair an operational error.
 
-Put these in an `.env` file in the `deploy` directory, or set them in the shell.
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `L2JFREE_EXTERNAL_HOST` | `127.0.0.1` | Address the server gives clients for the world. Set the address of the host when players connect from other machines |
-| `L2JFREE_BIND` | `0.0.0.0` | Host address the two ports listen on |
-| `L2JFREE_IMAGE` | `ghcr.io/l2go/l2jfree:edge` | Image to run. Set `ghcr.io/l2go/l2jfree:<version>` to stay on a release |
-| `L2JFREE_JAVA_OPTS` | `-Xms1g -Xmx3g -XX:+UseG1GC` | JVM options. Keep the heap under the 4 GB container limit |
-| `L2JFREE_NETWORK_TRANSPORT` | `epoll` | Or `io_uring`, `nio`, `auto`. If the transport is not available, the server does not start. Docker's default security profile blocks `io_uring` |
-| `L2JFREE_FLIGHT_RECORDER` | `on` | Java Flight Recorder keeps the last 12 hours, at most 256 MB, in the log volume. `off` turns it off |
-
-## Server options
-
-The defaults are in [`engine/java/game/config`](../engine/java/game/config) (world) and [`engine/java/login/config`](../engine/java/login/config) (login). A file in the `config` volume overrides the keys it names in the default file of the same name; put only the changed keys in it. The server reads the files at start and warns about a key that no default file has, usually a typo.
-
-To allow at most 50 players online:
-
-```sh
-printf 'MaximumOnlineUsers = 50\n' | docker compose exec -T server tee /var/lib/l2jfree/config/server.properties >/dev/null
-docker compose restart server
-```
-
-`tee` replaces the file, so write all changed keys of one file at once.
-
-The first login creates the account. On a public server, turn this off the same way: `AutoCreateAccounts = False` in `loginserver.properties`.
-
-## Run another world
-
-A world is one directory: `world.properties`, `catalog/`, and `data/`. The image runs its own world from `/opt/l2jfree/world`. To run another one, mount its directory read-only in `compose.override.yaml`:
-
-```yaml
-services:
-  server:
-    volumes:
-      - /srv/my-world:/world:ro
-```
-
-With the server running, write the directory settings below. Then apply the override with `docker compose up -d --wait`:
-
-```sh
-printf 'DatapackRoot = /world\nCatalogDirectory = /world/catalog\n' | docker compose exec -T server tee /var/lib/l2jfree/config/server.properties >/dev/null
-docker compose up -d --wait
-```
-
-The first line about the world in the log names it: `World id=… version=…`. A missing world or catalog directory stops the start with the key and the path. Characters stay in the database when the world changes. When a character's inventory loads, an item whose template the selected world lacks is skipped, with one warning, and its database row is kept.
+The plain stream transport is optional and remains restricted to loopback;
+Compose does not publish it. Public participant connections use the TLS proxy.
 
 ## Backup and restore
 
-Back up the `login` and `world` schemas. The server rebuilds `catalog` and `report` at start.
-
-```sh
-docker compose exec -T db pg_dump -U postgres -d l2jfree -n login -n world -Fc > l2jfree.dump
-```
-
-Keep `-T`: a terminal would alter the binary dump.
-
-To restore, stop the server, recreate the schemas, load the dump, and start the server again. `catalog` has foreign keys into `world`, so all four schemas are dropped, and the server refills `catalog` and `report`:
+Back up player state with the writer stopped, then start it again:
 
 ```sh
 docker compose stop server
-docker compose exec -T db psql -U postgres -d l2jfree \
-  -c 'DROP SCHEMA IF EXISTS report, catalog, world, login CASCADE' \
-  -c 'CREATE SCHEMA catalog AUTHORIZATION l2jfree_world' \
-  -c 'CREATE SCHEMA report AUTHORIZATION l2jfree_world'
-docker compose exec -T db pg_restore -U postgres -d l2jfree --exit-on-error < l2jfree.dump
+docker compose exec -T db pg_dump -U postgres -d alatyr -n world -Fc > alatyr.dump
 docker compose start server
 ```
 
-## Limits
+Retain the operator configuration and token delivery records securely as well.
+The image carries content, not player state. Never publish database dumps or
+secret volumes. For an existing database, its credential volumes must stay
+paired with that database across container updates.
 
-The container runs as user `10001` with a read-only root, no added capabilities, and a 4 GB memory limit. The world directory is read-only, so GM commands that write world files cannot save them.
+To restore a world dump into a prepared Go stack, first stop the server. The
+following commands replace the current `world` schema; keep its backup first:
+
+```sh
+docker compose stop server
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d alatyr -c 'DROP SCHEMA world CASCADE'
+docker compose exec -T db pg_restore -U postgres -d alatyr --exit-on-error < alatyr.dump
+docker compose up -d --wait
+```
+
+The restore retains the application's goose history and role ownership. A fresh
+stack creates its own credentials; the dump uses the same `alatyr` role name.
+Do not restore another server's database into this stack.
+
+## Update and content
+
+Verify the new image's signature and provenance as described in
+[SECURITY.md](../SECURITY.md). Stop the writer, take a backup, change `ALATYR_IMAGE`
+to the pinned image digest, then run `docker compose up -d --wait`.
+Migrations move forward only; rollback uses the previous image and its matching
+backup. Release bundles preserve the Compose project name, so they find the same
+volumes when unpacked into a new directory. Copy your operator configuration into
+the new directory before starting it.
+
+To run another authored world, mount its complete catalog/data/passport directory
+read-only and explicitly change `WorldPath` and `WorldName`. Validate it with
+`go run ./tools/world check --world <directory>` before deployment. Content does
+not enter the database or alter existing player snapshots automatically.

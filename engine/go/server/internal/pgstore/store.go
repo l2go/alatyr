@@ -27,7 +27,7 @@ type Store struct {
 
 // Open acquires exclusive Go-server ownership and returns the leased storage connection. The caller applies migrations
 // before reading or writing player state. It never reconnects after failure.
-// Java servers and other writers must be stopped before opening this store.
+// Other writers must be stopped before opening this store.
 func Open(ctx context.Context, dsn string) (*Store, error) {
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
@@ -151,40 +151,19 @@ func (s *Store) PutLearning(ctx context.Context, c world.Character) error {
 	})
 }
 
-// UsedIDs returns every persisted object identity, including unsupported Java
-// tables when present, so startup cannot collide with offline objects.
+// UsedIDs returns all persistent objects and item shortcut references, including
+// offline characters and dangling shortcuts that must never bind to a new object.
 func (s *Store) UsedIDs(ctx context.Context) ([]int32, error) {
 	if err := s.acquire(ctx); err != nil {
 		return nil, err
 	}
 	defer s.release()
-	var ids []int32
-	for _, table := range []string{"player", "item", "clan", "crest", "couple", "ground_item", "player_shortcut"} {
-		var exists bool
-		if err := s.conn.QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", "world."+table).Scan(&exists); err != nil {
-			return nil, err
-		}
-		if !exists {
-			continue
-		}
-		query := "SELECT id FROM " + table
-		if table == "player_shortcut" {
-			query = "SELECT target_id FROM player_shortcut WHERE shortcut_type_id=1 AND target_id>0"
-		}
-		if table == "clan" {
-			query += " UNION ALL SELECT crest_id FROM clan WHERE crest_id IS NOT NULL UNION ALL SELECT large_crest_id FROM clan WHERE large_crest_id IS NOT NULL UNION ALL SELECT alliance_crest_id FROM clan WHERE alliance_crest_id IS NOT NULL"
-		}
-		rows, err := s.conn.Query(ctx, query)
-		if err != nil {
-			return nil, err
-		}
-		got, err := pgx.CollectRows(rows, pgx.RowTo[int32])
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, got...)
+	rows, err := s.conn.Query(ctx, `SELECT id FROM world.player UNION ALL SELECT id FROM world.item
+ UNION ALL SELECT target_id FROM world.player_shortcut WHERE shortcut_type_id=1 AND target_id>0`)
+	if err != nil {
+		return nil, err
 	}
-	return ids, nil
+	return pgx.CollectRows(rows, pgx.RowTo[int32])
 }
 
 // ReserveIDs burns a bounded range before the world starts. Unused identities

@@ -1,70 +1,40 @@
-# `docker compose up -d --wait` is the whole installation. The stack runs on
-# Docker Desktop (Windows), Colima or OrbStack (macOS, native on Apple silicon), and Docker Engine (Linux).
-#
-# The server service is one process: the login module (port 2106) and the world
-# module (port 7777), both on PostgreSQL 18, each with its own database role.
-# The world loads for minutes, so the stack is healthy only when both ports
-# accept a connection.
-#
-# Settings an operator may change:
-#   L2JFREE_IMAGE          image to run
-#   L2JFREE_BIND           host address that publishes the ports (default 0.0.0.0)
-#   L2JFREE_EXTERNAL_HOST  address the server tells a client to connect to when no
-#                          subnet rule matches (default 127.0.0.1, which suits a
-#                          client on the same machine; set the address of the host
-#                          for players on other machines)
-#   L2JFREE_JAVA_OPTS      JVM options (default -Xms1g -Xmx3g -XX:+UseG1GC); keep the heap below
-#                          mem_limit, because the JVM needs memory beside the heap
-# Key overrides go in the config volume, see deploy/README.md.
-
-name: l2jfree
+# Mount operator-owned JSON under ./config; see README.md before first start.
+name: alatyr
 
 x-server: &server
-  image: ${L2JFREE_IMAGE:-ghcr.io/l2go/l2jfree:edge}
+  image: ${ALATYR_IMAGE:-ghcr.io/l2go/alatyr:edge}
   read_only: true
   cap_drop: [ALL]
   security_opt: ["no-new-privileges:true"]
 
 services:
-  # Creates the database passwords once: the superuser password in a volume that
-  # only the database mounts, the two module role passwords in a volume that the
-  # server reads as well.
   secrets:
     <<: *server
-    entrypoint: ["/opt/l2jfree/bin/init-secrets"]
+    entrypoint: ["/opt/alatyr/bin/init-secrets"]
     volumes:
-      - secrets:/var/lib/l2jfree/secrets
-      - dbsecrets:/var/lib/l2jfree/secrets-db
+      - secrets:/var/lib/alatyr/secrets
+      - dbsecrets:/var/lib/alatyr/secrets-db
     restart: "no"
 
   db:
     image: postgres:18.6@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
     environment:
-      POSTGRES_DB: l2jfree
+      POSTGRES_DB: alatyr
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD_FILE: /run/l2jfree-dbsecrets/postgres_password
-    # Slow statements are logged with their plan (auto_explain), and every statement is counted
-    # (pg_stat_statements), so a slow start or a slow save is found without a restart.
-    command:
-      - postgres
-      - -c
-      - shared_preload_libraries=pg_stat_statements,auto_explain
-      - -c
-      - auto_explain.log_min_duration=500ms
+      POSTGRES_PASSWORD_FILE: /run/alatyr-dbsecrets/postgres_password
     volumes:
       - dbdata:/var/lib/postgresql
-      - secrets:/run/l2jfree-secrets:ro
-      - dbsecrets:/run/l2jfree-dbsecrets:ro
+      - dbsecrets:/run/alatyr-dbsecrets:ro
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
     depends_on:
       secrets:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d l2jfree"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d alatyr"]
       interval: 5s
       timeout: 3s
-      retries: 40
-      start_period: 20s
+      retries: 20
+      start_period: 10s
     restart: unless-stopped
 
   server:
@@ -73,55 +43,28 @@ services:
       db:
         condition: service_healthy
     environment:
-      L2JFREE_DB_URL: jdbc:postgresql://db:5432/l2jfree
-      L2JFREE_LOGIN_DB_USER: l2jfree_login
-      L2JFREE_LOGIN_DB_PASSWORD_FILE: /var/lib/l2jfree/secrets/login_password
-      L2JFREE_WORLD_DB_USER: l2jfree_world
-      L2JFREE_WORLD_DB_PASSWORD_FILE: /var/lib/l2jfree/secrets/world_password
-      L2JFREE_EXTERNAL_HOST: ${L2JFREE_EXTERNAL_HOST:-127.0.0.1}
-      L2JFREE_JAVA_OPTS: ${L2JFREE_JAVA_OPTS:--Xms1g -Xmx3g -XX:+UseG1GC}
-      L2JFREE_FLIGHT_RECORDER: ${L2JFREE_FLIGHT_RECORDER:-on}
-      L2JFREE_NETWORK_TRANSPORT: ${L2JFREE_NETWORK_TRANSPORT:-epoll}
-      # The readiness endpoint, reachable only from inside the container: 200 once both ports accept players.
-      L2JFREE_HEALTH_PORT: "8080"
-    mem_limit: 4g
-    # The stop saves every player one after the other, so Docker's default of 10 seconds would kill a busy world
-    # in the middle of the save.
+      ALATYR_DATABASE_URL_FILE: /var/lib/alatyr/secrets/database_url
+      ALATYR_CONFIG: /run/alatyr/config/server.json
+      GOMAXPROCS: "2"
+      GOMEMLIMIT: 192MiB
+    mem_limit: 256m
+    # Ports close, writes join, and remaining players save before the process exits.
     stop_grace_period: 60s
-    # The log of the server goes to the container output as well as to the log volume; keep the copy of Docker small.
     logging:
       driver: json-file
       options:
         max-size: "20m"
         max-file: "5"
     ports:
-      - "${L2JFREE_BIND:-0.0.0.0}:2106:2106"
-      - "${L2JFREE_BIND:-0.0.0.0}:7777:7777"
+      - "${ALATYR_BIND:-127.0.0.1}:${ALATYR_HTTP_PORT:-8080}:8080"
     volumes:
-      - secrets:/var/lib/l2jfree/secrets:ro
-      - logs:/var/lib/l2jfree/log
-      - work:/var/lib/l2jfree/work
-      # The operator directory: files here override single keys of the defaults.
-      # To edit it on the host, replace this line with ./config:/var/lib/l2jfree/config
-      - config:/var/lib/l2jfree/config
+      - secrets:/var/lib/alatyr/secrets:ro
+      - ${ALATYR_CONFIG_DIR:-./config}:/run/alatyr/config:ro
     tmpfs:
-      - /tmp:uid=10001,gid=10001,mode=1777
-      - /run/l2jfree:uid=10001,gid=10001,mode=0700
-      # Netty unpacks its native transport libraries here and loads them, so this one directory may execute code;
-      # /tmp stays noexec. Without it the server falls back to the NIO transport.
-      - /run/l2jfree-native:exec,uid=10001,gid=10001,mode=0700
-    healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
-      interval: 10s
-      timeout: 3s
-      retries: 30
-      start_period: 300s
+      - /tmp:uid=10001,gid=10001,mode=1777,noexec
     restart: unless-stopped
 
 volumes:
   secrets:
   dbsecrets:
   dbdata:
-  logs:
-  work:
-  config:

@@ -262,6 +262,9 @@ func validatePolicy(p policy) error {
 }
 
 func checkTree(root string, p policy) error {
+	if err := checkRuntime(root); err != nil {
+		return err
+	}
 	// Scan paths before any command can diagnose one of them. No tool output or
 	// source text is included in an error, even for invalid imports or syntax.
 	for _, scope := range []string{"engine/go", "docs/engine-go"} {
@@ -427,6 +430,16 @@ func asciiLower(data []byte) []byte {
 		}
 	}
 	return result
+}
+
+// checkRuntime prevents retired runtime/build entrypoints from returning.
+func checkRuntime(root string) error {
+	for _, path := range []string{"engine/java", "pom.xml", ".mvn", "mvnw", "mvnw.cmd", "tools/ci/bridge-integration.sh", "tools/ci/bridge-integration.sql", "engine/go/gateway/backend/java_integration_test.go", "tools/ci/coverage-summary.py", "deploy/measure", "deploy/probe"} {
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(path))); !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("runtime: retired path exists or cannot be inspected: %s", path)
+		}
+	}
+	return nil
 }
 
 func checkWorkspace(root string) error {

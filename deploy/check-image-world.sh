@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The files under /opt/l2jfree/world in the image must be the authored world:
+# The files under /opt/alatyr/world in the image must be the authored world:
 # the same paths and the same bytes as world.properties, LICENSE, catalog/, and
 # data/ in the repository. Sources under world/src and world/i18n are not part
 # of that set.
@@ -19,7 +19,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 docker run --rm --entrypoint bash "$image" -c \
-	'cd /opt/l2jfree/world && find . -type f -print0 | sort -z | xargs -0 -r sha256sum' \
+	'cd /opt/alatyr/world && find . -type f -print0 | sort -z | xargs -0 -r sha256sum' \
 	| sed -E 's|[[:space:]]+\./|  |' \
 	| LC_ALL=C sort -k2 > "$tmp/image"
 

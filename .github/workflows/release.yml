@@ -10,9 +10,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version without the v, for example 3.0.0"
+        description: "Go release version selected by the maintainer, without v"
         required: true
-        default: "3.0.0"
       commit:
         description: "Commit of main to release (a full sha); empty for the head of main"
         required: false
@@ -26,7 +25,7 @@ permissions:
   contents: read
 
 env:
-  REGISTRY_IMAGE: ghcr.io/l2go/l2jfree
+  REGISTRY_IMAGE: ghcr.io/l2go/alatyr
 
 jobs:
   verify:
@@ -177,7 +176,7 @@ jobs:
         id: attest
         uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
         with:
-          subject-path: release/l2jfree-${{ inputs.version }}-compose.tar.gz
+          subject-path: release/alatyr-${{ inputs.version }}-compose.tar.gz
 
       # The Sigstore bundle of the attestation goes on the release next to the archive, so the signature can be checked
       # from the release page alone.
@@ -187,7 +186,7 @@ jobs:
           BUNDLE: ${{ steps.attest.outputs.bundle-path }}
         run: |
           test -s "$BUNDLE" || { echo "::error::the attestation wrote no bundle"; exit 1; }
-          cp "$BUNDLE" release/l2jfree-"$VERSION"-compose.tar.gz.sigstore.json
+          cp "$BUNDLE" release/alatyr-"$VERSION"-compose.tar.gz.sigstore.json
 
       - name: Create the tag and the release
         env:
@@ -195,6 +194,6 @@ jobs:
           VERSION: ${{ inputs.version }}
           COMMIT: ${{ needs.verify.outputs.commit }}
         run: |
-          gh release create "v$VERSION" release/l2jfree-"$VERSION"-compose.tar.gz release/l2jfree-"$VERSION"-compose.tar.gz.sha256 \
-            release/l2jfree-"$VERSION"-compose.tar.gz.sigstore.json \
+          gh release create "v$VERSION" release/alatyr-"$VERSION"-compose.tar.gz release/alatyr-"$VERSION"-compose.tar.gz.sha256 \
+            release/alatyr-"$VERSION"-compose.tar.gz.sigstore.json \
             --target "$COMMIT" --title "v$VERSION" --notes-file notes.md

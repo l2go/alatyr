@@ -1,7 +1,0 @@
-# Added to deploy/compose.yaml by startup.py: a volume for the AOT cache of the JVM, which the read-only image cannot hold.
-services:
-  server:
-    volumes:
-      - aot:/var/lib/l2jfree/aot
-volumes:
-  aot:

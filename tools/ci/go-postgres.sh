@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright 2026 l2go
-# CI-only PostgreSQL acceptance; no Java build or bridge container is involved.
+# CI-only PostgreSQL acceptance on an isolated disposable cluster.
 set -euo pipefail
 umask 077
 

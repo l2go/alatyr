@@ -9,8 +9,7 @@ import (
 	"fmt"
 	"github.com/l2go/alatyr/engine/go/server/internal/migrate"
 	"github.com/l2go/alatyr/engine/go/server/internal/pgtest"
-	"os"
-	"path/filepath"
+	"net/url"
 	"reflect"
 	"slices"
 	"strings"
@@ -172,120 +171,79 @@ func TestSnapshotRollbackAndOwnership(t *testing.T) {
 	}
 }
 
-func flyway(t *testing.T, dsn string) *pgx.Conn {
-	t.Helper()
-	c, err := pgx.Connect(t.Context(), dsn)
-	if err != nil {
-		t.Fatal(err)
+func TestGooseRejectsForeignDatabase(t *testing.T) {
+	for _, kind := range []string{"world-table", "public-table", "other-schema", "function", "enum", "extra-in-own-schema", "unrecognized-history", "view", "collation", "large-object"} {
+		t.Run(kind, func(t *testing.T) {
+			dsn := database(t)
+			if kind == "extra-in-own-schema" {
+				s := openTest(t, dsn)
+				if err := s.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			c, err := pgx.Connect(t.Context(), dsn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.Close(context.Background())
+			statements := map[string]string{
+				"view":                 "CREATE VIEW public.foreign_view AS SELECT 42 AS retained",
+				"collation":            `CREATE COLLATION public.foreign_collation FROM pg_catalog."C"`,
+				"large-object":         "SELECT lo_create(0)",
+				"world-table":          "CREATE SCHEMA world; CREATE TABLE world.player(id integer); INSERT INTO world.player VALUES(42)",
+				"public-table":         "CREATE TABLE public.foreign_data(id integer); INSERT INTO public.foreign_data VALUES(42)",
+				"other-schema":         "CREATE SCHEMA foreign_data",
+				"function":             "CREATE FUNCTION public.foreign_function() RETURNS integer LANGUAGE SQL AS 'SELECT 42'",
+				"enum":                 "CREATE TYPE public.foreign_state AS ENUM ('retained')",
+				"extra-in-own-schema":  "CREATE TABLE world.foreign_data(id integer)",
+				"unrecognized-history": "CREATE SCHEMA world; CREATE TABLE world.foreign_migration_history(version text); INSERT INTO world.foreign_migration_history VALUES ('1.10')",
+			}
+			execTest(t, c, statements[kind])
+			if s, err := validatedOpen(t.Context(), dsn); err == nil {
+				s.Close()
+				t.Fatal("foreign database accepted")
+			}
+			if kind != "extra-in-own-schema" {
+				var absent bool
+				if err := c.QueryRow(t.Context(), "SELECT to_regclass('world.goose_db_version') IS NULL").Scan(&absent); err != nil || !absent {
+					t.Fatalf("rejection changed history: %v/%v", absent, err)
+				}
+			}
+			if kind == "world-table" || kind == "public-table" {
+				table := "world.player"
+				if kind == "public-table" {
+					table = "public.foreign_data"
+				}
+				var id int
+				if err := c.QueryRow(t.Context(), "SELECT id FROM "+table).Scan(&id); err != nil || id != 42 {
+					t.Fatalf("foreign data changed: %d/%v", id, err)
+				}
+			}
+		})
 	}
-	t.Cleanup(func() {
-		if err := c.Close(context.Background()); err != nil {
-			t.Error(err)
-		}
-	})
-	execTest(t, c, "CREATE SCHEMA world; SET search_path=world,public")
-	files, err := filepath.Glob("../../../../java/game/src/main/resources/db/world/V*.sql")
-	if err != nil || len(files) != 10 {
-		t.Fatalf("baseline files: got %d/%v, want 10", len(files), err)
-	}
-	execTest(t, c, `CREATE TABLE flyway_schema_history(installed_rank integer PRIMARY KEY,version varchar(50),type varchar(20),success boolean)`)
-	for i, file := range files {
-		data, err := os.ReadFile(file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		execTest(t, c, string(data))
-		execTest(t, c, "INSERT INTO flyway_schema_history VALUES ($1,$2,'SQL',true)", i+1, fmt.Sprintf("1.%02d", i+1))
-	}
-	return c
 }
 
-func TestGooseBaselinesFlywayWithoutDataLoss(t *testing.T) {
+func TestObjectIDsIncludeItemShortcuts(t *testing.T) {
 	dsn := database(t)
-	legacy := flyway(t, dsn)
-	execTest(t, legacy, `INSERT INTO player(id,account_name,name,race_id,active_class_id,base_class_id,level,sp,title,karma) VALUES(1,'example','Walker',0,0,0,2,20,'Original',7);
- INSERT INTO item(id,item_template_id,owner_player_id,location,count,enchant_level,location_slot) VALUES(2,999999,1,'INVENTORY',7,9,42),(3,999998,1,'WAREHOUSE',2,4,17);
- INSERT INTO player_shortcut VALUES(1,0,0,0,1,300000004,0),(1,0,0,1,2,2000000000,1);
- INSERT INTO player_skill VALUES(1,0,999999,1),(1,1,999998,3);
- INSERT INTO player_quest_variable VALUES(1,'legacy','flag','preserved');
- INSERT INTO clan(id,name,leader_player_id,crest_id,large_crest_id,alliance_crest_id) VALUES(7,'Legacy',1,300000001,300000002,300000003)`)
-	var before string
-	if err := legacy.QueryRow(t.Context(), "SELECT row_to_json(p)::text FROM player p WHERE id=1").Scan(&before); err != nil {
-		t.Fatal(err)
-	}
 	s := openTest(t, dsn)
-	var after string
-	if err := legacy.QueryRow(t.Context(), "SELECT row_to_json(p)::text FROM player p WHERE id=1").Scan(&after); err != nil || after != before {
-		t.Fatalf("baseline altered player: %v", err)
-	}
-	ids, err := s.UsedIDs(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range []int32{1, 2, 3, 7, 300000001, 300000002, 300000003, 300000004} {
-		if !slices.Contains(ids, id) {
-			t.Fatalf("persisted object identity %d not reserved", id)
-		}
-	}
-	first, _, err := s.ReserveIDs(t.Context())
-	if slices.Contains(ids, 2000000000) {
-		t.Fatal("skill shortcut treated as object identity")
-	}
-	if err != nil || first != 300000005 {
-		t.Fatalf("range collides with legacy identities: %d/%v", first, err)
-	}
-	c := loadTest(t, s)
-	if len(c.Items) != 1 || c.Items[0].TemplateID != 999999 {
-		t.Fatalf("unknown inventory lost: %+v", c.Items)
-	}
+	c := character()
+	c.Shortcuts = []world.Shortcut{{Page: 0, Slot: 0, Type: 1, ID: 300000004}, {Page: 0, Slot: 1, Type: 2, ID: 2000000000, Level: 1}}
 	if err := s.PutCharacter(t.Context(), c); err != nil {
 		t.Fatal(err)
 	}
-	var preserved bool
-	if err := legacy.QueryRow(t.Context(), `SELECT
-  (SELECT title='Original' AND karma=7 FROM player WHERE id=1)
-  AND (SELECT enchant_level=9 AND location_slot=42 FROM item WHERE id=2)
-  AND (SELECT enchant_level=4 AND location_slot=17 AND location='WAREHOUSE' FROM item WHERE id=3)
-  AND EXISTS(SELECT 1 FROM player_skill WHERE player_id=1 AND class_index=1 AND skill_id=999998)
-  AND (SELECT count(*)=10 FROM flyway_schema_history)`).Scan(&preserved); err != nil || !preserved {
-		t.Fatalf("legacy data changed: %v/%v", preserved, err)
-	}
-	if err := s.Close(); err != nil {
-		t.Fatal(err)
-	}
-	// Folding must also run for a database with an existing goose history.
-	execTest(t, legacy, "UPDATE player_shortcut SET target_id=600000000 WHERE shortcut_type_id=1")
-	reopened := openTest(t, dsn)
-	first, _, err = reopened.ReserveIDs(t.Context())
-	if err != nil || first != 600000001 {
-		t.Fatalf("existing goose shortcut high water: %d/%v", first, err)
-	}
-}
-
-func TestGooseRejectsUnrecognizedHistory(t *testing.T) {
-	for _, kind := range []string{"missing", "future", "failed", "incomplete-schema"} {
-		t.Run(kind, func(t *testing.T) {
-			dsn := database(t)
-			c := flyway(t, dsn)
-			switch kind {
-			case "missing":
-				execTest(t, c, "DELETE FROM flyway_schema_history WHERE installed_rank=10")
-			case "future":
-				execTest(t, c, "INSERT INTO flyway_schema_history VALUES (11,'1.11','SQL',true)")
-			case "failed":
-				execTest(t, c, "UPDATE flyway_schema_history SET success=false WHERE installed_rank=10")
-			case "incomplete-schema":
-				execTest(t, c, "DROP TABLE player_shortcut")
-			}
-			if s, err := validatedOpen(t.Context(), dsn); err == nil {
-				s.Close()
-				t.Fatal("unsafe baseline accepted")
-			}
-			var untouched bool
-			if err := c.QueryRow(t.Context(), "SELECT to_regclass('world.goose_db_version') IS NULL").Scan(&untouched); err != nil || !untouched {
-				t.Fatalf("failed baseline changed history: %v/%v", untouched, err)
-			}
-		})
+	for _, target := range []int32{300000004, 600000000} {
+		execTest(t, s.conn, "UPDATE player_shortcut SET target_id=$1 WHERE shortcut_type_id=1", target)
+		if err := migrate.Apply(t.Context(), dsn); err != nil {
+			t.Fatal(err)
+		}
+		ids, err := s.UsedIDs(t.Context())
+		if err != nil || !slices.Contains(ids, target) || slices.Contains(ids, 2000000000) {
+			t.Fatalf("object references: %v/%v", ids, err)
+		}
+		first, _, err := s.ReserveIDs(t.Context())
+		if err != nil || first != target+1 {
+			t.Fatalf("shortcut high water: %d/%v", first, err)
+		}
 	}
 }
 
@@ -437,4 +395,44 @@ func TestInventoryOrderAndEquipmentTransitions(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("INVENTORY", 0)
+}
+
+func TestApplicationRoleOwnsOnlyWorld(t *testing.T) {
+	dsn := database(t)
+	uri, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	databaseName := strings.TrimPrefix(uri.Path, "/")
+	role := databaseName + "_role"
+	quotedRole := pgx.Identifier{role}.Sanitize()
+	quotedDB := pgx.Identifier{databaseName}.Sanitize()
+	admin, err := pgx.Connect(t.Context(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close(context.Background())
+	execTest(t, admin, "CREATE EXTENSION citext SCHEMA public; CREATE ROLE "+quotedRole+" LOGIN PASSWORD 'application-test-password'; CREATE SCHEMA world AUTHORIZATION "+quotedRole+"; REVOKE ALL ON DATABASE "+quotedDB+" FROM PUBLIC; GRANT CONNECT ON DATABASE "+quotedDB+" TO "+quotedRole)
+	defer func() {
+		if _, err := admin.Exec(context.Background(), "DROP OWNED BY "+quotedRole+" CASCADE; DROP ROLE "+quotedRole); err != nil {
+			t.Error(err)
+		}
+	}()
+	uri.User = url.UserPassword(role, "application-test-password")
+	s := openTest(t, uri.String())
+	// Close before the deferred role cleanup (openTest's cleanup is later).
+	defer s.Close()
+	if err := s.PutCharacter(t.Context(), character()); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate.Apply(t.Context(), uri.String()); err != nil {
+		t.Fatal(err)
+	}
+	var limited bool
+	if err := s.conn.QueryRow(t.Context(), "SELECT NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole FROM pg_roles WHERE rolname=current_user").Scan(&limited); err != nil || !limited {
+		t.Fatalf("application role privileges: %v/%v", limited, err)
+	}
+	if _, err := s.conn.Exec(t.Context(), "CREATE SCHEMA forbidden"); err == nil {
+		t.Fatal("application role can create unrelated schemas")
+	}
 }
