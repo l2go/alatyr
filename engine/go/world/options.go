@@ -5,6 +5,7 @@ package world
 
 import (
 	"errors"
+	"log/slog"
 	"math/rand/v2"
 	"slices"
 
@@ -13,6 +14,16 @@ import (
 
 // Option configures a world before its loop owns the state.
 type Option func(*World)
+
+// WithLogger supplies diagnostics for the owning loop. Its handler must be
+// bounded and safe for the host's other callers. Nil retains slog.Default().
+func WithLogger(logger *slog.Logger) Option {
+	return func(w *World) {
+		if logger != nil {
+			w.logger = logger
+		}
+	}
+}
 
 // WithRandomSource supplies the single-loop random source before spawning.
 // The default remains a crypto-seeded ChaCha8 source. A supplied source must

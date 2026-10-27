@@ -137,7 +137,7 @@ func prepare(c bridge.Command, s world.Scene, now world.Time) (prepared, error) 
 	if now > world.Time(1<<63-1)-delta || now+delta == 0 {
 		return prepared{}, errCapacity
 	}
-	p.request.Deadline = now + delta
+	p.request.AdmissionDeadline = now + delta
 	switch c.Verb {
 	case 1:
 		p.request.Verb = world.VerbMove

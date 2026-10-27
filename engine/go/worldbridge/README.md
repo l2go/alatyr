@@ -33,7 +33,9 @@ not a fixed item ID; distinct asset rows cannot be collapsed into one purse.
 
 One owner serializes `Write`, source observations and `Resume`. A key and attempt
 number are registered before execution. The original caller deadline and queue
-budget can only shorten the world deadline. There is one outstanding Write and
+budget limit admission, including time waiting for World.Run. They do not revoke
+an admitted movement, attack or cast. Explicit world action deadlines remain
+independent of this raw queue budget. There is one outstanding Write and
 one Resume; concurrent calls of the same method are rejected. The session admits
 4096 distinct keys, never reuses them, and retains the latest 64 receipts. The
 live backlog is bounded by 256 KiB and 1024 updates, including the unread update.
@@ -59,8 +61,8 @@ and `bridge.Client` over a synthetic endpoint. It does not assert gameplay parit
 Run `go test -race ./...`, `go vet ./...` and `staticcheck ./...` in this package directory.
 Repeat with `GOWORK=off` to check the published protocol pin.
 
-Not yet: participant encoding, gateway wiring, database stores, new gameplay,
-and Java-world parity.
+Database storage remains a host responsibility. Full-stack Java-world parity
+is checked by the shared worldtest suite in integration.
 
 This package belongs to the shared [Go server module](../README.md). Protocol
 remains a separate module; package dependency directions are enforced by the

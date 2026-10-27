@@ -39,6 +39,7 @@ const (
 
 type npc struct {
 	creature
+	hunt  huntLife
 	tmpl  catalog.NPCTemplate
 	spawn catalog.Spawn
 
@@ -196,6 +197,19 @@ func (w *World) startAITask(s *state, n *npc) {
 
 func (w *World) stopAITask(s *state, n *npc) { n.aiTask = false }
 func (w *World) think(s *state, n *npc) {
+	if !n.hunt.returned && len(n.knownPlayers) == 0 && len(n.hunt.sides) == 0 && distance3D(n.pos, n.home()) <= 2*maxDriftRange {
+		w.setIntention(s, n, order{intent: intentIdle})
+		return
+	}
+	if n.hunt.returned {
+		n.resetHuntIfHome()
+		if n.hunt.returned {
+			if n.move == nil && distance3D(n.pos, n.home()) > 5 {
+				w.aiMoveTo(s, n, n.home())
+			}
+			return
+		}
+	}
 	if n.globalAggro < 0 {
 		n.globalAggro++
 	}
@@ -220,6 +234,7 @@ func (w *World) thinkAttackMob(s *state, n *npc) {
 	}
 	t, ok := s.actor(n.ai.object)
 	if !ok || t.base().dead || n.ai.attackTimeout < s.ticks {
+		n.hunt.returned = true
 		if ok {
 			n.stopHating(t.base().id)
 		}
@@ -320,6 +335,14 @@ func (w *World) spawnNPC(s *state, sp catalog.Spawn, t catalog.NPCTemplate) *npc
 	n.generation = s.incarnation()
 	if n.generation == 0 {
 		return nil
+	}
+	if n.mob() {
+		if s.lifeSeq == math.MaxUint64 {
+			s.err = ErrExhausted
+			return nil
+		}
+		s.lifeSeq++
+		n.hunt.life = s.lifeSeq
 	}
 	if n.heading == -1 {
 		n.heading = int32(s.rng.IntN(65536))

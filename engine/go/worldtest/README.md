@@ -16,7 +16,19 @@ confirmation, missing source authority, and closure around contact. It forwards
 real world observations and never creates gameplay results. World.Run, ports,
 backend scopes and participant readers each have an owner and a joined cleanup.
 
-Merchant tests cover atomic balances, single-use offers, expiry, wrong
+Merchant tests cover atomic balances, live-list reuse by distinct commands, expiry, wrong
 incarnations, quantity and carrying bounds, integer overflow, nonstackable rows,
 sale eligibility, and saving on departure. Motion tests verify that refreshed
 descriptions retire earlier motion and moving producers republish current motion.
+
+`TestOkolitsaParity` also runs these participant scenarios on the packaged Java
+world through `bridge.Client` in the full-stack integration job. It compares
+semantic outcomes, causal order, balances, visibility, and saved state. Local
+runs cover the Go half. See the [CI fixture guide](../../../tools/ci/java-fixture/README.md)
+for deterministic reward probes and the explicitly excluded Java drop-penalty bug.
+
+The Go host can set reward-party membership with `World.SetParty`, and apply
+trusted environmental harm with `World.Harm`. Neither grants wire authority.
+Equipment and healing use exact carried references through `World.Execute`.
+Class kind is authored as `world.class.<id>.kind=fighter|mage` in the passport;
+missing metadata remains unknown rather than inferred from numeric class IDs.

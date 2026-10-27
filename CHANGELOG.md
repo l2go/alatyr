@@ -6,6 +6,9 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Added
 
+- The participant acceptance suite compares the same Okolitsa scenarios on the Go world and the live Java bridge, with shared reward vectors and saved-state checks.
+- The Go world now settles per-life hunting contributions and party rewards, supports equipment and healing items, and keeps experience at x1 regardless of stored vitality.
+
 - A live bridge integration check runs the packaged Java platform with PostgreSQL, the Go bridge client and the participant gateway. It covers dialogue, purchases, sales, learning, transport recovery, saved state, and revival through relocation and checkpoint drain, alongside the ordinary client smoke. The [endpoint guide](docs/engine-go/bridge.md) documents configuration, limits and evidence boundaries.
 
 ### Fixed

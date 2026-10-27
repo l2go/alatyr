@@ -436,13 +436,13 @@ func TestWorldPortResumeBudgetAndDeparture(t *testing.T) {
 	}
 }
 
-func TestWorldPortMoveDeadlineStopsWithoutRecoveryExtension(t *testing.T) {
+func TestWorldPortQueueBudgetDoesNotRevokeAdmittedMovement(t *testing.T) {
 	cat := authoredCatalog(t)
 	synctest.Test(t, func(t *testing.T) {
 		cfg, w := startPortWorld(t, cat, memstore.New())
 		c, _ := openPort(t, cfg)
 		command := portWalk(1)
-		command.Payload = []wire.Field{wire.At(11, true, -68057, 257883, -3104)}
+		command.Payload = []wire.Field{wire.At(11, true, -70957, 257883, -3104)}
 		command.QueueTTLMS = new(uint64(100))
 		if _, err := c.Write(t.Context(), command); err != nil {
 			t.Fatal(err)
@@ -458,14 +458,19 @@ func TestWorldPortMoveDeadlineStopsWithoutRecoveryExtension(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if scene.Moving || scene.Self.Char.X == -68057 || !recovery.Snapshot.Ready {
-			t.Fatal("recovery extended or replayed expired movement")
+		if !scene.Moving || scene.Self.Char.X == -70957 || !recovery.Snapshot.Ready {
+			t.Fatal("queue admission budget canceled an admitted movement")
 		}
 		position := scene.Self.Char.X
 		<-time.After(200 * time.Millisecond)
 		scene, err = w.Capture(t.Context(), c.Owner())
-		if err != nil || scene.Self.Char.X != position {
-			t.Fatal("movement continued after deadline")
+		if err != nil || scene.Self.Char.X <= position {
+			t.Fatal("admitted movement did not continue after its queue budget")
+		}
+		<-time.After(2 * time.Second)
+		scene, err = w.Capture(t.Context(), c.Owner())
+		if err != nil || scene.Moving || scene.Self.Char.X != -70957 {
+			t.Fatal("admitted movement did not finish at its original destination")
 		}
 	})
 }

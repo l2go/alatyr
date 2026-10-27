@@ -10,6 +10,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/l2go/alatyr/engine/go/world/hunt"
 	"github.com/l2go/alatyr/engine/go/world/itemlog"
 )
 
@@ -28,12 +29,32 @@ type groundItem struct {
 }
 
 func (w *World) dropOnGround(s *state, n *npc, killer *player, templateID int32, count int64) {
+	pos := Point{offsetCoordinate(n.pos.X, int32(s.rng.IntN(141))-70), offsetCoordinate(n.pos.Y, int32(s.rng.IntN(141))-70), offsetCoordinate(max(n.pos.Z, killer.pos.Z), 20)}
+	w.createGround(s, n, killer, templateID, count, pos, false)
+}
+
+func (w *World) dropHuntOnGround(s *state, n *npc, owner *player, templateID int32, count int64, permanent bool, random *hunt.Random) {
+	if owner == nil {
+		return
+	}
+	pos := Point{n.pos.X, n.pos.Y, offsetCoordinate(max(n.pos.Z, owner.pos.Z), 20)}
+	if !permanent {
+		pos.X = offsetCoordinate(pos.X, int32(random.Below(141))-70)
+		pos.Y = offsetCoordinate(pos.Y, int32(random.Below(141))-70)
+	}
+	w.createGround(s, n, owner, templateID, count, pos, permanent)
+}
+
+func (w *World) createGround(s *state, n *npc, killer *player, templateID int32, count int64, pos Point, permanent bool) {
 	if count <= 0 {
 		return
 	}
 	g := &groundItem{id: s.newID(), templateID: templateID, count: count,
-		pos:   Point{offsetCoordinate(n.pos.X, int32(s.rng.IntN(141))-70), offsetCoordinate(n.pos.Y, int32(s.rng.IntN(141))-70), offsetCoordinate(max(n.pos.Z, killer.pos.Z), 20)},
+		pos:   pos,
 		owner: killer.id, ownerUntil: time.Now().Add(lootProtection), dropped: time.Now()}
+	if permanent {
+		g.ownerUntil = time.Time{}
+	}
 	if g.id == 0 {
 		return
 	}
@@ -163,7 +184,7 @@ func (w *World) insertItem(s *state, p *player, it Item, process, ref string, ex
 }
 func (w *World) doPickup(s *state, p *player, item int32) {
 	g, ok := s.ground[item]
-	if !ok || p.dead || p.teleporting || g.owner != 0 && g.owner != p.id && time.Now().Before(g.ownerUntil) {
+	if !ok || p.dead || p.teleporting || g.owner != 0 && g.owner != p.id && (g.ownerUntil.IsZero() || time.Now().Before(g.ownerUntil)) {
 		p.send(ActionIgnored{})
 		return
 	}

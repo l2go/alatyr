@@ -110,6 +110,13 @@ func readyCharacter() world.Character {
 		Items: []world.Item{{ObjectID: 10, TemplateID: 57, Count: 1000, Slot: -1}, {ObjectID: 11, TemplateID: 4, Count: 1, Slot: catalog.SlotRHand}, {ObjectID: 12, TemplateID: 1060, Count: 3, Slot: -1}}, Skills: []world.Skill{{ID: 3, Level: 1}}}
 }
 func newRig(t *testing.T, cat *catalog.Catalog, char world.Character, source meaning.Source, filter func(bridge.Update) bridge.Update, opts ...world.Option) *rig {
+	policy := meaning.Policy{Classify: func(o meaning.Observed) meaning.Capabilities {
+		return meaning.Capabilities{Talk: o.Role == "tutor" || o.Role == "provisioner", Pickup: o.Role == meaning.RoleDrop}
+	}}
+	return newRigWithPolicy(t, cat, char, source, filter, policy, opts...)
+}
+
+func newRigWithPolicy(t *testing.T, cat *catalog.Catalog, char world.Character, source meaning.Source, filter func(bridge.Update) bridge.Update, policy meaning.Policy, opts ...world.Option) *rig {
 	t.Helper()
 	r := &rig{t: t, c: gatewaytest.Config(), store: memstore.New()}
 	if err := r.store.PutCharacter(t.Context(), char); err != nil {
@@ -141,9 +148,6 @@ func newRig(t *testing.T, cat *catalog.Catalog, char world.Character, source mea
 			t.Error(err)
 		}
 	})
-	policy := meaning.Policy{Classify: func(o meaning.Observed) meaning.Capabilities {
-		return meaning.Capabilities{Talk: o.Role == "tutor" || o.Role == "provisioner", Pickup: o.Role == meaning.RoleDrop}
-	}}
 	r.session, r.scope, r.state, err = backend.New(r.port, snap, backend.Config{Meaning: r.c, Policy: policy, Origin: origin, Source: func(meaning.Event) meaning.Source { return source }, Handoff: func(h backend.Handoff) { r.mu.Lock(); r.handoffs = append(r.handoffs, h); r.mu.Unlock() }})
 	if err != nil {
 		t.Fatal(err)

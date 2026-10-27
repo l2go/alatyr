@@ -115,7 +115,7 @@ func (c *Catalog) npcTemplateRow(r row) error {
 	default:
 		return fmt.Errorf("catalog: unsupported npc role")
 	}
-	if t.ID <= 0 || t.Level < 1 || t.MaxHP < 1 || t.MaxMP < 0 || t.PDef < 1 || t.PAtkSpd < 1 || t.PAtk < 0 || t.DEX < 0 || t.CollisionRadius < 0 || t.CollisionHigh < 0 || t.WalkSpeed < 1 || t.RunSpeed < 1 || t.RewardExp < 0 || t.RewardSP < 0 {
+	if t.ID <= 0 || t.Level < 1 || t.Level > 1000 || t.MaxHP < 1 || t.MaxMP < 0 || t.PDef < 1 || t.PAtkSpd < 1 || t.PAtk < 0 || t.DEX < 0 || t.CollisionRadius < 0 || t.CollisionHigh < 0 || t.WalkSpeed < 1 || t.RunSpeed < 1 || t.RewardExp < 0 || t.RewardSP < 0 {
 		return fmt.Errorf("catalog: invalid npc template %d", t.ID)
 	}
 	if _, dup := c.npcs[t.ID]; dup {

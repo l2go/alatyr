@@ -98,11 +98,6 @@ func TestMerchantAtomicBuySellAndPersistence(t *testing.T) {
 		if quantity(rows, 57) != 976 || quantity(rows, 1060) != 5 {
 			t.Fatalf("buy balances: %+v", rows)
 		}
-		before := rows
-		c, err = r.w.Execute(t.Context(), req)
-		if err != nil || c.Outcome.Stage != world.StageRefused || c.Outcome.Reason != world.ReasonStale || !reflect.DeepEqual(before, inventory(t, r)) {
-			t.Fatal("committed offer replay mutated inventory")
-		}
 		sell := merchantOffer(t, r, true, 1060)
 		sell.Quantity = 2
 		c, err = r.w.Execute(t.Context(), sell)
@@ -212,7 +207,16 @@ func TestMerchantNonstackableAndSaleEligibility(t *testing.T) {
 		r := newRig(t, cat, char, allSources(), nil)
 		req := merchantOffer(t, r, false, 4)
 		req.Quantity = 2
+		before := inventory(t, r)
+		bulk, err := r.w.Execute(t.Context(), req)
+		if err != nil || bulk.Outcome.Stage != world.StageRefused || bulk.Outcome.Reason != world.ReasonInvalid || !reflect.DeepEqual(before, inventory(t, r)) {
+			t.Fatal("nonstackable bulk buy was not refused atomically")
+		}
+		req.Quantity = 1
 		c, err := r.w.Execute(t.Context(), req)
+		if err == nil && c.Outcome.Stage == world.StageDone {
+			c, err = r.w.Execute(t.Context(), req)
+		}
 		if err != nil || c.Outcome.Stage != world.StageDone {
 			t.Fatalf("nonstackable buy: %+v/%v", c, err)
 		}
@@ -247,7 +251,7 @@ func TestMerchantNonstackableAndSaleEligibility(t *testing.T) {
 	})
 }
 
-func TestMerchantConcurrentOfferExecutesOnce(t *testing.T) {
+func TestMerchantConcurrentDistinctCommandsSerializeBalances(t *testing.T) {
 	runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
 		char := readyCharacter()
 		char.Y = 258243
@@ -276,12 +280,12 @@ func TestMerchantConcurrentOfferExecutesOnce(t *testing.T) {
 				refused++
 			}
 		}
-		if done != 1 || refused != 1 {
-			t.Fatalf("concurrent offer: done/refused=%d/%d, want 1/1", done, refused)
+		if done != 2 || refused != 0 {
+			t.Fatalf("concurrent offer: done/refused=%d/%d, want 2/0", done, refused)
 		}
 		rows := inventory(t, r)
-		if quantity(rows, 57) != 988 || quantity(rows, 1060) != 4 {
-			t.Fatalf("offer executed more than once: %+v", rows)
+		if quantity(rows, 57) != 976 || quantity(rows, 1060) != 5 {
+			t.Fatalf("distinct commands lost a balance update: %+v", rows)
 		}
 	})
 }

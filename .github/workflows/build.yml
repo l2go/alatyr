@@ -480,7 +480,7 @@ jobs:
           go-version: "1.27.3"
           cache: false
 
-      - name: Exercise the live Java bridge and participant return
+      - name: Compare Okolitsa on the Go world and the live Java bridge
         run: bash tools/ci/bridge-integration.sh
 
       - name: Upload what the database checks wrote
@@ -496,6 +496,7 @@ jobs:
             target/bridge-integration/postgres.log
             target/bridge-integration/nc.log
             target/bridge-integration/go.log
+            target/bridge-integration/hunt-model.log
             target/bridge-integration/threads.txt
 
   # Builds the image of each platform from the verified distribution and starts it: the server must come up on the native

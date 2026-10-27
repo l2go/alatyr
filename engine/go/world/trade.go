@@ -140,7 +140,7 @@ func (w *World) trade(s *state, p *player, req Request) {
 		return
 	}
 	tmpl, ok := w.cat.Item(terms.Item)
-	if !ok || terms.Price > math.MaxInt64/req.Quantity {
+	if !ok || terms.Price > math.MaxInt64/req.Quantity || req.Verb == VerbBuy && !tmpl.Stackable() && req.Quantity != 1 {
 		refuse(ReasonInvalid)
 		return
 	}
@@ -296,7 +296,8 @@ func (w *World) trade(s *state, p *player, req Request) {
 	}
 	p.char.Items, p.itemRefs = items, refs
 	s.group(effects)
-	s.clearAffordances(p) // Each issued offer is single-use after a committed trade.
+	// An issued merchant list remains valid until replacement or expiry.
+	// Request replay belongs to the command/session layer, not the offer.
 	s.finish(StageDone)
 	p.send(InventoryChanged{Changes: changes, Load: w.load(p)})
 	for _, change := range changes {

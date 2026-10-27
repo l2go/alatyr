@@ -48,6 +48,8 @@ mapfile -t archives < <(find "$root/engine/java/platform/target" -maxdepth 1 -na
 [[ ${#archives[@]} == 1 ]]
 unzip -q "${archives[0]}" -d "$run"
 distribution="$run/l2jfree"
+JAVA_PARITY_WORLD="$distribution/world" JAVA_PARITY_SQL="$run/parity.sql" \
+    go -C "$root/engine/go" test -count=1 ./worldtest -run '^TestPrepareJavaParityFixtures$'
 password="$(openssl rand -hex 24)"
 db="$(timeout 120 docker run --rm -d -p 127.0.0.1::5432 -e POSTGRES_DB=bridge -e POSTGRES_PASSWORD="$password" \
     postgres:18.6@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722)"
@@ -76,8 +78,31 @@ EOF
 cat > "$run/operator/other.properties" <<EOF
 RespawnRandomInTown=False
 TeleportWatchdogTimeout=0
+MaximumSlotsForNoDwarf=128
+EOF
+cat > "$run/operator/vitality.properties" <<EOF
+EnableVitality=False
+EOF
+cat > "$run/operator/geodata.properties" <<EOF
+GeoData=0
 EOF
 export JAVA_BRIDGE_SECRET="$(openssl rand -hex 32)"
+export JAVA_PARITY_SECRET="$(openssl rand -hex 32)"
+export JAVA_PARITY_ENDPOINT=127.0.0.1:19017
+# Compile only the disposable fixture control. No production class is changed,
+# and this jar is neither copied into the distribution nor published as an image.
+mkdir -p "$run/fixture-classes"
+javac --release 25 -cp "$distribution/libs/*:$distribution/*" -d "$run/fixture-classes" \
+    "$root/tools/ci/java-fixture/WorldFixture.java"
+printf 'Premain-Class: org.alatyr.testing.WorldFixture\n' > "$run/fixture-manifest"
+jar --create --file "$run/fixture.jar" --manifest "$run/fixture-manifest" -C "$run/fixture-classes" .
+runtime_classpath="$distribution/config"
+while IFS= read -r -d '' runtime_jar; do
+    runtime_classpath="$runtime_classpath:$runtime_jar"
+done < <(find "$distribution" -name '*.jar' -print0)
+JAVA_PARITY_VECTORS="$root/engine/go/world/hunt/testdata/parity.tsv" \
+    jshell --class-path "$runtime_classpath" "$root/tools/ci/java-fixture/hunt.jsh" | tee "$run/hunt-model.log"
+grep -qx 'HUNT_PARITY_OK=14' "$run/hunt-model.log"
 cat > "$run/operator/bridge.properties" <<EOF
 bridge.enabled=true
 bridge.port=19016
@@ -88,6 +113,7 @@ start_server() {
     (
         cd "$run/work"
         exec java -Xms512m -Xmx2g -Dfile.encoding=UTF-8 -Dl2jfree.network.transport=nio \
+            "-javaagent:$run/fixture.jar=19017:$JAVA_PARITY_SECRET" \
             "-Dl2jfree.config.defaults=$distribution/config" "-Dl2jfree.config.operator=$run/operator" \
             "-Dlogback.configurationFile=$distribution/config/logback.xml" \
             -cp "$distribution/config:$distribution/libs/*:$distribution/*" com.l2jfree.platform.Platform
@@ -108,6 +134,7 @@ echo "Bridge integration: migrate the disposable database" >> "$run/server.log"
 start_server
 stop_server
 timeout 10 docker exec -i "$db" psql -X -U postgres -d bridge -v ON_ERROR_STOP=1 --single-transaction < "$root/tools/ci/bridge-integration.sql"
+timeout 10 docker exec -i "$db" psql -X -U postgres -d bridge -v ON_ERROR_STOP=1 --single-transaction < "$run/parity.sql"
 echo "Bridge integration: start with persisted acceptance characters" >> "$run/server.log"
 start_server
 
@@ -119,4 +146,4 @@ export JAVA_BRIDGE_NC_JAR="${smoke[0]}" JAVA_BRIDGE_NC_PASSWORD="$(openssl rand 
 export JAVA_BRIDGE_NC_LOG="$run/nc.log"
 export JAVA_BRIDGE_ENDPOINT=127.0.0.1:19016 JAVA_BRIDGE_DB_CONTAINER="$db"
 cd "$root/engine/go"
-go test -race -count=1 -v -timeout=4m ./gateway/backend -run '^TestJavaBridge' 2>&1 | tee "$run/go.log"
+go test -race -count=1 -v -timeout=8m ./gateway/backend ./worldtest -run '^(TestJavaBridge|TestOkolitsaParity)' 2>&1 | tee "$run/go.log"

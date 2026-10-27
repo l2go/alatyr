@@ -41,6 +41,8 @@ const (
 	PlaceDecay Place = "decay"
 	// PlaceLearning is the sink for skill-learning costs.
 	PlaceLearning Place = "learning"
+	// PlaceConsumption is the sink for an item consumed by its authored effect.
+	PlaceConsumption Place = "consumption"
 )
 
 // Capability identifies a world-provided ability.
@@ -109,6 +111,8 @@ const (
 	VerbRestart Verb = "restart"
 	// VerbCast requests use of a skill.
 	VerbCast Verb = "cast"
+	// VerbUseItem toggles authored equipment or consumes an authored item effect.
+	VerbUseItem Verb = "use-item"
 )
 
 // Rule identifies the world rule responsible for a transition.
@@ -157,6 +161,8 @@ const (
 	RuleRespawn Rule = "respawn"
 	// RuleItemDecay removes expired ground items.
 	RuleItemDecay Rule = "item-decay"
+	// RuleItemEffect applies an already paid, delayed item effect.
+	RuleItemEffect Rule = "item-effect"
 	// RuleGameClock advances the accelerated display clock.
 	RuleGameClock Rule = "game-clock"
 )
@@ -165,6 +171,8 @@ const (
 type Property string
 
 const (
+	// PropertyEquipmentSlot describes an inventory row's slot; -1 means carried.
+	PropertyEquipmentSlot Property = "equipment-slot"
 	// PropertyPosition is an authoritative position (PointValue).
 	PropertyPosition Property = "position"
 	// PropertyHeading is the heading (IntValue).

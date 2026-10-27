@@ -46,6 +46,8 @@ type Skill struct {
 	IgnoreShld, IgnoreResists             bool
 	CanBeReflected                        bool
 	NeededCharges, ItemConsume, SoulCount int32
+	ItemConsumeID                         int32
+	Item, Potion                          bool
 	Precondition                          bool
 	Funcs                                 []ItemFunc
 }

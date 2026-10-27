@@ -190,6 +190,7 @@ func skillOf(id, level int32, set map[string]string) (Skill, error) {
 		{"castRange", &s.CastRange}, {"effectRange", &s.EffectRange}, {"baseCritRate", &s.BaseCritRate},
 		{"lethal1", &s.Lethal1}, {"lethal2", &s.Lethal2}, {"needCharges", &s.NeededCharges},
 		{"itemConsumeCount", &s.ItemConsume}, {"soulConsumeCount", &s.SoulCount},
+		{"itemConsumeId", &s.ItemConsumeID},
 	} {
 		if raw, ok := set[v.key]; ok {
 			n, err := javaDecode(raw)
@@ -206,6 +207,7 @@ func skillOf(id, level int32, set map[string]string) (Skill, error) {
 		{"sendToClient", &s.SendToClient}, {"isMagic", &s.Magic}, {"overHit", &s.OverHit},
 		{"staticHitTime", &s.StaticHitTime}, {"staticReuse", &s.StaticReuse}, {"ignoreShld", &s.IgnoreShld},
 		{"ignoreResists", &s.IgnoreResists}, {"canBeReflected", &s.CanBeReflected},
+		{"isItem", &s.Item}, {"isPotion", &s.Potion},
 	} {
 		if raw, ok := set[v.key]; ok {
 			if !strings.EqualFold(raw, "true") && !strings.EqualFold(raw, "false") {
@@ -241,7 +243,7 @@ func skillOf(id, level int32, set map[string]string) (Skill, error) {
 			s.WeaponsAllowed = append(s.WeaponsAllowed, kind)
 		}
 	}
-	if s.MPConsume < 0 || s.MPInitialConsume < 0 || int64(s.MPConsume)+int64(s.MPInitialConsume) > math.MaxInt32 || s.HPConsume < 0 || s.HitTime < 0 || s.CoolTime < 0 || s.ReuseDelay < 0 || s.Power < 0 || s.BaseCritRate < 0 || s.CastRange < -1 || s.EffectRange < -1 {
+	if s.ItemConsume < 0 || s.ItemConsumeID < 0 || s.MPConsume < 0 || s.MPInitialConsume < 0 || int64(s.MPConsume)+int64(s.MPInitialConsume) > math.MaxInt32 || s.HPConsume < 0 || s.HitTime < 0 || s.CoolTime < 0 || s.ReuseDelay < 0 || s.Power < 0 || s.BaseCritRate < 0 || s.CastRange < -1 || s.EffectRange < -1 {
 		return s, errors.New("invalid skill range or cost")
 	}
 	return s, nil
