@@ -1056,3 +1056,34 @@ func TestRetiredRuntimeCannotReturn(t *testing.T) {
 		})
 	}
 }
+
+// The host acceptance test may reuse the participant driver. Production and
+// storage packages must never depend on that test composition.
+func TestHostParticipantDriverIsTestOnly(t *testing.T) {
+	const host = "server/cmd/alatyr-server"
+	const driver = "gateway/gatewaytest"
+	p := syntheticPolicy(t)
+	if !allowedEdge(p, host, driver, true) {
+		t.Fatal("host test cannot use participant driver")
+	}
+	for _, tc := range []struct {
+		from string
+		test bool
+	}{
+		{host, false}, {"server/internal/pgstore", false}, {"server/internal/pgstore", true},
+		{"server/internal/migrate", true}, {"world", true}, {"worldbridge", true},
+	} {
+		t.Run(fmt.Sprintf("%s/test=%t", tc.from, tc.test), func(t *testing.T) {
+			if allowedEdge(p, tc.from, driver, tc.test) {
+				t.Fatal("participant test driver escaped host tests")
+			}
+			root, p := fixture(t)
+			file := "probe.go"
+			if tc.test {
+				file = "probe_test.go"
+			}
+			writeFixture(t, root, "engine/go/"+tc.from+"/"+file, source("AGPL-3.0-or-later", "package probe\nimport _ "+fmt.Sprintf("%q", modulePrefix+driver)+"\n"))
+			expectRule(t, checkSources(root, p), "I-3")
+		})
+	}
+}
