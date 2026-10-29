@@ -32,13 +32,16 @@ const (
 // Unused fields grant no authority.
 // Intent identity is assigned by the world, not supplied by the caller.
 type Request struct {
-	Owner        Ref
-	Verb         Verb
-	Deadline     Time
-	Target       Ref
-	Position     Point
-	Skill        Skill
-	AffordanceID uint64
+	Owner    Ref
+	Verb     Verb
+	Deadline Time
+	// AdmissionDeadline limits only the start of this command. It does not
+	// revoke an admitted movement, attack or cast. Zero has no queue deadline.
+	AdmissionDeadline Time
+	Target            Ref
+	Position          Point
+	Skill             Skill
+	AffordanceID      uint64
 	// Quantity is the requested count within an issued buy or sell offer.
 	Quantity    int64
 	Fence       Fence
@@ -57,6 +60,14 @@ func (w *World) Execute(ctx context.Context, req Request) (Commit, error) {
 	var learnt *Skill
 	err := w.submit(ctx, func(s *state) {
 		commit = s.commandUntil(req.Owner, req.Verb, req.Deadline, func() {
+			if req.AdmissionDeadline < 0 {
+				s.resolve(StageRefused, ReasonInvalid)
+				return
+			}
+			if req.AdmissionDeadline != 0 && s.now() >= req.AdmissionDeadline {
+				s.finish(StageExpired)
+				return
+			}
 			p, ok := s.players[req.Owner.ID]
 			if !ok || p.ref() != req.Owner {
 				s.resolve(StageRefused, ReasonStale)
@@ -159,6 +170,8 @@ func (w *World) execute(s *state, p *player, req Request) *Skill {
 		w.setIntention(s, p, order{intent: intentCast, target: req.Target, cast: &castRequest{skill: sk, target: req.Target, ctrl: req.Ctrl, shift: req.Shift}})
 	case VerbBuy, VerbSell:
 		w.trade(s, p, req)
+	case VerbUseItem:
+		w.useItem(s, p, req)
 	case VerbRestart:
 		restart, ok := w.cat.RestartAt(p.pos.X, p.pos.Y, p.pos.Z)
 		if !p.dead || p.teleporting {
@@ -170,7 +183,9 @@ func (w *World) execute(s *state, p *player, req Request) *Skill {
 			return nil
 		}
 		point := restart.Normal[s.rng.IntN(len(restart.Normal))]
-		if err := w.teleport(s, p, Point{X: point.X, Y: point.Y, Z: point.Z}, true); err != nil {
+		// The reference world's restart places the actor five units above
+		// the authored Z, including when no terrain provider is configured.
+		if err := w.teleport(s, p, Point{X: point.X, Y: point.Y, Z: offsetCoordinate(point.Z, 5)}, true); err != nil {
 			s.resolve(StageRefused, ReasonState)
 		}
 	case VerbChoose, VerbLearn:

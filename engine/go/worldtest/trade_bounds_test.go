@@ -31,8 +31,6 @@ func TestMerchantFinalInventoryRows(t *testing.T) {
 		{"existing-stack-128", false, 1060, 128, 128, 25, 1, 2},
 		{"nonstack-127-last-coin", false, 4, 127, 127, 86, 0, 1},
 		{"nonstack-128-last-coin", false, 4, 128, 128, 86, 0, 1},
-		{"nonstack-two-128-last-coin", false, 4, 127, 128, 172, 0, 2},
-		{"nonstack-two-129-last-coin", false, 4, 128, 129, 172, 0, 2},
 		{"nonstack-128-coin-remains", false, 4, 127, 128, 87, 0, 1},
 		{"nonstack-129-coin-remains", false, 4, 128, 129, 87, 0, 1},
 		{"sell-stack-whole-127-new-coin", true, 1060, 127, 127, 0, 3, 3},

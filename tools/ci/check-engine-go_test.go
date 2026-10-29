@@ -462,7 +462,8 @@ func TestPackageSelectorsAndUnknownDirectories(t *testing.T) {
 		want     bool
 	}{
 		{"protocol/wire", "protocol/proto", true},
-		{"world/catalog", "world/storage", true},
+		{"world/catalog", "world/memstore", true},
+		{"world/catalog", "world/storage", false},
 		{"bridge/profile", "bridge/internal/transport", true},
 		{"worldbridge/adapter", "world/catalog", true},
 		{"gateway/backend", "bridge/profile", true},
@@ -1023,5 +1024,22 @@ func TestWorldTestCompositionBoundary(t *testing.T) {
 	}
 	root, p := fixture(t)
 	writeFixture(t, root, "engine/go/worldtest/probe.go", source("AGPL-3.0-or-later", "package worldtest\nimport _ \"example.org/foreign\"\n"))
+	expectRule(t, checkSources(root, p), "I-3")
+}
+
+func TestHuntCalculationBoundary(t *testing.T) {
+	p := syntheticPolicy(t)
+	for _, to := range []string{"world", "world/catalog", "worldbridge", "gateway", "bridge", "protocol/wire"} {
+		for _, test := range []bool{false, true} {
+			if allowedEdge(p, "world/hunt", to, test) {
+				t.Fatalf("pure hunt calculation imported %s", to)
+			}
+		}
+	}
+	if !allowedEdge(p, "world", "world/hunt", false) {
+		t.Fatal("world cannot use its reward calculation")
+	}
+	root, p := fixture(t)
+	writeFixture(t, root, "engine/go/world/hunt/probe.go", source("AGPL-3.0-or-later", "package hunt\nimport _ \"github.com/l2go/alatyr/engine/go/world\"\n"))
 	expectRule(t, checkSources(root, p), "I-3")
 }

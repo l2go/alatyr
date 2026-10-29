@@ -16,7 +16,10 @@ authorize participant Done without live, exclusive, timely dictionary evidence.
 Optional `Handoff` reports numeric correlation only, never payloads or errors.
 
 Ready snapshots require explicit complete inventory, skill, and quest lists.
-Unknown does not become known-empty. Recovery preserves original proposal
+Unknown does not become known-empty. The audited bridge buy/sell packets carry
+one complete goods list even when the optional completeness flag is absent.
+An explicitly incomplete trade list remains non-actionable, and this rule does
+not apply to inventory or other list producers. Recovery preserves original proposal
 birth, reference counters, and raw command keys. `Session.Resume(ctx)` is explicit
 and bounded by the original detach expiry (at most 30 seconds); failed recovery
 closes the port. It does not replay commands or treat recovery receipts as live

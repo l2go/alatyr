@@ -121,9 +121,12 @@ func (w *World) applyIntention(s *state, a actor, o order) {
 func (w *World) changeIntention(s *state, a actor, in intention, object int32, pos Point) {
 	c := a.base()
 	if n, ok := a.(*npc); ok && n.mob() {
+		if c.ai.intention == intentAttack && !c.dead && (in == intentIdle || in == intentActive) {
+			n.hunt.returned = true
+		}
 		if in == intentIdle || in == intentActive {
 			if !c.dead {
-				if len(n.knownPlayers) > 0 || distance3D(c.pos, n.home()) > 2*maxDriftRange {
+				if len(n.knownPlayers) > 0 || n.hunt.returned || distance3D(c.pos, n.home()) > 2*maxDriftRange {
 					in = intentActive
 				}
 			}

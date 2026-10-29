@@ -17,6 +17,8 @@ import (
 // PlayerTemplate is a class template from player_template.csv with its level-up
 // gains from level_up_gain.csv. Collision values hold the male and female sizes.
 type PlayerTemplate struct {
+	// ClassKindKnown distinguishes authored mage/fighter metadata from absence.
+	ClassKindKnown, Mage             bool
 	Name                             string
 	ClassID                          int32
 	STR, CON, DEX, INT, WIT, MEN     int32
@@ -55,6 +57,8 @@ type ItemTemplate struct {
 	Price int64
 	// Sellable permits an unequipped carried item to be offered to a merchant.
 	Sellable bool
+	// Skills are exact authored item effects, independent of learned skills.
+	Skills []SkillRef
 
 	WeaponType                        string
 	PhysicalDamage, RandomDamage      int32
@@ -179,6 +183,7 @@ func (c *Catalog) playerRow(r row) error {
 	if t.RunSpd <= 0 {
 		return errors.New("nonpositive run speed")
 	}
+	t.Mage, t.ClassKindKnown = c.classKinds[t.ClassID]
 	c.players[t.ClassID] = t
 	return nil
 }
@@ -217,6 +222,8 @@ func (c *Catalog) addItem(t ItemTemplate, err error) error {
 // Catalog is a loaded rendered world. It is immutable after Load and safe for
 // concurrent readers.
 type Catalog struct {
+	id         string
+	classKinds map[int32]bool
 	players    map[int32]PlayerTemplate
 	items      map[int32]ItemTemplate
 	itemFuncs  map[int32][]ItemFunc
@@ -239,7 +246,11 @@ type Catalog struct {
 func (c *Catalog) Player(id int32) (PlayerTemplate, bool) { t, ok := c.players[id]; return t, ok }
 
 // Item returns the template of item id.
-func (c *Catalog) Item(id int32) (ItemTemplate, bool) { t, ok := c.items[id]; return t, ok }
+func (c *Catalog) Item(id int32) (ItemTemplate, bool) {
+	t, ok := c.items[id]
+	t.Skills = append([]SkillRef(nil), t.Skills...)
+	return t, ok
+}
 
 // PassiveFuncs returns a copy of the stat functions of passive skill id at level.
 func (c *Catalog) PassiveFuncs(id, level int32) []ItemFunc {
@@ -250,6 +261,9 @@ func (c *Catalog) PassiveFuncs(id, level int32) []ItemFunc {
 // Templates, spawns, learning, drops and geometry come from the same root.
 func Load(root string) (*Catalog, error) {
 	c := &Catalog{players: map[int32]PlayerTemplate{}, items: map[int32]ItemTemplate{}, itemFuncs: map[int32][]ItemFunc{}, passive: map[[2]int32][]ItemFunc{}}
+	if err := c.loadIdentity(root); err != nil {
+		return nil, err
+	}
 	c.npcs = map[int32]NPCTemplate{}
 	c.drops = map[int32][]*DropCategory{}
 	c.skillTree = map[int32][]SkillLearn{}
@@ -278,6 +292,18 @@ func Load(root string) (*Catalog, error) {
 	if err := c.loadShops(root); err != nil {
 		return nil, err
 	}
+	for id := range c.classKinds {
+		if _, ok := c.players[id]; !ok {
+			return nil, fmt.Errorf("catalog: class kind without template %d", id)
+		}
+	}
+	for _, item := range c.items {
+		for _, ref := range item.Skills {
+			if _, ok := c.Skill(ref.ID, ref.Level); !ok {
+				return nil, fmt.Errorf("catalog: item %d has no exact skill %d/%d", item.ID, ref.ID, ref.Level)
+			}
+		}
+	}
 	return c, nil
 }
 func (c *Catalog) weaponRow(r row) error {
@@ -285,14 +311,17 @@ func (c *Catalog) weaponRow(r row) error {
 		WeaponType: r.str("weapon_type"), PhysicalDamage: r.int("physical_damage"), MagicDamage: r.int("magic_damage"),
 		RandomDamage: r.int("random_damage"), CritRate: r.int("critical_rate"), AccuracyMod: r.int("accuracy_modifier"),
 		EvasionMod: r.int("evasion_modifier"), AttackSpeed: r.int("attack_speed"), SoulshotCount: r.int("soulshot_count"), SpiritshotCount: r.int("spiritshot_count")}
+	t.Skills = itemSkills(&r)
 	return c.addItem(t, r.err)
 }
 func (c *Catalog) armorRow(r row) error {
 	t := ItemTemplate{ID: r.int("id"), Name: r.str("name"), Price: optionalPrice(&r), Sellable: optionalSellable(&r), Kind: Armor, BodyPartName: r.str("body_part"), Weight: r.int("weight"),
 		ArmorType: r.str("armor_type"), PDef: r.int("physical_defense"), MDef: r.int("magic_defense"), ArmorEvasionMod: r.int("evasion_modifier"), MPBonus: r.int("mp_bonus")}
+	t.Skills = itemSkills(&r)
 	return c.addItem(t, r.err)
 }
 func (c *Catalog) etcRow(r row) error {
 	t := ItemTemplate{ID: r.int("id"), Name: r.str("name"), Price: optionalPrice(&r), Sellable: optionalSellable(&r), Kind: EtcItem, Weight: r.int("weight"), EtcType: r.str("item_type"), ConsumeType: r.str("consume_type")}
+	t.Skills = itemSkills(&r)
 	return c.addItem(t, r.err)
 }

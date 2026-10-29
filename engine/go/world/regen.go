@@ -69,6 +69,9 @@ func (w *World) regenTask(s *state, a actor, now time.Time) bool {
 			w.markBroadcast(s, a, broadcastStatus)
 		}
 	}
+	if n, ok := a.(*npc); ok {
+		n.resetHuntIfHome()
+	}
 	return need
 }
 func movementRate(p *player) float64 {

@@ -27,11 +27,11 @@ func TestPrepareCapturesTargetSkillDeadlineAndAffordance(t *testing.T) {
 	}
 	c.Payload[1].Value.Fields[0].Value.S = 999
 	ttl = 100
-	if p.request.Target != s.Objects[0].Entity || p.request.Skill != (world.Skill{ID: 301, Level: 1}) || p.request.Deadline != s.End.Time+world.Time(50*time.Millisecond) || *p.command.QueueTTLMS != 50 {
+	if p.request.Target != s.Objects[0].Entity || p.request.Skill != (world.Skill{ID: 301, Level: 1}) || p.request.Deadline != 0 || p.request.AdmissionDeadline != s.End.Time+world.Time(50*time.Millisecond) || *p.command.QueueTTLMS != 50 {
 		t.Fatalf("got %+v, want original captured values", p)
 	}
 	p = preparedTest(t, 13, s)
-	if p.request.Deadline != s.End.Time+world.Time(5*time.Second) {
+	if p.request.Deadline != 0 || p.request.AdmissionDeadline != s.End.Time+world.Time(5*time.Second) {
 		t.Fatal("default raw port queue deadline was lost")
 	}
 	if p.request.AffordanceID != 11 || p.cost != 10 || p.request.Target != s.Dialogue.Speaker {

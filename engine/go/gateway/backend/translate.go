@@ -85,6 +85,12 @@ func event(r wire.Record) (meaning.Event, error) {
 		return meaning.Event{}, err
 	}
 	e := d.Event
+	// The audited bridge BuyList/SellList packets carry one complete goods
+	// list, without the optional flag used by other list producers. Preserve an
+	// explicit false flag; never infer completeness for a missing goods list.
+	if (e.Kind == meaning.Shop || e.Kind == meaning.Offer) && profile.Has(r, 24) && !profile.Has(r, 31) {
+		e.Complete = true
+	}
 	if opts, ok := wire.Find(r.Fields, 68); ok {
 		e.Lines = make([]meaning.Line, 0, len(opts.Items))
 		for _, option := range opts.Items {

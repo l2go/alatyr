@@ -51,7 +51,7 @@ func syntheticCatalog(t *testing.T) *catalog.Catalog {
 	return syntheticCatalogWithCoolTime(t, 0)
 }
 
-func syntheticCatalogWithCoolTime(t *testing.T, cool time.Duration) *catalog.Catalog {
+func syntheticCatalogWithCoolTime(t *testing.T, cool time.Duration, extraDrops ...map[string]string) *catalog.Catalog {
 	t.Helper()
 	root := t.TempDir()
 	for _, dir := range []string{"catalog", "data/stats/weapon", "data/stats/armor", "data/stats/etcitem", "data/stats/skills", "data/zone", "data/html/trainer"} {
@@ -81,6 +81,7 @@ func syntheticCatalogWithCoolTime(t *testing.T, cool time.Duration) *catalog.Cat
 		},
 		"drop": {{"npc_template_id": "9101", "item_template_id": "9002", "category": "0", "min_count": "2", "max_count": "2", "chance": "1000000"}},
 	}
+	data["drop"] = append(data["drop"], extraDrops...)
 	for name, rows := range data {
 		f, err := os.Open(filepath.Join(repositoryWorld(), "catalog", name+".csv"))
 		if err != nil {
@@ -517,7 +518,7 @@ func TestExplicitExperienceThresholds(t *testing.T) {
 		w, _, ctx := startTestWorld(t, cat, option)
 		entry := enterTest(t, w, ctx, syntheticCharacter(1))
 		drainEvents(entry.Events)
-		w.do(ctx, func(s *state) { w.addExpAndSP(s, s.players[1], 10, 2, false) })
+		w.do(ctx, func(s *state) { w.addExpAndSP(s, s.players[1], 10, 2) })
 		self, _ := w.Snapshot(ctx, 1)
 		if self.Char.Level != 2 || self.Char.CurHP != self.Char.MaxHP || self.Char.CurMP != self.Char.MaxMP || len(self.Char.Skills) != 0 {
 			t.Fatal("explicit progression or unsolicited skill")

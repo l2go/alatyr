@@ -5,7 +5,6 @@ package worldtest
 
 import (
 	"bytes"
-	"reflect"
 	"testing"
 	"time"
 
@@ -167,17 +166,27 @@ func TestG04MerchantBuySellStayUnknown(t *testing.T) {
 				r.advance(5 * time.Second)
 				r.expect(3, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0)
 				r.expect(2, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0)
-				// G07: the participant's still-retained row cannot renew the
-				// consumed source offer. A new handoff gets an ordinary refusal.
+				// A distinct command can reuse a live list; Intent replay remains
+				// covered separately by the participant contract.
 				r.p.Send(r.intent(4, verb, wire.S(14, true, int64(d.Event.List)), wire.U(15, true, d.Context.Offers[index]), wire.S(16, true, 1), wire.S(17, true, row.Price)))
-				r.expect(4, wire.StageUnknown, wire.ReasonInterrupted, wire.DeliveryBackend, 0)
+				r.p.Result(4, wire.StageSent)
+				r.sync()
 				after, err := r.w.Capture(t.Context(), raw.Owner())
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !reflect.DeepEqual(scene.Inventory, after.Inventory) {
-					t.Fatal("stale offer changed source inventory")
+				if sell {
+					wantCoin += 6
+					wantCount--
+				} else {
+					wantCoin -= 12
+					wantCount++
 				}
+				if quantity(after.Inventory, 57) != wantCoin || quantity(after.Inventory, 1060) != wantCount {
+					t.Fatal("distinct trade did not update both balances")
+				}
+				r.advance(5 * time.Second)
+				r.expect(4, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0)
 
 			})
 		})

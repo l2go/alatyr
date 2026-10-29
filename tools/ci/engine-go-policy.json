@@ -99,7 +99,37 @@
       ]
     },
     {
-      "source": "world/**",
+      "source": "world/hunt/**",
+      "imports": [
+        "world/hunt/**"
+      ]
+    },
+    {
+      "source": "world",
+      "imports": [
+        "world/**"
+      ]
+    },
+    {
+      "source": "world/catalog/**",
+      "imports": [
+        "world/**"
+      ]
+    },
+    {
+      "source": "world/stat/**",
+      "imports": [
+        "world/**"
+      ]
+    },
+    {
+      "source": "world/itemlog/**",
+      "imports": [
+        "world/**"
+      ]
+    },
+    {
+      "source": "world/memstore/**",
       "imports": [
         "world/**"
       ]

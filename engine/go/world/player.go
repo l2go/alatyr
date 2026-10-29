@@ -19,6 +19,9 @@ var errUnsupportedEvent = errors.New("world: unsupported event")
 
 type player struct {
 	creature
+	party                      *party
+	lifeVersion                uint64
+	unavailableItems           []Item
 	char                       Character
 	stats                      *stat.Player
 	stream                     *eventStream
@@ -198,6 +201,10 @@ func (w *World) statsOf(c Character) (*stat.Player, error) {
 	}
 	worn, funcs := stat.Worn(w.cat, items)
 	st := &stat.Player{Template: t, Level: c.Level, Female: c.Female, Worn: worn, Funcs: funcs}
+	if t.ClassKindKnown {
+		mage := t.Mage
+		st.Mage = &mage
+	}
 	st.SkillFuncs = w.skillFuncs(c.Skills, st.Worn)
 	return st, nil
 }
@@ -209,6 +216,17 @@ func (w *World) selfOf(p *player) Self {
 	return Self{Entity: p.ref(), Char: c, RunSpeed: p.stats.RunSpeed(), WalkSpeed: p.stats.WalkSpeed(), Dead: p.dead, Running: p.running, Sitting: p.sitting, Teleporting: p.teleporting, PAtk: p.stats.PAtk(), PDef: p.stats.PDef(), PDefKnown: p.stats.PDefKnown()}
 }
 
+// savedCharacter captures the same complete durable state for departure and
+// fatal shutdown. Runtime-only party membership and life fences are not saved.
+func (w *World) savedCharacter(p *player) Character {
+	c := w.selfOf(p).Char
+	// The reference schema stores whole vital points; active values may be fractional.
+	c.CurHP, c.CurMP, c.CurCP = math.Round(c.CurHP), math.Round(c.CurMP), math.Round(c.CurCP)
+	// Missing templates have no active authority but remain part of durable state.
+	c.Items = append(c.Items, p.unavailableItems...)
+	return c
+}
+
 // Enter loads a ready character at its stored position. It grants no items,
 // skills or quests and does not select a start point.
 func (w *World) Enter(ctx context.Context, c Character) (Entry, error) {
@@ -216,7 +234,23 @@ func (w *World) Enter(ctx context.Context, c Character) (Entry, error) {
 	if err := validateReady(c); err != nil {
 		return Entry{}, err
 	}
-	st, err := w.statsOf(c)
+	if w.s == nil {
+		return Entry{}, ErrUninitialized
+	}
+	if w.cat == nil {
+		return Entry{}, fmt.Errorf("world: missing catalog")
+	}
+	active := c.Clone()
+	active.Items = nil
+	var unavailable []Item
+	for _, it := range c.Items {
+		if _, ok := w.cat.Item(it.TemplateID); ok {
+			active.Items = append(active.Items, it)
+		} else {
+			unavailable = append(unavailable, it)
+		}
+	}
+	st, err := w.statsOf(active)
 	if err != nil {
 		return Entry{}, err
 	}
@@ -239,11 +273,12 @@ func (w *World) Enter(ctx context.Context, c Character) (Entry, error) {
 			s.reserved[id] = true
 			s.ids.reserve(id)
 		}
-		p, allocationErr := s.enterPlayer(c, st)
+		p, allocationErr := s.enterPlayer(active, st)
 		if allocationErr != nil {
 			result = allocationErr
 			return
 		}
+		p.unavailableItems = unavailable
 		s.players[c.ObjectID] = p
 		s.group([]Effect{ExistenceChanged{Entity: p.ref(), After: true}})
 		s.finish(StageDone)
@@ -316,7 +351,7 @@ func (s *state) entryIDs(c Character) (map[int32]bool, error) {
 			return nil, ErrPresent
 		}
 		for _, other := range s.players {
-			for _, held := range other.char.Items {
+			for _, held := range slices.Concat(other.char.Items, other.unavailableItems) {
 				if held.ObjectID == it.ObjectID {
 					return nil, ErrPresent
 				}
@@ -338,7 +373,7 @@ func (s *state) entryIDs(c Character) (map[int32]bool, error) {
 		return nil, ErrPresent
 	}
 	for _, other := range s.players {
-		for _, held := range other.char.Items {
+		for _, held := range slices.Concat(other.char.Items, other.unavailableItems) {
 			if held.ObjectID == c.ObjectID {
 				return nil, ErrPresent
 			}
@@ -434,7 +469,7 @@ func (w *World) leave(ctx context.Context, owner Ref, voluntary bool) error {
 					s.finish(StageRefused)
 					return
 				}
-				c = w.selfOf(p).Char
+				c = w.savedCharacter(p)
 				p.attackSeq++
 				p.castSeq++
 				s.setAttacking(p.base(), 0)
@@ -457,6 +492,7 @@ func (w *World) leave(ctx context.Context, owner Ref, voluntary bool) error {
 				p.close(CloseLeave)
 				s.group([]Effect{ExistenceChanged{Entity: p.ref(), Before: true}})
 				s.finish(StageDone)
+				w.leaveParty(s, p)
 				delete(s.players, id)
 				s.moving = slices.DeleteFunc(s.moving, func(moving int32) bool { return moving == id })
 				s.pending[id] = &pendingSave{owner: owner, char: c.Clone()}

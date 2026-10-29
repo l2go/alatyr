@@ -98,7 +98,11 @@ func (w *World) reduceHP(s *state, t actor, value float64, attacker actor) {
 			v.addHate(attacker.base().id, int64(value), int64(value)*100/int64(v.level()+7))
 		}
 		if v.mob() {
-			v.takeOverhit(attacker.base().id, value)
+			id := int32(0)
+			if attacker != nil {
+				id = attacker.base().id
+			}
+			v.takeOverhit(id, value)
 		}
 	case *player:
 		if v.teleporting || !v.stats.PDefKnown() {
@@ -109,9 +113,19 @@ func (w *World) reduceHP(s *state, t actor, value float64, attacker actor) {
 		}
 	}
 	oldHP := c.hp
+	if n, ok := t.(*npc); ok {
+		w.recordHuntDamage(s, n, attacker, oldHP, max(oldHP-value, 0))
+		if s.err != nil {
+			return
+		}
+	}
 	w.assignHP(s, t, max(c.hp-value, 0))
 	if c.hp < oldHP {
-		s.group([]Effect{HarmApplied{Source: attacker.base().ref(), Target: c.ref(), Resource: ResourceHP, Before: oldHP, After: c.hp}})
+		source := Ref{}
+		if attacker != nil {
+			source = attacker.base().ref()
+		}
+		s.group([]Effect{HarmApplied{Source: source, Target: c.ref(), Resource: ResourceHP, Before: oldHP, After: c.hp}})
 	}
 	if c.hp < 0.5 {
 		w.abortAttack(s, t)

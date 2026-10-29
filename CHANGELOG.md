@@ -6,11 +6,15 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Added
 
+- The participant acceptance suite compares the same Okolitsa scenarios on the Go world and the live Java bridge, with shared reward vectors and saved-state checks.
+- The Go world now settles per-life hunting contributions and party rewards, supports equipment and healing items, and keeps experience at x1 regardless of stored vitality.
 - A PostgreSQL-backed Go participant server, built from `engine/go/server`, with authenticated HTTP and stream admission, health and readiness endpoints, fenced shutdown saves, and durable object ID ranges. Learning writes skills and the SP balance in one transaction. Embedded goose migrations create an unseeded Go schema or accept the complete Java Flyway baseline without deleting player data.
 
 - A live bridge integration check runs the packaged Java platform with PostgreSQL, the Go bridge client and the participant gateway. It covers dialogue, purchases, sales, learning, transport recovery, saved state, and revival through relocation and checkpoint drain, alongside the ordinary client smoke. The [endpoint guide](docs/engine-go/bridge.md) documents configuration, limits and evidence boundaries.
 
 ### Fixed
+
+- The participant adapter recognizes complete bridge buy/sell packets without an optional completeness flag; explicitly incomplete lists remain non-actionable.
 
 - Bridge admission publishes its initial skill list before checkpoint capture, without depending on the asynchronous packet broadcaster.
 

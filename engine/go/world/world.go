@@ -7,6 +7,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"errors"
+	"log/slog"
 	"math/rand/v2"
 	"sync/atomic"
 	"time"
@@ -132,6 +133,7 @@ type World struct {
 	experience      []int64
 	announcements   []string
 	ground          Ground
+	logger          *slog.Logger
 	durability      func(Durability)
 	idFirst, idLast int32
 	final           []Checkpoint
@@ -161,6 +163,8 @@ type state struct {
 	eventSeq                                                        uint64
 	batch                                                           *commitBatch
 	observe                                                         func(Commit)
+	parties                                                         map[uint64]*party
+	partySeq, lifeSeq                                               uint64
 }
 
 type pendingSave struct {
@@ -176,6 +180,7 @@ func New(cat *catalog.Catalog, store Store, options ...Option) *World {
 	w.started = time.Now()
 	w.s.started = w.started
 	w.items = itemlog.Discard
+	w.logger = slog.Default()
 	w.ground = NoGround{}
 	var seed [32]byte
 	// crypto/rand.Read fills the slice or terminates the process in modern Go.
@@ -229,7 +234,7 @@ type Checkpoint struct {
 func (w *World) finalCheckpoints() []Checkpoint {
 	out := make([]Checkpoint, 0, len(w.s.players)+len(w.s.pending))
 	for _, p := range w.s.players {
-		c := w.selfOf(p).Char
+		c := w.savedCharacter(p)
 		c.LastAccess = time.Now().UnixMilli()
 		out = append(out, Checkpoint{p.ref(), c})
 	}
