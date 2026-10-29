@@ -434,7 +434,7 @@ func asciiLower(data []byte) []byte {
 
 // checkRuntime prevents retired runtime/build entrypoints from returning.
 func checkRuntime(root string) error {
-	for _, path := range []string{"engine/java", "pom.xml", ".mvn", "mvnw", "mvnw.cmd", "tools/ci/bridge-integration.sh", "tools/ci/bridge-integration.sql", "engine/go/gateway/backend/java_integration_test.go", "tools/ci/coverage-summary.py", "deploy/measure", "deploy/probe"} {
+	for _, path := range []string{"engine/java", "pom.xml", ".mvn", "mvnw", "mvnw.cmd", "tools/ci/bridge-integration.sh", "tools/ci/bridge-integration.sql", "tools/ci/java-fixture", "engine/go/gateway/backend/java_integration_test.go", "tools/ci/coverage-summary.py", "deploy/measure", "deploy/probe"} {
 		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(path))); !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("runtime: retired path exists or cannot be inspected: %s", path)
 		}

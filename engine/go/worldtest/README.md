@@ -21,11 +21,9 @@ incarnations, quantity and carrying bounds, integer overflow, nonstackable rows,
 sale eligibility, and saving on departure. Motion tests verify that refreshed
 descriptions retire earlier motion and moving producers republish current motion.
 
-`TestOkolitsaParity` also runs these participant scenarios on the packaged Java
-world through `bridge.Client` in the full-stack integration job. It compares
-semantic outcomes, causal order, balances, visibility, and saved state. Local
-runs cover the Go half. See the [CI fixture guide](../../../tools/ci/java-fixture/README.md)
-for deterministic reward probes and the explicitly excluded Java drop-penalty bug.
+`TestOkolitsaParity` retains the accepted participant scenarios on the Go world:
+semantic outcomes, causal order, balances, visibility and saved state. Fixed
+reward probes supplement the authored catalog without rewriting its rows.
 
 The Go host can set reward-party membership with `World.SetParty`, and apply
 trusted environmental harm with `World.Harm`. Neither grants wire authority.

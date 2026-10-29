@@ -28,7 +28,7 @@ func TestParityWaitsForAsynchronousEvidenceWithinOriginalWindow(t *testing.T) {
 			return u
 		}
 		base := newRigWithPolicy(t, cat, readyCharacter(), allSources(), filter, parityPolicy())
-		r := &parityRig{rig: base, engine: "go", char: readyCharacter(), owner: base.port.Port.(*worldbridge.Client).Owner()}
+		r := &parityRig{rig: base, char: readyCharacter(), owner: base.port.Port.(*worldbridge.Client).Owner()}
 		target := r.actor(30001)
 		r.p.Send(r.intent(1, 11, r.ref(target.ID, 10)))
 		r.outcome(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)

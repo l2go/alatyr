@@ -4,18 +4,7 @@
 package worldtest
 
 import (
-	"bufio"
 	"context"
-	"encoding/hex"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net"
-	"os"
-	"os/exec"
-	"slices"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -23,9 +12,6 @@ import (
 	"time"
 
 	"github.com/l2go/alatyr/engine/go/bridge"
-	"github.com/l2go/alatyr/engine/go/bridge/profile"
-	"github.com/l2go/alatyr/engine/go/gateway"
-	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/gatewaytest"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
@@ -84,30 +70,12 @@ func (s parityState) skill(id int32) int32 {
 	return 0
 }
 
-type parityDial struct {
-	mu   sync.Mutex
-	conn net.Conn
-}
-
-func (d *parityDial) dial(ctx context.Context, network, address string) (net.Conn, error) {
-	c, err := (&net.Dialer{}).DialContext(ctx, network, address)
-	if err == nil {
-		d.mu.Lock()
-		d.conn = c
-		d.mu.Unlock()
-	}
-	return c, err
-}
-
 type parityRig struct {
 	*rig
-	engine    string
 	index     int
 	char      world.Character
 	owner     world.Ref
 	raw       bridge.Port
-	dial      *parityDial
-	initial   bridge.Snapshot
 	detached  atomic.Bool
 	historyMu sync.Mutex
 	history   []wire.Record
@@ -115,9 +83,9 @@ type parityRig struct {
 	closed    bool
 }
 
-func newParityRig(t *testing.T, engine string, index int, cat *catalog.Catalog) *parityRig {
+func newParityRig(t *testing.T, index int, cat *catalog.Catalog) *parityRig {
 	t.Helper()
-	r := &parityRig{engine: engine, index: index, char: parityCharacter(index, 0), aux: make(map[int32]world.Entry)}
+	r := &parityRig{index: index, char: parityCharacter(index, 0), aux: make(map[int32]world.Entry)}
 	source := allSources()
 	name := parityNames()[index]
 	if name == "g10" {
@@ -148,55 +116,17 @@ func newParityRig(t *testing.T, engine string, index int, cat *catalog.Catalog) 
 		}
 		return u
 	}
-	if engine == "go" {
-		var reserved []int32
-		for a := 1; a <= 3; a++ {
-			c := parityCharacter(index, a)
-			reserved = append(reserved, c.ObjectID)
-			for _, it := range c.Items {
-				reserved = append(reserved, it.ObjectID)
-			}
+	var reserved []int32
+	for a := 1; a <= 3; a++ {
+		c := parityCharacter(index, a)
+		reserved = append(reserved, c.ObjectID)
+		for _, it := range c.Items {
+			reserved = append(reserved, it.ObjectID)
 		}
-		r.rig = newRigWithPolicy(t, cat, r.char, source, filter, parityPolicy(), world.WithReservedIDs(reserved))
-		r.raw = r.port.Port
-		r.owner = r.raw.(*worldbridge.Client).Owner()
-	} else {
-		secret, err := hex.DecodeString(os.Getenv("JAVA_BRIDGE_SECRET"))
-		if err != nil || len(secret) != 32 || os.Getenv("JAVA_PARITY_ENDPOINT") == "" || os.Getenv("JAVA_PARITY_SECRET") == "" {
-			t.Fatal("Java parity requires the isolated full-stack harness")
-		}
-		r.rig = &rig{t: t, c: gatewaytest.Config()}
-		r.dial = &parityDial{}
-		cfg := bridge.Config{Endpoint: os.Getenv("JAVA_BRIDGE_ENDPOINT"), DialContext: r.dial.dial}
-		copy(cfg.Secret[:], secret)
-		origin := time.Now()
-		r.raw, r.initial, err = bridge.Open(t.Context(), cfg, bridge.Identity{Account: r.char.Account, Character: r.char.Name})
-		if err != nil {
-			t.Fatal(err)
-		}
-		r.owner.ID = r.char.ObjectID
-		r.port = wrapPort(r.raw, filter)
-		t.Cleanup(func() {
-			if err := r.port.Close(); err != nil {
-				t.Error(err)
-			}
-		})
-		r.session, r.scope, r.state, err = backend.New(r.port, r.initial, backend.Config{Meaning: r.c, Origin: origin, Source: func(meaning.Event) meaning.Source { return source }, Policy: parityPolicy(), Handoff: func(h backend.Handoff) { r.mu.Lock(); r.handoffs = append(r.handoffs, h); r.mu.Unlock() }})
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() {
-			if err := r.session.Close(); err != nil {
-				t.Error(err)
-			}
-		})
-		r.g = gatewaytest.New(t, r.c, func(context.Context, string) (gateway.World, gateway.State, error) {
-			r.mu.Lock()
-			defer r.mu.Unlock()
-			return paced{World: r.scope, hold: &r.hold}, r.state, nil
-		}, origin)
-		r.p = gatewaytest.Join(t, r.g, r.c, "one", wire.ModeAct, true)
 	}
+	r.rig = newRigWithPolicy(t, cat, r.char, source, filter, parityPolicy(), world.WithReservedIDs(reserved))
+	r.raw = r.port.Port
+	r.owner = r.raw.(*worldbridge.Client).Owner()
 	// Auxiliary reward members leave and save before the primary port closes.
 	t.Cleanup(func() {
 		for id := range r.aux {
@@ -214,21 +144,10 @@ func parityPolicy() meaning.Policy {
 
 func (r *parityRig) sync() {
 	r.t.Helper()
-	if r.engine == "go" {
-		synctest.Wait()
-	} else {
-		ctx, cancel := context.WithTimeout(r.t.Context(), time.Second)
-		_, err := r.g.Status(ctx, "one")
-		cancel()
-		if err != nil && !r.closed && !r.detached.Load() {
-			r.t.Fatal(err)
-		}
-	}
+	synctest.Wait()
 	r.p.Drain()
-	if r.engine == "go" {
-		synctest.Wait()
-		r.p.Drain()
-	}
+	synctest.Wait()
+	r.p.Drain()
 	for _, entry := range r.aux {
 		drainParityEvents(entry.Events)
 	}
@@ -291,57 +210,21 @@ func (r *parityRig) fact(kind uint64) wire.Record {
 
 func (r *parityRig) actor(template int32) world.Ref {
 	r.t.Helper()
-	if r.engine == "go" {
-		scene, err := r.w.Capture(r.t.Context(), r.owner)
-		if err != nil {
-			r.t.Fatal(err)
-		}
-		var best world.Ref
-		var distance int64 = 1 << 62
-		for _, o := range scene.Objects {
-			if n, ok := o.State.(world.NPCSeen); ok && n.NPC.Template.ID == template && !n.NPC.Dead {
-				dx, dy := int64(n.NPC.Pos.X)-int64(r.char.X), int64(n.NPC.Pos.Y)-int64(r.char.Y)
-				if d := dx*dx + dy*dy; d < distance {
-					distance, best = d, o.Entity
-				}
-			}
-		}
-		if best == (world.Ref{}) {
-			r.t.Fatalf("visible authored actor %d absent", template)
-		}
-		return best
-	}
-	r.historyMu.Lock()
-	facts := append(slices.Clone(r.initial.Facts), r.history...)
-	r.historyMu.Unlock()
-	actors := make(map[int32]wire.Record)
-	for _, f := range facts {
-		id := int32(profile.S(f, 64))
-		switch profile.U(f, 1) {
-		case 1:
-			if profile.S(f, 73) != 0 {
-				actors[id] = f
-			}
-		case 5, 6:
-			delete(actors, id)
-		}
+	scene, err := r.w.Capture(r.t.Context(), r.owner)
+	if err != nil {
+		r.t.Fatal(err)
 	}
 	var best world.Ref
 	var distance int64 = 1 << 62
-	for id, f := range actors {
-		if profile.S(f, 73) != int64(template) || profile.U(f, 70) == 0 {
-			continue
-		}
-		at, ok := wire.Find(f.Fields, 13)
-		if !ok {
-			r.t.Fatal("actor omitted position")
-		}
-		dx, dy := int64(at.XYZ[0])-int64(r.char.X), int64(at.XYZ[1])-int64(r.char.Y)
-		if d := dx*dx + dy*dy; d < distance {
-			distance, best = d, world.Ref{ID: id}
+	for _, o := range scene.Objects {
+		if n, ok := o.State.(world.NPCSeen); ok && n.NPC.Template.ID == template && !n.NPC.Dead {
+			dx, dy := int64(n.NPC.Pos.X)-int64(r.char.X), int64(n.NPC.Pos.Y)-int64(r.char.Y)
+			if d := dx*dx + dy*dy; d < distance {
+				distance, best = d, o.Entity
+			}
 		}
 	}
-	if best.ID == 0 {
+	if best == (world.Ref{}) {
 		r.t.Fatalf("visible authored actor %d absent", template)
 	}
 	return best
@@ -349,16 +232,6 @@ func (r *parityRig) actor(template int32) world.Ref {
 
 func (r *parityRig) stateOf(id int32) parityState {
 	r.t.Helper()
-	if r.engine == "java" {
-		var out parityState
-		if err := json.Unmarshal([]byte(r.fixture("state", strconv.Itoa(int(id)))), &out); err != nil {
-			r.t.Fatal(err)
-		}
-		if out.MaxHP <= 0 || out.HP < 0 || out.HP > out.MaxHP || out.XP < 0 || out.SP < 0 {
-			r.t.Fatal("invalid Java fixture state")
-		}
-		return out
-	}
 	self, err := r.w.Snapshot(r.t.Context(), id)
 	if err != nil {
 		r.t.Fatal(err)
@@ -378,40 +251,11 @@ func paritySelf(self world.Self) parityState {
 }
 func (r *parityRig) current() parityState { return r.stateOf(r.char.ObjectID) }
 
-func (r *parityRig) fixture(operation string, args ...string) string {
-	r.t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
-	defer cancel()
-	c, err := (&net.Dialer{}).DialContext(ctx, "tcp", os.Getenv("JAVA_PARITY_ENDPOINT"))
-	if err != nil {
-		r.t.Fatal(err)
-	}
-	defer c.Close()
-	if err := c.SetDeadline(time.Now().Add(6 * time.Second)); err != nil {
-		r.t.Fatal(err)
-	}
-	fields := append([]string{os.Getenv("JAVA_PARITY_SECRET"), strconv.Itoa(int(r.char.ObjectID)), operation}, args...)
-	if _, err := fmt.Fprintln(c, strings.Join(fields, "\t")); err != nil {
-		r.t.Fatal(err)
-	}
-	b, err := bufio.NewReader(io.LimitReader(c, 65537)).ReadString('\n')
-	if err != nil || len(b) > 65536 || strings.HasPrefix(b, "error:") {
-		r.t.Fatalf("Java fixture %s: %s/%v", operation, strings.TrimSpace(b), err)
-	}
-	return strings.TrimSpace(b)
-}
-
 func (r *parityRig) use(template int32) {
 	r.t.Helper()
 	item := r.current().item(template)
 	if item.Object == 0 {
 		r.t.Fatalf("item %d absent", template)
-	}
-	if r.engine == "java" {
-		if r.fixture("use", strconv.Itoa(int(item.Object))) != "ok" {
-			r.t.Fatal("use rejected")
-		}
-		return
 	}
 	scene, err := r.w.Capture(r.t.Context(), r.owner)
 	if err != nil {
@@ -431,11 +275,7 @@ func (r *parityRig) use(template int32) {
 
 func (r *parityRig) harm(source, target world.Ref, damage float64) {
 	r.t.Helper()
-	if r.engine == "java" {
-		if r.fixture("damage", strconv.Itoa(int(target.ID)), strconv.FormatFloat(damage, 'g', -1, 64), strconv.Itoa(int(source.ID))) != "ok" {
-			r.t.Fatal("harm rejected")
-		}
-	} else if err := r.w.Harm(r.t.Context(), source, target, damage); err != nil {
+	if err := r.w.Harm(r.t.Context(), source, target, damage); err != nil {
 		r.t.Fatal(err)
 	}
 	r.sync()
@@ -444,21 +284,14 @@ func (r *parityRig) harm(source, target world.Ref, damage float64) {
 func (r *parityRig) openAux(actor int) int32 {
 	r.t.Helper()
 	c := parityCharacter(r.index, actor)
-	if r.engine == "java" {
-		if r.fixture("openaux", strconv.Itoa(int(c.ObjectID))) != "ok" {
-			r.t.Fatal("auxiliary open")
-		}
-		r.aux[c.ObjectID] = world.Entry{}
-	} else {
-		if err := r.store.PutCharacter(r.t.Context(), c); err != nil {
-			r.t.Fatal(err)
-		}
-		e, err := r.w.Enter(r.t.Context(), c)
-		if err != nil {
-			r.t.Fatal(err)
-		}
-		r.aux[c.ObjectID] = e
+	if err := r.store.PutCharacter(r.t.Context(), c); err != nil {
+		r.t.Fatal(err)
 	}
+	e, err := r.w.Enter(r.t.Context(), c)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	r.aux[c.ObjectID] = e
 	return c.ObjectID
 }
 func (r *parityRig) closeAux(id int32) {
@@ -466,31 +299,15 @@ func (r *parityRig) closeAux(id int32) {
 	if _, ok := r.aux[id]; !ok {
 		return
 	}
-	if r.engine == "java" {
-		if r.fixture("closeaux", strconv.Itoa(int(id))) != "ok" {
-			r.t.Error("auxiliary close")
-		}
-	} else {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		if err := r.w.Leave(ctx, r.aux[id].Self.Entity); err != nil {
-			r.t.Error(err)
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := r.w.Leave(ctx, r.aux[id].Self.Entity); err != nil {
+		r.t.Error(err)
 	}
 	delete(r.aux, id)
 }
 func (r *parityRig) party(ids []int32) {
 	r.t.Helper()
-	if r.engine == "java" {
-		args := []string{"3"}
-		for _, id := range ids {
-			args = append(args, strconv.Itoa(int(id)))
-		}
-		if r.fixture("party", args...) != "ok" {
-			r.t.Fatal("party rejected")
-		}
-		return
-	}
 	var refs []world.Ref
 	for _, id := range ids {
 		refs = append(refs, r.aux[id].Self.Entity)
@@ -503,23 +320,7 @@ func (r *parityRig) actorRef(id int32) world.Ref {
 	if id == r.char.ObjectID {
 		return r.owner
 	}
-	if r.engine == "go" {
-		return r.aux[id].Self.Entity
-	}
-	return world.Ref{ID: id}
-}
-
-func parityDB(t *testing.T, sql string) string {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "docker", "exec", "--env", "PGOPTIONS=-c statement_timeout=3000 -c lock_timeout=2000", os.Getenv("JAVA_BRIDGE_DB_CONTAINER"), "psql", "-X", "-U", "postgres", "-d", "bridge", "-v", "ON_ERROR_STOP=1", "-Atc", sql)
-	cmd.WaitDelay = time.Second
-	b, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("parity database assertion: %v: %s", err, b)
-	}
-	return strings.TrimSpace(string(b))
+	return r.aux[id].Self.Entity
 }
 
 func (r *parityRig) save() parityState {
@@ -533,22 +334,9 @@ func (r *parityRig) save() parityState {
 		}
 		r.closed = true
 	}
-	if r.engine == "go" {
-		chars, err := r.store.Characters(r.t.Context(), r.char.Account)
-		if err != nil || len(chars) != 1 {
-			r.t.Fatalf("saved character: %v", err)
-		}
-		return paritySelf(world.Self{Char: chars[0], Dead: chars[0].CurHP == 0})
+	chars, err := r.store.Characters(r.t.Context(), r.char.Account)
+	if err != nil || len(chars) != 1 {
+		r.t.Fatalf("saved character: %v", err)
 	}
-	return r.savedJava(r.char.ObjectID)
-}
-
-func (r *parityRig) savedJava(id int32) parityState {
-	r.t.Helper()
-	sql := fmt.Sprintf(`SELECT json_build_object('hp',current_hp,'max_hp',max_hp,'xp',exp,'sp',sp,'dead',current_hp=0,'point',json_build_array(x,y,z),'inventory',(SELECT coalesce(json_agg(json_build_object('object',id,'template',item_template_id,'count',count,'slot',CASE WHEN location='PAPERDOLL' THEN location_slot ELSE -1 END)),'[]') FROM world.item WHERE owner_player_id=%d),'skills',(SELECT coalesce(json_agg(json_build_object('id',skill_id,'level',skill_level)),'[]') FROM world.player_skill WHERE player_id=%d AND class_index=0)) FROM world.player WHERE id=%d AND NOT is_online`, id, id, id)
-	var saved parityState
-	if err := json.Unmarshal([]byte(parityDB(r.t, sql)), &saved); err != nil {
-		r.t.Fatal(err)
-	}
-	return saved
+	return paritySelf(world.Self{Char: chars[0], Dead: chars[0].CurHP == 0})
 }

@@ -56,8 +56,7 @@ func parityCharacter(index, actor int) world.Character {
 }
 
 // These three probes supplement, rather than replace, Okolitsa. Identical
-// fixed table inputs make party/neutral balances comparable despite Java's
-// intentionally nondeterministic ordinary drop-table RNG.
+// fixed table inputs make party/neutral balances deterministic.
 func writeParityCatalog(t *testing.T, root string) {
 	t.Helper()
 	appendRows := func(name string, rows []map[string]string) {
@@ -197,46 +196,4 @@ func parityCSV(t *testing.T, data []byte) ([][]string, [][]bool) {
 		quoted = append(quoted, flags)
 	}
 	return records, quoted
-}
-
-func paritySQL() string {
-	var out strings.Builder
-	for i := range parityNames() {
-		actors := 1
-		if parityNames()[i] == "hunt-parties" {
-			actors = 4
-		}
-		for a := range actors {
-			c := parityCharacter(i, a)
-			fmt.Fprintf(&out, "INSERT INTO login.account (name,password_hash) VALUES ('%s','2jmj7l5rSw0yVb/vlWAYkK/YBwk=');\n", c.Account)
-			fmt.Fprintf(&out, "INSERT INTO world.player (id,account_name,name,race_id,active_class_id,base_class_id,level,exp,sp,max_hp,current_hp,max_mp,current_mp,x,y,z,vitality_points) VALUES (%d,'%s','%s',0,0,0,%d,%d,%d,200,%g,100,%g,%d,%d,%d,%d);\n", c.ObjectID, c.Account, c.Name, c.Level, c.Exp, c.SP, c.CurHP, c.CurMP, c.X, c.Y, c.Z, c.Vitality)
-			for _, it := range c.Items {
-				location, slot := "INVENTORY", int32(0)
-				if it.Equipped() {
-					location, slot = "PAPERDOLL", it.Slot
-				}
-				fmt.Fprintf(&out, "INSERT INTO world.item (id,item_template_id,owner_player_id,location,location_slot,count) VALUES (%d,%d,%d,'%s',%d,%d);\n", it.ObjectID, it.TemplateID, c.ObjectID, location, slot, it.Count)
-			}
-			for _, skill := range c.Skills {
-				fmt.Fprintf(&out, "INSERT INTO world.player_skill (player_id,class_index,skill_id,skill_level) VALUES (%d,0,%d,%d);\n", c.ObjectID, skill.ID, skill.Level)
-			}
-		}
-	}
-	out.WriteString("INSERT INTO world.player_birthday (player_id,created_on,gift_claimed_year) SELECT id,CURRENT_DATE,EXTRACT(YEAR FROM CURRENT_DATE)::smallint FROM world.player WHERE id >= 1501000000 AND id < 1502000000;\n")
-	out.WriteString("INSERT INTO world.player_recommendation_status (player_id,recommendations_left,recommendations_received,updated_at) SELECT id,3,0,CURRENT_TIMESTAMP FROM world.player WHERE id >= 1501000000 AND id < 1502000000;\n")
-	return out.String()
-}
-
-func TestPrepareJavaParityFixtures(t *testing.T) {
-	root, sql := os.Getenv("JAVA_PARITY_WORLD"), os.Getenv("JAVA_PARITY_SQL")
-	if root == "" && sql == "" {
-		t.Skip("only the disposable integration harness prepares Java fixtures")
-	}
-	if os.Getenv("CI") != "true" || root == "" || sql == "" {
-		t.Fatal("fixture preparation requires the CI harness and both paths")
-	}
-	writeParityCatalog(t, root)
-	if err := os.WriteFile(sql, []byte(paritySQL()), 0600); err != nil {
-		t.Fatal(err)
-	}
 }

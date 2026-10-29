@@ -1045,7 +1045,7 @@ func TestHuntCalculationBoundary(t *testing.T) {
 }
 
 func TestRetiredRuntimeCannotReturn(t *testing.T) {
-	for _, path := range []string{"engine/java/source.txt", "pom.xml", ".mvn/settings.xml", "mvnw", "mvnw.cmd", "tools/ci/bridge-integration.sh", "tools/ci/bridge-integration.sql", "engine/go/gateway/backend/java_integration_test.go", "tools/ci/coverage-summary.py", "deploy/measure/start.sh", "deploy/probe/start.sh"} {
+	for _, path := range []string{"engine/java/source.txt", "pom.xml", ".mvn/settings.xml", "mvnw", "mvnw.cmd", "tools/ci/bridge-integration.sh", "tools/ci/bridge-integration.sql", "tools/ci/java-fixture/source.txt", "engine/go/gateway/backend/java_integration_test.go", "tools/ci/coverage-summary.py", "deploy/measure/start.sh", "deploy/probe/start.sh"} {
 		t.Run(path, func(t *testing.T) {
 			root := t.TempDir()
 			if err := checkRuntime(root); err != nil {
