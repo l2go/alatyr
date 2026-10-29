@@ -150,3 +150,25 @@ func FuzzNormalizeCommand(f *testing.F) {
 		}
 	})
 }
+
+func TestUseItemCapturesCarriedIncarnation(t *testing.T) {
+	_, s := fixture()
+	ref := world.Ref{ID: 42, Gen: 7}
+	s.Inventory = []world.Carried{{Entity: ref, Item: world.Item{ObjectID: 42, TemplateID: 4, Count: 1, Slot: -1}}}
+	cmd := bridge.Command{Key: 1, Verb: 14, Payload: []wire.Field{wire.S(64, true, 42)}}
+	p, err := prepare(cmd, s, s.End.Time)
+	if err != nil || p.request.Verb != world.VerbUseItem || p.request.Target != ref || p.refusal != "" {
+		t.Fatalf("prepare=%+v/%v", p, err)
+	}
+	s.Inventory = nil
+	p, err = prepare(cmd, s, s.End.Time)
+	if err != nil || p.refusal != world.ReasonStale {
+		t.Fatalf("missing row=%+v/%v", p, err)
+	}
+	for _, payload := range [][]wire.Field{nil, {wire.S(64, true, 0)}, {wire.S(64, true, -1)}, {wire.S(64, true, 42), wire.S(17, true, 7)}, {wire.S(64, true, 42), wire.S(64, true, 42)}} {
+		cmd.Payload = payload
+		if _, err := normalize(cmd); err == nil {
+			t.Fatalf("accepted malformed payload: %+v", payload)
+		}
+	}
+}

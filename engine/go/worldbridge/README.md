@@ -80,3 +80,14 @@ The participant host grants Strike/Cast to creatures and Talk/Cast to folk,
 tutors and provisioners. The dictionary treats these labels as opaque strings;
 a label alone grants no command authority in the world. Contract tests compare
 capabilities and command outcomes independently of these source-owned labels.
+
+Item use maps raw verb 14 and positive object field 64 to `world.VerbUseItem`.
+The current captured inventory supplies the exact world incarnation. Its receipt
+reports Sent only, including immediate equipment changes: a receipt alone never
+proves participant completion. Inventory changes carry `UseIntent` from the
+originating world intent, including delayed potion launch. The session retains
+at most 64 intent/key bindings and annotates only that live inventory event with
+raw field 75 (the command Key). Eviction loses proof rather than guessing a key.
+This metadata never appears on snapshots or participant facts. The gateway
+requires its own matching effect key, live deadline, and audited ItemUse source.
+Item change metadata occupies goods field 7; equipment slot occupies field 8.

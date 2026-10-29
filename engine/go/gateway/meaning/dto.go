@@ -93,6 +93,8 @@ const (
 	Cast = "cast"
 	// Learn identifies a resolved learning proposal.
 	Learn = "learn"
+	// UseItem toggles equipment or consumes an authored item.
+	UseItem = "use-item"
 )
 
 // QuestState reports current progress without supplying authored quest logic.
@@ -141,6 +143,8 @@ type Good struct {
 	Name string `json:"name,omitempty"`
 	// Change is backend inventory change metadata.
 	Change int32 `json:"change,omitempty"`
+	// Slot is the known equipment slot; -1 means carried unequipped.
+	Slot *int64 `json:"slot,omitempty"`
 }
 
 // Stats is a partial report. Nil is unknown, and a pointer to zero is known.
@@ -159,6 +163,10 @@ type Stats struct {
 	XP *int64 `json:"xp,omitempty"`
 	// SP is known skill points, or nil when unknown.
 	SP *int64 `json:"sp,omitempty"`
+	// PAtk is known physical attack.
+	PAtk *int64 `json:"pAtk,omitempty"`
+	// PDef is known physical defense.
+	PDef *int64 `json:"pDef,omitempty"`
 }
 
 // Entry is a bounded history item, not causal evidence.

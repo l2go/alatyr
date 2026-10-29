@@ -30,11 +30,11 @@ func (s *State) BackendStorageBytes() int {
 	}
 	for _, v := range s.vitals {
 		if v != nil {
-			n += int(unsafe.Sizeof(*v)) + 7*8
+			n += int(unsafe.Sizeof(*v)) + 9*8
 		}
 	}
 	for _, v := range s.inventory {
-		n += len(v.Name)
+		n += len(v.Name) + 8
 	}
 	for _, v := range s.quests {
 		n += len(v.Name) + len(v.State)
@@ -60,7 +60,7 @@ func eventStorage(e Event) int {
 		n += len(v.Label) + len(v.Say)
 	}
 	for _, v := range e.Goods {
-		n += len(v.Name)
+		n += len(v.Name) + 8
 	}
 	for _, v := range e.Entries {
 		n += len(v.Category) + len(v.Text)
@@ -69,7 +69,7 @@ func eventStorage(e Event) int {
 		n += len(v.Name) + len(v.State)
 	}
 	if e.Stats != nil {
-		n += int(unsafe.Sizeof(*e.Stats)) + 7*8
+		n += int(unsafe.Sizeof(*e.Stats)) + 9*8
 	}
 	return n
 }

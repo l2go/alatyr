@@ -17,6 +17,7 @@ type plan struct {
 	owner                              *state
 	inner                              *gateway.Action
 	n                                  uint64
+	itemKey                            uint64
 	helperSent, helperDone, effectDone bool
 	receiptMS                          int64
 	contact, deadline                  int64
@@ -330,10 +331,14 @@ func (s *state) Witness(a *gateway.Action, u gateway.Update) (gateway.Witness, e
 	if err != nil {
 		return gateway.WitnessNone, err
 	}
-	if _, ok := u.Value.(packet); !ok {
+	packet, ok := u.Value.(packet)
+	if !ok {
 		return gateway.WitnessNone, meaning.ErrValue
 	}
 	in := s.input
+	if !packet.snapshot && p.itemKey != 0 && profile.U(packet.record, 75) == p.itemKey && in.ReceivedAt >= p.contact && in.ReceivedAt < p.deadline {
+		in.Used = p.n
+	}
 	if p.effectDone && in.ReceivedAt >= p.contact && in.ReceivedAt < p.deadline {
 		in.Completed = p.n
 	}

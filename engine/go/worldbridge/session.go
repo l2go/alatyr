@@ -28,9 +28,15 @@ type pending struct {
 	bytes  int
 }
 
+type itemUse struct {
+	intent world.IntentID
+	key    uint64
+}
+
 // session is touched only by run, including all operation closures. Client
 // fields are either immutable, atomic, or published after done closes.
 type session struct {
+	itemUses                                []itemUse
 	client                                  *Client
 	tr                                      translator
 	scene                                   world.Scene
@@ -288,6 +294,13 @@ func (s *session) write(ctx, lifetime context.Context, command bridge.Command, d
 	if p.refusal == "" {
 		commit, err = s.client.cfg.World.Execute(ctx, p.request)
 	}
+	if command.Verb == 14 && commit.Intent.ID.N != 0 && err == nil && commit.Outcome.Stage != world.StageRefused {
+		if len(s.itemUses) == 64 {
+			copy(s.itemUses, s.itemUses[1:])
+			s.itemUses = s.itemUses[:63]
+		}
+		s.itemUses = append(s.itemUses, itemUse{commit.Intent.ID, command.Key})
+	}
 	r, translationErr := s.tr.receipt(p, commit, err, n, s.epoch, s.client.cfg.Now())
 	if translationErr != nil {
 		s.detach(errorKind(translationErr))
@@ -440,6 +453,17 @@ func (s *session) event(ctx context.Context, e world.Event) error {
 	fs, err := s.tr.events(e, s.scene, s.origin)
 	if err != nil {
 		return err
+	}
+	if v, ok := e.(world.InventoryChanged); ok && v.UseIntent.N != 0 {
+		for i, use := range s.itemUses {
+			if use.intent == v.UseIntent {
+				for j := range fs {
+					fs[j].fields = append(fs[j].fields, wire.U(75, true, use.key))
+				}
+				s.itemUses = append(s.itemUses[:i], s.itemUses[i+1:]...)
+				break
+			}
+		}
 	}
 	rs, next, err := factRecords(fs, s.epoch, s.nextFact, e.Time(), s.origin)
 	if err != nil {

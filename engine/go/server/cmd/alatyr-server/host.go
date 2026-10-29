@@ -272,17 +272,20 @@ func hostBackendConfig(mc meaning.Config, origin time.Time) backend.Config {
 	return backend.Config{Meaning: mc, Origin: origin, Policy: meaning.Policy{Classify: classify}, Source: goWorldSource}
 }
 
-// goWorldSource audits the four exclusive evidence families. Each admitted
+// goWorldSource audits the five exclusive evidence families. Each admitted
 // identity has one backend scope and one fenced worldbridge port. World.Run is
 // the sole writer of that incarnation; worldbridge translates its ordered events
 // without merging another producer. Dialogue comes only from that player's
 // accepted interaction; pickup from its atomic owned transfer; learning from its
 // serialized, durably committed skill/SP transaction; return from its fenced
-// revival and relocation. Retired ports are joined before replacement admission.
+// revival and relocation. Item use carries the exact world intent through a
+// bounded raw key binding; only its live slot/count change may witness completion.
+// Trades and delayed observations cannot acquire that binding. Retired ports
+// are joined before replacement admission.
 // Participants cannot inject these events or this policy. Additional event
 // producers or parallel mutation paths require a new exclusivity audit here.
 func goWorldSource(meaning.Event) meaning.Source {
-	return meaning.Source{Dialogue: true, Pickup: true, Learning: true, Return: true}
+	return meaning.Source{Dialogue: true, Pickup: true, Learning: true, Return: true, ItemUse: true}
 }
 
 func (r *runtime) open(ctx context.Context, id string) (gateway.World, gateway.State, error) {

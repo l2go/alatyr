@@ -24,7 +24,7 @@ func TestHostExclusiveSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, family := range []string{"dialogue", "pickup", "learning", "return"} {
+	for _, family := range []string{"dialogue", "pickup", "learning", "return", "item-use", "potion"} {
 		t.Run(family, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				cfg := configTest()
@@ -34,6 +34,10 @@ func TestHostExclusiveSources(t *testing.T) {
 				}
 				store := &hostMemoryStore{}
 				c := world.Character{ObjectID: 1, Account: "example", Name: "Walker", Level: 2, Exp: 68, SP: 100, CurHP: 100, CurMP: 50, CurCP: 10, X: -71057, Y: 257883, Z: -3104, Items: []world.Item{{ObjectID: 2, TemplateID: 4, Count: 1, Slot: catalog.SlotRHand}}}
+				if family == "potion" {
+					c.CurHP = 20
+					c.Items = append(c.Items, world.Item{ObjectID: 3, TemplateID: 1060, Count: 1, Slot: -1})
+				}
 				if family == "return" {
 					c.CurHP = 0
 				}
@@ -44,7 +48,7 @@ func TestHostExclusiveSources(t *testing.T) {
 					t.Fatal(err)
 				}
 				chars := &characterStore{store: store, catalog: cat, hidden: make(map[int32]hidden)}
-				w := world.New(cat, chars, world.WithReservedIDs([]int32{1, 2}), world.WithIDRange(1<<28, 1<<29), world.WithRandomSource(rand.NewPCG(1, 2)))
+				w := world.New(cat, chars, world.WithReservedIDs([]int32{1, 2, 3}), world.WithIDRange(1<<28, 1<<29), world.WithRandomSource(rand.NewPCG(1, 2)))
 				ctx, cancel := context.WithCancel(context.Background())
 				done := make(chan error, 1)
 				go func() { done <- w.Run(ctx) }()
@@ -98,6 +102,15 @@ func TestHostExclusiveSources(t *testing.T) {
 				}
 				expect := func(n uint64) { t.Helper(); p.Result(n, wire.StageDone) }
 				switch family {
+				case "potion":
+					p.Send(intent(1, 14, wire.S(21, true, 3)))
+					p.Result(1, wire.StageSent)
+					time.Sleep(500 * time.Millisecond)
+					sync()
+					expect(1)
+				case "item-use":
+					p.Send(intent(1, 14, wire.S(21, true, 2)))
+					expect(1)
 				case "dialogue":
 					p.Send(intent(1, 11, ref(actor(30001).ID, 10)))
 					expect(1)

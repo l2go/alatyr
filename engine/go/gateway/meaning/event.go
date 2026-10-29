@@ -115,7 +115,7 @@ func EventRecord(ev Event, ctx FactContext) (wire.Record, error) {
 		}
 	}
 	if ev.Stats != nil {
-		values := []*int64{ev.Stats.HP, ev.Stats.MaxHP, ev.Stats.MP, ev.Stats.MaxMP, ev.Stats.Level, ev.Stats.XP, ev.Stats.SP}
+		values := []*int64{ev.Stats.HP, ev.Stats.MaxHP, ev.Stats.MP, ev.Stats.MaxMP, ev.Stats.Level, ev.Stats.XP, ev.Stats.SP, ev.Stats.PAtk, ev.Stats.PDef}
 		var fields []wire.Field
 		for i, v := range values {
 			if v != nil {
@@ -168,6 +168,9 @@ func goodsValues(goods []Good, offers []uint64, origin wire.Provenance) []wire.V
 		if len(offers) > i && offers[i] != 0 {
 			fields = append(fields, wire.U(1, true, offers[i]))
 		}
+		if g.Slot != nil {
+			fields = append(fields, wire.S(8, true, *g.Slot))
+		}
 		if g.Name != "" {
 			fields = append(fields, textField(6, false, g.Name, origin))
 		}
@@ -179,7 +182,11 @@ func decodeGoods(items []wire.Value) []Good {
 	out := make([]Good, 0, len(items))
 	for _, v := range items {
 		f := v.Fields
-		out = append(out, Good{Object: int32(getS(f, 2)), ID: int32(getS(f, 3)), Count: getS(f, 4), Price: getS(f, 5), Name: stringText(f, 6), Change: int32(getS(f, 7))})
+		var slot *int64
+		if v, ok := wire.Find(f, 8); ok {
+			slot = Number(v.S)
+		}
+		out = append(out, Good{Slot: slot, Object: int32(getS(f, 2)), ID: int32(getS(f, 3)), Count: getS(f, 4), Price: getS(f, 5), Name: stringText(f, 6), Change: int32(getS(f, 7))})
 	}
 	return out
 }
@@ -227,7 +234,7 @@ func EventValue(r wire.Record) (DecodedEvent, error) {
 	}
 	if v, yes := wire.Find(f, 25); yes {
 		e.Stats = &Stats{}
-		dest := []**int64{&e.Stats.HP, &e.Stats.MaxHP, &e.Stats.MP, &e.Stats.MaxMP, &e.Stats.Level, &e.Stats.XP, &e.Stats.SP}
+		dest := []**int64{&e.Stats.HP, &e.Stats.MaxHP, &e.Stats.MP, &e.Stats.MaxMP, &e.Stats.Level, &e.Stats.XP, &e.Stats.SP, &e.Stats.PAtk, &e.Stats.PDef}
 		for i, p := range dest {
 			if val, present := wire.Find(v.Fields, uint32(i+1)); present {
 				*p = Number(val.S)
