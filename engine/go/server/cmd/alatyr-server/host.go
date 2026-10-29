@@ -134,13 +134,15 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, o
 		}
 		r.mu.Unlock()
 		var errs []error
-		for _, l := range listeners {
-			if err := l.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		// Let net/http own its listener close before closing the raw handles.
+		// Close can still observe a listener already closed by its Serve owner.
+		if server != nil {
+			if err := server.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 				errs = append(errs, err)
 			}
 		}
-		if server != nil {
-			if err := server.Close(); err != nil {
+		for _, l := range listeners {
+			if err := l.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 				errs = append(errs, err)
 			}
 		}
