@@ -44,6 +44,7 @@ func (w *World) useItem(s *state, p *player, req Request) {
 	life, fence := p.lifeVersion, p.fence
 	p.disableSkill(sk.ID, time.Duration(sk.ReuseDelay)*time.Millisecond)
 	p.send(SkillCast{CasterID: p.id, TargetID: p.id, SkillID: sk.ID, Level: sk.Level, HitTime: sk.HitTime, Reuse: sk.ReuseDelay, From: p.pos, TargetPos: p.pos})
+	intent := s.cause().Intent
 	apply := func(s *state) {
 		if s.players[p.id] != p || p.dead || p.teleporting || p.lifeVersion != life || p.fence != fence || req.Deadline != 0 && s.now() >= req.Deadline || p.itemRefs[it.ObjectID] != req.Target {
 			return
@@ -52,7 +53,7 @@ func (w *World) useItem(s *state, p *player, req Request) {
 		if index < 0 || p.char.Items[index].Count < int64(sk.ItemConsume) {
 			return
 		}
-		w.applyHealingItem(s, p, index, req.Target, sk)
+		w.applyHealingItem(s, p, index, req.Target, sk, intent)
 	}
 	// Admission reserves reuse, not a second copy of the item. At launch, both
 	// the exact carried row and the original life/fence must still authorize it.
@@ -64,7 +65,7 @@ func (w *World) useItem(s *state, p *player, req Request) {
 	}
 }
 
-func (w *World) applyHealingItem(s *state, p *player, index int, ref Ref, sk catalog.Skill) {
+func (w *World) applyHealingItem(s *state, p *player, index int, ref Ref, sk catalog.Skill, intent IntentID) {
 	it := p.char.Items[index]
 	before := it.Count
 	it.Count -= int64(sk.ItemConsume)
@@ -88,7 +89,7 @@ func (w *World) applyHealingItem(s *state, p *player, index int, ref Ref, sk cat
 	p.send(SkillLaunched{CasterID: p.id, SkillID: sk.ID, Level: sk.Level, Targets: []int32{p.id}})
 	w.assignHP(s, p, nextHP)
 	s.group(effects)
-	p.send(InventoryChanged{Changes: []ItemChange{{Kind: kind, Item: it}}, Load: w.load(p)})
+	p.send(InventoryChanged{UseIntent: intent, Changes: []ItemChange{{Kind: kind, Item: it}}, Load: w.load(p)})
 	w.logItem(op, "ItemUse", it.ObjectID, it.TemplateID, it.Count, p, sk.Name)
 }
 
@@ -153,6 +154,6 @@ func (w *World) toggleEquipment(s *state, p *player, index int, tmpl catalog.Ite
 	w.setMP(s, p, p.mp)
 	w.setCP(s, p, p.cp)
 	w.markBroadcast(s, p, broadcastFullInfo)
-	p.send(InventoryChanged{Changes: changes, Load: w.load(p)})
+	p.send(InventoryChanged{UseIntent: s.cause().Intent, Changes: changes, Load: w.load(p)})
 	s.finish(StageDone)
 }

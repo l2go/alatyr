@@ -46,9 +46,9 @@ func NeutralRegistry() wire.Registry {
 	position := wire.Essential(wire.Position)
 	ref := obj(wire.Schema{1: req(i32), 2: wire.Required(wire.UInt)})
 	option := wire.Schema{1: positive(wire.Required(wire.UInt)), 2: req(text)}
-	good := wire.Schema{1: positive(wire.Essential(wire.UInt)), 2: i32, 3: req(i32), 4: wire.Required(wire.Int), 5: wire.Essential(wire.Int), 6: text, 7: i32}
+	good := wire.Schema{1: positive(wire.Essential(wire.UInt)), 2: i32, 3: req(i32), 4: wire.Required(wire.Int), 5: wire.Essential(wire.Int), 6: text, 7: i32, 8: wire.Essential(wire.Int)}
 	stats := wire.Schema{}
-	for i := uint32(1); i <= 7; i++ {
+	for i := uint32(1); i <= 9; i++ {
 		stats[i] = wire.Essential(wire.Int)
 	}
 	entry := wire.Schema{1: wire.Required(wire.Int), 2: wire.Required(wire.String), 3: req(text)}
@@ -62,7 +62,7 @@ func NeutralRegistry() wire.Registry {
 	for n, s := range payload {
 		r[wire.Fact][n] = s
 	}
-	for n, s := range (wire.Schema{10: ref, 11: position, 12: wire.Essential(wire.UInt), 13: wire.Essential(wire.UInt), 14: i32, 15: wire.Essential(wire.UInt), 16: wire.Essential(wire.Int), 17: wire.Essential(wire.Int), 18: obj(use), 19: wire.Essential(wire.Bool), 20: ref}) {
+	for n, s := range (wire.Schema{10: ref, 11: position, 12: wire.Essential(wire.UInt), 13: wire.Essential(wire.UInt), 14: i32, 15: wire.Essential(wire.UInt), 16: wire.Essential(wire.Int), 17: wire.Essential(wire.Int), 18: obj(use), 19: wire.Essential(wire.Bool), 20: ref, 21: i32}) {
 		r[wire.Intent][n] = s
 	}
 	return r
@@ -83,7 +83,7 @@ func Registry() wire.Registry {
 	saved.MaxBytes = 4096
 	options := list(wire.Schema{1: positive(wire.Required(wire.UInt)), 2: req(obj(wire.TextSchema())), 3: saved})
 	args := list(wire.Schema{1: wire.Required(wire.UInt), 2: wire.Essential(wire.String), 3: wire.Essential(wire.Int), 4: wire.Essential(wire.Int), 5: wire.Essential(wire.Int)})
-	for n, s := range (wire.Schema{64: i32, 65: i32, 66: positive(wire.Essential(wire.UInt)), 67: wire.Essential(wire.Bool), 68: options, 69: wire.Essential(wire.UInt), 70: wire.Essential(wire.Bool), 71: wire.Essential(wire.UInt), 72: args, 73: i32, 74: wire.Essential(wire.Int)}) {
+	for n, s := range (wire.Schema{64: i32, 65: i32, 66: positive(wire.Essential(wire.UInt)), 67: wire.Essential(wire.Bool), 68: options, 69: wire.Essential(wire.UInt), 70: wire.Essential(wire.Bool), 71: wire.Essential(wire.UInt), 72: args, 73: i32, 74: wire.Essential(wire.Int), 75: positive(wire.Essential(wire.UInt))}) {
 		r[wire.Fact][n] = s
 	}
 	saved.Required = false

@@ -79,3 +79,46 @@ func TestSnapshotDoesNotRenewOfferAndPriceIsCaptured(t *testing.T) {
 		t.Fatal("replay renewed lifetime", reason)
 	}
 }
+
+func TestItemWitnessRequiresAttributedTransition(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		row    Good
+		used   uint64
+		source bool
+		kind   string
+		want   gateway.Witness
+	}{
+		{"equipment", Good{Object: 42, ID: 4, Count: 1, Slot: Number(7)}, 1, true, Inventory, gateway.WitnessMatch},
+		{"consumption", Good{Object: 42, ID: 4, Count: 0, Slot: Number(-1)}, 1, true, Inventory, gateway.WitnessMatch},
+		{"unchanged", Good{Object: 42, ID: 4, Count: 1, Slot: Number(-1)}, 1, true, Inventory, gateway.WitnessNone},
+		{"other object", Good{Object: 43, ID: 4, Count: 0}, 1, true, Inventory, gateway.WitnessNone},
+		{"other template", Good{Object: 42, ID: 5, Count: 0}, 1, true, Inventory, gateway.WitnessNone},
+		{"increase", Good{Object: 42, ID: 4, Count: 2, Slot: Number(-1)}, 1, true, Inventory, gateway.WitnessNone},
+		{"no source", Good{Object: 42, ID: 4, Count: 0}, 1, false, Inventory, gateway.WitnessNone},
+		{"other attempt", Good{Object: 42, ID: 4, Count: 0}, 2, true, Inventory, gateway.WitnessNone},
+		{"bare receipt", Good{Object: 42, ID: 4, Count: 0}, 0, true, Inventory, gateway.WitnessNone},
+		{"snapshot", Good{Object: 42, ID: 4, Count: 0}, 1, true, Carried, gateway.WitnessNone},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newState(t, testConfig(), Policy{})
+			for _, e := range []Event{{Kind: Appeared, ID: 1, Mine: true}, {Kind: Carried, Goods: []Good{{Object: 42, ID: 4, Count: 1, Slot: Number(-1)}}}} {
+				if err := apply(t, s, e); err != nil {
+					t.Fatal(err)
+				}
+			}
+			r, err := CommandRecord(Command{Kind: UseItem, Target: 42}, CommandContext{N: 1, Control: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			a, reason := s.Plan(r, 0)
+			if reason != wire.ReasonNone {
+				t.Fatal(reason)
+			}
+			u := gateway.Update{Value: Input{Completed: 1, Used: tc.used, Source: Source{ItemUse: tc.source}, Event: Event{Kind: tc.kind, Goods: []Good{tc.row}}}}
+			if got, err := s.Witness(a, u); err != nil || got != tc.want {
+				t.Fatalf("witness=%v/%v want %v", got, err, tc.want)
+			}
+		})
+	}
+}

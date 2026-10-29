@@ -276,7 +276,7 @@ func TestRegistryMatchesFrozenDictionary(t *testing.T) {
 		t.Fatal("dictionary identity changed")
 	}
 	wantKinds := []string{"appeared/objects", "moved/objects", "stopped/objects", "corrected/objects", "struck/objects", "died/objects", "revived/objects", "dropped/objects", "took/objects", "gone/objects", "spoke/dialogue", "shop/trade", "offer/trade", "carried/inventory", "inventory/inventory", "vitals/self", "reward/self", "notice/dialogue", "history/history", "quest/quests", "quests/quests", "practice/skills", "known/skills", "targeted/objects"}
-	wantVerbs := []string{"walk/walk", "aim/aim", "strike/strike", "take/take", "talk/talk", "choose/say", "buy/buy", "sell/sell", "rise/rise", "focus/focus", "engage/engage", "cast/cast", "learn/learn"}
+	wantVerbs := []string{"walk/walk", "aim/aim", "strike/strike", "take/take", "talk/talk", "choose/say", "buy/buy", "sell/sell", "rise/rise", "focus/focus", "engage/engage", "cast/cast", "learn/learn", "use-item/use-item"}
 	if len(Kinds()) != len(wantKinds) || len(Verbs()) != len(wantVerbs) {
 		t.Fatal("incomplete registry")
 	}

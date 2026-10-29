@@ -133,6 +133,7 @@ func (t translator) events(e world.Event, s world.Scene, origin world.Time) ([]f
 				}
 				fields = append(fields, wire.S(23, true, count))
 			} else {
+				good.Fields = append(good.Fields, wire.S(7, true, kind))
 				fields = append(fields, wire.Items(24, true, []wire.Value{good}))
 			}
 			fs = append(fs, fact{15, "inventory", fields})

@@ -64,7 +64,7 @@ func validateCommand(c Command) error {
 	switch c.Verb {
 	case 1:
 		required = []uint32{11}
-	case 2, 3, 4, 5, 10:
+	case 2, 3, 4, 5, 10, 14:
 		required = []uint32{64}
 	case 6:
 		required = []uint32{64, 68}
@@ -130,7 +130,7 @@ func checkReceipt(r Receipt, c Command) error {
 		return nil
 	}
 	switch c.Verb {
-	case 1, 3, 9, 12:
+	case 1, 3, 9, 12, 14:
 		return wire.ErrFrame
 	}
 	// Match the command's captured identifiers where the raw request carries them.

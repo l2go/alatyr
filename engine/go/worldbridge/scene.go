@@ -39,6 +39,10 @@ func (t translator) self(s world.Self) ([]fact, error) {
 		stats = append(stats, wire.S(uint32(i+1), true, n))
 	}
 	stats = append(stats, wire.S(5, true, int64(s.Char.Level)), wire.S(6, true, s.Char.Exp), wire.S(7, true, int64(s.Char.SP)))
+	stats = append(stats, wire.S(8, true, int64(s.PAtk)))
+	if s.PDefKnown {
+		stats = append(stats, wire.S(9, true, int64(s.PDef)))
+	}
 	return []fact{f, {16, "self", []wire.Field{wire.S(64, true, int64(s.Entity.ID)), wire.Obj(25, true, stats)}}}, nil
 }
 
@@ -88,7 +92,7 @@ func (t translator) good(it world.Item) (wire.Value, bool, error) {
 	if err != nil {
 		return wire.Value{}, false, err
 	}
-	return wire.Value{Fields: []wire.Field{wire.S(2, true, int64(it.ObjectID)), wire.S(3, true, int64(it.TemplateID)), wire.S(4, true, it.Count), name, wire.S(7, true, int64(it.Slot))}}, template.ConsumeType == "asset", nil
+	return wire.Value{Fields: []wire.Field{wire.S(2, true, int64(it.ObjectID)), wire.S(3, true, int64(it.TemplateID)), wire.S(4, true, it.Count), name, wire.S(8, true, int64(it.Slot))}}, template.ConsumeType == "asset", nil
 }
 
 func (t translator) carried(rows []world.Carried) (fact, error) {

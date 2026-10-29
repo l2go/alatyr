@@ -6,6 +6,8 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Added
 
+- Participants can toggle authored equipment and consume healing items through `use-item`. Live intent-attributed inventory changes prove completion; equipment slots and physical attack/defense are visible in participant facts.
+
 - The Go world settles per-life hunting contributions and party rewards, supports equipment and healing items, and keeps experience at x1 regardless of stored vitality.
 - Alatyr ships the authored Go world and participant gateway as `ghcr.io/l2go/alatyr`, for linux/amd64 and linux/arm64. Compose supplies PostgreSQL 18, file-based credentials, a static participant registry and operator character import. Native image checks cover readiness, authenticated entry, live shutdown persistence, restart and backup restore.
 - PostgreSQL persistence saves learned skills and the SP balance in one transaction. Detached final checkpoints preserve participants when the world stops itself.

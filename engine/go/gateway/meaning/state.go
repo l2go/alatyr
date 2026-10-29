@@ -23,6 +23,8 @@ type Source struct {
 	Learning bool
 	// Return asserts an audited exclusive relocation and revival producer.
 	Return bool
+	// ItemUse asserts audited intent-attributed inventory changes.
+	ItemUse bool
 }
 
 // Input is an owned backend update supplied only by trusted composition.
@@ -42,6 +44,8 @@ type Input struct {
 	// Completed is the participant attempt whose matching effect receipt was
 	// validated by the trusted adapter. Zero supplies no delivery evidence.
 	Completed uint64
+	// Used binds a live inventory change to this item-use attempt.
+	Used uint64
 	// Returned binds an audited return relocation to a handed-off rise attempt.
 	// Unlike Completed, it does not assert a raw done receipt: rise has none.
 	Returned uint64
@@ -64,6 +68,7 @@ type planned struct {
 	npc                            Ref
 	baselineLevel                  *int64
 	baselineSkill                  int32
+	baselineItem                   Good
 	eligible, relocated, completed bool
 	returned                       bool
 	started                        bool
@@ -134,8 +139,8 @@ func mergeStats(a, b *Stats) *Stats {
 		a = &Stats{}
 	}
 	out := *a
-	dst := []**int64{&out.HP, &out.MaxHP, &out.MP, &out.MaxMP, &out.Level, &out.XP, &out.SP}
-	src := []*int64{b.HP, b.MaxHP, b.MP, b.MaxMP, b.Level, b.XP, b.SP}
+	dst := []**int64{&out.HP, &out.MaxHP, &out.MP, &out.MaxMP, &out.Level, &out.XP, &out.SP, &out.PAtk, &out.PDef}
+	src := []*int64{b.HP, b.MaxHP, b.MP, b.MaxMP, b.Level, b.XP, b.SP, b.PAtk, b.PDef}
 	for i, v := range src {
 		if v != nil {
 			*dst[i] = Number(*v)
@@ -506,7 +511,7 @@ func cmp32(a, b int32) int {
 }
 func (s *State) environment(now int64) Environment {
 	_, exists := s.actors[s.self]
-	return Environment{Observed: s.observed, Proposals: s.proposals, Known: s.known, Alive: exists && !s.dead[s.self], Dead: exists && s.dead[s.self], Self: s.self, Now: now, Classify: s.policy.Classify}
+	return Environment{Observed: s.observed, Proposals: s.proposals, Known: s.known, Inventory: s.inventory, Alive: exists && !s.dead[s.self], Dead: exists && s.dead[s.self], Self: s.self, Now: now, Classify: s.policy.Classify}
 }
 
 // Plan consumes a structurally validated Intent and captures one backend strategy.
@@ -533,6 +538,9 @@ func (s *State) Plan(r wire.Record, now int64) (*gateway.Action, wire.Reason) {
 	steps, err := strategy(plan)
 	if err != nil {
 		return nil, wire.ReasonInvalid
+	}
+	if plan.Command.Kind == UseItem {
+		p.baselineItem = s.inventory[plan.Command.Target]
 	}
 	if plan.Command.Kind == Learn {
 		p.eligible = s.complete["skills"] && s.complete["self"]
@@ -617,6 +625,15 @@ func (s *State) Witness(a *gateway.Action, u gateway.Update) (gateway.Witness, e
 	case Take:
 		if p.completed && input.Source.Pickup && e.Kind == Took && e.ID == s.self && s.lastTarget == p.plan.Item {
 			return gateway.WitnessMatch, nil
+		}
+	case UseItem:
+		if input.Source.ItemUse && input.Used == getU(p.record.Fields, 1) && e.Kind == Inventory {
+			for _, row := range e.Goods {
+				b := p.baselineItem
+				if row.Object == b.Object && row.ID == b.ID && ((row.Count >= 0 && row.Count < b.Count) || (row.Count == b.Count && row.Slot != nil && b.Slot != nil && *row.Slot != *b.Slot)) {
+					return gateway.WitnessMatch, nil
+				}
+			}
 		}
 	case Learn:
 		if p.completed && e.Kind == Known && input.Source.Learning && p.eligible {

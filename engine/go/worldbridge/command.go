@@ -31,7 +31,7 @@ func normalize(c bridge.Command) (bridge.Command, error) {
 	switch c.Verb {
 	case 1:
 		required = []uint32{11}
-	case 2, 3, 4, 5, 10:
+	case 2, 3, 4, 5, 10, 14:
 		required = []uint32{64}
 	case 6:
 		required = []uint32{64, 68}
@@ -155,6 +155,8 @@ func prepare(c bridge.Command, s world.Scene, now world.Time) (prepared, error) 
 		p.request.Verb = world.VerbChoose
 	case 12:
 		p.request.Verb = world.VerbCast
+	case 14:
+		p.request.Verb = world.VerbUseItem
 	case 13:
 		p.request.Verb = world.VerbLearn
 	case 7:
@@ -164,7 +166,7 @@ func prepare(c bridge.Command, s world.Scene, now world.Time) (prepared, error) 
 	case 9:
 		p.request.Verb = world.VerbRestart
 	}
-	if v, ok := wire.Find(c.Payload, 64); ok && c.Verb != 8 {
+	if v, ok := wire.Find(c.Payload, 64); ok && c.Verb != 8 && c.Verb != 14 {
 		id := int32(v.S)
 		if id == s.Self.Entity.ID {
 			p.request.Target = s.Self.Entity
@@ -180,6 +182,20 @@ func prepare(c bridge.Command, s world.Scene, now world.Time) (prepared, error) 
 		if !validRef(p.request.Target) {
 			p.refusal = world.ReasonStale
 			return p, nil
+		}
+	}
+	if c.Verb == 14 {
+		v, _ := wire.Find(c.Payload, 64)
+		for _, row := range s.Inventory {
+			if int64(row.Entity.ID) == v.S {
+				if p.request.Target != (world.Ref{}) || row.Item.ObjectID != row.Entity.ID {
+					return prepared{}, errSource
+				}
+				p.request.Target = row.Entity
+			}
+		}
+		if !validRef(p.request.Target) {
+			p.refusal = world.ReasonStale
 		}
 	}
 	if c.Verb == 4 {

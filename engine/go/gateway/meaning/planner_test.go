@@ -264,3 +264,36 @@ func TestEveryNonproposalVerbAndKnownSkillWithoutPractice(t *testing.T) {
 		})
 	}
 }
+
+func TestUseItemOwnedRowAndShape(t *testing.T) {
+	env := Environment{Alive: true, Inventory: map[int32]Good{42: {Object: 42, ID: 4, Count: 1}}}
+	record, err := CommandRecord(Command{Kind: UseItem, Target: 42}, CommandContext{N: 1, Control: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, reason := PlanIntent(record, env)
+	if reason != wire.ReasonNone || plan.Command.Target != 42 || plan.Effect.Class != "trade" || !plan.Effect.Waiting {
+		t.Fatalf("plan=%+v reason=%v", plan, reason)
+	}
+	for _, tc := range []struct {
+		name   string
+		fields []wire.Field
+		alive  bool
+		want   wire.Reason
+	}{
+		{"missing", nil, true, wire.ReasonInvalid},
+		{"foreign", []wire.Field{wire.S(21, true, 99)}, true, wire.ReasonStaleTarget},
+		{"zero", []wire.Field{wire.S(21, true, 0)}, true, wire.ReasonStaleTarget},
+		{"slot injection", []wire.Field{wire.S(21, true, 42), wire.S(17, true, 7)}, true, wire.ReasonInvalid},
+		{"dead", []wire.Field{wire.S(21, true, 42)}, false, wire.ReasonNotAlive},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := record
+			r.Fields = append(append([]wire.Field(nil), record.Fields[:3]...), tc.fields...)
+			env.Alive = tc.alive
+			if _, got := PlanIntent(r, env); got != tc.want {
+				t.Fatalf("reason=%v want %v", got, tc.want)
+			}
+		})
+	}
+}

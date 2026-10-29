@@ -67,6 +67,7 @@ var verbRegistry = []Verb{
 	{7, "buy", Buy, "trade", true}, {8, "sell", Sell, "trade", true}, {9, "rise", Rise, "revive", true},
 	{10, "focus", Focus, "", false}, {11, "engage", Engage, "", false},
 	{12, "cast", Cast, "", true}, {13, "learn", Learn, "learn", true},
+	{14, "use-item", UseItem, "trade", true},
 }
 
 // Kinds returns an independent copy of the fixed fact table.
@@ -177,9 +178,9 @@ func Registry(c Config) wire.Registry {
 	ref := obj(wire.Schema{1: req(i32), 2: wire.Required(wire.UInt)})
 	position := wire.Essential(wire.Position)
 	option := wire.Schema{1: positive(wire.Required(wire.UInt)), 2: req(text)}
-	good := wire.Schema{1: positive(wire.Essential(wire.UInt)), 2: i32, 3: req(i32), 4: wire.Required(wire.Int), 5: wire.Essential(wire.Int), 6: text, 7: i32}
+	good := wire.Schema{1: positive(wire.Essential(wire.UInt)), 2: i32, 3: req(i32), 4: wire.Required(wire.Int), 5: wire.Essential(wire.Int), 6: text, 7: i32, 8: wire.Essential(wire.Int)}
 	stats := wire.Schema{}
-	for n := uint32(1); n <= 7; n++ {
+	for n := uint32(1); n <= 9; n++ {
 		stats[n] = wire.Essential(wire.Int)
 	}
 	entry := wire.Schema{1: wire.Required(wire.Int), 2: wire.Required(wire.String), 3: req(text)}
@@ -200,7 +201,7 @@ func Registry(c Config) wire.Registry {
 	}
 	commands := wire.Schema{
 		10: ref, 11: position, 12: wire.Essential(wire.UInt), 13: wire.Essential(wire.UInt), 14: i32, 15: wire.Essential(wire.UInt),
-		16: wire.Essential(wire.Int), 17: wire.Essential(wire.Int), 18: obj(use), 19: wire.Essential(wire.Bool), 20: ref,
+		16: wire.Essential(wire.Int), 17: wire.Essential(wire.Int), 18: obj(use), 19: wire.Essential(wire.Bool), 20: ref, 21: i32,
 	}
 	for n, s := range commands {
 		r[wire.Intent][n] = s

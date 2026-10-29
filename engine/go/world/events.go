@@ -240,8 +240,10 @@ type ItemChange struct {
 // InventoryChanged supplies inventory row changes and current load.
 type InventoryChanged struct {
 	stamp
-	Changes []ItemChange
-	Load    int64
+	// UseIntent identifies the item-use intent that changed these rows.
+	UseIntent IntentID
+	Changes   []ItemChange
+	Load      int64
 }
 
 // ActionIgnored is housekeeping for requests that did not start work. It

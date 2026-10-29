@@ -68,11 +68,16 @@ func (t translator) receipt(p prepared, c world.Commit, executionErr error, n, e
 			r.Reason = wire.ReasonInterrupted
 			r.Delivery = wire.DeliveryPartial
 		case world.StageUnknown:
-			if p.command.Verb == 1 || p.command.Verb == 3 || p.command.Verb == 9 || p.command.Verb == 12 {
+			if p.command.Verb == 1 || p.command.Verb == 3 || p.command.Verb == 9 || p.command.Verb == 12 || p.command.Verb == 14 {
 				r.Stage = wire.StageSent
 				r.Reason = wire.ReasonNone
 			}
 		case world.StageDone:
+			if p.command.Verb == 14 {
+				r.Stage = wire.StageSent
+				r.Reason = wire.ReasonNone
+				break
+			}
 			if effects, ok := t.effects(p, c); ok {
 				r.Stage = wire.StageDone
 				r.Reason = wire.ReasonNone
@@ -117,7 +122,7 @@ func effectValue(kind uint64, fields ...wire.Field) wire.Value {
 }
 
 func (t translator) effects(p prepared, c world.Commit) ([]wire.Value, bool) {
-	if p.command.Verb == 1 || p.command.Verb == 3 || p.command.Verb == 9 || p.command.Verb == 12 {
+	if p.command.Verb == 1 || p.command.Verb == 3 || p.command.Verb == 9 || p.command.Verb == 12 || p.command.Verb == 14 {
 		return nil, false
 	}
 	if len(c.Groups) > maxRows {

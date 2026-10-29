@@ -81,6 +81,11 @@ func CommandRecord(cmd Command, ctx CommandContext) (wire.Record, error) {
 			return wire.Record{}, wire.ErrFrame
 		}
 		f = append(f, wire.S(14, true, int64(ctx.List)), wire.U(15, true, ctx.Offer))
+	case UseItem:
+		if cmd.Target <= 0 {
+			return wire.Record{}, wire.ErrFrame
+		}
+		f = append(f, wire.S(21, true, int64(cmd.Target)))
 	case Rise:
 	}
 	return wire.Record{Type: wire.Intent, Fields: f}, nil
@@ -94,6 +99,8 @@ type Environment struct {
 	Proposals *Proposals
 	// Known supplies actor-owned known skills.
 	Known map[int32]Skill
+	// Inventory supplies currently carried rows.
+	Inventory map[int32]Good
 	// Alive states that a live self is observed.
 	Alive bool
 	// Dead states that the observed self is dead.
@@ -162,6 +169,8 @@ func PlanIntent(r wire.Record, env Environment) (Plan, wire.Reason) {
 		required = []uint32{12, 13}
 	case Buy, Sell:
 		required = []uint32{14, 15, 16, 17}
+	case UseItem:
+		required = []uint32{21}
 	case Learn:
 		required = []uint32{14, 15}
 	}
@@ -211,6 +220,11 @@ func PlanIntent(r wire.Record, env Environment) (Plan, wire.Reason) {
 	}
 	cmd := Command{Kind: verb.Command, Target: plan.Target.ID, Force: getU(f, 19) == 1}
 	switch verb.Command {
+	case UseItem:
+		cmd.Target = int32(getS(f, 21))
+		if row, ok := env.Inventory[cmd.Target]; cmd.Target <= 0 || !ok || row.Count <= 0 {
+			return Plan{}, wire.ReasonStaleTarget
+		}
 	case Walk:
 		v, _ := wire.Find(f, 11)
 		cmd.X, cmd.Y, cmd.Z = v.XYZ[0], v.XYZ[1], v.XYZ[2]

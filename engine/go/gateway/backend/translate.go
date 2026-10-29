@@ -23,7 +23,7 @@ func command(op meaning.Operation, key uint64, ttl *uint64) (bridge.Command, err
 	switch c.Verb {
 	case 1:
 		c.Payload = []wire.Field{wire.At(11, true, m.X, m.Y, m.Z)}
-	case 2, 3, 4, 5, 10:
+	case 2, 3, 4, 5, 10, 14:
 		c.Payload = []wire.Field{wire.S(64, true, int64(m.Target))}
 	case 6:
 		c.Payload = []wire.Field{wire.S(64, true, int64(m.Target)), wire.Data(68, true, m.Text)}
