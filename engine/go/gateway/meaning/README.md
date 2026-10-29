@@ -56,8 +56,8 @@ of a currently carried inventory row, not a template ID or ground reference.
 The world chooses the authored slot and toggles equipment, or launches its
 consumable effect. No participant slot, quantity or arbitrary skill is accepted.
 It shares the `trade` attempt class with buy/sell to serialize inventory actions.
-Goods field 7 is change metadata; optional field 8 is the equipment slot (-1
-means unequipped). Stats fields 8 and 9 are physical attack and known defense.
+Goods field 7 is change metadata; field 8, when present, is the essential
+equipment slot (-1 means unequipped). Stats fields 8 and 9 are physical attack and known defense.
 
 Done requires `Source.ItemUse`, a matching `Input.Used` attempt attribution, and
 a live inventory fact with the same object/template and a decreased quantity or
