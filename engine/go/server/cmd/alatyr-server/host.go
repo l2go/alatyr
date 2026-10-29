@@ -276,7 +276,9 @@ func hostBackendConfig(mc meaning.Config, origin time.Time) backend.Config {
 // identity has one backend scope and one fenced worldbridge port. World.Run is
 // the sole writer of that incarnation; worldbridge translates its ordered events
 // without merging another producer. Dialogue comes only from that player's
-// accepted interaction; pickup from its atomic owned transfer; learning from its
+// accepted interaction; choice windows additionally bind their original intent
+// and captured NPC incarnation to the raw effect key; pickup from its atomic
+// owned transfer; learning from its
 // serialized, durably committed skill/SP transaction; return from its fenced
 // revival and relocation. Item use carries the exact world intent through a
 // bounded raw key binding; only its live slot/count change may witness completion.

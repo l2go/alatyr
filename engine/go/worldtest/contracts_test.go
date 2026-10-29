@@ -165,7 +165,7 @@ func TestG04MerchantBuySellStayUnknown(t *testing.T) {
 				}
 				r.advance(5 * time.Second)
 				r.expect(3, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0)
-				r.expect(2, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0)
+				r.expect(2, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 				// A distinct command can reuse a live list; Intent replay remains
 				// covered separately by the participant contract.
 				r.p.Send(r.intent(4, verb, wire.S(14, true, int64(d.Event.List)), wire.U(15, true, d.Context.Offers[index]), wire.S(16, true, 1), wire.S(17, true, row.Price)))
@@ -225,7 +225,7 @@ func TestG05AuthoredLearningFullWindow(t *testing.T) {
 		}
 		r.advance(10 * time.Millisecond)
 		r.expect(3, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
-		r.expect(2, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0)
+		r.expect(2, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 	})
 }
 

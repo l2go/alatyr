@@ -24,7 +24,7 @@ distinct from a known zero. Snapshots and proofs own their returned records.
 `Source` is an audited producer assertion, not participant configuration. Its
 zero value grants no causal authority. Positive dialogue, pickup, learning, and
 return evidence also requires an attributable handoff supplied by the trusted
-adapter. Dialogue, pickup, and learning require matching effect completion;
+adapter. Speech, pickup, and learning require matching effect completion;
 return accepts `Returned` only for the handed-off rise attempt because raw rise
 does not report Done. Return proof retains an actual live revival, not a
 fabricated snapshot outcome. Raw receipt matching and readiness fences belong
@@ -67,3 +67,11 @@ the item; Done proves consumption, not an HP increase. A refused world request
 is reported with the existing post-handoff Unknown/Interrupted result and an
 explicit world-rejection explanation; local stale/dead requests are Refused.
 The pinned protocol's post-contact uncertainty rules remain unchanged.
+
+For `Say`, an attributed live `Shop`, `Offer`, or `Practice` window is also a
+witness. `Input.Chosen` must identify the same attempt and the NPC observation
+lifetime must match the captured dialogue choice, with `Source.Dialogue`.
+This path does not require a speech receipt: a window is its own separate
+witness. `Talk` still requires speech. A checkpoint, late window, wrong key,
+foreign NPC, or bare receipt cannot complete a choice. Raw attribution remains
+inside the trusted adapter; participant facts contain only the causal attempt.

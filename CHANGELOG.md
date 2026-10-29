@@ -6,6 +6,8 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Added
 
+- A dialogue choice can complete when its selected NPC opens an intent-attributed shop, sale, or learning window. Delivery receipts and unrelated windows cannot prove completion.
+
 - Participants can toggle authored equipment and consume healing items through `use-item`. Live intent-attributed inventory changes prove completion; equipment slots and physical attack/defense are visible in participant facts.
 
 - The Go world settles per-life hunting contributions and party rewards, supports equipment and healing items, and keeps experience at x1 regardless of stored vitality.

@@ -37,7 +37,7 @@ func TestStateRequiresExplicitPositiveLimits(t *testing.T) {
 }
 
 func TestWitnessRequiresAuditedSourceAndMatchingCompletion(t *testing.T) {
-	for _, kind := range []string{Talk, Take, Learn, Rise} {
+	for _, kind := range []string{Talk, Say, Take, Learn, Rise} {
 		for _, authority := range []string{"none", "wrong_completion", "no_source", "audited"} {
 			t.Run(kind+"/"+authority, func(t *testing.T) {
 				s := newState(t, testConfig(), Policy{})
@@ -53,7 +53,7 @@ func TestWitnessRequiresAuditedSourceAndMatchingCompletion(t *testing.T) {
 				input := Input{Completed: 42, Source: Source{Dialogue: true, Pickup: true, Learning: true, Return: true}}
 				want := gateway.WitnessMatch
 				switch kind {
-				case Talk:
+				case Talk, Say:
 					input.Event = Event{Kind: Spoke, ID: 7}
 				case Take:
 					input.Event = Event{Kind: Took, ID: 1, Target: 9}

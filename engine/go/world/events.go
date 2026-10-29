@@ -161,7 +161,9 @@ type DialoguePage struct {
 // LearnList supplies available trainer lessons, not learning outcomes.
 type LearnList struct {
 	stamp
-	Dialogue Dialogue
+	// ChoiceIntent identifies the authored choice that opened this window.
+	ChoiceIntent IntentID
+	Dialogue     Dialogue
 }
 
 // SkillsShown supplies effective skills and their detached runtime availability.
