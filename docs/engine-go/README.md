@@ -38,7 +38,7 @@ The dependency checker denies package imports unless the matrix allows them:
 | `server/internal/pgstore` | world, pgstore; pinned pgx, pgxpool and pgconn |
 | `server/internal/migrate` | migrate; goose root PostgreSQL Provider API and pgx/stdlib |
 | `server/cmd/alatyr-server` | pgstore, migrate, world, worldbridge, bridge, gateway, meaning, backend, protocol |
-| application tests | the same matrix plus the internal PostgreSQL test fixture |
+| application tests | the same matrix plus the internal PostgreSQL test fixture; host tests alone may also import `gateway/gatewaytest` |
 | `server/internal/pgtest` | test-only isolated database fixture using pinned pgx |
 
 Component names include their subpackages except the exact gateway directories.

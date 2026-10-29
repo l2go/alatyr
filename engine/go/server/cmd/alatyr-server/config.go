@@ -60,6 +60,16 @@ func (c Config) validate() (map[string]admission, error) {
 	if c.HTTPAddress == "" && c.StreamAddress == "" || c.WorldName == "" || c.WorldPath == "" || c.ShutdownSeconds < 1 || c.ShutdownSeconds > 60 || c.DatabaseSeconds < 1 || c.DatabaseSeconds > 30 || len(c.Participants) < 1 || len(c.Participants) > 64 {
 		return nil, errors.New("host: invalid configuration")
 	}
+	// ShutdownSeconds is spent independently by Gateway.Close, failed Leave
+	// retries and final persistence. Reserve the longest opening/operation join,
+	// every port's 100 ms close budget, and two seconds for process teardown.
+	// This must fit the deployment's 60-second stop grace before accepting work.
+	join := max(time.Duration(c.DatabaseSeconds)*time.Second, 10*time.Second)
+	shutdown := 3 * time.Duration(c.ShutdownSeconds) * time.Second
+	if shutdown+join+time.Duration(len(c.Participants))*100*time.Millisecond+2*time.Second > 60*time.Second {
+		return nil, errors.New("host: shutdown phases exceed the 60-second stop grace")
+	}
+
 	if len(c.ProxyHosts) > 0 != (len(c.ProxyOrigins) > 0) {
 		return nil, errors.New("host: proxy hosts and origins must be paired")
 	}

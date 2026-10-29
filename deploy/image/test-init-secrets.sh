@@ -27,3 +27,27 @@ if "$here/bin/init-secrets" > "$work/error" 2>&1; then echo 'invalid password ac
 [ "$(cat "$work/error")" = 'init-secrets: invalid existing password file' ]
 cmp "$work/before" "$work/secrets/database_url"
 echo 'init-secrets: all checks passed'
+
+# Inspect the initializer's real argv/environment with a controlled psql peer.
+# Read the password from the command environment, not argv or unexpanded SQL.
+python3 - "$here/../postgres/init/01-roles.sh" "$work" <<'PYTEST'
+import os,pathlib,subprocess,sys
+script=pathlib.Path(sys.argv[1]);work=pathlib.Path(sys.argv[2]);bindir=work/'bin';bindir.mkdir()
+secret="role password with ' and spaces"
+(bindir/'cat').write_text("#!/usr/bin/env python3\nimport os,sys\nassert sys.argv[1:]==['/run/alatyr-dbsecrets/world_password']\nprint(os.environ['TEST_ROLE_SECRET'],end='')\n")
+(bindir/'psql').write_text("""#!/usr/bin/env python3
+import os,sys
+secret=os.environ['TEST_ROLE_SECRET']
+assert sys.argv[1:]==['-v','ON_ERROR_STOP=1','--username','postgres','--dbname','alatyr']
+assert os.environ['ALATYR_WORLD_PASSWORD']==secret
+sql=sys.stdin.read()
+assert secret not in sql
+assert "\\getenv world_password ALATYR_WORLD_PASSWORD" in sql
+assert "PASSWORD :'world_password'" in sql
+""")
+for p in bindir.iterdir():p.chmod(0o700)
+env=dict(os.environ,PATH=str(bindir)+os.pathsep+os.environ['PATH'],TEST_ROLE_SECRET=secret,POSTGRES_USER='postgres',POSTGRES_DB='alatyr')
+result=subprocess.run(['bash',str(script)],env=env,capture_output=True,text=True,check=True)
+assert secret not in result.stdout+result.stderr
+print('init-roles: password excluded from argv and SQL input')
+PYTEST

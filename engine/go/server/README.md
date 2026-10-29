@@ -91,8 +91,12 @@ saves using the original Ref, and joins the world. Run freezes detached final
 checkpoints on every exit, including autonomous exhaustion. After all port I/O
 has finished, the host persists any remaining live or pending characters through
 the same compatibility store. It reports persistence errors and fails readiness
-when the world is stopped. A final save has the configured ShutdownSeconds budget;
-an exhausted or unreachable database can still prevent durable shutdown.
+when the world is stopped. Startup validates the combined gateway, departure-retry
+and final-save budgets against the deployment's 60-second grace, including join
+and teardown reserves
+(see the [deployment guide](../../../deploy/README.md)). A final save has its own
+configured `ShutdownSeconds` budget; an exhausted or unreachable database can
+still prevent durable shutdown.
 
 Check all three module roots in workspace and GOWORK=off modes with vet,
 `go test -race ./...`, Staticcheck and govulncheck. PostgreSQL tests skip without

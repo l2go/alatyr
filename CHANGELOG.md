@@ -13,7 +13,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 ### Fixed
 
 - The Go host grants audited exclusive evidence authority for dialogue, pickup, learning and return, so confirmed participant actions can finish as Done.
-- Normal shutdown closes HTTP listeners through their owner and tolerates already-closed listeners while preserving other shutdown and save errors.
+- Normal shutdown closes HTTP listeners through their owner and tolerates already-closed listeners while preserving other shutdown and save errors. Startup rejects configurations whose combined shutdown phases and join reserves exceed the 60-second deployment stop grace.
 
 ### Changed
 

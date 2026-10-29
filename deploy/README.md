@@ -80,7 +80,13 @@ Standalone execution also accepts `ALATYR_DATABASE_URL`; choosing both is an
 error. The container entrypoint uses `exec`, so termination signals reach Go.
 Its root is read-only, capabilities are dropped, and the default memory limit
 is 256 MiB (`GOMEMLIMIT=192MiB`); these are deployment limits, not measured RSS.
-The configured shutdown budgets must fit the 60-second Compose stop grace.
+Startup rejects shutdown budgets that exceed the 60-second Compose stop grace.
+`ShutdownSeconds` is available separately to gateway close, failed departure
+retries and final persistence. Validation reserves the larger of `DatabaseSeconds`
+and 10 seconds for joins, 100 milliseconds per participant for port closure, and
+two seconds for process teardown. The sum must not exceed 60 seconds. With one
+participant and `DatabaseSeconds` at most 10, the maximum `ShutdownSeconds` is 15;
+larger registries or database budgets can require a smaller value.
 
 | Task | Command |
 |---|---|
