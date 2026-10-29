@@ -91,7 +91,11 @@ func (s *game) service(ctx context.Context) {
 		if s.closed {
 			return
 		}
-		ex := s.actions[n]
+		ex, exists := s.actions[n]
+		// An earlier local action may have interrupted and removed this key.
+		if !exists {
+			continue
+		}
 		entry, ok := s.attempts.Lookup(n)
 		if !ok || entry.Terminal {
 			if ok && ex.action.AfterCheckpoint && ex.hasCandidate {
