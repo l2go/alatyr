@@ -10,6 +10,11 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 - Alatyr ships the authored Go world and participant gateway as `ghcr.io/l2go/alatyr`, for linux/amd64 and linux/arm64. Compose supplies PostgreSQL 18, file-based credentials, a static participant registry and operator character import. Native image checks cover readiness, authenticated entry, live shutdown persistence, restart and backup restore.
 - PostgreSQL persistence saves learned skills and the SP balance in one transaction. Detached final checkpoints preserve participants when the world stops itself.
 
+### Fixed
+
+- The Go host grants audited exclusive evidence authority for dialogue, pickup, learning and return, so confirmed participant actions can finish as Done.
+- Normal shutdown closes HTTP listeners through their owner and tolerates already-closed listeners while preserving other shutdown and save errors.
+
 ### Changed
 
 - Deployments begin with a fresh dedicated database managed by goose. Foreign database objects are refused before migration; previous player databases are not imported.
