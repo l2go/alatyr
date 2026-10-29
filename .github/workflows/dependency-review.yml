@@ -7,10 +7,11 @@ on:
   pull_request:
     # Only these files declare dependencies.
     paths:
-      - "**/pom.xml"
       - "**/go.mod"
       - "**/go.sum"
       - "go.work"
+      - "deploy/image/Dockerfile"
+      - "deploy/compose.yaml"
       - ".github/workflows/**"
 
 permissions:

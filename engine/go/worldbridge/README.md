@@ -62,8 +62,8 @@ and `bridge.Client` over a synthetic endpoint. It does not assert gameplay parit
 Run `go test -race ./...`, `go vet ./...` and `staticcheck ./...` in this package directory.
 Repeat with `GOWORK=off` to check the published protocol pin.
 
-Database storage remains a host responsibility. Full-stack Java-world parity
-is checked by the shared worldtest suite in integration.
+The server application supplies participant encoding, gateway wiring and
+durable storage; this package owns the world-port boundary.
 
 This package belongs to the shared [Go server module](../README.md). Protocol
 remains a separate module; package dependency directions are enforced by the
@@ -78,7 +78,5 @@ Go-world NPC roles are source-owned labels: `creature` identifies a monster,
 `folk` an ordinary resident, `tutor` a trainer, and `provisioner` a merchant.
 The participant host grants Strike/Cast to creatures and Talk/Cast to folk,
 tutors and provisioners. The dictionary treats these labels as opaque strings;
-a label alone grants no command authority in the world. Java currently reports
-monsters and ordinary residents as `unknown`. Cross-world parity must compare
-the explicit capabilities and command outcomes as well as this documented label
-difference; this adapter does not change the Java bridge.
+a label alone grants no command authority in the world. Contract tests compare
+capabilities and command outcomes independently of these source-owned labels.

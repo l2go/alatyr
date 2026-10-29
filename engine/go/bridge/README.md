@@ -1,6 +1,6 @@
 # World bridge client
 
-This package provides a bounded Go client for the Java world endpoint using the
+This package defines the raw-port contract and a bounded client for compatible endpoints using the
 `bridge/1` profile and the shared protocol codec. It depends on the protocol
 module and the Go standard library.
 
@@ -14,14 +14,14 @@ commands are not re-executed after ambiguous transport failures.
 
 The caller owns participant admission, observation references, proposal lifetime,
 and outcome policy. An endpoint receipt alone does not prove a participant
-outcome. Relocation completion remains inside the Java endpoint; the client
+outcome. Relocation completion remains inside the endpoint; the client
 does not acknowledge it with another command.
 
-Core and endpoint conformance inputs are shared with Java in the protocol
+Core and endpoint conformance inputs are retained in the protocol
 module's testdata directory. CI checks bounds, dependencies, race safety,
 profile fuzzing, and port-level contract traces with a scripted endpoint.
-Joint scenarios run in GitHub Actions after the Java endpoint code is merged.
-Shared gateway traces belong to the separate gateway integration work.
+The production Go server uses worldbridge for its world port. Controlled-peer
+tests retain the client contract and shared gateway traces.
 
 See [Go components](../../../docs/engine-go/README.md).
 

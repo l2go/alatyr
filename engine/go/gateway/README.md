@@ -34,8 +34,7 @@ adapts an opened `bridge.Port` and its ready snapshot to that runtime;
 [gatewaytest](gatewaytest/README.md) drives the actual participant boundary.
 Gateway and bridge share the [server module](../README.md), which pins only
 protocol without replacements. Package dependency rules are enforced by the
-boundary checker. An executable and
-end-to-end Java verification remain separate changes.
+boundary checker. The [server application](../server/README.md) supplies the running host.
 
 The adapter binds participant attempt, step index, helper/effect/system role,
 command key, and raw attempt before accepting a receipt. Raw Done is not a

@@ -110,20 +110,8 @@ func parityResume(r *parityRig) parityResult {
 	r.outcome(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 	oldSession := r.p.Session
 	beforeState := r.current()
-	if r.engine == "go" {
-		if _, _, err := r.w.Subscribe(r.t.Context(), r.owner); err != nil {
-			r.t.Fatal(err)
-		}
-	} else {
-		r.dial.mu.Lock()
-		conn := r.dial.conn
-		r.dial.mu.Unlock()
-		if conn == nil {
-			r.t.Fatal("transport absent")
-		}
-		if err := conn.Close(); err != nil {
-			r.t.Fatal(err)
-		}
+	if _, _, err := r.w.Subscribe(r.t.Context(), r.owner); err != nil {
+		r.t.Fatal(err)
 	}
 	r.wait(func() bool {
 		if !r.detached.Load() {
@@ -278,21 +266,13 @@ func parityRewardSides(r *parityRig, name string) parityResult {
 	out.Order = []string{"draught", "weapon", "draught", "weapon"}
 	out.Checks["permanent-owner-protection"], out.Checks["party-remainders-conserved"] = true, true
 	for _, id := range members {
-		account := ""
-		if r.engine == "go" {
-			account = r.aux[id].Self.Char.Account
-		}
+		account := r.aux[id].Self.Char.Account
 		r.closeAux(id)
-		var saved parityState
-		if r.engine == "java" {
-			saved = r.savedJava(id)
-		} else {
-			chars, err := r.store.Characters(r.t.Context(), account)
-			if err != nil || len(chars) != 1 {
-				r.t.Fatalf("saved party member: %v", err)
-			}
-			saved = paritySelf(world.Self{Char: chars[0]})
+		chars, err := r.store.Characters(r.t.Context(), account)
+		if err != nil || len(chars) != 1 {
+			r.t.Fatalf("saved party member: %v", err)
 		}
+		saved := paritySelf(world.Self{Char: chars[0]})
 		if saved.XP != 121 || saved.SP != 110 || saved.count(57) != 1007 {
 			r.t.Fatalf("party Close lost rewards: %+v", saved)
 		}

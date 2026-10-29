@@ -249,7 +249,8 @@
         "protocol/**"
       ],
       "test_imports": [
-        "server/internal/pgtest"
+        "server/internal/pgtest",
+        "gateway/gatewaytest"
       ]
     },
     {

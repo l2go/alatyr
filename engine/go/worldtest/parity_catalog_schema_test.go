@@ -5,28 +5,22 @@ package worldtest
 
 import (
 	"bytes"
-	"math"
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 )
 
-func TestParityCatalogMatchesJavaCopySchema(t *testing.T) {
+func TestParityCatalogPreservesAuthoredRows(t *testing.T) {
 	source := filepath.Join("..", "..", "..", "world", "catalog")
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "catalog"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.CopyFS(filepath.Join(root, "catalog"), os.DirFS(source)); err != nil {
-		t.Fatal(err)
-	}
-	ddl, err := os.ReadFile(filepath.Join("..", "..", "java", "game", "src", "main", "resources", "db", "catalog", "02_npc_spawn.sql"))
-	if err != nil {
 		t.Fatal(err)
 	}
 	writeParityCatalog(t, root)
@@ -58,64 +52,7 @@ func TestParityCatalogMatchesJavaCopySchema(t *testing.T) {
 				t.Fatalf("added rows=%d, want %d", len(rows)-len(before), tc.added)
 			}
 			tables[tc.name] = rows
-			// Read the actual Java DDL, not a second handwritten list of required fields.
-			block := regexp.MustCompile(`(?s)CREATE UNLOGGED TABLE ` + tc.name + ` \((.*?)\n\);`).FindSubmatch(ddl)
-			if len(block) != 2 {
-				t.Fatal("Java catalog table missing")
-			}
-			var columns, declarations []string
-			for line := range strings.SplitSeq(string(block[1]), "\n") {
-				line = strings.TrimSpace(line)
-				if line == "" || strings.HasPrefix(line, "PRIMARY KEY ") || strings.HasPrefix(line, "CHECK ") {
-					continue
-				}
-				fields := strings.Fields(line)
-				columns = append(columns, fields[0])
-				declarations = append(declarations, line)
-			}
-			if !reflect.DeepEqual(rows[0], columns) {
-				t.Fatalf("COPY header differs from complete Java schema:\ngot %v\nwant %v", rows[0], columns)
-			}
-			for rowIndex, row := range rows[1:] {
-				for i, value := range row {
-					decl := declarations[i]
-					null := value == "" && !quoted[rowIndex+1][i]
-					required := strings.Contains(decl, " NOT NULL") || strings.Contains(decl, " PRIMARY KEY")
-					if null {
-						if required {
-							t.Fatalf("COPY row %d column %s becomes NULL despite %s", rowIndex+2, columns[i], decl)
-						}
-						continue
-					}
-					typ := strings.TrimSuffix(strings.Fields(decl)[1], ",")
-					switch {
-					case typ == "text": // A quoted empty string is valid text, never SQL NULL.
-					case typ == "boolean":
-						if value != "true" && value != "false" {
-							t.Fatalf("invalid boolean %s=%q", columns[i], value)
-						}
-					case typ == "integer" || typ == "smallint":
-						bits := 32
-						if typ == "smallint" {
-							bits = 16
-						}
-						n, err := strconv.ParseInt(value, 10, bits)
-						if err != nil {
-							t.Fatalf("invalid %s %s=%q", typ, columns[i], value)
-						}
-						if strings.Contains(decl, ">= 0") && n < 0 || strings.Contains(decl, ">= -1") && n < -1 {
-							t.Fatalf("CHECK violation %s=%d", columns[i], n)
-						}
-					case strings.HasPrefix(typ, "numeric("):
-						n, err := strconv.ParseFloat(value, 64)
-						if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || strings.Contains(decl, ">= 0") && n < 0 {
-							t.Fatalf("invalid numeric %s=%q", columns[i], value)
-						}
-					default:
-						t.Fatalf("unhandled Java column type %s", typ)
-					}
-				}
-			}
+			columns := rows[0]
 			// Every unspecified field of a probe comes from the complete authored row,
 			// including nullable fields and quoted empty NOT NULL text.
 			key := "npc_template_id"

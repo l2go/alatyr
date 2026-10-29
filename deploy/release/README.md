@@ -1,46 +1,48 @@
-# L2JFree server
+# Alatyr server bundle
 
-This bundle runs the L2JFree server and PostgreSQL 18. It needs Docker Compose. Run every command in this directory.
+This bundle runs the Go participant server and PostgreSQL 18 with Docker Compose.
+Its image is pinned by digest to the build verified for this release. Run commands
+from this directory; no source build is required.
 
-If players connect from other machines, first write the address of this host to `.env`:
+## Prepare
 
 ```sh
-echo 'L2JFREE_EXTERNAL_HOST=203.0.113.10' > .env
+mkdir -p config
+cp server.example.json config/server.json
+cp character.example.json config/character.json
 ```
 
-Start:
+Edit the participant registry, token digests and trusted TLS proxy configuration
+in `config/server.json`. Set the actual proxy source IP in `ProxyPeers`; keep
+credentials out of URLs and logs. Edit the trusted character snapshot before
+import. The example snapshot has explicit values, not automatic starting rules.
+See the [deployment guide](https://github.com/l2go/alatyr/blob/main/deploy/README.md)
+for proxy setup, permissions, token provisioning, backup and restore.
+
+## Start
 
 ```sh
+docker compose up -d --wait db
+docker compose run --rm --no-deps server -import-character /run/alatyr/config/character.json
 docker compose up -d --wait
 ```
 
-The first start creates the database passwords and schemas and loads the game content. It takes a few minutes. When the command returns, login answers on port 2106 and the world on 7777. The first login creates the account.
-
-The server runs Okolitsa, the original world in the image. The [deploy guide](https://github.com/l2go/alatyr/blob/main/deploy/README.md#run-another-world) tells how to run another world.
+Use a fresh dedicated database. Another implementation's database is refused.
+There is no registration service; only the configured participants can enter
+existing imported characters. Imports require the server to be stopped.
 
 | Task | Command |
 |---|---|
 | Status | `docker compose ps` |
-| Log | `docker compose logs -f server` |
-| Stop | `docker compose down` (the data stays in the volumes) |
-| Backup | `docker compose exec -T db pg_dump -U postgres -d l2jfree -n login -n world -Fc > l2jfree.dump` |
+| Logs | `docker compose logs -f server` |
+| Stop, keeping data | `docker compose down` |
+| Backup with the server stopped | `docker compose exec -T db pg_dump -U postgres -d alatyr -n world -Fc > alatyr.dump` |
 
-To update, unpack the new bundle, copy `.env` into its directory if you have one, and run `docker compose up -d --wait` there. The volumes belong to the project `l2jfree`, so the new directory finds the same data.
+To update, back up first, unpack the new bundle, copy your configuration and
+`.env` if present, and run `docker compose up -d --wait`. The `alatyr` Compose
+project finds the same persistent volumes. Keep the old image and matching
+backup for rollback. Verify release signatures as described in
+[the security policy](https://github.com/l2go/alatyr/blob/main/SECURITY.md).
 
-## Change an option
-
-A file in the `config` volume overrides the keys it names in the file of the same name in the image. With the stack running, to allow at most 50 players online:
-
-```sh
-printf 'MaximumOnlineUsers = 50\n' | docker compose exec -T server tee /var/lib/l2jfree/config/server.properties >/dev/null
-docker compose restart server
-```
-
-`tee` replaces the file, so write all changed keys of one file at once. The defaults: [world](https://github.com/l2go/alatyr/tree/main/engine/java/game/config), [login](https://github.com/l2go/alatyr/tree/main/engine/java/login/config). On a public server, turn off the automatic creation of accounts with `AutoCreateAccounts = False` in `loginserver.properties`.
-
-The restore and every setting are in the [deploy guide](https://github.com/l2go/alatyr/blob/main/deploy/README.md).
-The [project site](https://l2go.github.io/alatyr/) tells how the server is built and checked.
-
-## Trademarks
-
-Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. L2JFree is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. This bundle contains no game client.
+Deployment files are GPL-3.0-or-later; see `LICENSE` in this bundle. The image includes
+its component licenses and links to the corresponding public source repository.

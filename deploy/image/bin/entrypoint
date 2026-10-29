@@ -1,68 +1,8 @@
 #!/bin/bash
-# Starts the platform: the login module and the world module in one process.
-# The entry point validates the deployment settings and starts Java; it does
-# nothing else with configuration. The defaults are read-only in
-# /opt/l2jfree/config and the operator's changes live in
-# /var/lib/l2jfree/config.
+# The application owns configuration, signal handling, and persistence.
 set -euo pipefail
-
-home=/opt/l2jfree
-work=/var/lib/l2jfree/work
-logs=/var/lib/l2jfree/log
-
-fail() { echo "entrypoint: $*" >&2; exit 1; }
-
-for name in L2JFREE_DB_URL L2JFREE_LOGIN_DB_USER L2JFREE_WORLD_DB_USER; do
-	[ -n "${!name:-}" ] || fail "$name is required"
-done
-
-for name in L2JFREE_LOGIN_DB_PASSWORD_FILE L2JFREE_WORLD_DB_PASSWORD_FILE; do
-	[ -n "${!name:-}" ] || fail "$name is required"
-	[ -s "${!name}" ] || fail "the file named by $name (${!name}) is missing or empty"
-done
-
-# The logging configuration writes to log/ below the work directory. Keep it in
-# the log volume when that volume is mounted. A real directory that an earlier
-# start created in the work volume stays where it is.
-if [ -d "$logs" ] && { [ ! -e "$work/log" ] || [ -L "$work/log" ]; }; then
-	ln -sfn "$logs" "$work/log"
-fi
-
-cd "$work"
-
-# The HTML cache is built from the world of the image. The work volume
-# outlives an image update, so a cache from an older image would hide the new
-# pages. The world rebuilds it in seconds.
-rm -f "$work/cache/html.cache"
-
-# The Java options are split on blanks, so L2JFREE_JAVA_OPTS can hold several.
-read -r -a java_opts <<< "${L2JFREE_JAVA_OPTS:--Xms1g -Xmx3g -XX:+UseG1GC}"
-
-# A flight recording runs all the time into the log volume, with a limit on its age and size. After an incident its
-# chunks can be read with the jfr tool of any JDK, also when the process was killed. L2JFREE_FLIGHT_RECORDER=off
-# turns it off.
-recording=()
-if [ "${L2JFREE_FLIGHT_RECORDER:-on}" != off ] && mkdir -p "$logs/jfr" 2>/dev/null; then
-	recording=(
-		"-XX:FlightRecorderOptions:repository=$logs/jfr"
-		"-XX:StartFlightRecording:name=l2jfree,settings=default,disk=true,maxage=12h,maxsize=256m"
-	)
-fi
-
-# The network transport is epoll unless the operator chooses another: io_uring is opt-in because the
-# default container profile blocks it. A transport that is not available stops the start with its reason.
-native=/run/l2jfree-native
-native_opts=()
-[ -d "$native" ] && native_opts=("-Dio.netty.native.workdir=$native")
-
-exec java \
-	-Dfile.encoding=UTF-8 \
-	"-Dl2jfree.network.transport=${L2JFREE_NETWORK_TRANSPORT:-epoll}" \
-	"${native_opts[@]}" \
-	-Dlogback.configurationFile="$home/config/logback.xml" \
-	-Dl2jfree.config.defaults="$home/config" \
-	-Dl2jfree.config.operator=/var/lib/l2jfree/config \
-	"${java_opts[@]}" \
-	"${recording[@]}" \
-	-cp "$home/config:$home/libs/*:$home/l2jfree-platform.jar" \
-	com.l2jfree.platform.Platform
+: "${ALATYR_DATABASE_URL_FILE:?ALATYR_DATABASE_URL_FILE is required}"
+: "${ALATYR_CONFIG:?ALATYR_CONFIG is required}"
+[ -s "$ALATYR_DATABASE_URL_FILE" ] || { echo 'entrypoint: database URL file missing or empty' >&2; exit 1; }
+[ -s "$ALATYR_CONFIG" ] || { echo 'entrypoint: participant configuration missing or empty' >&2; exit 1; }
+exec /opt/alatyr/bin/alatyr-server -config "$ALATYR_CONFIG" "$@"

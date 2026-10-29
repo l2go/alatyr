@@ -24,7 +24,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cutoff="$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)"
-          path="/users/${GITHUB_REPOSITORY_OWNER}/packages/container/l2jfree/versions"
+          path="/users/${GITHUB_REPOSITORY_OWNER}/packages/container/alatyr/versions"
           if ! versions="$(gh api --paginate "$path" 2>"$RUNNER_TEMP/gh-error")"; then
             # Only a missing package is "nothing to prune"; any other error must fail the run.
             if grep -q "HTTP 404" "$RUNNER_TEMP/gh-error"; then

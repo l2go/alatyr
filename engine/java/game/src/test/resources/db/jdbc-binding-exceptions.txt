@@ -1,3 +1,0 @@
-# JDBC accessors (setXxx/getXxx) that do not fit the type PostgreSQL infers, one entry per line:
-# "file: statement: problem". JdbcBindingPostgresTest requires the failing set to equal this list exactly.
-# An entry needs a reviewed reason in the line above it. The list should stay empty.

@@ -1,18 +1,5 @@
 version: 2
 updates:
-  - package-ecosystem: maven
-    directory: "/"
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    groups:
-      maven-test-dependencies:
-        dependency-type: development
-      maven-runtime-patches:
-        update-types:
-          - patch
-
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

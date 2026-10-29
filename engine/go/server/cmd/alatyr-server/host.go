@@ -97,7 +97,7 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, o
 	r.openingCancel = make(map[string]context.CancelFunc)
 	origin := time.Now()
 	mc := limits(len(admissions))
-	r.meaningConfig = backend.Config{Meaning: mc, Origin: origin, Policy: meaning.Policy{Classify: classify}}
+	r.meaningConfig = hostBackendConfig(mc, origin)
 	codec, err := meaning.NewCodec(mc)
 	if err != nil {
 		cancel()
@@ -134,13 +134,15 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, o
 		}
 		r.mu.Unlock()
 		var errs []error
-		for _, l := range listeners {
-			if err := l.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		// Let net/http own its listener close before closing the raw handles.
+		// Close can still observe a listener already closed by its Serve owner.
+		if server != nil {
+			if err := server.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 				errs = append(errs, err)
 			}
 		}
-		if server != nil {
-			if err := server.Close(); err != nil {
+		for _, l := range listeners {
+			if err := l.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 				errs = append(errs, err)
 			}
 		}
@@ -263,6 +265,24 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, o
 		worldEnded = true
 	}
 	return finish(runErr, worldEnded)
+}
+
+// hostBackendConfig binds evidence authority to this host's Go world only.
+func hostBackendConfig(mc meaning.Config, origin time.Time) backend.Config {
+	return backend.Config{Meaning: mc, Origin: origin, Policy: meaning.Policy{Classify: classify}, Source: goWorldSource}
+}
+
+// goWorldSource audits the four exclusive evidence families. Each admitted
+// identity has one backend scope and one fenced worldbridge port. World.Run is
+// the sole writer of that incarnation; worldbridge translates its ordered events
+// without merging another producer. Dialogue comes only from that player's
+// accepted interaction; pickup from its atomic owned transfer; learning from its
+// serialized, durably committed skill/SP transaction; return from its fenced
+// revival and relocation. Retired ports are joined before replacement admission.
+// Participants cannot inject these events or this policy. Additional event
+// producers or parallel mutation paths require a new exclusivity audit here.
+func goWorldSource(meaning.Event) meaning.Source {
+	return meaning.Source{Dialogue: true, Pickup: true, Learning: true, Return: true}
 }
 
 func (r *runtime) open(ctx context.Context, id string) (gateway.World, gateway.State, error) {

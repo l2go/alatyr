@@ -132,7 +132,6 @@ Verify this package with `go vet ./...` and
 Tests use virtual time and synthetic fixtures; authored catalog tests read the
 repository's CC-BY-SA-4.0 world directly, without copying its data.
 
-not yet: world-to-port adapter and shared port contract; session deduplication and replay; shops; healing items and HEAL_STATIC; parity with the Java hunt-reward rules introduced in #263; automatic return without restart0; character creation and authored start points; pgstore.
 
 This package belongs to the shared [Go server module](../README.md). Protocol
 remains a separate module; package dependency directions are enforced by the

@@ -1,3 +1,4 @@
+# The Go runtime image has no inherited runtime exceptions.
 # Exceptions to the vulnerability policy of SECURITY.md, one identifier per entry.
 # Each entry is preceded by a comment with the reason and the date it is reviewed again:
 #

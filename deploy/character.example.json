@@ -1,0 +1,21 @@
+{
+  "ObjectID": 1,
+  "Account": "example",
+  "Name": "Walker",
+  "ClassID": 0,
+  "BaseClass": 0,
+  "Race": 0,
+  "Level": 2,
+  "SP": 20,
+  "MaxHP": 100,
+  "CurHP": 50,
+  "MaxMP": 30,
+  "CurMP": 20,
+  "MaxCP": 20,
+  "CurCP": 10,
+  "X": -71057,
+  "Y": 257883,
+  "Z": -3104,
+  "NameColor": 16777215,
+  "TitleColor": 16777079
+}

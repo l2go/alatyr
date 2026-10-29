@@ -11,8 +11,10 @@ import (
 	"flag"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -57,7 +59,14 @@ func decode(path string, out any) (result error) {
 func run() error {
 	path := flag.String("config", "", "server configuration file")
 	seed := flag.String("import-character", "", "import a trusted character JSON file and exit")
+	probe := flag.String("healthcheck", "", "check an HTTP health endpoint and exit")
 	flag.Parse()
+	if *probe != "" {
+		if *path != "" || *seed != "" || flag.NArg() != 0 {
+			return errors.New("healthcheck cannot be combined with server options")
+		}
+		return healthcheck(*probe)
+	}
 	if *path == "" || flag.NArg() != 0 {
 		return errors.New("usage: alatyr-server -config file [-import-character file]")
 	}
@@ -65,9 +74,9 @@ func run() error {
 	if err := decode(*path, &cfg); err != nil {
 		return err
 	}
-	dsn := os.Getenv("ALATYR_DATABASE_URL")
-	if dsn == "" {
-		return errors.New("ALATYR_DATABASE_URL is required")
+	dsn, err := databaseURL()
+	if err != nil {
+		return err
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -98,4 +107,42 @@ func run() error {
 		err = Run(ctx, cfg, cat, store)
 	}
 	return errors.Join(err, store.Close())
+}
+
+// databaseURL keeps mounted credentials out of the container's environment and
+// diagnostics. Explicitly choosing both sources is an error, never precedence.
+func databaseURL() (string, error) {
+	value, path := os.Getenv("ALATYR_DATABASE_URL"), os.Getenv("ALATYR_DATABASE_URL_FILE")
+	if value != "" && path != "" {
+		return "", errors.New("configure only one database URL source")
+	}
+	if path != "" {
+		f, err := os.Open(path)
+		if err != nil {
+			return "", errors.New("database URL file unavailable")
+		}
+		data, readErr := io.ReadAll(io.LimitReader(f, 16385))
+		closeErr := f.Close()
+		if readErr != nil || closeErr != nil || len(data) > 16384 {
+			return "", errors.New("invalid database URL file")
+		}
+		value = strings.TrimSpace(string(data))
+	}
+	if value == "" {
+		return "", errors.New("ALATYR_DATABASE_URL or ALATYR_DATABASE_URL_FILE is required")
+	}
+	return value, nil
+}
+
+func healthcheck(address string) error {
+	client := &http.Client{Timeout: 2 * time.Second}
+	response, err := client.Get(address)
+	if err != nil {
+		return errors.New("healthcheck: endpoint unavailable")
+	}
+	closeErr := response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return errors.New("healthcheck: not ready")
+	}
+	return closeErr
 }

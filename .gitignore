@@ -2,3 +2,10 @@ target/
 # Agent instructions are kept outside the public repository
 /AGENTS.md
 /CLAUDE.md
+
+# Operator-owned configuration and local verification output
+/deploy/config/
+/image-*.log
+/image-*.txt
+/image-*.jsonl
+/engine/go/server/alatyr-server

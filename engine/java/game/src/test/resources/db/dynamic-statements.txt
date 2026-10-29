@@ -1,7 +1,0 @@
-# Statements the compiler concatenates at run time cannot be prepared by GameServerStatementsPostgresTest.
-# Each line is a text that appears in the class and statement, followed by the reason it is safe.
-# A line is matched with String.contains against "class: statement".
-
-# The catalog loader moves each identity sequence past the loaded ids. The table and the column come from the
-# system catalog, not from user input, so the statement cannot be written as a constant.
-com.l2jfree.gameserver.persistence.CatalogLoader: SELECT setval(pg_get_serial_sequence(

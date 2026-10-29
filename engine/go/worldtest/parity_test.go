@@ -9,7 +9,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"testing"
 	"testing/synctest"
@@ -43,19 +42,7 @@ func TestOkolitsaParity(t *testing.T) {
 	}
 	for index, name := range parityNames() {
 		t.Run(name, func(t *testing.T) {
-			var want parityResult
-			t.Run("go", func(t *testing.T) {
-				synctest.Test(t, func(t *testing.T) { want = runParityCase(newParityRig(t, "go", index, cat), name) })
-			})
-			if os.Getenv("JAVA_BRIDGE_ENDPOINT") == "" {
-				return
-			}
-			t.Run("java", func(t *testing.T) {
-				got := runParityCase(newParityRig(t, "java", index, cat), name)
-				if !reflect.DeepEqual(got, want) {
-					t.Fatalf("semantic Go/Java difference\nGo:   %+v\nJava: %+v", want, got)
-				}
-			})
+			synctest.Test(t, func(t *testing.T) { runParityCase(newParityRig(t, index, cat), name) })
 		})
 	}
 }
@@ -280,13 +267,7 @@ func runParityCase(r *parityRig, name string) parityResult {
 		out.Checks["exact-next-level"], out.Checks["saved-offline"] = true, true
 	case "g06", "death-save":
 		if name == "death-save" {
-			if r.engine == "java" {
-				if r.fixture("die") != "ok" {
-					r.t.Fatal("death rejected")
-				}
-			} else {
-				r.harm(world.Ref{}, r.owner, 1000000)
-			}
+			r.harm(world.Ref{}, r.owner, 1000000)
 			r.wait(func() bool { return r.current().Dead })
 			r.wait(func() bool {
 				for _, f := range r.p.Records {

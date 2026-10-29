@@ -1,10 +1,7 @@
 name: codeql
 
-# Static analysis of the Java sources, the Go code, and the workflows, after a merge and weekly. It is not run for
-# pull requests: it gates nothing, and on a Java change it was the longest check a squash waited for.
-# Java is analyzed without a build, so this job does not depend on the Maven
-# build. Go uses CodeQL's automatic build: the module has no dependencies, and
-# the job installs the same Go as the world job.
+# Analyze Go modules and workflow code after a merge and weekly.
+# Go uses the checked-in workspace and the application toolchain.
 
 on:
   push:
@@ -27,8 +24,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - language: java-kotlin
-            build-mode: none
           - language: actions
             build-mode: none
           - language: go
@@ -39,7 +34,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         if: matrix.language == 'go'
         with:
-          go-version-file: tools/world/go.mod
+          go-version: "1.27.3"
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4

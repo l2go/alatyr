@@ -1043,3 +1043,47 @@ func TestHuntCalculationBoundary(t *testing.T) {
 	writeFixture(t, root, "engine/go/world/hunt/probe.go", source("AGPL-3.0-or-later", "package hunt\nimport _ \"github.com/l2go/alatyr/engine/go/world\"\n"))
 	expectRule(t, checkSources(root, p), "I-3")
 }
+
+func TestRetiredRuntimeCannotReturn(t *testing.T) {
+	for _, path := range []string{"engine/java/source.txt", "pom.xml", ".mvn/settings.xml", "mvnw", "mvnw.cmd", "tools/ci/bridge-integration.sh", "tools/ci/bridge-integration.sql", "tools/ci/java-fixture/source.txt", "engine/go/gateway/backend/java_integration_test.go", "tools/ci/coverage-summary.py", "deploy/measure/start.sh", "deploy/probe/start.sh"} {
+		t.Run(path, func(t *testing.T) {
+			root := t.TempDir()
+			if err := checkRuntime(root); err != nil {
+				t.Fatal(err)
+			}
+			writeFixture(t, root, path, "retired")
+			expectRule(t, checkRuntime(root), "runtime:")
+		})
+	}
+}
+
+// The host acceptance test may reuse the participant driver. Production and
+// storage packages must never depend on that test composition.
+func TestHostParticipantDriverIsTestOnly(t *testing.T) {
+	const host = "server/cmd/alatyr-server"
+	const driver = "gateway/gatewaytest"
+	p := syntheticPolicy(t)
+	if !allowedEdge(p, host, driver, true) {
+		t.Fatal("host test cannot use participant driver")
+	}
+	for _, tc := range []struct {
+		from string
+		test bool
+	}{
+		{host, false}, {"server/internal/pgstore", false}, {"server/internal/pgstore", true},
+		{"server/internal/migrate", true}, {"world", true}, {"worldbridge", true},
+	} {
+		t.Run(fmt.Sprintf("%s/test=%t", tc.from, tc.test), func(t *testing.T) {
+			if allowedEdge(p, tc.from, driver, tc.test) {
+				t.Fatal("participant test driver escaped host tests")
+			}
+			root, p := fixture(t)
+			file := "probe.go"
+			if tc.test {
+				file = "probe_test.go"
+			}
+			writeFixture(t, root, "engine/go/"+tc.from+"/"+file, source("AGPL-3.0-or-later", "package probe\nimport _ "+fmt.Sprintf("%q", modulePrefix+driver)+"\n"))
+			expectRule(t, checkSources(root, p), "I-3")
+		})
+	}
+}

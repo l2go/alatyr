@@ -44,7 +44,7 @@ GOWORK=off go test -race -count=1 -timeout=2m ./...
 GOWORK=off go test -run '^TestG' ./gatewaytest
 ```
 
-These are controlled-peer checks. They do not certify a live Java endpoint or
+These are controlled-peer checks. They do not certify a live external endpoint or
 its producer exclusivity; the same participant driver is available for that
 later integration.
 

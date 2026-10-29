@@ -1,7 +1,8 @@
 # Participant server
 
 This application runs the authored Go world with PostgreSQL persistence and the
-public participant gateway. Build it from this checkout: its only replacement
+public participant gateway. [Deployment](../../../deploy/README.md) ships its
+container with file-based credentials. Build it from this checkout: its only replacement
 binds the parent module to the same source revision. Client libraries retain a
 dependency graph without pgx or goose.
 
@@ -9,21 +10,19 @@ From this directory:
 
 ```sh
 go build -trimpath -o alatyr-server ./cmd/alatyr-server
-ALATYR_DATABASE_URL=postgres://user:password@127.0.0.1/database ./alatyr-server -config server.json
+ALATYR_DATABASE_URL_FILE=database_url ./alatyr-server -config server.json
 ```
 
-Use a dedicated database. Stop the Java server and every other writer before
-starting Go. The application holds a PostgreSQL session advisory lease for its
-entire lifetime; a second Go server fails admission. A lost connection is fatal
-to further writes and is never automatically replaced. Java does not participate
-in this lease. Back up the database before changing implementations.
+Use a fresh dedicated database. Startup refuses foreign database objects before
+creating migration history. Later starts accept this application's own goose
+history only. The command holds a PostgreSQL advisory lease for its lifetime;
+a second writer is refused and a lost connection is never replaced silently.
+Migrations move forward; rollback restores a matching backup.
 
-The connection role must own the world schema and have permission to create
-citext on a new database. Existing databases must have the complete successful
-world Flyway history through 1.10. The embedded goose PostgreSQL Provider accepts
-that baseline without modifying Flyway history or deleting unsupported tables.
-An empty database gets only Go player-state tables, with no world-content seeds.
-Migrations are forward-only; restoring a backup is the rollback procedure.
+The database role must own the world schema and have permission to create
+citext, or the operator must pre-create both. The Compose initializer does that
+with a separate non-superuser application role. Content stays in authored files;
+no database content seeds or previous implementation's player tables are imported.
 
 Example configuration (replace the digest with SHA-256 of a random 64-character
 hex token; keep that token private):
@@ -45,6 +44,11 @@ hex token; keep that token private):
 }
 ```
 
+`ALATYR_DATABASE_URL_FILE` names a bounded credential file; standalone callers
+may instead set `ALATYR_DATABASE_URL`. Choosing both is an error. Health-only
+mode, `alatyr-server -healthcheck http://127.0.0.1:8080/readyz`, needs neither
+credentials nor participant configuration.
+
 The registry grants access only to existing characters; no participant-supplied
 account or character name is trusted. Import a trusted Character JSON snapshot
 with `-import-character character.json` before serving a new database. Provisioning
@@ -60,7 +64,9 @@ explicit public allowlists. `ProxyPeers` optionally lists numeric trusted source
 IPs; by default the source must equal the numeric HTTP listener address, including
 IPv6 loopback. Peer checks never trust X-Forwarded-For. The proxy must overwrite
 X-Forwarded-Proto and pass
-the bearer token. Both application listeners accept only numeric loopback binds.
+the bearer token. Stream binds remain numeric loopback. A non-loopback HTTP bind requires all
+three explicit proxy allowlists, which permits a container interface without
+changing the default trust boundary.
 Do not put tokens in URLs or logs. Browsers need a trusted proxy that supplies
 the Authorization header after authenticating the user.
 
@@ -85,8 +91,12 @@ saves using the original Ref, and joins the world. Run freezes detached final
 checkpoints on every exit, including autonomous exhaustion. After all port I/O
 has finished, the host persists any remaining live or pending characters through
 the same compatibility store. It reports persistence errors and fails readiness
-when the world is stopped. A final save has the configured ShutdownSeconds budget;
-an exhausted or unreachable database can still prevent durable shutdown.
+when the world is stopped. Startup validates the combined gateway, departure-retry
+and final-save budgets against the deployment's 60-second grace, including join
+and teardown reserves
+(see the [deployment guide](../../../deploy/README.md)). A final save has its own
+configured `ShutdownSeconds` budget; an exhausted or unreachable database can
+still prevent durable shutdown.
 
 Check all three module roots in workspace and GOWORK=off modes with vet,
 `go test -race ./...`, Staticcheck and govulncheck. PostgreSQL tests skip without
