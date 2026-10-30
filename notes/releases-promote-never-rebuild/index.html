@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Releases promote, never rebuild — Alatyr</title>
+<meta name="description" content="The release workflow of L2JFree has no build step. It finds the image that main already built and tested, verifies its signature, provenance, and SBOM, waits for a human, and gives that exact digest a version.">
+<meta name="theme-color" content="#05060c">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Releases promote, never rebuild">
+<meta property="og:description" content="The release workflow of L2JFree has no build step. It finds the image that main already built and tested, verifies its signature, provenance, and SBOM, waits for a human, and gives that exact digest a version.">
+<meta property="og:url" content="https://l2go.github.io/alatyr/notes/releases-promote-never-rebuild/">
+<meta property="og:image" content="https://l2go.github.io/alatyr/assets/img/covers/releases.jpg">
+<meta property="article:published_time" content="2026-10-30">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/alatyr/assets/img/favicon.svg" type="image/svg+xml">
+<link rel="author" href="/alatyr/humans.txt">
+<link rel="preload" href="/alatyr/assets/fonts/cinzel.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/alatyr/assets/css/site.css">
+<script src="/alatyr/assets/js/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="progress" aria-hidden="true"></div>
+<header class="bar">
+  <a class="bar__mark" href="/alatyr/">ALATYR</a>
+  <nav aria-label="Sections">
+    <a href="/alatyr/#start">Start</a>
+    <a class="opt" href="/alatyr/#engineering">Engineering</a>
+    <a href="/alatyr/#notes">Notes</a>
+    <a href="https://github.com/l2go/alatyr">GitHub</a>
+  </nav>
+</header>
+<main id="main">
+<article>
+<header class="article-head article-head--focus-46">
+  <picture><source srcset="/alatyr/assets/img/covers/releases.webp" type="image/webp"><img src="/alatyr/assets/img/covers/releases.jpg" alt="" width="1600" height="667"></picture>
+  <div class="wrap">
+    <div class="crumbs"><a href="/alatyr/#notes">Reviving L2JFree</a> · Part 6</div>
+    <h1>Releases promote, never rebuild</h1>
+    <p class="dek">The release workflow of L2JFree has no build step. It finds the image that main already built and tested, verifies its signature, provenance, and SBOM, waits for a human, and gives that exact digest a version.</p>
+    <div class="byline"><time datetime="2026-10-30">30 October 2026</time> · 6 min read</div>
+  </div>
+</header>
+<div class="prose">
+<p>Most release pipelines rebuild. They check out a tag, compile, package, and publish. It feels natural, and it quietly breaks the promise that matters most: that what users run is what was tested. A rebuild pulls the base image again, resolves dependencies again, and runs on a different machine at a different time. The result is probably the same. "Probably" is a strange word to put in front of a release.</p>
+<h2>The decision</h2>
+<p>A release does not build anything. It promotes an image that already exists.</p>
+<p>Every merge to <code>main</code> builds an image, puts it through the full rehearsal described in the previous article, and only then publishes it as <code>edge</code> and as <code>sha-&lt;commit&gt;</code>, signed and attested. A release picks one of those images by commit and gives that exact digest a version. Nothing is compiled, packaged, or pulled again.</p>
+<h2>What the release workflow does</h2>
+<p><a href="https://github.com/l2go/alatyr/blob/v3.2.0/.github/workflows/release.yml"><code>release.yml</code></a> is started by hand with a version and, optionally, a commit. It has two jobs.</p>
+<p><strong><code>verify</code></strong> checks everything that can be checked without a person:</p>
+<ol>
+<li>The commit is on <code>main</code>, and the tag <code>v&lt;version&gt;</code> does not exist yet.</li>
+<li>The pipeline of <code>main</code> passed for that commit. The workflow asks the GitHub API for a successful <code>build.yml</code> run on that exact SHA.</li>
+<li>The image <code>sha-&lt;commit&gt;</code> exists. Its digest is resolved once and used from here on, so a tag that moves cannot change what is released.</li>
+<li>The image is verified the way a user would verify it: the cosign signature against the identity of <code>build.yml</code> on <code>main</code>, the build provenance with <code>gh attestation verify</code>, and an SBOM that lists more than zero packages.</li>
+<li>Trivy scans the image under the vulnerability policy. A critical or high finding with a fix fails the release.</li>
+<li>The release notes are taken from the section of <code>CHANGELOG.md</code> with the same version. No section, no release.</li>
+<li>The Compose bundle is built with the image pinned by digest, so the archive a user downloads cannot start a different image than the one verified.</li>
+</ol>
+<p>By default the workflow is a dry run and stops here. The dry run is how a release is rehearsed: it proves that everything is in place and shows the notes, and it publishes nothing.</p>
+<p><strong><code>publish</code></strong> runs only when the dry run flag is off, and only after a person approves it. It runs in a GitHub environment called <code>stable-release</code> with a required reviewer. The job sits and waits until the maintainer clicks "Approve and deploy".</p>
+<p>Then it gives the verified digest the tags <code>&lt;version&gt;</code> and <code>latest</code>, reads the digest back and compares it, verifies the signature once more under the new tag, attests the Compose bundle, attaches the Sigstore bundle of that attestation to the release, and creates the git tag at the commit and the GitHub release.</p>
+<h2>The supply chain around it</h2>
+<p>Promotion only helps if the thing promoted was built honestly. The rest of the chain:</p>
+<ul>
+<li><strong>Actions pinned by commit.</strong> Every third-party action in every workflow is referenced by a full SHA, with the version in a comment. Dependabot proposes updates. A moved tag in someone else's repository cannot change what runs.</li>
+<li><strong>Keyless signing.</strong> cosign signs with a short-lived certificate tied to the workflow identity through GitHub's OIDC token. There is no long-lived key to leak. The certificate says which workflow, on which branch, signed the image, and verification checks exactly that.</li>
+<li><strong>Provenance and SBOM.</strong> Each image carries an SLSA build provenance attestation and an SPDX SBOM.</li>
+<li><strong>A signed archive.</strong> Since 3.1.1 the release attaches <code>l2jfree-&lt;version&gt;-compose.tar.gz.sigstore.json</code>. A user can verify the archive with nothing but the release page and <code>gh</code>:</li>
+</ul>
+<pre class="code"><code class="language-sh">gh attestation verify l2jfree-3.2.0-compose.tar.gz --repo l2go/alatyr \
+  --bundle l2jfree-3.2.0-compose.tar.gz.sigstore.json \
+  --signer-workflow l2go/alatyr/.github/workflows/release.yml</code></pre>
+<p>The <code>--signer-workflow</code> flag matters: without it, a provenance from any workflow of the repository would pass.</p>
+<ul>
+<li><strong>Scanning that means something.</strong> The first scan of the published image found twenty fixed high vulnerabilities. All of them were in <code>captree</code>, a Go program of the Arch Linux base that the server never runs. The image dropped it, and the content check fails if it comes back. The Java libraries had none.</li>
+<li><strong>Least privilege for tokens.</strong> Every workflow starts with read-only permissions. A job that writes packages or creates a release asks for that permission itself, in that job only.</li>
+</ul>
+<h2>What it cost</h2>
+<ul>
+<li><strong>The image has to still exist.</strong> A daily job deletes <code>sha-*</code> image versions older than 30 days, unless they carry another tag. A released digest carries its version tag, so the job never touches it; an unreleased commit older than a month can no longer be released. That is deliberate: a release should be cut from recent, rehearsed work, and the registry should not grow without bound.</li>
+<li><strong>Only a person can withdraw a release.</strong> No job deletes a versioned image, but the maintainer can, and once did: the images and archives of every release before 3.2.0 were removed, because they carried the game world the project had inherited and has since left behind (<a href="/alatyr/notes/an-island-of-our-own/">part 3</a>). Their release pages stay as history. A promise to keep artifacts forever is only as strong as the reasons to keep them.</li>
+<li><strong>A release is only as good as <code>main</code>.</strong> There is no release branch to patch in isolation. A fix lands on <code>main</code>, passes the rehearsal, and is then promoted. For a project with one maintainer that is a simplification, not a loss.</li>
+<li><strong>A human in the loop.</strong> The approval step means a release cannot happen at 3 a.m. by accident, and also cannot happen at 3 a.m. on purpose without someone awake. That is the intended trade.</li>
+<li><strong>The workflow identity is part of the contract.</strong> Users verify against <code>build.yml@refs/heads/main</code> and <code>release.yml</code>. Renaming either workflow changes what users must type. It is written into the security policy for that reason.</li>
+</ul>
+<h2>How it is verified</h2>
+<p>The release of 3.2.0 went through both jobs on 15 October 2026. The image of the release commit, <code>sha-f61077f25d75</code>, had passed the rehearsal and was published as digest <code>sha256:5ea3aa84…10116db</code>. A <a href="https://github.com/l2go/alatyr/actions/runs/38800482565">dry run</a> verified it and built the bundle with that digest pinned in its Compose file. Then the <a href="https://github.com/l2go/alatyr/actions/runs/38801243612">release run</a> verified everything again and waited about five minutes for the approval. The publish job gave the same digest the tags <code>3.2.0</code> and <code>latest</code>; one image now carries four names, <code>3.2.0</code>, <code>latest</code>, <code>sha-f61077f25d75</code>, and <code>edge</code>, and one digest.</p>
+<p>Afterwards, outside CI, the archive downloaded from the release page matched its checksum and was byte for byte the archive of the dry run, built in a different run. <code>gh attestation verify</code> confirmed the provenance of the image, signed by <code>build.yml</code> on <code>main</code> for commit <code>f61077f</code>, and the provenance of the archive, signed by <code>release.yml</code>.</p>
+<p>None of this needs trust in the maintainer's machine, because the maintainer's machine never touched the artifact.</p>
+</div>
+<nav class="series" aria-label="Series">
+<a href="/alatyr/notes/every-merge-is-a-release-rehearsal/"><small>Previous</small><span>Every merge is a release rehearsal</span></a>
+<a class="later" href="/alatyr/notes/starting-a-java-25-server/"><small>Next</small><span>Starting a Java 25 server: G1, ZGC, and an AOT cache that did not help</span></a>
+</nav>
+</article>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__top">
+      <span class="foot__mark" title="ALATYR = ROOTED = 77">ALATYR</span>
+      <nav aria-label="Project">
+        <a href="https://github.com/l2go/alatyr">Repository</a>
+        <a href="https://github.com/l2go/alatyr/releases">Releases</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">Deploy guide</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/SECURITY.md">Security</a>
+      </nav>
+    </div>
+    <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. Alatyr, formerly L2JFree, is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server. Since 3.2 it ships no data inherited from the fork; its world, Okolitsa, is original content. It does not modify, patch, or distribute the game client.</p>
+    <p>The code is under the GNU GPLv3. Banner art generated with AI. Cinzel typeface under the SIL Open Font License. <a class="sigma" href="/alatyr/numbers/" title="The numbers">Σ</a></p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Starting a Java 25 server: G1, ZGC, and an AOT cache that did not help — Alatyr</title>
+<meta name="description" content="Measured in CI on the 3.1.1 release: the server is ready in about 17 seconds on G1 and 20 on ZGC, ZGC holds almost twice the memory, and the Java 25 AOT cache changes nothing. The reason is where the time goes.">
+<meta name="theme-color" content="#05060c">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Starting a Java 25 server: G1, ZGC, and an AOT cache that did not help">
+<meta property="og:description" content="Measured in CI on the 3.1.1 release: the server is ready in about 17 seconds on G1 and 20 on ZGC, ZGC holds almost twice the memory, and the Java 25 AOT cache changes nothing. The reason is where the time goes.">
+<meta property="og:url" content="https://l2go.github.io/alatyr/notes/starting-a-java-25-server/">
+<meta property="og:image" content="https://l2go.github.io/alatyr/assets/img/covers/startup.jpg">
+<meta property="article:published_time" content="2026-10-30">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/alatyr/assets/img/favicon.svg" type="image/svg+xml">
+<link rel="author" href="/alatyr/humans.txt">
+<link rel="preload" href="/alatyr/assets/fonts/cinzel.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/alatyr/assets/css/site.css">
+<script src="/alatyr/assets/js/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="progress" aria-hidden="true"></div>
+<header class="bar">
+  <a class="bar__mark" href="/alatyr/">ALATYR</a>
+  <nav aria-label="Sections">
+    <a href="/alatyr/#start">Start</a>
+    <a class="opt" href="/alatyr/#engineering">Engineering</a>
+    <a href="/alatyr/#notes">Notes</a>
+    <a href="https://github.com/l2go/alatyr">GitHub</a>
+  </nav>
+</header>
+<main id="main">
+<article>
+<header class="article-head article-head--focus-42">
+  <picture><source srcset="/alatyr/assets/img/covers/startup.webp" type="image/webp"><img src="/alatyr/assets/img/covers/startup.jpg" alt="" width="1600" height="667"></picture>
+  <div class="wrap">
+    <div class="crumbs"><a href="/alatyr/#notes">Reviving L2JFree</a> · Part 7</div>
+    <h1>Starting a Java 25 server: G1, ZGC, and an AOT cache that did not help</h1>
+    <p class="dek">Measured in CI on the 3.1.1 release: the server is ready in about 17 seconds on G1 and 20 on ZGC, ZGC holds almost twice the memory, and the Java 25 AOT cache changes nothing. The reason is where the time goes.</p>
+    <div class="byline"><time datetime="2026-10-30">30 October 2026</time> · 5 min read</div>
+  </div>
+</header>
+<div class="prose">
+<p>Java 25 arrived with two promises for a server like this one: ZGC, a collector with pauses short enough to forget about, and an ahead-of-time cache that makes the JVM start faster. Both are easy to turn on. The question was whether either one was worth it for a game server whose start is dominated by loading a world. I measured instead of guessing.</p>
+<h2>How it was measured</h2>
+<p>The pipeline has a <code>startup</code> job that runs only on request, because a run takes about twenty minutes and a shared runner is too noisy to gate a merge on. It builds the image and runs <a href="https://github.com/l2go/alatyr/blob/v3.1.1/deploy/measure/startup.py"><code>deploy/measure/startup.py</code></a> against it.</p>
+<p>The script starts the real stack with Docker Compose and reads a line the server prints when both ports are open: "Platform ready in N ms", with the time broken down by phase. The clock starts with the JVM, so Docker and the health check are not in the number. Ten seconds after the ports open, the script reads the resident memory of the server process.</p>
+<p>Each configuration is measured three ways:</p>
+<ul>
+<li><strong>Cold</strong>: the first start, on an empty database. Migrations run and the game catalog is loaded.</li>
+<li><strong>New container</strong>: the next start in a fresh container, on the loaded database.</li>
+<li><strong>Restart</strong>: three restarts of that container; the table shows the median and the range.</li>
+</ul>
+<p>The numbers below come from one run on the <code>v3.1.1</code> tag: <a href="https://github.com/l2go/alatyr/actions/runs/38302680393">run 38302680393</a>, commit <code>e0f5a28</code>, a GitHub-hosted <code>ubuntu-24.04</code> runner with 4 CPUs and 15.6 GiB of memory, Docker 28.0.4. The heap is <code>-Xms1g -Xmx3g</code> in every configuration. The raw data is <a href="/alatyr/data/startup-v3.1.1/startup.json">kept with this article</a>.</p>
+<h2>The results</h2>
+<div class="table"><table><thead><tr><th>Configuration</th><th class="num">Cold start</th><th class="num">New container</th><th class="num">Restart, median</th><th class="num">Restart, range</th><th class="num">Before <code>main</code></th><th class="num">World</th><th class="num">Resident memory</th></tr></thead>
+<tbody>
+<tr><td>G1</td><td class="num">18.0 s</td><td class="num">17.0 s</td><td class="num">16.9 s</td><td class="num">16.6–17.1 s</td><td class="num">0.7 s</td><td class="num">15.2 s</td><td class="num">1297 MiB</td></tr>
+<tr><td>G1, no flight recorder</td><td class="num">18.0 s</td><td class="num">16.2 s</td><td class="num">16.3 s</td><td class="num">15.7–17.0 s</td><td class="num">0.5 s</td><td class="num">14.8 s</td><td class="num">1231 MiB</td></tr>
+<tr><td>ZGC</td><td class="num">22.0 s</td><td class="num">19.8 s</td><td class="num">19.8 s</td><td class="num">19.2–20.3 s</td><td class="num">1.1 s</td><td class="num">17.7 s</td><td class="num">2342 MiB</td></tr>
+<tr><td>G1 + AOT cache</td><td class="num">—</td><td class="num">17.9 s</td><td class="num">16.8 s</td><td class="num">16.4–17.2 s</td><td class="num">0.8 s</td><td class="num">15.1 s</td><td class="num">1284 MiB</td></tr>
+<tr><td>ZGC + AOT cache</td><td class="num">—</td><td class="num">19.2 s</td><td class="num">19.5 s</td><td class="num">19.5–19.7 s</td><td class="num">1.1 s</td><td class="num">17.5 s</td><td class="num">2412 MiB</td></tr>
+</tbody></table></div>
+<p>The AOT configurations have no cold column: their first start, on the empty database, writes the cache with <code>-XX:AOTCacheOutput</code> and is not counted. The cache is used from the second start on.</p>
+<h2>Where the time goes</h2>
+<p>Of the 17 seconds on G1, the JVM spends about 0.7 before <code>main</code>, preparing the login module takes about a second, and the world takes the remaining 15. Starting the world means reading the game catalog, building the in-memory world, and loading the datapack: 449 Python scripts that run on Jython. That is application work, not JVM work.</p>
+<p>This explains everything else in the table.</p>
+<p><strong>The AOT cache did nothing measurable.</strong> Java 25's AOT cache stores classes already loaded and linked, plus profiling data, so the next start can skip that work. It helps when class loading dominates the start. Here it does not: "before <code>main</code>" did not move, and the world phase is the same within noise. The restart median went from 16.9 to 16.8 seconds, inside the range of the runs. A cache file that has to be trained, stored in a volume, and kept matched to the image is not worth a tenth of a second.</p>
+<p><strong>ZGC costs three seconds and a gigabyte.</strong> ZGC started about three seconds slower and, ten seconds after the ports opened, held 2.3 GiB against G1's 1.3 GiB with the same <code>-Xmx3g</code>. ZGC is built to keep pauses short under concurrent load; while the world loads it pays for that with more concurrent work and with memory it has already committed. A Lineage II server's pause budget is generous: a G1 pause of tens of milliseconds during a fight goes unnoticed. Under a 4 GB container limit, a gigabyte of headroom is noticed.</p>
+<p><strong>Cold is only a second slower.</strong> Running every migration and loading the whole catalog into an empty database adds about one second over a start on a loaded one. PostgreSQL is not the bottleneck; the world is.</p>
+<p><strong>The flight recorder is cheap.</strong> Running Java Flight Recorder all the time, with the last 12 hours kept on disk, costs about a quarter of a second before <code>main</code> and about 65 MiB of resident memory in this run. That buys the ability to open a recording of the minutes before an incident without having to reproduce it.</p>
+<h2>The decision</h2>
+<p>The default is G1 without an AOT cache, with the flight recorder on. Operators can change the JVM options with <code>L2JFREE_JAVA_OPTS</code>, and the measurement is one click away for anyone who wants to check a different configuration.</p>
+<h2>What it cost</h2>
+<ul>
+<li><strong>A tuning opportunity left on the table.</strong> If world loading ever becomes fast, the AOT cache may start to matter, and the measurement should be run again. The decision is recorded as conditional, not final.</li>
+<li><strong>Small samples on shared hardware.</strong> One run, three restarts per configuration, on a runner that other jobs share. Differences under half a second are noise here, and the article treats them that way. The differences that drive the decision, three seconds and a gigabyte, are an order of magnitude larger than the noise.</li>
+<li><strong>ZGC's strength is not tested here.</strong> This measures the start, not a server full of players. A load test with real traffic might favour ZGC's pauses. With the current numbers, there is no reason to pay for it in advance.</li>
+</ul>
+<h2>How to repeat it</h2>
+<p>Run the <code>build</code> workflow by hand on any tag or branch; the <code>startup</code> job attaches <code>startup.json</code>, <code>startup.md</code>, and the summary table to the run. The script itself needs only Docker and Python, and its output names the configuration, the options, and every individual start, so a reader can check the medians instead of trusting them.</p>
+</div>
+<nav class="series" aria-label="Series">
+<a href="/alatyr/notes/releases-promote-never-rebuild/"><small>Previous</small><span>Releases promote, never rebuild</span></a>
+<a class="later" href="/alatyr/notes/old-bugs-new-invariants/"><small>Next</small><span>Old bugs, new invariants</span></a>
+</nav>
+</article>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__top">
+      <span class="foot__mark" title="ALATYR = ROOTED = 77">ALATYR</span>
+      <nav aria-label="Project">
+        <a href="https://github.com/l2go/alatyr">Repository</a>
+        <a href="https://github.com/l2go/alatyr/releases">Releases</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">Deploy guide</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/SECURITY.md">Security</a>
+      </nav>
+    </div>
+    <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. Alatyr, formerly L2JFree, is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server. Since 3.2 it ships no data inherited from the fork; its world, Okolitsa, is original content. It does not modify, patch, or distribute the game client.</p>
+    <p>The code is under the GNU GPLv3. Banner art generated with AI. Cinzel typeface under the SIL Open Font License. <a class="sigma" href="/alatyr/numbers/" title="The numbers">Σ</a></p>
+  </div>
+</footer>
+</body>
+</html>

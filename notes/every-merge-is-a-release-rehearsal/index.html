@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Every merge is a release rehearsal — Alatyr</title>
+<meta name="description" content="Before an image may be published, the pipeline starts it, plays 24 client sessions, changes a setting, restarts it, stops it, restores a backup into a clean stack, and upgrades from the image already published. In 3.2 the same image also started on an empty world and sent 24 players to hunt.">
+<meta name="theme-color" content="#05060c">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Every merge is a release rehearsal">
+<meta property="og:description" content="Before an image may be published, the pipeline starts it, plays 24 client sessions, changes a setting, restarts it, stops it, restores a backup into a clean stack, and upgrades from the image already published. In 3.2 the same image also started on an empty world and sent 24 players to hunt.">
+<meta property="og:url" content="https://l2go.github.io/alatyr/notes/every-merge-is-a-release-rehearsal/">
+<meta property="og:image" content="https://l2go.github.io/alatyr/assets/img/covers/rehearsal.jpg">
+<meta property="article:published_time" content="2026-10-30">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/alatyr/assets/img/favicon.svg" type="image/svg+xml">
+<link rel="author" href="/alatyr/humans.txt">
+<link rel="preload" href="/alatyr/assets/fonts/cinzel.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/alatyr/assets/css/site.css">
+<script src="/alatyr/assets/js/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="progress" aria-hidden="true"></div>
+<header class="bar">
+  <a class="bar__mark" href="/alatyr/">ALATYR</a>
+  <nav aria-label="Sections">
+    <a href="/alatyr/#start">Start</a>
+    <a class="opt" href="/alatyr/#engineering">Engineering</a>
+    <a href="/alatyr/#notes">Notes</a>
+    <a href="https://github.com/l2go/alatyr">GitHub</a>
+  </nav>
+</header>
+<main id="main">
+<article>
+<header class="article-head">
+  <picture><source srcset="/alatyr/assets/img/covers/rehearsal.webp" type="image/webp"><img src="/alatyr/assets/img/covers/rehearsal.jpg" alt="" width="1600" height="667"></picture>
+  <div class="wrap">
+    <div class="crumbs"><a href="/alatyr/#notes">Reviving L2JFree</a> · Part 5</div>
+    <h1>Every merge is a release rehearsal</h1>
+    <p class="dek">Before an image may be published, the pipeline starts it, plays 24 client sessions, changes a setting, restarts it, stops it, restores a backup into a clean stack, and upgrades from the image already published. In 3.2 the same image also started on an empty world and sent 24 players to hunt.</p>
+    <div class="byline"><time datetime="2026-10-30">30 October 2026</time> · 8 min read</div>
+  </div>
+</header>
+<div class="prose">
+<p>Unit tests answer the question "does this function do what I think?". An operator asks a different one: "if I take this image and run it the way the guide says, will my players still have their characters tomorrow?". For a long time those two questions were answered by different people at different times. On L2JFree the pipeline answers both on every merge, before an image is allowed to exist in the registry.</p>
+<h2>The idea</h2>
+<p>Treat each merge to <code>main</code> as a full rehearsal of a release and of the operator's first week. If any step fails, nothing is published. The steps are not synthetic: each one runs the same commands that the deploy guide tells a person to run.</p>
+<p>Everything below happens in the <code>image</code> job of <a href="https://github.com/l2go/alatyr/blob/v3.2.0/.github/workflows/build.yml"><code>build.yml</code></a>, on a fresh GitHub runner, against the image that was just built from the verified distribution. In 3.2 two more rehearsals ran beside it; they come after the list.</p>
+<h2>The rehearsal</h2>
+<p><strong>1. Build and inspect.</strong> The image is built, and its content is checked: the files that must be there, and the ones that must not. The world inside the image must equal the one in the repository, file by file. Trivy scans it. A finding with a fix does not block a merge; it blocks a release and fails the daily scan of the published image. A merge should not wait on a CVE in a base package that the server never runs.</p>
+<p><strong>2. Start it as an operator would.</strong> <code>docker compose up -d --wait</code> with the same Compose file the guide uses. A probe sends the first packet of the login protocol to port 2106 and connects to 7777.</p>
+<p><strong>3. Play a whole session.</strong> A headless client written for this purpose, a small Java program with no dependencies beyond the JDK, logs in, picks the server, creates a character, enters the world, and logs out. It uses an account that a later step must find again.</p>
+<p><strong>4. Play 24 sessions at once.</strong> Twenty-four clients, six at a time, each with an account of its own. Accounts, characters, and object ids are made concurrently, which is where id allocation and login races show up. This is a correctness scenario, not a capacity claim: it proves that concurrent sessions do not corrupt each other, not how many players a server holds.</p>
+<p><strong>5. Check the boundaries.</strong> Each database role runs statements against every schema and must reach only its own. Neither may be a superuser or create a schema.</p>
+<p><strong>6. Read the log.</strong> Each start is read on its own window of the log. It must name its world exactly once, as <code>World id=buyan-okolitsa version=3.2.0</code>, hold no <code>ERROR</code> line and no uncaught exception, and report no script that failed to load. A script that fails to load is not a startup error, so the server starts without it and nobody notices; the pipeline notices. Both ports must run on epoll.</p>
+<p>That last check has a story. From its first build, the image ran on Java NIO without anyone knowing: <code>/tmp</code> in the container is a tmpfs without the right to execute, so Netty could not load its native library and fell back silently. Now Netty unpacks its native code into a directory that may execute, a transport that is not available stops the start, and the pipeline fails if a port is not on epoll.</p>
+<p><strong>7. Change a setting the way the guide does.</strong> The deploy guide changes the experience rate with one <code>printf | docker compose exec -T server tee</code> command. The pipeline runs that command, adding a key that no default file knows, then restarts the server and looks for the warning the server writes about that key. If the warning is there, the command wrote to the place the server reads. A documentation example that silently stopped working is a bug, and now it is a failing build.</p>
+<p><strong>8. Restart and find the character.</strong> After the restart, the account from step 3 logs in and must find exactly one character. Then it creates a second one.</p>
+<p><strong>9. Check the flight recorder and capture an incident.</strong> Java Flight Recorder runs from the start into the log volume; its chunks must exist. Then the incident script collects the logs, the slowest statements, the database sessions, and a thread dump from the running stack, and the server must still be serving afterwards.</p>
+<p><strong>10. Stop it and watch how it stops.</strong> The server must stop when asked, within the time Docker gives it, after saving the world, and without being killed. A save that never ends shows as exit code 137. The Compose file gives the server 60 seconds instead of Docker's default 10, because the save goes through the players one after the other.</p>
+<p><strong>11. Rehearse the backup and the restore.</strong> With the command from the guide: dump the <code>login</code> and <code>world</code> schemas, check that the dump holds accounts and players and does not hold the catalog, destroy the stack with its volumes, start a clean one, confirm the account is gone, restore, and start again. The account from step 3 must log in and find two characters. The role check runs again on the restored database.</p>
+<p><strong>12. Rehearse the upgrade.</strong> Start a stack on the image that is published now, <code>edge</code>, and make an account with a character. Replace the image with the one from this commit, on the same volumes. The new image runs its migrations over the old data, and the character must still be there. When 3.2 replaced the whole game world, this step showed exactly what an operator would see: the character survived, and seven of its items, whose templates the new world lacks, were skipped with a warning while their rows stayed in the database.</p>
+<p><strong>13. Only now, publish.</strong> On <code>main</code>, and only after every step above, the image is pushed, signed with cosign, given a build provenance attestation and an SBOM, and then verified with the same commands the security policy gives to users. A signature that does not verify fails the pipeline of <code>main</code>.</p>
+<h2>Two more rehearsals</h2>
+<p>Version 3.2 gave the image a world of its own, and two jobs rehearsed what the <code>image</code> job cannot. Both were later retired; <a href="/alatyr/notes/an-island-of-our-own/">part 3</a> records that.</p>
+<p><strong>An empty world.</strong> In 3.2.0 the <code>empty-world</code> job built the image from the same distribution and started it on a world directory that held nothing but a name and a version. The server had to reach readiness, open both ports, name the world as <code>World id=empty version=0</code>, and log no error. It told the operator, one line per part, what the world lacked. A server that only starts when everything is present has assumptions nobody wrote down; this job wrote them down.</p>
+<p><strong>A hunt.</strong> In 3.2.0 the <code>seed-world</code> job started the image on its own world and sent one player, then 24 at once, through the start of the game: leave the village, fight, pick up the coins, buy a potion and drink it, reach level 2, learn a skill, log out, and log in again to find everything as it was. Here even a warning in the server log failed the run. On the commit that became 3.2.0, all 24 finished in 120 seconds.</p>
+<p>And before any of this, the <code>world</code> job checks the tree: the world the project inherited must not come back, and the world it ships must equal a fresh render of its sources.</p>
+<h2>What it cost</h2>
+<ul>
+<li><strong>Time.</strong> The rehearsal takes minutes on every merge. For a project with one maintainer that is cheap: the alternative is a person doing it by hand, or nobody doing it.</li>
+<li><strong>A client to maintain.</strong> The headless client speaks the real protocol, so a protocol change means a client change. That is the point, but it is work.</li>
+<li><strong>Flakiness to fight.</strong> A test that starts containers and opens sockets can fail for reasons that have nothing to do with the code. All 24 clients come from the address of the Docker gateway, and one address may open only so many connections in a short time, so the pipeline raises the accept limits the way an operator behind such an address would. Every such fix is written next to the step, with the reason. The hunt brought its own: when 24 clients share one meadow, the client becomes a small distributed system, and its first bugs were its own. <a href="/alatyr/notes/an-island-of-our-own/">Part 3</a> tells that story.</li>
+</ul>
+<h2>Why it is worth it</h2>
+<p>Each step guards against a defect that really happened in this codebase. The silent NIO fallback is behind the transport check. The save of the raid bosses on shutdown never ended, which is why the stop is watched for a kill. A Python class stored in a global ran without its constructor, so some AI scripts never loaded and the server started anyway; that is why the log is read for every script. None of these would have shown up in a unit test.</p>
+<p>More importantly, it changes what a green build means. Green does not mean "the code compiles and the tests pass". It means "this image started, served players, survived a restart, a restore, and an upgrade, and stopped cleanly". In 3.2 it also meant the image started on nothing and explained itself, and that 24 players hunted in its world. That is the sentence an operator actually needs to hear.</p>
+<div class="aside"><strong>Update, 30 October 2026.</strong> The empty-world start and the hunt no longer run on every merge. Both jobs were retired as legacy, and the gameplay loop will be checked in a different form. Every merge still starts the image, plays 24 client sessions, and rehearses a restart, a restore, and, when the previous image can be pulled, an upgrade.</div>
+</div>
+<nav class="series" aria-label="Series">
+<a href="/alatyr/notes/one-save-one-transaction/"><small>Previous</small><span>One save, one transaction</span></a>
+<a class="later" href="/alatyr/notes/releases-promote-never-rebuild/"><small>Next</small><span>Releases promote, never rebuild</span></a>
+</nav>
+</article>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__top">
+      <span class="foot__mark" title="ALATYR = ROOTED = 77">ALATYR</span>
+      <nav aria-label="Project">
+        <a href="https://github.com/l2go/alatyr">Repository</a>
+        <a href="https://github.com/l2go/alatyr/releases">Releases</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">Deploy guide</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/SECURITY.md">Security</a>
+      </nav>
+    </div>
+    <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. Alatyr, formerly L2JFree, is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server. Since 3.2 it ships no data inherited from the fork; its world, Okolitsa, is original content. It does not modify, patch, or distribute the game client.</p>
+    <p>The code is under the GNU GPLv3. Banner art generated with AI. Cinzel typeface under the SIL Open Font License. <a class="sigma" href="/alatyr/numbers/" title="The numbers">Σ</a></p>
+  </div>
+</footer>
+</body>
+</html>

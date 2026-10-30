@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://l2go.github.io/alatyr/</loc><lastmod>2026-10-23</lastmod></url>
+  <url><loc>https://l2go.github.io/alatyr/</loc><lastmod>2026-10-30</lastmod></url>
   <url><loc>https://l2go.github.io/alatyr/notes/reviving-an-abandoned-mmo-server/</loc><lastmod>2026-10-23</lastmod></url>
   <url><loc>https://l2go.github.io/alatyr/notes/one-process-hard-boundaries/</loc><lastmod>2026-10-23</lastmod></url>
   <url><loc>https://l2go.github.io/alatyr/notes/an-island-of-our-own/</loc><lastmod>2026-10-23</lastmod></url>
-  <url><loc>https://l2go.github.io/alatyr/notes/one-save-one-transaction/</loc><lastmod>2026-10-23</lastmod></url>
+  <url><loc>https://l2go.github.io/alatyr/notes/one-save-one-transaction/</loc><lastmod>2026-10-30</lastmod></url>
+  <url><loc>https://l2go.github.io/alatyr/notes/every-merge-is-a-release-rehearsal/</loc><lastmod>2026-10-30</lastmod></url>
+  <url><loc>https://l2go.github.io/alatyr/notes/releases-promote-never-rebuild/</loc><lastmod>2026-10-30</lastmod></url>
+  <url><loc>https://l2go.github.io/alatyr/notes/starting-a-java-25-server/</loc><lastmod>2026-10-30</lastmod></url>
+  <url><loc>https://l2go.github.io/alatyr/notes/old-bugs-new-invariants/</loc><lastmod>2026-10-30</lastmod></url>
+  <url><loc>https://l2go.github.io/alatyr/data/startup-v3.1.1/startup.json</loc><lastmod>2026-10-30</lastmod></url>
 </urlset>
