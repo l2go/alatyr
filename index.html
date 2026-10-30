@@ -12,7 +12,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Alatyr — a Lineage II server, revived</title>
-<meta name="description" content="An open-source Lineage II server, formerly L2JFree, silent since 2015, revived in 2026: login and world in one Java 25 process on PostgreSQL 18, shipped as a signed image that CI plays on every merge.">
+<meta name="description" content="An open-source Lineage II server, formerly L2JFree, silent since 2015, revived in 2026: an authored world on a Go server, with its participant gateway and PostgreSQL 18 persistence in one process, shipped as a signed image that CI rehearses on every merge.">
 <meta name="theme-color" content="#05060c">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Alatyr — a Lineage II server, revived">
@@ -169,64 +169,78 @@
 <section id="architecture" aria-labelledby="arch-title">
   <div class="wrap">
     <p class="kicker reveal">Architecture</p>
-    <h2 id="arch-title" class="reveal">Two halves, one keep</h2>
+    <h2 id="arch-title" class="reveal">One process, one writer</h2>
     <div class="arch reveal">
-      <svg viewBox="0 0 1100 440" role="img" aria-labelledby="arch-desc">
-        <title id="arch-desc">A Lineage II client connects to the login module on port 2106 and the world module on port 7777. Both run in one Java 25 process and meet through the LoginPort and WorldPort contract. The login module uses the login schema with its own role; the world module uses the world, catalog, and report schemas with its own role, all in PostgreSQL 18.</title>
-        <rect class="frame" x="300" y="30" width="360" height="380" rx="10"/>
-        <text class="t t--title" x="480" y="64" text-anchor="middle">One JVM · Java 25</text>
-        <rect class="frame frame--db" x="760" y="30" width="320" height="380" rx="10"/>
-        <text class="t t--title" x="920" y="64" text-anchor="middle">PostgreSQL 18</text>
+      <svg viewBox="0 0 1200 460" role="img" aria-labelledby="arch-desc">
+        <title id="arch-desc">A participant client speaks alatyr/1 over a secure WebSocket to a trusted TLS proxy, which forwards a bearer token to alatyr-server. Inside one Go process the gateway admits bounded sessions, the world port carries facts and receipts across the raw-port contract, the Go world runs one simulation loop over the authored world files, and persistence saves checkpoints with pgx. PostgreSQL 18 holds the world schema under forward-only goose migrations, with one writer holding an advisory lease.</title>
+        <rect class="frame" x="360" y="40" width="500" height="380" rx="10"/>
+        <text class="t t--title" x="610" y="74" text-anchor="middle">alatyr-server · one Go process</text>
+        <rect class="frame frame--db" x="920" y="40" width="250" height="380" rx="10"/>
+        <text class="t t--title" x="1045" y="74" text-anchor="middle">PostgreSQL 18</text>
 
-        <path class="wire" d="M232 210 C 286 210, 290 128, 340 128"/>
-        <path class="wire" d="M232 230 C 286 230, 290 312, 340 312"/>
-        <path class="wire" d="M480 166 V 274"/>
-        <path class="wire wire--db" d="M620 128 C 690 128, 730 112, 815 112"/>
-        <path class="wire wire--db" d="M620 304 C 700 304, 730 196, 815 196"/>
-        <path class="wire wire--db" d="M620 312 C 700 312, 740 278, 815 278"/>
-        <path class="wire wire--db" d="M620 320 C 700 320, 740 360, 815 360"/>
+        <path class="wire" d="M194 130 H218"/>
+        <path class="wire" d="M336 130 H385"/>
+        <path class="wire" d="M595 132 H625"/>
+        <path class="wire" d="M730 168 C 730 236, 490 228, 490 296"/>
+        <path class="wire" d="M595 332 H625"/>
+        <path class="wire wire--db" d="M336 332 H385"/>
+        <path class="wire wire--db" d="M835 332 C 900 332, 892 166, 950 166"/>
 
-        <path class="flow" d="M232 210 C 286 210, 290 128, 340 128"/>
-        <path class="flow f2" d="M232 230 C 286 230, 290 312, 340 312"/>
-        <path class="flow f3" d="M480 166 V 274"/>
-        <path class="flow flow--db f4" d="M620 128 C 690 128, 730 112, 815 112"/>
-        <path class="flow flow--db f5" d="M620 304 C 700 304, 730 196, 815 196"/>
-        <path class="flow flow--db f6" d="M620 320 C 700 320, 740 360, 815 360"/>
+        <path class="flow" d="M194 130 H218"/>
+        <path class="flow f2" d="M336 130 H385"/>
+        <path class="flow f3" d="M595 132 H625"/>
+        <path class="flow f4" d="M730 168 C 730 236, 490 228, 490 296"/>
+        <path class="flow f5" d="M595 332 H625"/>
+        <path class="flow flow--db f6" d="M336 332 H385"/>
+        <path class="flow flow--db f7" d="M835 332 C 900 332, 892 166, 950 166"/>
 
-        <rect class="node node--ext" x="32" y="186" width="200" height="68" rx="34"/>
-        <text class="t" x="132" y="215" text-anchor="middle">Lineage II client</text>
-        <text class="t t--small" x="132" y="236" text-anchor="middle">PROTOCOL 83</text>
+        <rect class="node node--ext" x="24" y="96" width="170" height="68" rx="34"/>
+        <text class="t" x="109" y="126" text-anchor="middle">Participant client</text>
+        <text class="t t--small" x="109" y="147" text-anchor="middle">ALATYR/1 · WSS</text>
 
-        <rect class="node" x="340" y="94" width="280" height="72" rx="6"/>
-        <text class="t" x="480" y="125" text-anchor="middle">Login module</text>
-        <text class="t t--small" x="480" y="147" text-anchor="middle">PORT 2106</text>
+        <rect class="node node--ext" x="218" y="96" width="118" height="68" rx="6"/>
+        <text class="t" x="277" y="126" text-anchor="middle">TLS proxy</text>
+        <text class="t t--small" x="277" y="147" text-anchor="middle">BEARER TOKEN</text>
 
-        <rect class="node" x="340" y="274" width="280" height="72" rx="6"/>
-        <text class="t" x="480" y="305" text-anchor="middle">World module</text>
-        <text class="t t--small" x="480" y="327" text-anchor="middle">PORT 7777</text>
+        <rect class="node" x="385" y="96" width="210" height="72" rx="6"/>
+        <text class="t" x="490" y="127" text-anchor="middle">Gateway</text>
+        <text class="t t--small" x="490" y="149" text-anchor="middle">BOUNDED SESSIONS</text>
 
-        <rect x="494" y="206" width="152" height="28" rx="3" fill="#05060c" stroke="rgba(242,196,107,.35)"/>
-        <text class="t t--small" x="570" y="224" text-anchor="middle">LoginPort · WorldPort</text>
+        <rect class="node" x="625" y="96" width="210" height="72" rx="6"/>
+        <text class="t" x="730" y="127" text-anchor="middle">World port</text>
+        <text class="t t--small" x="730" y="149" text-anchor="middle">FACTS · RECEIPTS</text>
 
-        <text class="t t--small" x="700" y="102" text-anchor="middle">role login</text>
-        <text class="t t--small" x="700" y="392" text-anchor="middle">role world</text>
+        <rect class="tag" x="522" y="218" width="176" height="28" rx="3"/>
+        <text class="t t--small" x="610" y="236" text-anchor="middle">RAW-PORT CONTRACT</text>
+
+        <rect class="node" x="385" y="296" width="210" height="72" rx="6"/>
+        <text class="t" x="490" y="327" text-anchor="middle">Go world</text>
+        <text class="t t--small" x="490" y="349" text-anchor="middle">ONE SIMULATION LOOP</text>
+        <circle class="pulse" cx="403" cy="314" r="3"/>
+
+        <rect class="node" x="625" y="296" width="210" height="72" rx="6"/>
+        <text class="t" x="730" y="327" text-anchor="middle">Persistence</text>
+        <text class="t t--small" x="730" y="349" text-anchor="middle">PGX · CHECKPOINTS</text>
+
+        <rect class="node node--data" x="170" y="296" width="166" height="72" rx="6"/>
+        <text class="t" x="253" y="327" text-anchor="middle">Authored world</text>
+        <text class="t t--small t--steel" x="253" y="349" text-anchor="middle">OKOLITSA · FILES</text>
 
         <g>
-          <path class="db" d="M815 100 a 105 12 0 0 1 210 0 v 26 a 105 12 0 0 1 -210 0 z"/><path class="db" d="M815 100 a 105 12 0 0 0 210 0" fill="none"/>
-          <text class="t t--db" x="920" y="123" text-anchor="middle">login</text>
-          <path class="db" d="M815 184 a 105 12 0 0 1 210 0 v 26 a 105 12 0 0 1 -210 0 z"/><path class="db" d="M815 184 a 105 12 0 0 0 210 0" fill="none"/>
-          <text class="t t--db" x="920" y="207" text-anchor="middle">world</text>
-          <path class="db" d="M815 266 a 105 12 0 0 1 210 0 v 26 a 105 12 0 0 1 -210 0 z"/><path class="db" d="M815 266 a 105 12 0 0 0 210 0" fill="none"/>
-          <text class="t t--db" x="920" y="289" text-anchor="middle">catalog</text>
-          <path class="db" d="M815 348 a 105 12 0 0 1 210 0 v 26 a 105 12 0 0 1 -210 0 z"/><path class="db" d="M815 348 a 105 12 0 0 0 210 0" fill="none"/>
-          <text class="t t--db" x="920" y="371" text-anchor="middle">report</text>
+          <path class="db" d="M950 152 a 95 12 0 0 1 190 0 v 30 a 95 12 0 0 1 -190 0 z"/><path class="db" d="M950 152 a 95 12 0 0 0 190 0" fill="none"/>
+          <text class="t t--db" x="1045" y="180" text-anchor="middle">world</text>
+          <text class="t t--code" x="1045" y="226" text-anchor="middle">player · item · player_skill</text>
+          <text class="t t--code" x="1045" y="248" text-anchor="middle">goose_db_version</text>
+          <path class="rule" d="M968 280 H1122"/>
+          <text class="t t--small t--steel" x="1045" y="314" text-anchor="middle">FORWARD-ONLY MIGRATIONS</text>
+          <text class="t t--small t--steel" x="1045" y="336" text-anchor="middle">ONE WRITER · ADVISORY LEASE</text>
         </g>
       </svg>
     </div>
     <div class="arch-notes reveal">
-      <div><b>The contract</b>Two interfaces and a few value types. Admission is one atomic call, not a packet exchange.</div>
-      <div><b>The roles</b>Login reaches only <code>login</code>. World reaches <code>world</code>, <code>catalog</code>, and <code>report</code>. The pipeline proves it on the running image.</div>
-      <div><b>The catalog</b>Game content ships in the image and is loaded into <code>catalog</code> at start, so a backup holds only accounts and the world.</div>
+      <div><b>The gateway</b>Each participant gets a bounded session behind a TLS proxy and a bearer token. Done needs a live world fact with its own cause; anything unproven ends as Unknown.</div>
+      <div><b>The world</b>One simulation loop owns every change. Content loads from the authored files in the image, so the database holds characters, not content.</div>
+      <div><b>The database</b>One writer holds an advisory lease. Goose migrations only move forward, and a database with foreign objects is refused at start.</div>
     </div>
   </div>
 </section>

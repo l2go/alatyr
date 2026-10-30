@@ -248,10 +248,17 @@ h2 { font: 600 clamp(2rem, 4.4vw, 3.1rem)/1.1 var(--display); letter-spacing: .0
 .arch .t--small { fill: var(--parchment-3); font: 500 11.5px var(--sans); letter-spacing: .08em; }
 .arch .wire { fill: none; stroke: rgba(242, 196, 107, .45); stroke-width: 1.6; }
 .arch .wire--db { stroke: rgba(143, 163, 199, .5); }
+.arch .node--data { fill: #141a26; stroke: var(--steel); stroke-width: 1.6; }
+.arch .tag { fill: #05060c; stroke: rgba(242, 196, 107, .35); }
+.arch .rule { stroke: rgba(143, 163, 199, .25); }
+.arch .t--steel { fill: var(--steel); }
+.arch .t--code { fill: #aebbd6; font: 500 11.5px var(--mono); }
+.arch .pulse { fill: var(--gold); animation: pulse 2.6s ease-in-out infinite; }
 .arch .flow { fill: none; stroke: var(--gold-hi); stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: 6 220; animation: flow 3.4s linear infinite; filter: drop-shadow(0 0 4px rgba(255, 210, 122, .9)); }
 .arch .flow--db { stroke: #cfe0ff; filter: drop-shadow(0 0 4px rgba(143, 163, 199, .9)); }
-.arch .f2 { animation-delay: -.9s; } .arch .f3 { animation-delay: -1.8s; } .arch .f4 { animation-delay: -2.5s; } .arch .f5 { animation-delay: -1.2s; } .arch .f6 { animation-delay: -2.9s; }
+.arch .f2 { animation-delay: -.9s; } .arch .f3 { animation-delay: -1.8s; } .arch .f4 { animation-delay: -2.5s; } .arch .f5 { animation-delay: -1.2s; } .arch .f6 { animation-delay: -2.9s; } .arch .f7 { animation-delay: -.4s; }
 @keyframes flow { to { stroke-dashoffset: -226; } }
+@keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 .arch-notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-top: 2rem; color: var(--parchment-2); font-size: .98rem; }
 .arch-notes b { display: block; font: 600 .74rem/1.4 var(--sans); letter-spacing: .2em; text-transform: uppercase; color: var(--gold); margin-bottom: .4rem; }
 @media (max-width: 860px) { .arch-notes { grid-template-columns: 1fr; } }
@@ -414,7 +421,7 @@ code { font-family: var(--mono); font-size: .9em; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .sun, .halo, .ring, .ember, .cue::after, .arch .flow { animation: none; }
+  .sun, .halo, .ring, .ember, .cue::after, .arch .flow, .arch .pulse { animation: none; }
   .spark, .ember, .arch .flow { display: none; }
   .js .reveal { opacity: 1; transform: none; transition: none; }
   .card, .note, .note__img img, .btn { transition: none; }
