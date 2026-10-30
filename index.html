@@ -104,15 +104,16 @@
     <div class="reveal">
       <p class="kicker">Start</p>
       <h2 id="start-title">Light the beacon</h2>
-      <p class="intro">From a checkout, with Docker Compose. The first start creates the database passwords, migrates the schemas, and loads the game world; it takes a few minutes. The first login creates the account.</p>
-      <p><a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">Deploy guide</a> · <a href="https://github.com/l2go/alatyr/releases">Releases with a compose bundle</a></p>
+      <p class="intro">Release 3.2.1, from a checkout of its tag, with Docker Compose. The first start creates the database passwords, migrates the schemas, and loads the game world; it takes a few minutes. The first login creates the account.</p>
+      <p><a href="https://github.com/l2go/alatyr/blob/v3.2.1/deploy/README.md">Deploy guide</a> · <a href="https://github.com/l2go/alatyr/releases">Releases with a compose bundle</a></p>
     </div>
     <div class="plaque reveal">
       <div class="plaque__label">Terminal</div>
-<pre><code><span class="p">$ </span>git clone https://github.com/l2go/alatyr
+<pre><code><span class="p">$ </span>git clone --branch v3.2.1 https://github.com/l2go/alatyr
 <span class="p">$ </span>cd alatyr/deploy
+<span class="p">$ </span>export L2JFREE_IMAGE=ghcr.io/l2go/l2jfree:3.2.1
 <span class="p">$ </span>docker compose up -d --wait</code></pre>
-      <div class="ports"><span><b>2106</b>login</span><span><b>7777</b>world</span><span><b>edge</b>default image</span></div>
+      <div class="ports"><span><b>2106</b>login</span><span><b>7777</b>world</span><span><b>3.2.1</b>image</span></div>
     </div>
   </div>
 </section>
@@ -236,10 +237,10 @@
   <div class="wrap">
     <p class="kicker reveal">Chronicle</p>
     <h2 id="chron-title" class="reveal">Nearly nine years of building, eleven of silence</h2>
-    <p class="intro reveal">Twenty-four people built it over nearly nine years. Twenty-four days rebuilt it. Twenty-four clients play it on every merge. The history in the repository is the history of the code: 8,044 commits before the revival, and every pull request since then written as a small design record.</p>
+    <p class="intro reveal">Twenty-four people built it over nearly nine years. Twenty-four days rebuilt it. Twenty-four clients played every merge of its Java years. The history in the repository is the history of the code: 8,044 commits before the revival, and every pull request since then written as a small design record.</p>
     <ol class="chronicle">
       <li class="reveal"><time datetime="2006-11-15">2006</time><div><h3>The first commit</h3><p>L2JFree begins in the L2J open-source community: a Lineage II server, written in Java, under the GPL.</p></div></li>
-      <li class="reveal"><time>2009</time><div><h3>Gracia Final</h3><p>The client this server speaks to. Its protocol, revision 83, is still the one the server answers.</p></div></li>
+      <li class="reveal"><time>2009</time><div><h3>Gracia Final</h3><p>The client this server speaks to. Its protocol, revision 83, is the one the Java server answers, through release 3.2.1.</p></div></li>
       <li class="dim reveal"><time datetime="2015-07-15">2015</time><div><h3>Silence</h3><p>The last upstream commit lands on 15 July 2015. The code later moves to GitHub, where its repositories are archived as they were when work stopped.</p></div></li>
       <li class="lit reveal"><time datetime="2026-09-18">Sep 2026</time><div><h3>The revival</h3><p>A root build and CI on every push, then a correctness program that files each defect as a broken invariant. The server keeps its shape and moves to Java 25: 1.4.0 on 25 September, 2.0.0 on 30 September, 2.5.0 on 5 October.</p></div></li>
       <li class="lit reveal"><time datetime="2026-10-05">Oct 2026</time><div><h3>Platform 3.0 decided</h3><p>The 2.x line is retired, and the decisions for one process on PostgreSQL 18 are recorded. GitHub Actions is the only build of record.</p></div></li>
@@ -247,6 +248,7 @@
       <li class="lit reveal"><time datetime="2026-10-12">Oct 2026</time><div><h3>3.1.0 and 3.1.1</h3><p>Economy and login defects closed by their invariants, a signature for the release archive, and a measured start.</p></div></li>
       <li class="lit reveal"><time datetime="2026-10-15">Oct 2026</time><div><h3>3.2.0</h3><p>The server leaves the inherited world behind and ships Okolitsa, an original world built by a Go tool from source files that use text keys. Monsters reward the players who fought them.</p></div></li>
       <li class="lit reveal"><time datetime="2026-10-23">Oct 2026</time><div><h3>3.2.1</h3><p>Native images for amd64 and arm64 on Debian 13, honest x1 rewards by default, and a new name and home: Alatyr, at l2go/alatyr.</p></div></li>
+      <li class="lit reveal"><time datetime="2026-10-29">Oct 2026</time><div><h3>Go on main</h3><p>The Java runtime is retired on <code>main</code>. A Go server now owns the world, the participant gateway, and PostgreSQL persistence. Release 3.2.1 stays the last Java one; the first Go release opens the next series of notes.</p></div></li>
     </ol>
   </div>
 </section>
@@ -255,7 +257,7 @@
   <div class="wrap">
     <p class="kicker reveal">Engineering notes</p>
     <h2 id="notes-title" class="reveal">Reviving L2JFree</h2>
-    <p class="intro reveal">One decision at a time: the problem, the decision, what it cost, and how it is checked. The first notes revive the platform; from 3.2 on, it runs a world of its own.</p>
+    <p class="intro reveal">Eight notes, one decision at a time: the problem, the decision, what it cost, and how it is checked. They follow the Java server from a codebase silent since 2015 to release 3.2.1; from 3.2 on, it runs a world of its own. The series is complete.</p>
     <div class="notes">
       <a class="note reveal" href="/alatyr/notes/reviving-an-abandoned-mmo-server/">
         <div class="note__img"><picture><source srcset="/alatyr/assets/img/covers/reviving.webp" type="image/webp"><img src="/alatyr/assets/img/covers/reviving.jpg" alt="" loading="lazy" width="1600" height="667"></picture></div>
@@ -273,15 +275,26 @@
         <div class="note__img"><picture><source srcset="/alatyr/assets/img/covers/transaction.webp" type="image/webp"><img src="/alatyr/assets/img/covers/transaction.jpg" alt="" loading="lazy" width="1600" height="667"></picture></div>
         <div class="note__body"><div class="note__meta">Part 4 · 7 min</div><h3>One save, one transaction</h3><p>A character save split across two connections, made one transaction, with rollback that leaves the save retryable.</p></div>
       </a>
+      <a class="note reveal" href="/alatyr/notes/every-merge-is-a-release-rehearsal/">
+        <div class="note__img"><picture><source srcset="/alatyr/assets/img/covers/rehearsal.webp" type="image/webp"><img src="/alatyr/assets/img/covers/rehearsal.jpg" alt="" loading="lazy" width="1600" height="667"></picture></div>
+        <div class="note__body"><div class="note__meta">Part 5 · 8 min</div><h3>Every merge is a release rehearsal</h3><p>Before an image is published, the pipeline starts it, plays 24 sessions, and rehearses a restart, a restore, and an upgrade.</p></div>
+      </a>
+      <a class="note reveal" href="/alatyr/notes/releases-promote-never-rebuild/">
+        <div class="note__img"><picture><source srcset="/alatyr/assets/img/covers/releases.webp" type="image/webp"><img src="/alatyr/assets/img/covers/releases.jpg" alt="" loading="lazy" width="1600" height="667"></picture></div>
+        <div class="note__body"><div class="note__meta">Part 6 · 6 min</div><h3>Releases promote, never rebuild</h3><p>A release finds the image main already built and tested, verifies it, waits for a person, and gives that digest a version.</p></div>
+      </a>
+      <a class="note reveal" href="/alatyr/notes/starting-a-java-25-server/">
+        <div class="note__img"><picture><source srcset="/alatyr/assets/img/covers/startup.webp" type="image/webp"><img src="/alatyr/assets/img/covers/startup.jpg" alt="" loading="lazy" width="1600" height="667"></picture></div>
+        <div class="note__body"><div class="note__meta">Part 7 · 5 min</div><h3>Starting a Java 25 server: G1, ZGC, and an AOT cache that did not help</h3><p>Measured on 3.1.1: ready in about 17 seconds on G1 and 20 on ZGC. The AOT cache changes nothing, because of where the time goes.</p></div>
+      </a>
+      <a class="note reveal" href="/alatyr/notes/old-bugs-new-invariants/">
+        <div class="note__img"><picture><source srcset="/alatyr/assets/img/covers/invariants.webp" type="image/webp"><img src="/alatyr/assets/img/covers/invariants.jpg" alt="" loading="lazy" width="1600" height="667"></picture></div>
+        <div class="note__body"><div class="note__meta">Part 8 · 7 min</div><h3>Old bugs, new invariants</h3><p>Predictable secrets, comparisons that stop early, lost updates, overflow, and operations that finish halfway: the class, the cause, and the check.</p></div>
+      </a>
     </div>
     <div class="next reveal">
-      <b>Next in the series</b>
-      <ol start="5">
-        <li>Every merge is a release rehearsal</li>
-        <li>Releases promote, never rebuild</li>
-        <li>Starting a Java 25 server</li>
-        <li>Old bugs, new invariants</li>
-      </ol>
+      <b>The next series</b>
+      <p>On 29 October 2026 the server left Java: on <code>main</code> it is now written in Go. The next series starts with the first Go release: what moved, what was written anew, and which of these invariants came along.</p>
     </div>
   </div>
 </section>

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Old bugs, new invariants — Alatyr</title>
+<meta name="description" content="A 2009 game server carries the defect classes of its time: predictable secrets, comparisons that stop early, lost updates, integer overflow, and operations that finish halfway. For each class: the cause, the invariant that replaced it, and the check that keeps it out.">
+<meta name="theme-color" content="#05060c">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Old bugs, new invariants">
+<meta property="og:description" content="A 2009 game server carries the defect classes of its time: predictable secrets, comparisons that stop early, lost updates, integer overflow, and operations that finish halfway. For each class: the cause, the invariant that replaced it, and the check that keeps it out.">
+<meta property="og:url" content="https://l2go.github.io/alatyr/notes/old-bugs-new-invariants/">
+<meta property="og:image" content="https://l2go.github.io/alatyr/assets/img/covers/invariants.jpg">
+<meta property="article:published_time" content="2026-10-30">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/alatyr/assets/img/favicon.svg" type="image/svg+xml">
+<link rel="author" href="/alatyr/humans.txt">
+<link rel="preload" href="/alatyr/assets/fonts/cinzel.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/alatyr/assets/css/site.css">
+<script src="/alatyr/assets/js/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="progress" aria-hidden="true"></div>
+<header class="bar">
+  <a class="bar__mark" href="/alatyr/">ALATYR</a>
+  <nav aria-label="Sections">
+    <a href="/alatyr/#start">Start</a>
+    <a class="opt" href="/alatyr/#engineering">Engineering</a>
+    <a href="/alatyr/#notes">Notes</a>
+    <a href="https://github.com/l2go/alatyr">GitHub</a>
+  </nav>
+</header>
+<main id="main">
+<article>
+<header class="article-head">
+  <picture><source srcset="/alatyr/assets/img/covers/invariants.webp" type="image/webp"><img src="/alatyr/assets/img/covers/invariants.jpg" alt="" width="1600" height="667"></picture>
+  <div class="wrap">
+    <div class="crumbs"><a href="/alatyr/#notes">Reviving L2JFree</a> · Part 8</div>
+    <h1>Old bugs, new invariants</h1>
+    <p class="dek">A 2009 game server carries the defect classes of its time: predictable secrets, comparisons that stop early, lost updates, integer overflow, and operations that finish halfway. For each class: the cause, the invariant that replaced it, and the check that keeps it out.</p>
+    <div class="byline"><time datetime="2026-10-30">30 October 2026</time> · 7 min read</div>
+  </div>
+</header>
+<div class="prose">
+<p>Reading old code for defects one by one is endless. Reading it for classes of defects is finite. Once you have seen one comparison that stops at the length of the shorter string, you know what to grep for, and you know what rule would have prevented it.</p>
+<p>This article goes through the classes I found in L2JFree, with one or two examples each. It describes the class, the cause, and the fix. It does not describe how to exploit anything: every defect here is fixed in a released version, and the point is the pattern, not the attack.</p>
+<p>Each fix in the project starts from an invariant, written at the top of its pull request: one sentence that must be true after the change. The invariants are quoted below, because they are the actual design.</p>
+<h2>1. Secrets from a game random generator</h2>
+<p><strong>The cause.</strong> A game server is full of random numbers: drops, critical hits, spawn positions. They come from a fast generator with 48 bits of state, which is fine for a die roll. The same generator made the session keys that the login hands to the world, and the passwords that the optional telnet and remote administration generate. A generator with 48 bits of state can be reconstructed from a few of its outputs, and then its future outputs are known.</p>
+<p><strong>The invariant.</strong> A session key and a generated password come from a generator that cannot be predicted.</p>
+<p><strong>The fix.</strong> Both use <code>SecureRandom</code>.</p>
+<p><strong>The guard.</strong> A source rule in <a href="https://github.com/l2go/alatyr/blob/v3.1.1/l2jfree-platform/src/test/java/com/l2jfree/platform/SourcePatternsTest.java"><code>SourcePatternsTest</code></a> fails the build if a <code>SessionKey</code> or a generated password is built from the game generator again. Fixing the instance is half the work; the rule is what keeps the next contributor from reintroducing it with the most natural line of code.</p>
+<h2>2. A comparison that stops early</h2>
+<p><strong>The cause.</strong> The old password check compared the computed hash with the stored one up to the length of the stored value. An empty stored hash therefore matched every password. Passwords were also stored as unsalted SHA-1.</p>
+<p><strong>The invariant.</strong> A password matches only when the whole stored value matches, compared in constant time.</p>
+<p><strong>The fix.</strong> Passwords are stored as salted PBKDF2-HMAC-SHA256 with 600,000 iterations, and compared over their whole length in constant time. An account from the old line still holds its SHA-1 digest; it keeps working and is rewritten in the new form at its next successful login. Nobody has to reset a password, and no plain password is ever stored.</p>
+<p><strong>The guard.</strong> <code>PasswordHasherTest</code>: a new password is salted and verifies, the old form still verifies, a stored value that is empty, short, or broken accepts nothing, and only the old form or weaker iterations ask for a rehash.</p>
+<h2>3. Lost updates</h2>
+<p><strong>The cause.</strong> Read a whole row, change one field in memory, write the whole row back. Anything another thread changed in between is silently undone. The login did exactly this with the account row: a ban set by a game master while a player was logging in could be undone by that login.</p>
+<p>The password upgrade from the previous section has the same shape. A login reads the old hash, verifies it, and writes the new form. If the player changed their password in the meantime, a naive upgrade would overwrite the newer password with a rehash of the old one.</p>
+<p><strong>The invariant</strong> (<a href="https://github.com/l2go/alatyr/pull/194">#194</a>). A login writes the last-active time, the address, and a password upgrade of the hash it verified. It does not replace a password that was stored after that hash was read.</p>
+<p><strong>The fix.</strong> A login writes only the columns it owns: the time and the address. The upgrade is a compare-and-set in SQL:</p>
+<pre class="code"><code class="language-sql">UPDATE account SET password_hash = ? WHERE name = ? AND password_hash = ?</code></pre>
+<p>Zero rows updated means a newer password won. The newer hash stays, and the login still succeeds.</p>
+<p><strong>The guard.</strong> <code>LoginSchemaPostgresTest.passwordUpgradeDoesNotOverwriteANewerHash</code> runs the statement against PostgreSQL 18: the first upgrade matches, a second one that still holds the old hash does not.</p>
+<h2>4. Integer overflow</h2>
+<p><strong>The cause.</strong> The weight of an inventory was summed in an <code>int</code>: count times item weight, for every stack. A large enough stack makes the product exceed 2³¹ − 1, the sum wraps to a negative number, and every later check that compares the load with a limit sees an empty bag.</p>
+<p><strong>The invariant</strong> (<a href="https://github.com/l2go/alatyr/pull/193">#193</a>). A weight check uses the full product of count and item weight. A product that does not fit in the accumulator is rejected.</p>
+<p><strong>The fix.</strong> The load is a <code>long</code>, and the addition refuses a product that does not fit even there. A stack of 400,000,000 arrows of weight 6 now weighs 2,400,000,000, not a negative number.</p>
+<p><strong>The guard.</strong> <code>InventoryLoadTest</code> covers that exact product, a product that does not fit in a signed <code>long</code>, and the saturation of the value sent to the client.</p>
+<p>The same class appeared in money: an NPC sale that would push a player's adena past its cap is now rejected before anything is destroyed.</p>
+<h2>5. Operations that finish halfway</h2>
+<p><strong>The cause.</strong> A trade moves items from one player to another, then the other way. A store takes the buyer's money, then moves the item. If the second half fails, the first half has already happened. In a game economy this is the difference between a failed trade and a duplicated or vanished item.</p>
+<p><strong>The invariant</strong> (<a href="https://github.com/l2go/alatyr/pull/200">#200</a>). A confirmed player trade moves both sides or neither side. A line that cannot be transferred aborts the exchange and returns what already moved.</p>
+<p><strong>The fix.</strong> Each multi-step operation either orders its steps so that the risky one comes first, or undoes what it did when a later step fails:</p>
+<ul>
+<li>a trade returns the lines it already moved;</li>
+<li>an NPC purchase reserves the stock before it takes the money, and returns both if anything fails after the charge;</li>
+<li>a buy store takes the money for one line before moving that item, and returns it if the move fails;</li>
+<li>a player save writes everything in one database transaction (the subject of an <a href="/alatyr/notes/one-save-one-transaction/">earlier article</a>).</li>
+</ul>
+<p><strong>The guard.</strong> Mixed, and honestly so. The save has a PostgreSQL test. The trade needs two live players and their inventories, and has no automated test yet: its fix was compiled and reviewed in CI, and its pull request describes the live check that would confirm it. That gap is written down, not hidden.</p>
+<h2>6. The right check on the wrong object</h2>
+<p><strong>The cause.</strong> Remote administration generated a password when none was configured, logged it, and stored it on one instance of the service, then bound a different instance to the registry. The bound object kept an empty password. The password in the log did not work; an empty one did.</p>
+<p><strong>The invariant</strong> (<a href="https://github.com/l2go/alatyr/pull/188">#188</a>). The object bound in the RMI registry is the one whose password was generated and logged. An empty password does not pass.</p>
+<p><strong>The fix.</strong> The generated password is stored on the instance that is bound, and every remote method rejects a null or empty password. The feature stays off unless an operator turns it on.</p>
+<h2>7. A key that is not bound to the client that showed it</h2>
+<p><strong>The cause.</strong> The world accepted a session key and then authenticated whichever client was waiting for that account, not necessarily the one that presented the key.</p>
+<p><strong>The invariant</strong> (<a href="https://github.com/l2go/alatyr/pull/26">#26</a>). The game client that presented the session key accepted by the login server is the client that becomes authenticated for that account.</p>
+<p><strong>The fix and the guard.</strong> A second claim for an account that already has a waiting or live session is refused. The answer from the login echoes the exact key that was checked, and the world authenticates the waiting client only if it matches. <code>AuthLoginGuardTest</code> locks the decision.</p>
+<h2>What the classes have in common</h2>
+<p>Almost none of these are clever. They are the ordinary failures of code written fast, for a small audience, with no one asking "what if this happens at the same time as that?". The fixes are ordinary too: a wider type, a <code>WHERE</code> clause, a reordered step, a real random generator.</p>
+<p>What turns a fix into an improvement is the second half of each section: a rule, a test, or at least a written gap. A codebase does not get safer because someone fixed seven bugs. It gets safer when the eighth one of the same kind fails the build.</p>
+<h2>Where the series ends</h2>
+<p>This is the last note of the series. Eight notes followed one codebase from its silence in 2015 to release 3.2.1: the order of the <a href="/alatyr/notes/reviving-an-abandoned-mmo-server/">revival</a>, two servers in <a href="/alatyr/notes/one-process-hard-boundaries/">one process</a> that still cannot see each other, a <a href="/alatyr/notes/an-island-of-our-own/">world of its own</a>, a save in <a href="/alatyr/notes/one-save-one-transaction/">one transaction</a>, a release <a href="/alatyr/notes/every-merge-is-a-release-rehearsal/">rehearsed on every merge</a>, a release that <a href="/alatyr/notes/releases-promote-never-rebuild/">promotes what was tested</a>, a start that was <a href="/alatyr/notes/starting-a-java-25-server/">measured, not guessed</a>, and, here, the defects of its time, each closed by a sentence and a check.</p>
+<p>On 29 October 2026 the Java server left <code>main</code>. Its successor is written in Go, and the Java tests named above went with the code they guarded. The invariants did not have to. Each one is a sentence about behaviour, not about a language, and it is the first thing a new server has to answer. The next series begins with the first Go release.</p>
+</div>
+<nav class="series" aria-label="Series">
+<a href="/alatyr/notes/starting-a-java-25-server/"><small>Previous</small><span>Starting a Java 25 server: G1, ZGC, and an AOT cache that did not help</span></a>
+<a class="later" href="/alatyr/#notes"><small>End of the series</small><span>All eight notes</span></a>
+</nav>
+</article>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__top">
+      <span class="foot__mark" title="ALATYR = ROOTED = 77">ALATYR</span>
+      <nav aria-label="Project">
+        <a href="https://github.com/l2go/alatyr">Repository</a>
+        <a href="https://github.com/l2go/alatyr/releases">Releases</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">Deploy guide</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/SECURITY.md">Security</a>
+      </nav>
+    </div>
+    <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. Alatyr, formerly L2JFree, is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server. Since 3.2 it ships no data inherited from the fork; its world, Okolitsa, is original content. It does not modify, patch, or distribute the game client.</p>
+    <p>The code is under the GNU GPLv3. Banner art generated with AI. Cinzel typeface under the SIL Open Font License. <a class="sigma" href="/alatyr/numbers/" title="The numbers">Σ</a></p>
+  </div>
+</footer>
+</body>
+</html>
