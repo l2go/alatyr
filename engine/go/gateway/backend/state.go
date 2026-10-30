@@ -111,6 +111,12 @@ func (s *state) eventInput(r wire.Record, e meaning.Event, at int64) (meaning.In
 		return in, nil
 	}
 	if !profile.Has(r, 74) {
+		// A captured page can remain after its last action was consumed.
+		// An explicitly empty action list carries presentation only: there is
+		// no proposal whose original lifetime needs to be reconstructed.
+		if e.Kind == meaning.Spoke && e.Lines != nil && len(e.Lines) == 0 {
+			return in, nil
+		}
 		return in, wire.ErrFrame
 	}
 	cfg := s.world.session.cfg
