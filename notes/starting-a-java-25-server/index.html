@@ -82,7 +82,8 @@
 <li><strong>ZGC's strength is not tested here.</strong> This measures the start, not a server full of players. A load test with real traffic might favour ZGC's pauses. With the current numbers, there is no reason to pay for it in advance.</li>
 </ul>
 <h2>How to repeat it</h2>
-<p>Run the <code>build</code> workflow by hand on any tag or branch; the <code>startup</code> job attaches <code>startup.json</code>, <code>startup.md</code>, and the summary table to the run. The script itself needs only Docker and Python, and its output names the configuration, the options, and every individual start, so a reader can check the medians instead of trusting them.</p>
+<p>Run the <code>build</code> workflow by hand on a release tag from <code>v3.1.1</code> to <code>v3.2.1</code>; the <code>startup</code> job attaches <code>startup.json</code>, <code>startup.md</code>, and the summary table to the run. The script itself needs only Docker and Python, and its output names the configuration, the options, and every individual start, so a reader can check the medians instead of trusting them.</p>
+<div class="aside"><strong>Update, 30 October 2026.</strong> These numbers belong to the Java server. On 29 October <code>main</code> replaced it with a server written in Go, and the <code>startup</code> job left with the JVM options it compared; it remains in the workflow of every release tag from <code>v3.1.1</code> to <code>v3.2.1</code>. The start of the Go server has not been measured this way. Until it is, this note says nothing about it.</div>
 </div>
 <nav class="series" aria-label="Series">
 <a href="/alatyr/notes/releases-promote-never-rebuild/"><small>Previous</small><span>Releases promote, never rebuild</span></a>

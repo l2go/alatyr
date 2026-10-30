@@ -94,10 +94,13 @@
 <h2>What the classes have in common</h2>
 <p>Almost none of these are clever. They are the ordinary failures of code written fast, for a small audience, with no one asking "what if this happens at the same time as that?". The fixes are ordinary too: a wider type, a <code>WHERE</code> clause, a reordered step, a real random generator.</p>
 <p>What turns a fix into an improvement is the second half of each section: a rule, a test, or at least a written gap. A codebase does not get safer because someone fixed seven bugs. It gets safer when the eighth one of the same kind fails the build.</p>
+<h2>Where the series ends</h2>
+<p>This is the last note of the series. Eight notes followed one codebase from its silence in 2015 to release 3.2.1: the order of the <a href="/alatyr/notes/reviving-an-abandoned-mmo-server/">revival</a>, two servers in <a href="/alatyr/notes/one-process-hard-boundaries/">one process</a> that still cannot see each other, a <a href="/alatyr/notes/an-island-of-our-own/">world of its own</a>, a save in <a href="/alatyr/notes/one-save-one-transaction/">one transaction</a>, a release <a href="/alatyr/notes/every-merge-is-a-release-rehearsal/">rehearsed on every merge</a>, a release that <a href="/alatyr/notes/releases-promote-never-rebuild/">promotes what was tested</a>, a start that was <a href="/alatyr/notes/starting-a-java-25-server/">measured, not guessed</a>, and, here, the defects of its time, each closed by a sentence and a check.</p>
+<p>On 29 October 2026 the Java server left <code>main</code>. Its successor is written in Go, and the Java tests named above went with the code they guarded. The invariants did not have to. Each one is a sentence about behaviour, not about a language, and it is the first thing a new server has to answer. The next series begins with the first Go release.</p>
 </div>
 <nav class="series" aria-label="Series">
 <a href="/alatyr/notes/starting-a-java-25-server/"><small>Previous</small><span>Starting a Java 25 server: G1, ZGC, and an AOT cache that did not help</span></a>
-<span></span>
+<a class="later" href="/alatyr/#notes"><small>End of the series</small><span>All eight notes</span></a>
 </nav>
 </article>
 </main>

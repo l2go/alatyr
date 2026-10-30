@@ -291,6 +291,7 @@ h2 { font: 600 clamp(2rem, 4.4vw, 3.1rem)/1.1 var(--display); letter-spacing: .0
 .next b { font: 600 .7rem/1 var(--sans); letter-spacing: .26em; text-transform: uppercase; color: var(--gold-lo); display: block; margin-bottom: .8rem; }
 .next ol { margin: 0; padding-left: 1.2rem; columns: 2; column-gap: 2.5rem; }
 .next li { margin-bottom: .35rem; break-inside: avoid; }
+.next p { margin: 0; }
 @media (max-width: 640px) { .next ol { columns: 1; } }
 
 /* verify */
