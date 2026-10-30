@@ -14,6 +14,9 @@ Target helpers require both their own Done and current target confirmation.
 Effect receipts cannot authorize helpers or system steps, and raw Done cannot
 authorize participant Done without live, exclusive, timely dictionary evidence.
 Optional `Handoff` reports numeric correlation only, never payloads or errors.
+`World.Write` retains at most eight raw bindings, including helper and system
+writes; expired bindings are removed before another write. This adapter bound
+is independent of the configured participant pending-attempt limit.
 
 Ready snapshots require explicit complete inventory, skill, and quest lists.
 Unknown does not become known-empty. The audited bridge buy/sell packets carry

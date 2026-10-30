@@ -67,18 +67,18 @@ func checkRawEvidence(records []wire.Record, attempts map[uint64]*sequenceAttemp
 		}
 		epoch := gatewaytest.U(fact, 4)
 		effective := gatewaytest.U(r, 6)
-		if epoch != a.epoch && !(effective == 9 && epoch == a.epoch+1) {
+		if epoch != a.epoch && !(effective == verbRise && epoch == a.epoch+1) {
 			return fmt.Errorf("done %d crossed a projection epoch", n)
 		}
 		targetField := uint32(10)
-		if effective == 4 {
+		if effective == verbTake {
 			targetField = 20
 		}
 		target, _ := wire.Find(a.record.Fields, targetField)
-		if effective == 6 {
+		if effective == verbChoose {
 			target = wire.Value{Fields: []wire.Field{wire.S(1, true, int64(a.chosen.ID)), wire.U(2, true, a.chosen.Gen)}}
 		}
-		if effective == 5 || effective == 6 {
+		if effective == verbTalk || effective == verbChoose {
 			observed, _ := wire.Find(fact.Fields, 10)
 			if !sameRef(target, observed) {
 				return fmt.Errorf("done %d crossed a target generation", n)
@@ -106,7 +106,7 @@ func checkRawEvidence(records []wire.Record, attempts map[uint64]*sequenceAttemp
 					publicMS, _ := wire.Find(fact.Fields, 3)
 					// Full-window learning emits the current skill proof at expiry;
 					// its original live candidate retains the earlier receive time.
-					if effective != 13 && rawMS.S != publicMS.S {
+					if effective != verbLearn && rawMS.S != publicMS.S {
 						continue
 					}
 					subject, _ := wire.Find(raw.Fields, 64)
@@ -115,14 +115,14 @@ func checkRawEvidence(records []wire.Record, attempts map[uint64]*sequenceAttemp
 					if subject.S != id.S {
 						continue
 					}
-					if effective == 6 || effective == 14 {
+					if effective == verbChoose || effective == verbUseItem {
 						if gatewaytest.U(raw, 75) != h.Key {
 							continue
 						}
-					} else if effective != 9 && !matchingReceipt(trace, h, contact[n], deadline, gatewaytest.U(raw, 4)) {
+					} else if effective != verbRise && !matchingReceipt(trace, h, contact[n], deadline, gatewaytest.U(raw, 4)) {
 						continue
 					}
-					if effective == 4 {
+					if effective == verbTake {
 						picked, _ := wire.Find(raw.Fields, 65)
 						requested, _ := wire.Find(target.Fields, 1)
 						if picked.S != requested.S {

@@ -15,8 +15,7 @@ func (w *World) fullInfo(s *state, a actor) {
 		v.send(SelfChanged{Self: w.selfOf(v)})
 		w.describeState(s, v, v)
 		var seen *PlayerSeen
-		for _, playerID := range slices.Sorted(maps.Keys(s.players)) {
-			q := s.players[playerID]
+		for _, q := range s.players {
 			if q != v && q.known[v.id] {
 				if seen == nil {
 					seen = &PlayerSeen{Player: w.selfOf(v)}
@@ -28,8 +27,7 @@ func (w *World) fullInfo(s *state, a actor) {
 	case *npc:
 		now := time.Now()
 		w.broadcastToKnown(s, a, NPCSeen{NPC: v.view(now)})
-		for _, playerID := range slices.Sorted(maps.Keys(s.players)) {
-			p := s.players[playerID]
+		for _, p := range s.players {
 			if p.known[v.id] {
 				w.describeState(s, v, p)
 			}
@@ -96,14 +94,13 @@ func (w *World) broadcastToKnown(s *state, a actor, e Event) {
 	switch v := a.(type) {
 	case *player:
 		v.send(e)
-		for _, playerID := range slices.Sorted(maps.Keys(s.players)) {
-			p := s.players[playerID]
+		for _, p := range s.players {
 			if p != v && p.known[v.id] {
 				p.send(e)
 			}
 		}
 	case *npc:
-		for _, id := range slices.Sorted(maps.Keys(v.knownPlayers)) {
+		for id := range v.knownPlayers {
 			if p, ok := s.players[id]; ok {
 				p.send(e)
 			}
@@ -146,9 +143,9 @@ func (w *World) updateKnown(s *state, a actor) {
 			if s.regions[k] == nil || s.regions[k].players == 0 {
 				continue
 			}
-			for _, playerID := range slices.Sorted(maps.Keys(s.players)) {
-				p := s.players[playerID]
-				if !p.teleporting && regionOf(p.pos) == k {
+			for _, id := range s.regions[k].objects {
+				p, ok := s.players[id]
+				if ok && !p.teleporting && regionOf(p.pos) == k {
 					w.learnPlayer(s, v, p)
 				}
 			}
@@ -404,7 +401,7 @@ func (w *World) statusInfo(s *state, a actor) {
 	if p, ok := a.(*player); ok {
 		p.send(v)
 	}
-	for _, id := range slices.Sorted(maps.Keys(a.base().listeners)) {
+	for id := range a.base().listeners {
 		if p, ok := s.players[id]; ok && p != a {
 			p.send(v)
 		}

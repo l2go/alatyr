@@ -49,38 +49,38 @@ type SequenceHost struct {
 // successful proposal chains as well as invalid, foreign and retired handles.
 func SequenceSeeds() [][]byte {
 	seeds := scenarioSeeds()
-	for verb := byte(1); verb <= 14; verb++ {
+	for verb := byte(verbWalk); verb <= verbUseItem; verb++ {
 		for variant := byte(0); variant < 4; variant++ {
 			header := byte(0)
-			if verb == 7 || verb == 8 {
+			if verb == verbBuy || verb == verbSell {
 				header = 1
 			}
-			if verb == 9 {
+			if verb == verbRise {
 				header = 3
 			}
-			if verb == 4 {
+			if verb == verbTake {
 				header = 2
 			}
 			seed := []byte{header}
 			switch verb {
-			case 4:
-				seed = append(seed, 25, 0, 0)
-			case 6, 7, 8, 13:
-				seed = append(seed, 4, 0, 0)
-				if verb == 7 || verb == 13 {
-					seed = append(seed, 5, 0, 0)
+			case verbTake:
+				seed = append(seed, opHarmTarget, 0, 0)
+			case verbChoose, verbBuy, verbSell, verbLearn:
+				seed = append(seed, opTalk, 0, 0)
+				if verb == verbBuy || verb == verbLearn {
+					seed = append(seed, opChoose, 0, 0)
 				}
-				if verb == 8 {
-					seed = append(seed, 5, 1, 0)
+				if verb == verbSell {
+					seed = append(seed, opChoose, 1, 0)
 				}
 			}
-			seed = append(seed, verb-1, 0, variant, 14, 2, 0)
+			seed = append(seed, verb-1, 0, variant, opAdvance, 2, 0)
 			seeds = append(seeds, seed)
 		}
 	}
-	seeds = append(seeds, []byte{1, 4, 0, 0, 5, 0, 0, 14, 4, 0, 14, 4, 0, 14, 0, 0, 6, 0, 0})
-	for mode := byte(1); mode <= 4; mode++ {
-		seeds = append(seeds, []byte{0, 28, mode, 0, 4, 0, 0, 14, 2, 0, 31, 0, 0})
+	seeds = append(seeds, []byte{1, opTalk, 0, 0, opChoose, 0, 0, opAdvance, 4, 0, opAdvance, 4, 0, opAdvance, 0, 0, opBuy, 0, 0})
+	for mode := byte(faultReceiptsOnly); mode < faultCount; mode++ {
+		seeds = append(seeds, []byte{0, opFault, mode, 0, opTalk, 0, 0, opAdvance, 2, 0, opRelease, 0, 0})
 	}
 	return seeds
 }
@@ -88,18 +88,18 @@ func SequenceSeeds() [][]byte {
 func scenarioSeeds() [][]byte {
 	return [][]byte{
 		{0},
-		{0, 15, 0, 0}, // Focus -> Engage, in one participant frame (A0).
-		{0, 4, 0, 0, 5, 0, 0, 12, 0, 0, 14, 3, 0},          // tutor/learning
-		{1, 4, 0, 0, 5, 0, 0, 6, 0, 0, 16, 0, 0, 14, 3, 0}, // buy/replay
-		{1, 4, 0, 0, 5, 1, 0, 7, 0, 0, 16, 0, 0, 14, 3, 0}, // sell/replay
-		{0, 13, 0, 0, 16, 0, 0, 13, 1, 0, 13, 1, 0, 14, 3, 0},
-		{0, 4, 0, 0, 20, 0, 0, 4, 0, 2, 4, 0, 0},
-		{0, 4, 0, 0, 21, 0, 0},
-		{0, 17, 0, 0, 18, 0, 0, 4, 0, 0, 19, 0, 0, 15, 0, 0, 22, 0, 0},
-		{0, 4, 0, 0, 23, 1, 0, 4, 0, 2, 24, 0, 0, 8, 0, 0},
-		{2, 25, 0, 0, 3, 0, 0, 16, 0, 0, 26, 0, 0},
-		{0, 4, 0, 0, 27, 0, 0},
-		{3, 8, 0, 0, 14, 3, 0},
+		{0, opFocusEngage, 0, 0}, // Focus -> Engage, in one participant frame (A0).
+		{0, opTalk, 0, 0, opChoose, 0, 0, opLearn, 0, 0, opAdvance, 3, 0},                // tutor/learning
+		{1, opTalk, 0, 0, opChoose, 0, 0, opBuy, 0, 0, opReplay, 0, 0, opAdvance, 3, 0},  // buy/replay
+		{1, opTalk, 0, 0, opChoose, 1, 0, opSell, 0, 0, opReplay, 0, 0, opAdvance, 3, 0}, // sell/replay
+		{0, opUseItem, 0, 0, opReplay, 0, 0, opUseItem, 1, 0, opUseItem, 1, 0, opAdvance, 3, 0},
+		{0, opTalk, 0, 0, opResume, 0, 0, opTalk, 0, 2, opTalk, 0, 0},
+		{0, opTalk, 0, 0, opExpiredResume, 0, 0},
+		{0, opWatch, 0, 0, opAct, 0, 0, opTalk, 0, 0, opControl, 0, 0, opFocusEngage, 0, 0, opCloseSocket, 0, 0},
+		{0, opTalk, 0, 0, opTeleport, 1, 0, opTalk, 0, 2, opHarmSelf, 0, 0, opRise, 0, 0},
+		{2, opHarmTarget, 0, 0, opTake, 0, 0, opReplay, 0, 0, opRespawn, 0, 0},
+		{0, opTalk, 0, 0, opStopWorld, 0, 0},
+		{3, opRise, 0, 0, opAdvance, 3, 0},
 	}
 }
 
@@ -165,20 +165,20 @@ func ExerciseSequence(t *testing.T, data []byte, h SequenceHost) []byte {
 	s := &sequencer{t: t, h: h, origin: time.Now(), actor: h.Peer, peers: []*gatewaytest.Peer{h.Peer}, n: 1, read: make(map[*gatewaytest.Peer]int), closed: make(map[*gatewaytest.Peer]bool)}
 	s.openScope()
 	for i := 1; i+2 < len(data) && i < 193; i += 3 {
-		op, a, v := data[i]%32, data[i+1], data[i+2]%4
+		op, a, v := data[i]%opCount, data[i+1], data[i+2]%4
 		t.Logf("step %d: op=%d arg=%d variant=%d", (i-1)/3, op, a, v)
 		s.settle()
 		switch {
-		case op < 14:
+		case op <= opUseItem:
 			s.send(uint64(op)+1, a, v)
-		case op == 14:
+		case op == opAdvance:
 			delays := []time.Duration{time.Millisecond, 4999 * time.Millisecond, 5 * time.Second, 5001 * time.Millisecond, 30 * time.Second}
 			s.advance(delays[int(a)%len(delays)])
-		case op == 15:
-			r1 := s.intent(10, a, v)
-			r2 := s.intent(11, a, v)
+		case op == opFocusEngage:
+			r1 := s.intent(verbFocus, a, v)
+			r2 := s.intent(verbEngage, a, v)
 			s.actor.Send(r1, r2)
-		case op == 16:
+		case op == opReplay:
 			if s.last.Type != 0 {
 				s.scope.attempts[gatewaytest.U(s.last, 1)].replays++
 				before := len(s.h.Handoffs())
@@ -188,17 +188,17 @@ func ExerciseSequence(t *testing.T, data []byte, h SequenceHost) []byte {
 					t.Fatal("replayed Intent executed again")
 				}
 			}
-		case op == 17: // A watcher shares this game, but cannot gain control.
+		case op == opWatch: // A watcher shares this game, but cannot gain control.
 			if s.other == nil {
 				s.other = s.join(wire.ModeObserve, false)
 				s.probe(s.other, wire.ReasonWatch)
 			}
-		case op == 18:
+		case op == opAct:
 			if s.other == nil {
 				s.other = s.join(wire.ModeAct, false)
 				s.probe(s.other, wire.ReasonStaleControl)
 			}
-		case op == 19:
+		case op == opControl:
 			if s.other != nil {
 				s.other.Send(wire.Record{Type: wire.Control, Fields: []wire.Field{wire.U(1, true, uint64(wire.ControlTake))}})
 				s.settle()
@@ -209,14 +209,14 @@ func ExerciseSequence(t *testing.T, data []byte, h SequenceHost) []byte {
 					s.other = nil
 				}
 			}
-		case op == 20 || op == 21:
-			if !s.resume(op == 21) {
+		case op == opResume || op == opExpiredResume:
+			if !s.resume(op == opExpiredResume) {
 				s.departed = true
 				s.stopped = true
 			}
-		case op == 22:
+		case op == opCloseSocket:
 			// Keep the monitor alive while closing the controlling socket mid-attempt.
-			s.send(12, a, 0)
+			s.send(verbCast, a, 0)
 			s.settle()
 			s.close(s.actor)
 			s.settle()
@@ -226,17 +226,17 @@ func ExerciseSequence(t *testing.T, data []byte, h SequenceHost) []byte {
 				s.settle()
 			}
 			s.actor = s.join(wire.ModeAct, true)
-		case op == 23:
-			s.retired = append(s.retired, s.reference(5, 0, 0))
+		case op == opTeleport:
+			s.retired = append(s.retired, s.reference(verbTalk, 0, 0))
 			points := []world.Point{{X: -71057, Y: 257883, Z: -3104}, {X: -71057, Y: 258243, Z: -3104}, {X: -70357, Y: 256863, Z: -3104}}
 			if err := h.World.Teleport(t.Context(), h.Owner().ID, points[int(a)%len(points)], false); err != nil {
 				t.Fatal(err)
 			}
-		case op == 24:
+		case op == opHarmSelf:
 			if err := h.World.Harm(t.Context(), world.Ref{}, h.Owner(), 1e6); err != nil {
 				t.Fatal(err)
 			}
-		case op == 25:
+		case op == opHarmTarget:
 			scene := s.scene()
 			for _, o := range scene.Objects {
 				if n, ok := o.State.(world.NPCSeen); ok && n.NPC.Template.ID == 18003 {
@@ -246,18 +246,18 @@ func ExerciseSequence(t *testing.T, data []byte, h SequenceHost) []byte {
 					break
 				}
 			}
-		case op == 26:
+		case op == opRespawn:
 			s.advance(31 * time.Second)
-		case op == 27:
+		case op == opStopWorld:
 			s.stopped = true
-		case op == 28:
-			s.h.Port.Fault(a % 5)
-		case op == 29:
-			s.h.Port.Fault(3)
-		case op == 30:
-			s.h.Port.Fault(4)
-		case op == 31:
-			s.h.Port.Fault(0)
+		case op == opFault:
+			s.h.Port.Fault(a % faultCount)
+		case op == opSnapshot:
+			s.h.Port.Fault(faultSnapshot)
+		case op == opHold:
+			s.h.Port.Fault(faultHold)
+		case op == opRelease:
+			s.h.Port.Fault(faultLive)
 		}
 		s.settle()
 		s.check(false)
@@ -266,7 +266,7 @@ func ExerciseSequence(t *testing.T, data []byte, h SequenceHost) []byte {
 		}
 	}
 	// Settle all original queue/evidence deadlines before normal departure.
-	h.Port.Fault(0)
+	h.Port.Fault(faultLive)
 	s.settle()
 	if !s.stopped {
 		s.advance(6 * time.Second)
@@ -320,7 +320,7 @@ func ExerciseSequence(t *testing.T, data []byte, h SequenceHost) []byte {
 	}
 	h.Stop()
 	synctest.Wait()
-	if err := checkRetention(h.Gateway, h.Scopes()); err != nil {
+	if err := checkRetention(h.Gateway, h.Scopes(), h.Config); err != nil {
 		t.Fatal(err)
 	}
 	codec, err := meaning.NewCodec(h.Config)
@@ -413,7 +413,7 @@ func (s *sequencer) scene() world.Scene {
 	return scene
 }
 func (s *sequencer) resume(expired bool) bool {
-	s.retired = append(s.retired, s.reference(5, 0, 0))
+	s.retired = append(s.retired, s.reference(verbTalk, 0, 0))
 	var savedWant world.Character
 	if expired {
 		// A dead character has no regeneration or moving intention. This freezes
@@ -491,7 +491,7 @@ func (s *sequencer) checkScope(scope *sequenceScope, final bool) {
 func (s *sequencer) probe(p *gatewaytest.Peer, reason wire.Reason) {
 	before := s.scene()
 	_, writes := s.h.Port.audit()
-	p.Send(wire.Record{Type: wire.Intent, Fields: []wire.Field{wire.U(1, true, s.n), wire.U(2, true, 14), wire.U(3, true, p.Control), wire.S(21, true, 12)}})
+	p.Send(wire.Record{Type: wire.Intent, Fields: []wire.Field{wire.U(1, true, s.n), wire.U(2, true, verbUseItem), wire.U(3, true, p.Control), wire.S(21, true, 12)}})
 	s.settle()
 	result := p.Result(s.n, wire.StageRefused)
 	if gatewaytest.U(result, 3) != uint64(reason) {
@@ -510,15 +510,15 @@ func (s *sequencer) intent(verb uint64, a, v byte) wire.Record {
 	fields := []wire.Field{wire.U(1, true, n), wire.U(2, true, verb), wire.U(3, true, s.actor.Control)}
 	ref := s.reference(verb, a, v)
 	switch verb {
-	case 1:
+	case verbWalk:
 		x, y, z := int32(-71047+int32(a)), int32(257883), int32(-3104)
 		if v == 3 {
 			x, y, z = math.MaxInt32, math.MinInt32, math.MaxInt32
 		}
 		fields = append(fields, wire.At(11, true, x, y, z))
-	case 2, 3, 5, 10, 11, 12:
+	case verbAim, verbStrike, verbTalk, verbFocus, verbEngage, verbCast:
 		fields = append(fields, wire.Obj(10, true, []wire.Field{wire.S(1, true, int64(ref.ID)), wire.U(2, true, ref.Gen)}))
-		if verb == 12 {
+		if verb == verbCast {
 			id, level := int64(3), int64(1)
 			if v != 0 {
 				id = int64(math.MaxInt32)
@@ -526,10 +526,10 @@ func (s *sequencer) intent(verb uint64, a, v byte) wire.Record {
 			}
 			fields = append(fields, wire.Obj(18, true, []wire.Field{wire.S(1, true, id), wire.S(2, true, level)}))
 		}
-	case 4:
+	case verbTake:
 		fields = append(fields, wire.Obj(20, true, []wire.Field{wire.S(1, true, int64(ref.ID)), wire.U(2, true, ref.Gen)}))
-	case 6:
-		d := s.latest(11)
+	case verbChoose:
+		d := s.latest(kindSpoke)
 		dialog, option := d.Context.Dialog, uint64(1)
 		if len(d.Context.Options) > 0 {
 			option = d.Context.Options[int(a)%len(d.Context.Options)].ID
@@ -539,20 +539,20 @@ func (s *sequencer) intent(verb uint64, a, v byte) wire.Record {
 			option = math.MaxUint64
 		}
 		fields = append(fields, wire.U(12, true, dialog), wire.U(13, true, option))
-	case 7, 8, 13:
-		kind := uint64(12)
-		if verb == 8 {
-			kind = 13
+	case verbBuy, verbSell, verbLearn:
+		kind := uint64(kindShop)
+		if verb == verbSell {
+			kind = kindOffer
 		}
-		if verb == 13 {
-			kind = 22
+		if verb == verbLearn {
+			kind = kindPractice
 		}
 		d := s.latest(kind)
 		offer := uint64(1)
 		price := int64(1)
 		if len(d.Event.Goods) > 0 {
 			i := int(a) % len(d.Event.Goods)
-			if verb == 13 && a == 0 {
+			if verb == verbLearn && a == 0 {
 				for j, g := range d.Event.Goods {
 					if g.ID == 257 {
 						i = j
@@ -569,7 +569,7 @@ func (s *sequencer) intent(verb uint64, a, v byte) wire.Record {
 			offer = math.MaxUint64
 		}
 		fields = append(fields, wire.S(14, true, int64(list)), wire.U(15, true, offer))
-		if verb != 13 {
+		if verb != verbLearn {
 			counts := []int64{1, 0, -1, math.MaxInt64}
 			count := counts[int(a/4)%len(counts)]
 			if v == 1 {
@@ -583,7 +583,7 @@ func (s *sequencer) intent(verb uint64, a, v byte) wire.Record {
 			}
 			fields = append(fields, wire.S(16, true, count), wire.S(17, true, price))
 		}
-	case 14:
+	case verbUseItem:
 		id := int64(11)
 		if a%2 == 1 {
 			id = 12
@@ -595,8 +595,8 @@ func (s *sequencer) intent(verb uint64, a, v byte) wire.Record {
 	}
 	r := wire.Record{Type: wire.Intent, Fields: fields}
 	attempt := &sequenceAttempt{record: r, epoch: s.actor.Epoch, at: time.Since(s.origin).Milliseconds()}
-	if verb == 6 {
-		attempt.chosen = s.latest(11).Context.Ref
+	if verb == verbChoose {
+		attempt.chosen = s.latest(kindSpoke).Context.Ref
 	}
 	s.scope.attempts[n] = attempt
 	s.last = r
@@ -613,17 +613,17 @@ func (s *sequencer) reference(verb uint64, a, v byte) meaning.Ref {
 			s.t.Fatal(err)
 		}
 		switch gatewaytest.U(r, 1) {
-		case 1, 8:
+		case kindAppeared, kindDropped:
 			if !d.Event.Mine {
 				live[d.Event.ID] = d
 			}
-		case 10:
+		case kindGone:
 			delete(live, d.Event.ID)
 		}
 	}
 	var candidates []meaning.DecodedEvent
 	for _, d := range live {
-		preferred := verb == 4 && d.Event.Role == meaning.RoleDrop || verb != 4 && a%2 == 0 && (d.Event.Role == "tutor" || d.Event.Role == "provisioner") || verb != 4 && a%2 == 1 && d.Event.Role == "creature"
+		preferred := verb == verbTake && d.Event.Role == meaning.RoleDrop || verb != verbTake && a%2 == 0 && (d.Event.Role == "tutor" || d.Event.Role == "provisioner") || verb != verbTake && a%2 == 1 && d.Event.Role == "creature"
 		if preferred {
 			candidates = append(candidates, d)
 		}
@@ -789,7 +789,7 @@ func checkTranscript(records []wire.Record, attempts map[uint64]*sequenceAttempt
 			}
 			effective := gatewaytest.U(r, 6)
 			kind := gatewaytest.U(fact, 1)
-			valid := effective == 4 && kind == 9 || effective == 5 && kind == 11 || effective == 6 && (kind == 11 || kind == 12 || kind == 13 || kind == 22) || effective == 9 && kind == 7 || effective == 13 && kind == 23 || effective == 14 && (kind == 14 || kind == 15)
+			valid := validWitnessKind(effective, kind)
 			if !valid {
 				return fmt.Errorf("wrong witness kind %d for verb %d", kind, effective)
 			}
@@ -810,6 +810,25 @@ func checkTranscript(records []wire.Record, attempts map[uint64]*sequenceAttempt
 		}
 	}
 	return nil
+}
+
+func validWitnessKind(verb, kind uint64) bool {
+	switch verb {
+	case verbTake:
+		return kind == kindTook
+	case verbTalk:
+		return kind == kindSpoke
+	case verbChoose:
+		return kind == kindSpoke || kind == kindShop || kind == kindOffer || kind == kindPractice
+	case verbRise:
+		return kind == kindRevived
+	case verbLearn:
+		return kind == kindKnown
+	case verbUseItem:
+		return kind == kindCarried || kind == kindInventory
+	default:
+		return false
+	}
 }
 
 func checkCharacter(c world.Character) error {
@@ -840,13 +859,20 @@ func checkSaved(want, got world.Character) error {
 
 type sequenceRetention struct{ games, opening, connections, actions, bindings int }
 
-func checkRetained(r sequenceRetention, gameLimit int) error {
-	if r.games > gameLimit || r.opening != 0 || r.connections != 0 || r.actions > 8 || r.bindings > 8 {
+// backendBindingLimit is the bound enforced by backend.World.Write, including
+// helpers and system writes, independently of the participant pending budget.
+// See gateway/backend/README.md, retained raw bindings.
+const backendBindingLimit = 8
+
+type retentionLimits struct{ games, actions, bindings int }
+
+func checkRetained(r sequenceRetention, limits retentionLimits) error {
+	if r.games > limits.games || r.opening != 0 || r.connections != 0 || r.actions > limits.actions || r.bindings > limits.bindings {
 		return fmt.Errorf("retention budget exceeded after drain: %+v", r)
 	}
 	return nil
 }
-func checkRetention(g *gateway.Gateway, scopes []*backend.World) error {
+func checkRetention(g *gateway.Gateway, scopes []*backend.World, config meaning.Config) error {
 	// Every actor and pump is joined. Reflection keeps test-only map accounting
 	// out of the runtime API; no unsafe pointers or unexported values are mutated.
 	gate := reflect.ValueOf(g).Elem()
@@ -871,7 +897,7 @@ func checkRetention(g *gateway.Gateway, scopes []*backend.World) error {
 		}
 	joined:
 	}
-	return checkRetained(r, int(gate.FieldByName("cfg").FieldByName("Sessions").Int()))
+	return checkRetained(r, retentionLimits{games: int(gate.FieldByName("cfg").FieldByName("Sessions").Int()), actions: config.Attempts.Pending, bindings: backendBindingLimit})
 }
 
 // CompareSequence rejects any change in ordered participant bytes on replay.

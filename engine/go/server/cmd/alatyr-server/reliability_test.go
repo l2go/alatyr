@@ -141,6 +141,7 @@ func TestHostGatewayReliability(t *testing.T) {
 	}
 	for i, seed := range worldtest.SequenceSeeds() {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			t.Parallel()
 			worldtest.CompareSequence(t, hostSequence(t, cat, seed), hostSequence(t, cat, seed))
 		})
 	}

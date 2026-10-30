@@ -48,7 +48,7 @@ func (p *SequencePort) Flush() {
 			return
 		}
 		var u bridge.Update
-		if p.fault != 4 && len(p.held) > 0 {
+		if p.fault != faultHold && len(p.held) > 0 {
 			u = p.held[0]
 			p.held = p.held[1:]
 		} else {
@@ -64,7 +64,7 @@ func (p *SequencePort) Flush() {
 					p.held = nil
 				}
 				u = p.disturb(next)
-				if p.fault == 4 && u.Kind == bridge.LiveBatch {
+				if p.fault == faultHold && u.Kind == bridge.LiveBatch {
 					if len(p.held) < 1024 {
 						p.held = append(p.held, u)
 					}
@@ -117,21 +117,21 @@ func (p *SequencePort) disturb(u bridge.Update) bridge.Update {
 		return u
 	}
 	switch p.fault {
-	case 1:
+	case faultReceiptsOnly:
 		var rs []wire.Record
 		var ats []time.Time
 		for i, r := range u.Batch.Records {
 			kind := gatewayU(r, 1)
-			if r.Type == wire.Fact && (kind == 7 || kind == 9 || kind == 11 || kind == 12 || kind == 13 || kind == 14 || kind == 15 || kind == 22 || kind == 23) {
+			if r.Type == wire.Fact && (kind == kindRevived || kind == kindTook || kind == kindSpoke || kind == kindShop || kind == kindOffer || kind == kindCarried || kind == kindInventory || kind == kindPractice || kind == kindKnown) {
 				continue
 			}
 			rs = append(rs, r)
 			ats = append(ats, u.Batch.ReceivedAt[i])
 		}
 		u.Batch.Records, u.Batch.ReceivedAt = rs, ats
-	case 2:
+	case faultFactsOnly:
 		u.Batch.Receipts = nil
-	case 3:
+	case faultSnapshot:
 		u.Batch.Snapshot = true
 	}
 	return u

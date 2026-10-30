@@ -165,14 +165,40 @@ jobs:
         run: |
           set -euo pipefail
           for module in engine/go engine/go/protocol engine/go/server; do
-            (cd "$module" && go vet ./... && go test -race -count=1 -timeout=3m ./...)
+            (
+              cd "$module"
+              go vet ./...
+              # Keep fixed scenarios, generated programs and the complete native
+              # sequence corpus in separate invocations of the same package.
+              # All invocations retain -race, all inputs and both workspace modes.
+              if [ "$module" = engine/go ]; then
+                go test -race -parallel=2 -count=1 -timeout=3m -skip='^(FuzzGatewaySequence|TestGeneratedGatewaySequences)$' ./...
+                go test -race -parallel=2 -count=1 -timeout=3m -run='^TestGeneratedGatewaySequences$' ./worldtest
+                go test -race -parallel=2 -count=1 -timeout=3m -run='^FuzzGatewaySequence$' ./worldtest
+              else
+                go test -race -parallel=2 -count=1 -timeout=3m ./...
+              fi
+            )
           done
 
       - name: Check each module in the workspace
         run: |
           set -euo pipefail
           for module in engine/go engine/go/protocol engine/go/server; do
-            (cd "$module" && go vet ./... && go test -race -count=1 -timeout=3m ./...)
+            (
+              cd "$module"
+              go vet ./...
+              # Keep fixed scenarios, generated programs and the complete native
+              # sequence corpus in separate invocations of the same package.
+              # All invocations retain -race, all inputs and both workspace modes.
+              if [ "$module" = engine/go ]; then
+                go test -race -parallel=2 -count=1 -timeout=3m -skip='^(FuzzGatewaySequence|TestGeneratedGatewaySequences)$' ./...
+                go test -race -parallel=2 -count=1 -timeout=3m -run='^TestGeneratedGatewaySequences$' ./worldtest
+                go test -race -parallel=2 -count=1 -timeout=3m -run='^FuzzGatewaySequence$' ./worldtest
+              else
+                go test -race -parallel=2 -count=1 -timeout=3m ./...
+              fi
+            )
           done
 
       - name: Install pinned CI tools

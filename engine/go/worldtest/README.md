@@ -49,6 +49,10 @@ through `runtime.openPort`, `hostBackendConfig`, the production gateway limits,
 scheduled by the test; the actual producer audit and classification are unchanged.
 The driver answers Ping with Pong and advances long intervals in virtual steps
 of at most one second, preserving the host's actual heartbeat policy.
+Independent input pairs run in parallel, with two test slots in CI. Each pair
+still executes both replays serially in separate synctest bubbles, with fresh
+worlds, ports, stores and random sources. The immutable authored catalog is
+loaded once per test or fuzz owner and shared read-only.
 All resources, including readers, raw ports, pumps and World.Run, are joined
 inside `synctest`. There is no process-wide recovery handler.
 
@@ -115,19 +119,31 @@ controls and deliberately broken observations, outcomes, accounting, transfers
 and saves. Panic and goroutine-leak sensitivity can also be checked by temporary
 source overlays; a blanket recover would defeat the first invariant.
 The original G01–G10 suites and both frozen `contracts.json` files remain intact.
+The named opcode, verb and fact constants are checked against the meaning
+dictionary by `TestSequenceDictionaryCodes`. Drain limits use the configured
+participant pending budget and the backend contract's eight raw bindings; the
+mutation tests accept each boundary and reject the first value above it.
+
 Native corpus regressions retain the minimal visibility, multi-peer revival and
 last-lesson Resume programs; named regressions also exercise each defect directly.
 
 From `engine/go`:
 
 ```sh
-go test -race -p=1 ./worldtest
-GOWORK=off go test -race -p=1 ./worldtest
+go test -race -p=1 -parallel=2 ./worldtest
+GOWORK=off go test -race -p=1 -parallel=2 ./worldtest
 GOWORK=off go test -run='^$' -fuzz='^FuzzGatewaySequence$' -fuzztime=20s -parallel=1 -timeout=2m ./worldtest
 ```
 
 From `engine/go/server`, run `go test -race -p=1 -run '^TestHostGatewayReliability$'
-./cmd/alatyr-server`. Ordinary PR tests run the native corpus as seeds. The
+./cmd/alatyr-server`. Ordinary PR tests run all 13 fixed scenarios, 74 directed seeds, committed
+corpus entries and 32 generated programs. In each workspace mode CI invokes
+fixed scenarios and other package tests, generated programs, and the native
+corpus as three separate test batches, each retaining `-race` and double replay.
+The target is at most 90 seconds per package invocation within the existing
+180-second timeout. The reviewed CI baseline measured 170 seconds for worldtest
+and 90 seconds for the host; these are measurements before the scheduling change,
+not a claim about its next CI run. The
 existing main-only fuzz job verifies target readiness before searching for new
 sequences. Reproduce a retained input with `go test -run
 '^FuzzGatewaySequence/<corpus-name>$' ./worldtest`; minimize new failures with Go's

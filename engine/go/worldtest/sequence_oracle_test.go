@@ -17,10 +17,10 @@ import (
 )
 
 func oracleResult(stage wire.Stage) wire.Record {
-	return wire.Record{Type: wire.Result, Fields: []wire.Field{wire.U(1, true, 1), wire.U(2, true, uint64(stage)), wire.U(3, true, 0), wire.U(5, true, 5), wire.U(6, true, 5), wire.U(7, true, uint64(wire.DeliveryBackend))}}
+	return wire.Record{Type: wire.Result, Fields: []wire.Field{wire.U(1, true, 1), wire.U(2, true, uint64(stage)), wire.U(3, true, 0), wire.U(5, true, verbTalk), wire.U(6, true, verbTalk), wire.U(7, true, uint64(wire.DeliveryBackend))}}
 }
 func oracleFact() wire.Record {
-	return wire.Record{Type: wire.Fact, Fields: []wire.Field{wire.U(1, true, 11), wire.U(2, true, 1), wire.S(3, true, 1), wire.U(4, true, 1), wire.Obj(10, true, []wire.Field{wire.S(1, true, 2), wire.U(2, true, 1)}), wire.U(32, true, 1)}}
+	return wire.Record{Type: wire.Fact, Fields: []wire.Field{wire.U(1, true, kindSpoke), wire.U(2, true, 1), wire.S(3, true, 1), wire.U(4, true, 1), wire.Obj(10, true, []wire.Field{wire.S(1, true, 2), wire.U(2, true, 1)}), wire.U(32, true, 1)}}
 }
 func oracleAttempts() map[uint64]*sequenceAttempt {
 	return map[uint64]*sequenceAttempt{1: {record: wire.Record{Type: wire.Intent, Fields: []wire.Field{wire.Obj(10, true, []wire.Field{wire.S(1, true, 2), wire.U(2, true, 1)})}}, epoch: 1}}
@@ -71,7 +71,7 @@ func TestSequenceRawOracleRejectsMutations(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			records := []wire.Record{oracleFact(), oracleResult(wire.StageDone)}
 			h := []backend.Handoff{{N: 1, Role: gateway.StepEffect, Key: 7, RawN: 8}}
-			trace := []bridge.Update{{Kind: bridge.LiveBatch, Batch: bridge.Batch{Records: []wire.Record{{Type: wire.Fact, Fields: []wire.Field{wire.U(1, true, 11), wire.S(3, true, 1), wire.U(4, true, 1), wire.S(64, true, 2)}}}, ReceivedAt: []time.Time{at.Add(time.Millisecond)}, Receipts: []bridge.Receipt{{Key: 7, N: 8, GatewayEpoch: 1, Stage: wire.StageDone, ObservedAt: at}}}}}
+			trace := []bridge.Update{{Kind: bridge.LiveBatch, Batch: bridge.Batch{Records: []wire.Record{{Type: wire.Fact, Fields: []wire.Field{wire.U(1, true, kindSpoke), wire.S(3, true, 1), wire.U(4, true, 1), wire.S(64, true, 2)}}}, ReceivedAt: []time.Time{at.Add(time.Millisecond)}, Receipts: []bridge.Receipt{{Key: 7, N: 8, GatewayEpoch: 1, Stage: wire.StageDone, ObservedAt: at}}}}}
 			writes := []sequenceWrite{{command: bridge.Command{Key: 7}, at: at}}
 			if err := checkRawEvidence(records, oracleAttempts(), h, trace, writes, 5000); err != nil {
 				t.Fatal(err)
@@ -100,11 +100,13 @@ func TestSequenceRawOracleRejectsMutations(t *testing.T) {
 }
 
 func TestSequenceDrainOracleRejectsMutations(t *testing.T) {
-	if err := checkRetained(sequenceRetention{games: 1}, 2); err != nil {
+	// A smaller configured action limit proves that this is not a hardcoded eight.
+	limits := retentionLimits{games: 2, actions: 3, bindings: backendBindingLimit}
+	if err := checkRetained(sequenceRetention{games: limits.games, actions: limits.actions, bindings: limits.bindings}, limits); err != nil {
 		t.Fatal(err)
 	}
-	for _, r := range []sequenceRetention{{games: 3}, {opening: 1}, {connections: 1}, {actions: 9}, {bindings: 9}} {
-		if err := checkRetained(r, 2); err == nil {
+	for _, r := range []sequenceRetention{{games: limits.games + 1}, {opening: 1}, {connections: 1}, {actions: limits.actions + 1}, {bindings: limits.bindings + 1}} {
+		if err := checkRetained(r, limits); err == nil {
 			t.Fatalf("retained state escaped oracle: %+v", r)
 		}
 	}
@@ -161,12 +163,12 @@ func TestSequenceWorldOracleRejectsMutations(t *testing.T) {
 func TestSequenceLearningProofUsesOriginalLiveCandidate(t *testing.T) {
 	at := time.Unix(1, 0)
 	records := []wire.Record{oracleFact(), oracleResult(wire.StageDone)}
-	records[0].Fields[0] = wire.U(1, true, 23)
+	records[0].Fields[0] = wire.U(1, true, kindKnown)
 	records[0].Fields[2] = wire.S(3, true, 5000)
-	records[1].Fields[3] = wire.U(5, true, 13)
-	records[1].Fields[4] = wire.U(6, true, 13)
+	records[1].Fields[3] = wire.U(5, true, verbLearn)
+	records[1].Fields[4] = wire.U(6, true, verbLearn)
 	h := []backend.Handoff{{N: 1, Role: gateway.StepEffect, Key: 7, RawN: 8}}
-	trace := []bridge.Update{{Kind: bridge.LiveBatch, Batch: bridge.Batch{Records: []wire.Record{{Type: wire.Fact, Fields: []wire.Field{wire.U(1, true, 23), wire.S(3, true, 1), wire.U(4, true, 1), wire.S(64, true, 2)}}}, ReceivedAt: []time.Time{at.Add(time.Millisecond)}, Receipts: []bridge.Receipt{{Key: 7, N: 8, GatewayEpoch: 1, Stage: wire.StageDone, ObservedAt: at}}}}}
+	trace := []bridge.Update{{Kind: bridge.LiveBatch, Batch: bridge.Batch{Records: []wire.Record{{Type: wire.Fact, Fields: []wire.Field{wire.U(1, true, kindKnown), wire.S(3, true, 1), wire.U(4, true, 1), wire.S(64, true, 2)}}}, ReceivedAt: []time.Time{at.Add(time.Millisecond)}, Receipts: []bridge.Receipt{{Key: 7, N: 8, GatewayEpoch: 1, Stage: wire.StageDone, ObservedAt: at}}}}}
 	writes := []sequenceWrite{{command: bridge.Command{Key: 7}, at: at}}
 	if err := checkRawEvidence(records, oracleAttempts(), h, trace, writes, 5000); err != nil {
 		t.Fatal(err)
@@ -175,7 +177,7 @@ func TestSequenceLearningProofUsesOriginalLiveCandidate(t *testing.T) {
 	if err := checkRawEvidence(records, oracleAttempts(), h, trace, writes, 5000); err == nil {
 		t.Fatal("late learning candidate escaped oracle")
 	}
-	if err := checkRetained(sequenceRetention{games: 2}, 1); err == nil {
+	if err := checkRetained(sequenceRetention{games: 2}, retentionLimits{games: 1, actions: 3, bindings: backendBindingLimit}); err == nil {
 		t.Fatal("host game budget escaped oracle")
 	}
 }
