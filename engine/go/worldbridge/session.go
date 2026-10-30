@@ -28,15 +28,17 @@ type pending struct {
 	bytes  int
 }
 
-type itemUse struct {
+type intentBinding struct {
 	intent world.IntentID
 	key    uint64
+	verb   uint64
+	target world.Ref
 }
 
 // session is touched only by run, including all operation closures. Client
 // fields are either immutable, atomic, or published after done closes.
 type session struct {
-	itemUses                                []itemUse
+	intentBindings                          []intentBinding
 	client                                  *Client
 	tr                                      translator
 	scene                                   world.Scene
@@ -294,12 +296,12 @@ func (s *session) write(ctx, lifetime context.Context, command bridge.Command, d
 	if p.refusal == "" {
 		commit, err = s.client.cfg.World.Execute(ctx, p.request)
 	}
-	if command.Verb == 14 && commit.Intent.ID.N != 0 && err == nil && commit.Outcome.Stage != world.StageRefused {
-		if len(s.itemUses) == 64 {
-			copy(s.itemUses, s.itemUses[1:])
-			s.itemUses = s.itemUses[:63]
+	if (command.Verb == 6 || command.Verb == 14) && commit.Intent.ID.N != 0 && err == nil && commit.Outcome.Stage != world.StageRefused {
+		if len(s.intentBindings) == 64 {
+			copy(s.intentBindings, s.intentBindings[1:])
+			s.intentBindings = s.intentBindings[:63]
 		}
-		s.itemUses = append(s.itemUses, itemUse{commit.Intent.ID, command.Key})
+		s.intentBindings = append(s.intentBindings, intentBinding{intent: commit.Intent.ID, key: command.Key, verb: command.Verb, target: p.request.Target})
 	}
 	r, translationErr := s.tr.receipt(p, commit, err, n, s.epoch, s.client.cfg.Now())
 	if translationErr != nil {
@@ -454,17 +456,7 @@ func (s *session) event(ctx context.Context, e world.Event) error {
 	if err != nil {
 		return err
 	}
-	if v, ok := e.(world.InventoryChanged); ok && v.UseIntent.N != 0 {
-		for i, use := range s.itemUses {
-			if use.intent == v.UseIntent {
-				for j := range fs {
-					fs[j].fields = append(fs[j].fields, wire.U(75, true, use.key))
-				}
-				s.itemUses = append(s.itemUses[:i], s.itemUses[i+1:]...)
-				break
-			}
-		}
-	}
+	s.attribute(e, fs)
 	rs, next, err := factRecords(fs, s.epoch, s.nextFact, e.Time(), s.origin)
 	if err != nil {
 		return err
@@ -479,6 +471,37 @@ func (s *session) event(ctx context.Context, e world.Event) error {
 		return s.relocate(request, v.Fence)
 	}
 	return nil
+}
+
+// attribute adds a raw effect key only to an event carrying the exact source
+// intent. A mismatched NPC consumes the binding without granting evidence.
+func (s *session) attribute(e world.Event, fs []fact) {
+	var intent world.IntentID
+	var verb uint64
+	var speaker world.Ref
+	switch v := e.(type) {
+	case world.InventoryChanged:
+		intent, verb = v.UseIntent, 14
+	case world.TradeList:
+		intent, verb, speaker = v.ChoiceIntent, 6, v.Dialogue.Speaker
+	case world.LearnList:
+		intent, verb, speaker = v.ChoiceIntent, 6, v.Dialogue.Speaker
+	}
+	if intent.N != 0 {
+		for i, binding := range s.intentBindings {
+			if binding.intent != intent || binding.verb != verb {
+				continue
+			}
+			// A choice key can attest only its captured NPC incarnation.
+			if verb == 14 || binding.target == speaker {
+				for j := range fs {
+					fs[j].fields = append(fs[j].fields, wire.U(75, true, binding.key))
+				}
+			}
+			s.intentBindings = append(s.intentBindings[:i], s.intentBindings[i+1:]...)
+			break
+		}
+	}
 }
 
 // project retains only the captured context needed by notification translation.

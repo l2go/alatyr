@@ -321,8 +321,8 @@ func (w *World) Write(ctx context.Context, step gateway.Step) error {
 	if step.Role == gateway.StepEffect && c.Verb == 9 {
 		w.returnPlan = op.plan
 	}
-	if step.Role == gateway.StepEffect && c.Verb == 14 {
-		op.plan.itemKey = key
+	if step.Role == gateway.StepEffect && (c.Verb == 14 || c.Verb == 6) {
+		op.plan.effectKey = key
 	}
 	n, err := w.session.port.Write(ctx, c)
 	if fn := w.session.cfg.Handoff; fn != nil {

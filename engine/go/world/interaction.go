@@ -84,7 +84,7 @@ func (w *World) showSkillList(s *state, p *player, n *npc) {
 	}
 	w.issueLessons(s, p, n, skills)
 	if !p.slow {
-		p.send(LearnList{Dialogue: w.dialogueOf(p)})
+		p.send(LearnList{ChoiceIntent: s.cause().Intent, Dialogue: w.dialogueOf(p)})
 		p.send(AffordancesChanged{Affordances: cloneAffordances(p.affordances)})
 	}
 }

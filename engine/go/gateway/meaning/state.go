@@ -46,6 +46,8 @@ type Input struct {
 	Completed uint64
 	// Used binds a live inventory change to this item-use attempt.
 	Used uint64
+	// Chosen binds a live NPC window to the captured Say attempt.
+	Chosen uint64
 	// Returned binds an audited return relocation to a handed-off rise attempt.
 	// Unlike Completed, it does not assert a raw done receipt: rise has none.
 	Returned uint64
@@ -620,6 +622,9 @@ func (s *State) Witness(a *gateway.Action, u gateway.Update) (gateway.Witness, e
 	switch p.plan.Command.Kind {
 	case Talk, Say:
 		if p.completed && input.Source.Dialogue && e.Kind == Spoke && s.lastRef == p.npc {
+			return gateway.WitnessMatch, nil
+		}
+		if p.plan.Command.Kind == Say && input.Source.Dialogue && input.Chosen == getU(p.record.Fields, 1) && s.lastRef == p.npc && (e.Kind == Shop || e.Kind == Offer || e.Kind == Practice) {
 			return gateway.WitnessMatch, nil
 		}
 	case Take:

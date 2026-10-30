@@ -24,7 +24,7 @@ func TestHostExclusiveSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, family := range []string{"dialogue", "pickup", "learning", "return", "item-use", "potion"} {
+	for _, family := range []string{"dialogue", "pickup", "learning", "return", "item-use", "potion", "shop", "offer"} {
 		t.Run(family, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				cfg := configTest()
@@ -40,6 +40,9 @@ func TestHostExclusiveSources(t *testing.T) {
 				}
 				if family == "return" {
 					c.CurHP = 0
+				}
+				if family == "shop" || family == "offer" {
+					c.Y = 258243
 				}
 				if family == "pickup" {
 					c.X, c.Y = -70357, 256863
@@ -114,6 +117,19 @@ func TestHostExclusiveSources(t *testing.T) {
 				case "dialogue":
 					p.Send(intent(1, 11, ref(actor(30001).ID, 10)))
 					expect(1)
+				case "shop", "offer":
+					p.Send(intent(1, 5, ref(actor(30002).ID, 10)))
+					expect(1)
+					spoke, err := meaning.EventValue(p.Fact(11))
+					if err != nil {
+						t.Fatal(err)
+					}
+					index := 0
+					if family == "offer" {
+						index = 1
+					}
+					p.Send(intent(2, 6, wire.U(12, true, spoke.Context.Dialog), wire.U(13, true, spoke.Context.Options[index].ID)))
+					expect(2)
 				case "learning":
 					p.Send(intent(1, 5, ref(actor(30001).ID, 10)))
 					expect(1)
@@ -122,6 +138,7 @@ func TestHostExclusiveSources(t *testing.T) {
 						t.Fatal(err)
 					}
 					p.Send(intent(2, 6, wire.U(12, true, spoke.Context.Dialog), wire.U(13, true, spoke.Context.Options[0].ID)))
+					expect(2)
 					practice, err := meaning.EventValue(p.Fact(22))
 					if err != nil {
 						t.Fatal(err)

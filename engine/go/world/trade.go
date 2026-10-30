@@ -64,9 +64,11 @@ func (a Affordance) Trade() (TradeOffer, bool) {
 // Empty means the current sale list has no eligible rows.
 type TradeList struct {
 	stamp
-	Dialogue Dialogue
-	List     int32
-	Sell     bool
+	// ChoiceIntent identifies the authored choice that opened this window.
+	ChoiceIntent IntentID
+	Dialogue     Dialogue
+	List         int32
+	Sell         bool
 }
 
 func (TradeList) event() {}
@@ -118,7 +120,7 @@ func (w *World) showTrade(s *state, p *player, n *npc, list int32) bool {
 		p.affordances = append(p.affordances, a)
 		s.change(p.ref(), PropertyAffordance, UintValue(0), UintValue(a.ID))
 	}
-	p.send(TradeList{Dialogue: w.dialogueOf(p), List: list, Sell: list == 0})
+	p.send(TradeList{ChoiceIntent: s.cause().Intent, Dialogue: w.dialogueOf(p), List: list, Sell: list == 0})
 	return true
 }
 

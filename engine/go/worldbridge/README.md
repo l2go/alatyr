@@ -86,8 +86,17 @@ The current captured inventory supplies the exact world incarnation. Its receipt
 reports Sent only, including immediate equipment changes: a receipt alone never
 proves participant completion. Inventory changes carry `UseIntent` from the
 originating world intent, including delayed potion launch. The session retains
-at most 64 intent/key bindings and annotates only that live inventory event with
+at most 64 shared intent/key bindings and annotates the matching live event with
 raw field 75 (the command Key). Eviction loses proof rather than guessing a key.
 This metadata never appears on snapshots or participant facts. The gateway
 requires its own matching effect key, live deadline, and audited ItemUse source.
 Item change metadata occupies goods field 7; equipment slot occupies field 8.
+
+Choice windows reuse that bounded table and raw field 75 for verb 6. `TradeList`
+and `LearnList` carry the original `ChoiceIntent`; attribution also requires the
+captured NPC incarnation and command verb. Speech receipts are unchanged, and
+windows do not become speech or raw Done receipts. The backend checks the live
+packet's matching effect key and original evidence deadline before providing
+`Input.Chosen`; meaning then verifies the captured NPC and audited Dialogue
+source. Window attribution never appears on checkpoint facts. It does not prove
+that a purchase, sale, or skill acquisition occurred.

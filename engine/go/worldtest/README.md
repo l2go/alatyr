@@ -30,3 +30,10 @@ trusted environmental harm with `World.Harm`. Neither grants wire authority.
 Equipment and healing use exact carried references through `World.Execute`.
 Class kind is authored as `world.class.<id>.kind=fighter|mage` in the passport;
 missing metadata remains unknown rather than inferred from numeric class IDs.
+
+G01 also checks Say opening authored shop, sale, and learning windows: each live
+window precedes Done and carries the choice cause. G04/G05 distinguish that
+completed choice from the subsequent trade or full-window learning attempt.
+The scripted `choose-requires-separate-witness` oracle remains unchanged: a raw
+receipt alone is still insufficient. Negative Go scenarios cover foreign NPCs,
+wrong keys, snapshots, late windows, and receipt-only delivery.
