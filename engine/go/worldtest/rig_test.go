@@ -5,6 +5,7 @@ package worldtest
 
 import (
 	"context"
+	"errors"
 	"math/rand/v2"
 	"path/filepath"
 	"slices"
@@ -40,6 +41,7 @@ type rig struct {
 	state    gateway.State
 	handoffs []backend.Handoff
 	hold     atomic.Bool
+	stop     func()
 }
 
 type observedPort struct {
@@ -50,7 +52,8 @@ type observedPort struct {
 	mu         sync.Mutex
 	writes     []bridge.Command
 	// filter is immutable and simulates observation loss, never a world mutation.
-	filter func(bridge.Update) bridge.Update
+	filter        func(bridge.Update) bridge.Update
+	ignoreStopped atomic.Bool
 }
 
 func wrapPort(p bridge.Port, filter func(bridge.Update) bridge.Update) *observedPort {
@@ -89,6 +92,9 @@ func (o *observedPort) Write(ctx context.Context, c bridge.Command) (uint64, err
 func (o *observedPort) Close() error {
 	o.once.Do(func() { close(o.stop) })
 	err := o.Port.Close()
+	if o.ignoreStopped.Load() && errors.Is(err, world.ErrStopped) {
+		err = nil
+	}
 	<-o.done
 	return err
 }
@@ -117,6 +123,9 @@ func newRig(t *testing.T, cat *catalog.Catalog, char world.Character, source mea
 }
 
 func newRigWithPolicy(t *testing.T, cat *catalog.Catalog, char world.Character, source meaning.Source, filter func(bridge.Update) bridge.Update, policy meaning.Policy, opts ...world.Option) *rig {
+	return newRigWithPort(t, cat, char, source, filter, policy, nil, opts...)
+}
+func newRigWithPort(t *testing.T, cat *catalog.Catalog, char world.Character, source meaning.Source, filter func(bridge.Update) bridge.Update, policy meaning.Policy, decorate func(bridge.Port) bridge.Port, opts ...world.Option) *rig {
 	t.Helper()
 	r := &rig{t: t, c: gatewaytest.Config(), store: memstore.New()}
 	if err := r.store.PutCharacter(t.Context(), char); err != nil {
@@ -131,18 +140,26 @@ func newRigWithPolicy(t *testing.T, cat *catalog.Catalog, char world.Character, 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- r.w.Run(ctx) }()
-	t.Cleanup(func() {
+	r.stop = sync.OnceFunc(func() {
+		if r.port != nil {
+			r.port.ignoreStopped.Store(true)
+		}
 		cancel()
 		if err := <-done; err != nil {
 			t.Error(err)
 		}
 	})
+	t.Cleanup(r.stop)
 	origin := time.Now()
 	raw, snap, err := worldbridge.Open(t.Context(), worldbridge.Config{World: r.w, Catalog: cat, Load: func(context.Context, bridge.Identity) (world.Character, error) { return char.Clone(), nil }}, bridge.Identity{Account: char.Account, Character: char.Name})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.port = wrapPort(raw, filter)
+	var port bridge.Port = raw
+	if decorate != nil {
+		port = decorate(raw)
+	}
+	r.port = wrapPort(port, filter)
 	t.Cleanup(func() {
 		if err := r.port.Close(); err != nil {
 			t.Error(err)

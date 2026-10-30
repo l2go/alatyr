@@ -6,6 +6,8 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Added
 
+- A deterministic participant-command reliability harness checks the real Go world and production host composition, with replayed transcripts, lifecycle and economy invariants, mutation checks, and native sequence fuzzing.
+
 - A dialogue choice can complete when its selected NPC opens an intent-attributed shop, sale, or learning window. Delivery receipts and unrelated windows cannot prove completion.
 
 - Participants can toggle authored equipment and consume healing items through `use-item`. Live intent-attributed inventory changes prove completion; equipment slots and physical attack/defense are visible in participant facts.
@@ -15,6 +17,9 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 - PostgreSQL persistence saves learned skills and the SP balance in one transaction. Detached final checkpoints preserve participants when the world stops itself.
 
 ### Fixed
+
+- Recovery accepts a visible dialogue page after its final learning action was consumed, while retaining original-lifetime checks for actionable proposals.
+- Visibility changes and participant checkpoint traversal follow stable object and admission order so identical command sequences can be replayed exactly.
 
 - Rapid local selection followed by an action requiring target confirmation no longer crashes the participant gateway when selection interrupts that queued action.
 
