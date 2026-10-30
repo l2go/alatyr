@@ -70,6 +70,9 @@ jobs:
       - name: Test how the changed parts are named
         run: bash tools/ci/test-changed-parts.sh
 
+      - name: Test disposable PostgreSQL startup
+        run: bash tools/ci/test-go-postgres.sh
+
       - name: Check the tree has no inherited world
         run: |
           set -euo pipefail
