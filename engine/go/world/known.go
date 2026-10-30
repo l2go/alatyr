@@ -4,6 +4,7 @@
 package world
 
 import (
+	"maps"
 	"slices"
 	"time"
 )
@@ -14,7 +15,8 @@ func (w *World) fullInfo(s *state, a actor) {
 		v.send(SelfChanged{Self: w.selfOf(v)})
 		w.describeState(s, v, v)
 		var seen *PlayerSeen
-		for _, q := range s.players {
+		for _, playerID := range slices.Sorted(maps.Keys(s.players)) {
+			q := s.players[playerID]
 			if q != v && q.known[v.id] {
 				if seen == nil {
 					seen = &PlayerSeen{Player: w.selfOf(v)}
@@ -26,7 +28,8 @@ func (w *World) fullInfo(s *state, a actor) {
 	case *npc:
 		now := time.Now()
 		w.broadcastToKnown(s, a, NPCSeen{NPC: v.view(now)})
-		for _, p := range s.players {
+		for _, playerID := range slices.Sorted(maps.Keys(s.players)) {
+			p := s.players[playerID]
 			if p.known[v.id] {
 				w.describeState(s, v, p)
 			}
@@ -93,13 +96,14 @@ func (w *World) broadcastToKnown(s *state, a actor, e Event) {
 	switch v := a.(type) {
 	case *player:
 		v.send(e)
-		for _, p := range s.players {
+		for _, playerID := range slices.Sorted(maps.Keys(s.players)) {
+			p := s.players[playerID]
 			if p != v && p.known[v.id] {
 				p.send(e)
 			}
 		}
 	case *npc:
-		for id := range v.knownPlayers {
+		for _, id := range slices.Sorted(maps.Keys(v.knownPlayers)) {
 			if p, ok := s.players[id]; ok {
 				p.send(e)
 			}
@@ -132,7 +136,7 @@ func (w *World) updateKnown(s *state, a actor) {
 		w.playerForget(s, v)
 		w.playerLearn(s, v, now)
 	case *npc:
-		for id := range v.knownPlayers {
+		for _, id := range slices.Sorted(maps.Keys(v.knownPlayers)) {
 			p, ok := s.players[id]
 			if !ok || p.teleporting || distance3D(c.pos, p.pos) > v.forgetDistance(id) {
 				w.forgetPlayer(s, v, id)
@@ -142,7 +146,8 @@ func (w *World) updateKnown(s *state, a actor) {
 			if s.regions[k] == nil || s.regions[k].players == 0 {
 				continue
 			}
-			for _, p := range s.players {
+			for _, playerID := range slices.Sorted(maps.Keys(s.players)) {
+				p := s.players[playerID]
 				if !p.teleporting && regionOf(p.pos) == k {
 					w.learnPlayer(s, v, p)
 				}
@@ -153,7 +158,7 @@ func (w *World) updateKnown(s *state, a actor) {
 
 func (w *World) playerForget(s *state, p *player) {
 	limit := playerForgetDistance(len(p.known))
-	for id := range p.known {
+	for _, id := range slices.Sorted(maps.Keys(p.known)) {
 		pos, _, _, ok := s.objectAt(id)
 		if !ok || p.teleporting || distance3D(p.pos, pos) > limit {
 			w.playerForgetObject(s, p, id)
@@ -210,7 +215,8 @@ func (w *World) playerLearn(s *state, p *player, now time.Time) {
 			}
 		}
 	}
-	for _, g := range s.ground {
+	for _, id := range slices.Sorted(maps.Keys(s.ground)) {
+		g := s.ground[id]
 		if !p.known[g.id] && distance3D(p.pos, g.pos) <= playerWatch(len(p.known)) {
 			t, _ := w.cat.Item(g.templateID)
 			p.known[g.id] = true
@@ -398,7 +404,7 @@ func (w *World) statusInfo(s *state, a actor) {
 	if p, ok := a.(*player); ok {
 		p.send(v)
 	}
-	for id := range a.base().listeners {
+	for _, id := range slices.Sorted(maps.Keys(a.base().listeners)) {
 		if p, ok := s.players[id]; ok && p != a {
 			p.send(v)
 		}

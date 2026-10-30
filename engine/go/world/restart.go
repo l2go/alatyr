@@ -5,6 +5,7 @@ package world
 
 import (
 	"context"
+	"maps"
 	"slices"
 )
 
@@ -14,12 +15,13 @@ func (w *World) decayPlayer(s *state, p *player) {
 	if r.players > 0 {
 		r.players--
 	}
-	for _, q := range s.players {
+	for _, playerID := range slices.Sorted(maps.Keys(s.players)) {
+		q := s.players[playerID]
 		if q != p && q.known[p.id] {
 			w.playerForgetObject(s, q, p.id)
 		}
 	}
-	for id := range p.known {
+	for _, id := range slices.Sorted(maps.Keys(p.known)) {
 		w.playerForgetObject(s, p, id)
 		if q, ok := s.players[id]; ok {
 			w.playerForgetObject(s, q, p.id)
