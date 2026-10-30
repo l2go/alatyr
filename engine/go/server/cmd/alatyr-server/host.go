@@ -291,6 +291,12 @@ func goWorldSource(meaning.Event) meaning.Source {
 }
 
 func (r *runtime) open(ctx context.Context, id string) (gateway.World, gateway.State, error) {
+	return r.openPort(ctx, id, nil)
+}
+
+// openPort allows a controlled observation schedule in integration tests. A nil
+// decorator uses the production port directly; it never changes Source policy.
+func (r *runtime) openPort(ctx context.Context, id string, decorate func(bridge.Port) bridge.Port) (gateway.World, gateway.State, error) {
 	a, ok := r.admissions[id]
 	if !ok {
 		return nil, nil, gateway.ErrAuth
@@ -365,7 +371,11 @@ func (r *runtime) open(ctx context.Context, id string) (gateway.World, gateway.S
 		}
 		return nil, nil, err
 	}
-	s, w, state, err := backend.New(p, snapshot, r.meaningConfig)
+	var port bridge.Port = p
+	if decorate != nil {
+		port = decorate(p)
+	}
+	s, w, state, err := backend.New(port, snapshot, r.meaningConfig)
 	if err != nil {
 		closeErr := p.Close()
 		if closeErr != nil {

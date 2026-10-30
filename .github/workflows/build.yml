@@ -165,14 +165,14 @@ jobs:
         run: |
           set -euo pipefail
           for module in engine/go engine/go/protocol engine/go/server; do
-            (cd "$module" && go vet ./... && go test -race -count=1 -timeout=2m ./...)
+            (cd "$module" && go vet ./... && go test -race -count=1 -timeout=3m ./...)
           done
 
       - name: Check each module in the workspace
         run: |
           set -euo pipefail
           for module in engine/go engine/go/protocol engine/go/server; do
-            (cd "$module" && go vet ./... && go test -race -count=1 -timeout=2m ./...)
+            (cd "$module" && go vet ./... && go test -race -count=1 -timeout=3m ./...)
           done
 
       - name: Install pinned CI tools
@@ -291,6 +291,18 @@ jobs:
             printf '%s\n' "$targets" | grep -Fxq "$target"
             go test -run='^$' -fuzz="^$target$" -fuzztime=5s -parallel=1 -timeout=2m .
           done
+
+      - name: Check gateway sequence fuzzing readiness
+        # Pull requests run the deterministic corpus; main also searches for new command sequences.
+        if: github.event_name != 'pull_request'
+        working-directory: engine/go
+        env:
+          GOWORK: "off"
+        run: |
+          set -euo pipefail
+          targets="$(go test -list '^FuzzGatewaySequence$' ./worldtest)"
+          printf '%s\n' "$targets" | grep -Fxq FuzzGatewaySequence
+          go test -run='^$' -fuzz='^FuzzGatewaySequence$' -fuzztime=20s -parallel=1 -timeout=2m ./worldtest
 
       - name: Check that validation left the source unchanged
         run: |

@@ -250,7 +250,8 @@
       ],
       "test_imports": [
         "server/internal/pgtest",
-        "gateway/gatewaytest"
+        "gateway/gatewaytest",
+        "worldtest"
       ]
     },
     {

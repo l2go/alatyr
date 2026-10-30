@@ -37,3 +37,98 @@ completed choice from the subsequent trade or full-window learning attempt.
 The scripted `choose-requires-separate-witness` oracle remains unchanged: a raw
 receipt alone is still insufficient. Negative Go scenarios cover foreign NPCs,
 wrong keys, snapshots, late windows, and receipt-only delivery.
+
+## Command sequence reliability
+
+`FuzzGatewaySequence` executes a bounded byte program through this composition,
+not a model of the gateway. `TestGatewayReliabilitySeeds` and
+`TestGeneratedGatewaySequences` replay directed and PCG-generated programs twice.
+`TestHostGatewayReliability` in the server module runs the same directed alphabet
+through `runtime.openPort`, `hostBackendConfig`, the production gateway limits,
+`characterStore` and `hostMemoryStore`. Only its raw observation delivery is
+scheduled by the test; the actual producer audit and classification are unchanged.
+The driver answers Ping with Pong and advances long intervals in virtual steps
+of at most one second, preserving the host's actual heartbeat policy.
+All resources, including readers, raw ports, pumps and World.Run, are joined
+inside `synctest`. There is no process-wide recovery handler.
+
+A program has one setup byte, then up to 64 three-byte instructions
+`(opcode, argument, variant)`. Incomplete trailing instructions are ignored.
+Setup modulo 4 selects the tutor, merchant, hunt, or a dead character. The world
+always uses PCG(1, 2). No wall clock, network endpoint, environment setting or
+uncontrolled random source selects an operation. Byte programs retain their
+meaning when selecting an individual generated subtest.
+
+| Opcode modulo 32 | Operation |
+| --- | --- |
+| 0–13 | The 14 `alatyr/1` verbs, in registry order |
+| 14 | Advance virtual time by 1, 4999, 5000, 5001 or 30000 ms |
+| 15 | Focus and Engage in one participant frame |
+| 16 | Replay the exact previous Intent, without another world write |
+| 17–18 | Add an observing or acting peer; probe its missing command authority |
+| 19 | Transfer control to the second acting peer; an observer's invalid request closes its socket |
+| 20 | Replace the world subscription, Detach, then explicitly Resume |
+| 21 | Detach and reject Resume at the original 30 s expiry; death freezes durable state for exact save comparison |
+| 22 | Close the controlling socket after an admitted Cast, retaining an observer; reconnect |
+| 23 | Relocate between authored tutor, merchant and hunting positions |
+| 24–25 | Environmental self or target death |
+| 26 | Advance 31 s through decay and respawn |
+| 27 | Stop World.Run with the scope still open |
+| 28–31 | Lose witnesses or receipts, mark observations as snapshots, hold delivery, or release held delivery |
+
+Targets come from current public observations; the argument selects friendly or
+hostile objects and rows. Variants also supply foreign IDs, retired generations,
+boundary coordinates, unknown skills, invalid choices, foreign lists, extreme
+quantities and mismatched prices. Saved dialogue, shop, sale and learning handles
+are read from participant facts. Directed programs cover successful chains before
+trying malformed arguments, so a stale proposal cannot mask every boundary check.
+An empty or unavailable target remains an explicit invalid reference.
+
+`SequencePort` is a deterministic delivery schedule around the real port. The
+test releases one available raw update at a time and lets the actors become
+quiescent. It preserves every delivered record's order and original receive time.
+Observation-loss modes cannot create a witness. Held delivery is bounded at 1024
+updates and is discarded at a detached scope fence. Transcripts contain every
+received participant record, framed separately and grouped by peer admission
+order; only opaque Welcome session IDs are normalized. No sorting of facts,
+sequence-number rewriting, timestamp rewriting or filtering of the returned
+transcript is used. The harness searches this controlled schedule; it does not
+claim exhaustive exploration of all possible concurrent schedules.
+
+The checks follow existing contracts:
+
+| Invariant | Contract and oracle |
+| --- | --- |
+| Process and owned loops survive | `gateway/README.md`, world and backend lifecycle ownership; any panic fails the test process, any leaked blocked goroutine fails the synctest bubble |
+| One immutable terminal outcome per admitted attempt | G02/G07, protocol Sent/terminal rules and gateway cached outcomes; `checkTranscript` distinguishes nonwaiting Sent, progression, exact Intent replay and checkpoint replay |
+| Done requires a live timely witness | G01/G03/G05/G06/G10 and `meaning/README.md`; ordered causal fact before Done, same projection epoch and target generation, then independent raw kind, subject, effect key, receipt and original first-contact deadline checks in `checkRawEvidence` |
+| Honest refusal | `wire` reason vocabulary and protocol pre-contact refusal; no causal fact and no raw handoff for a Refused attempt; observer and stale-control probes also compare the complete world capture |
+| Bounded drain | Gateway Status budgets after each step; after joined closure, gateway admission/connection/action maps and backend binding maps remain within their existing budgets and every backend update channel is closed |
+| Consistent world and saved state | World resource/character/departure contracts; HP/MP ranges, finite vitals, unique inventory rows, nonnegative balances, exact integer debit/credit arithmetic, one item consumption per world intent, and complete saved-character equality with rounded vitals and departure timestamp |
+
+Full-window learning retains its earlier live candidate and receipt; its current
+Known proof is emitted at the original window end. The proof timestamp does not
+replace the candidate's original receive time or extend its deadline.
+
+Outcome, raw-evidence, drain and world-state oracle tests include positive
+controls and deliberately broken observations, outcomes, accounting, transfers
+and saves. Panic and goroutine-leak sensitivity can also be checked by temporary
+source overlays; a blanket recover would defeat the first invariant.
+The original G01–G10 suites and both frozen `contracts.json` files remain intact.
+Native corpus regressions retain the minimal visibility, multi-peer revival and
+last-lesson Resume programs; named regressions also exercise each defect directly.
+
+From `engine/go`:
+
+```sh
+go test -race -p=1 ./worldtest
+GOWORK=off go test -race -p=1 ./worldtest
+GOWORK=off go test -run='^$' -fuzz='^FuzzGatewaySequence$' -fuzztime=20s -parallel=1 -timeout=2m ./worldtest
+```
+
+From `engine/go/server`, run `go test -race -p=1 -run '^TestHostGatewayReliability$'
+./cmd/alatyr-server`. Ordinary PR tests run the native corpus as seeds. The
+existing main-only fuzz job verifies target readiness before searching for new
+sequences. Reproduce a retained input with `go test -run
+'^FuzzGatewaySequence/<corpus-name>$' ./worldtest`; minimize new failures with Go's
+native fuzzing and keep an explicit regression alongside the corpus entry.
