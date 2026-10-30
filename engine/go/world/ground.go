@@ -6,6 +6,7 @@ package world
 import (
 	"context"
 	"errors"
+	"maps"
 	"math"
 	"slices"
 	"time"
@@ -242,7 +243,8 @@ func (w *World) removeFromGround(s *state, g *groundItem) {
 }
 func (w *World) eraseGround(s *state, g *groundItem) {
 	delete(s.ground, g.id)
-	for _, p := range s.players {
+	for _, id := range slices.Sorted(maps.Keys(s.players)) {
+		p := s.players[id]
 		if p.known[g.id] {
 			s.change(p.ref(), PropertyKnownObject, RefValue(g.ref()), RefValue(Ref{}))
 			delete(p.known, g.id)

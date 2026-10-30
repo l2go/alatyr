@@ -4,7 +4,9 @@
 package world
 
 import (
+	"maps"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/l2go/alatyr/engine/go/world/catalog"
@@ -136,7 +138,8 @@ func (w *World) tickDecay(s *state) {
 }
 
 func (w *World) decay(s *state, n *npc) {
-	for _, p := range s.players {
+	for _, id := range slices.Sorted(maps.Keys(s.players)) {
+		p := s.players[id]
 		if !p.known[n.id] {
 			continue
 		}
@@ -168,7 +171,8 @@ func (w *World) respawn(s *state, sp catalog.Spawn, t catalog.NPCTemplate) {
 		return
 	}
 	now := time.Now()
-	for _, p := range s.players {
+	for _, id := range slices.Sorted(maps.Keys(s.players)) {
+		p := s.players[id]
 		if p.teleporting || distance3D(n.pos, p.pos) > playerWatch(len(p.known)) {
 			continue
 		}

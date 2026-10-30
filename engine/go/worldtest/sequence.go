@@ -100,6 +100,7 @@ func scenarioSeeds() [][]byte {
 		{2, opHarmTarget, 0, 0, opTake, 0, 0, opReplay, 0, 0, opRespawn, 0, 0},
 		{0, opTalk, 0, 0, opStopWorld, 0, 0},
 		{3, opRise, 0, 0, opAdvance, 3, 0},
+		{2, opHarmTarget, 0, 1}, // Two world players observe target clearing and NPC decay.
 	}
 }
 
@@ -240,7 +241,9 @@ func ExerciseSequence(t *testing.T, data []byte, h SequenceHost) []byte {
 			scene := s.scene()
 			for _, o := range scene.Objects {
 				if n, ok := o.State.(world.NPCSeen); ok && n.NPC.Template.ID == 18003 {
-					if err := h.World.Harm(t.Context(), h.Owner(), o.Entity, 1e6); err != nil {
+					if v == 1 {
+						s.observeDecay(n.NPC)
+					} else if err := h.World.Harm(t.Context(), h.Owner(), o.Entity, 1e6); err != nil {
 						t.Fatal(err)
 					}
 					break

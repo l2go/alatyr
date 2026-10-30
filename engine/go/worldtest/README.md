@@ -75,7 +75,7 @@ meaning when selecting an individual generated subtest.
 | 21 | Detach and reject Resume at the original 30 s expiry; death freezes durable state for exact save comparison |
 | 22 | Close the controlling socket after an admitted Cast, retaining an observer; reconnect |
 | 23 | Relocate between authored tutor, merchant and hunting positions |
-| 24–25 | Environmental self or target death |
+| 24–25 | Environmental self or target death; target variant 1 adds two world observers through decay |
 | 26 | Advance 31 s through decay and respawn |
 | 27 | Stop World.Run with the scope still open |
 | 28–31 | Lose witnesses or receipts, mark observations as snapshots, hold delivery, or release held delivery |
@@ -87,6 +87,12 @@ quantities and mismatched prices. Saved dialogue, shop, sale and learning handle
 are read from participant facts. Directed programs cover successful chains before
 trying malformed arguments, so a stale proposal cannot mask every boundary check.
 An empty or unavailable target remains an explicit invalid reference.
+
+Target-death variant 1 enters two controlled characters beside the NPC. The
+lower ID selects it; the higher ID must receive TargetCleared before ObjectGone
+after its death and decay. Both streams are drained every virtual second and
+both characters leave before final shutdown. This source assertion is independent
+of participant observation faults. The directed seed runs in both compositions.
 
 `SequencePort` is a deterministic delivery schedule around the real port. The
 test releases one available raw update at a time and lets the actors become
@@ -136,14 +142,11 @@ GOWORK=off go test -run='^$' -fuzz='^FuzzGatewaySequence$' -fuzztime=20s -parall
 ```
 
 From `engine/go/server`, run `go test -race -p=1 -run '^TestHostGatewayReliability$'
-./cmd/alatyr-server`. Ordinary PR tests run all 13 fixed scenarios, 74 directed seeds, committed
+./cmd/alatyr-server`. Ordinary PR tests run all 14 fixed scenarios, 75 directed seeds, committed
 corpus entries and 32 generated programs. In each workspace mode CI invokes
 fixed scenarios and other package tests, generated programs, and the native
 corpus as three separate test batches, each retaining `-race` and double replay.
-The target is at most 90 seconds per package invocation within the existing
-180-second timeout. The reviewed CI baseline measured 170 seconds for worldtest
-and 90 seconds for the host; these are measurements before the scheduling change,
-not a claim about its next CI run. The
+Each package invocation must finish within half its timeout. The
 existing main-only fuzz job verifies target readiness before searching for new
 sequences. Reproduce a retained input with `go test -run
 '^FuzzGatewaySequence/<corpus-name>$' ./worldtest`; minimize new failures with Go's

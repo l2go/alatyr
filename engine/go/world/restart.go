@@ -23,9 +23,6 @@ func (w *World) decayPlayer(s *state, p *player) {
 	}
 	for _, id := range slices.Sorted(maps.Keys(p.known)) {
 		w.playerForgetObject(s, p, id)
-		if q, ok := s.players[id]; ok {
-			w.playerForgetObject(s, q, p.id)
-		}
 	}
 	w.setTarget(s, p, 0)
 	w.stopFollow(s, p)
