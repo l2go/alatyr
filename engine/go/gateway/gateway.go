@@ -4,6 +4,7 @@
 package gateway
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
@@ -486,6 +487,9 @@ func (s *game) connections() []*connection {
 	for _, c := range s.conns {
 		out = append(out, c)
 	}
+	// Checkpoints allocate fact sequences while traversing the peers. Keep
+	// those allocations in admission order rather than randomized map order.
+	slices.SortFunc(out, func(a, b *connection) int { return cmp.Compare(a.id, b.id) })
 	return out
 }
 func (s *game) send(c *connection, r wire.Record) {
