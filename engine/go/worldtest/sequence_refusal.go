@@ -56,7 +56,7 @@ func checkRefusalEvidence(result wire.Record, handoffs []backend.Handoff, trace 
 			continue
 		}
 		for _, r := range u.Batch.Receipts {
-			if r.Key == h.Key && r.N == h.RawN && r.GatewayEpoch == w.epoch && !r.Replay && r.Stage == wire.StageRefused && r.Delivery == wire.DeliveryNone && len(r.Effects) == 0 && r.Reason != wire.ReasonNone && uint64(r.Reason) == gatewaytest.U(result, 3) && r.Requested == w.command.Verb && r.Effective == w.command.Verb && !r.ObservedAt.Before(w.at) && r.ObservedAt.Before(deadline) {
+			if r.Key == h.Key && r.N == h.RawN && r.GatewayEpoch == w.epoch && !r.Replay && r.Stage == wire.StageRefused && r.Delivery == wire.DeliveryNone && len(r.Effects) == 0 && (r.Reason == wire.ReasonWorld || r.Reason == wire.ReasonInvalid || r.Reason == wire.ReasonQueueExpired) && uint64(r.Reason) == gatewaytest.U(result, 3) && r.Requested == w.command.Verb && r.Effective == w.command.Verb && !r.ObservedAt.Before(w.at) && r.ObservedAt.Before(deadline) {
 				return nil
 			}
 		}

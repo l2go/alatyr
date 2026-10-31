@@ -21,8 +21,8 @@ is independent of the configured participant pending-attempt limit.
 A post-contact Refused needs a live receipt for the only write of that attempt:
 the same command Key, raw N, requested/effective verb and GatewayEpoch, not Replay
 or a snapshot, observed at or after original contact and strictly before its
-original deadline. The receipt must be StageRefused/DeliveryNone, carry a nonzero
-dictionary reason and contain no effects. For the Go world this is authored by
+original deadline. The receipt must be StageRefused/DeliveryNone, carry World, Invalid or
+QueueExpired (the producer's zero-effect reasons), and contain no effects. For the Go world this is authored by
 `worldbridge/receipt.go` from an owned refusal or expired admission with no effect
 groups, or from a pre-execution `p.refusal`. No write may have returned an error.
 The actor removes the remaining action before it can perform another step.

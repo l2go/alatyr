@@ -15,7 +15,7 @@ import (
 )
 
 func TestSequenceRefusalOracleRejectsMutations(t *testing.T) {
-	for _, name := range []string{"valid", "preflight", "missing", "key", "raw-number", "epoch", "replay", "snapshot", "deadline", "before-contact", "partial", "effects", "reason", "requested", "effective", "helper", "other-step", "repeated-write", "world-effects", "world-done", "world-owner", "world-intent", "write-error", "unaudited"} {
+	for _, name := range []string{"valid", "preflight", "missing", "key", "raw-number", "epoch", "replay", "snapshot", "deadline", "before-contact", "partial", "effects", "reason", "busy", "timeout", "interrupted", "stale-control", "backend-error", "requested", "effective", "helper", "other-step", "repeated-write", "world-effects", "world-done", "world-owner", "world-intent", "write-error", "unaudited"} {
 		t.Run(name, func(t *testing.T) {
 			at := time.Unix(1, 0)
 			r := oracleResult(wire.StageRefused)
@@ -61,6 +61,10 @@ func TestSequenceRefusalOracleRejectsMutations(t *testing.T) {
 				receipt.Effects = []wire.Value{{U: 1}}
 			case "reason":
 				receipt.Reason = wire.ReasonNone
+			case "busy", "timeout", "interrupted", "stale-control", "backend-error":
+				reasons := map[string]wire.Reason{"busy": wire.ReasonBusy, "timeout": wire.ReasonTimeout, "interrupted": wire.ReasonInterrupted, "stale-control": wire.ReasonStaleControl, "backend-error": wire.ReasonBackendError}
+				receipt.Reason = reasons[name]
+				r.Fields[2] = wire.U(3, true, uint64(receipt.Reason))
 			case "requested":
 				receipt.Requested++
 			case "effective":

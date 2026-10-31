@@ -190,7 +190,7 @@ func (s *state) Apply(u gateway.Update, now int64) (gateway.Observation, error) 
 		case binding.role == gateway.StepHelper && (r.Stage == wire.StageRefused || r.Stage == wire.StageUnknown):
 			reason = wire.ReasonTargetUnconfirmed
 		case r.Stage == wire.StageRefused:
-			if binding.role == gateway.StepEffect && plan.writes == 1 && !plan.helperSent && !plan.writeFailed && r.Delivery == wire.DeliveryNone && r.Reason >= wire.ReasonNotReady && r.Reason <= wire.ReasonBackendError && len(r.Effects) == 0 {
+			if binding.role == gateway.StepEffect && plan.writes == 1 && !plan.helperSent && !plan.writeFailed && r.Delivery == wire.DeliveryNone && worldRefusalReason(r.Reason) && len(r.Effects) == 0 {
 				refusals = append(refusals, gateway.Refusal{N: plan.n, Evidence: proto.RefusalEvidence{Reason: r.Reason, ObservedMS: at}})
 				continue
 			}
@@ -392,3 +392,13 @@ func (s *state) Stop() *gateway.Step {
 }
 
 var _ gateway.State = (*state)(nil)
+
+// Only the producer's zero-effect dispositions can authorize a refusal proof.
+func worldRefusalReason(reason wire.Reason) bool {
+	switch reason {
+	case wire.ReasonWorld, wire.ReasonInvalid, wire.ReasonQueueExpired:
+		return true
+	default:
+		return false
+	}
+}

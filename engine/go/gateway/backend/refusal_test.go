@@ -4,6 +4,7 @@
 package backend
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -54,8 +55,8 @@ func TestRefusalNeedsExclusiveLiveNoEffectReceipt(t *testing.T) {
 				t.Fatal(err)
 			}
 			if name == "valid" {
-				if len(obs.Refusals) != 1 || len(obs.Failures) != 0 || obs.Refusals[0].N != 42 || obs.Refusals[0].Evidence.Reason != wire.ReasonWorld {
-					t.Fatalf("proof lost: %+v", obs)
+				if len(obs.Refusals) != 1 || len(obs.Failures) != 0 || obs.Refusals[0].N != 42 || obs.Refusals[0].Evidence.Reason != wire.ReasonWorld || len(w.pending) != 0 {
+					t.Fatalf("proof lost or binding retained: observation=%+v pending=%d", obs, len(w.pending))
 				}
 			} else if len(obs.Refusals) != 0 {
 				t.Fatalf("unproven refusal: %+v", obs)
@@ -81,5 +82,31 @@ func TestReceiptOnlySnapshotCannotCertifyRefusal(t *testing.T) {
 	obs, err := st.Apply(u, 2)
 	if err != nil || len(obs.Refusals) != 0 || len(obs.Failures) != 0 || len(w.pending) != 1 {
 		t.Fatalf("receipt-only snapshot gained authority: %+v/%v", obs, err)
+	}
+}
+
+func TestOnlyWorldRefusalReasonsCertifyNoEffects(t *testing.T) {
+	for reason := wire.ReasonNone; reason <= wire.ReasonBackendError+1; reason++ {
+		t.Run(fmt.Sprint(reason), func(t *testing.T) {
+			s, w, st, _ := setup(t)
+			if err := w.Write(t.Context(), capturedWalk(t, st)); err != nil {
+				t.Fatal(err)
+			}
+			r := bridge.Receipt{N: 1, Key: 1, GatewayEpoch: 1, Requested: 1, Effective: 1, Stage: wire.StageRefused, Reason: reason, Delivery: wire.DeliveryNone, ObservedAt: s.cfg.Origin.Add(time.Millisecond)}
+			obs, err := st.Apply(gateway.Update{Value: packet{kind: bridge.LiveBatch, receipts: []bridge.Receipt{r}}}, 2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := reason == wire.ReasonWorld || reason == wire.ReasonInvalid || reason == wire.ReasonQueueExpired
+			if (len(obs.Refusals) == 1) != want || len(w.pending) != 0 {
+				t.Fatalf("reason %v: refusals=%v pending=%d, want proof=%v and no binding", reason, obs.Refusals, len(w.pending), want)
+			}
+			if want && (len(obs.Failures) != 0 || obs.Refusals[0].Evidence.Reason != reason) {
+				t.Fatalf("world reason lost: %+v", obs)
+			}
+			if !want && (len(obs.Failures) != 1 || obs.Failures[0].Reason != wire.ReasonInterrupted && obs.Failures[0].Reason != wire.ReasonBackendError) {
+				t.Fatalf("unsupported reason lost uncertainty: %+v", obs)
+			}
+		})
 	}
 }
