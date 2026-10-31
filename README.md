@@ -52,14 +52,14 @@ Protocol, transport, world mechanics and persistence are separate packages. A bo
 
 **✅ Done is proven, never assumed**
 
-A participant sees Done only after a live world fact with its own cause arrives in time. Receipts, snapshots and late events cannot claim success; anything unproven ends as Unknown. The [contract](engine/go/gateway/backend/README.md) is checked against the real world.
+A participant sees Done only after a live world fact with its own cause arrives in time. Receipts, snapshots and late events cannot claim success. Once a request has reached the world, an outcome without proof ends as Unknown, never as Done. Frozen [outcome scenarios](engine/go/gateway/gatewaytest/README.md) pin these rules.
 
 </td>
 <td width="33%" valign="top">
 
 **🎲 Replayed byte for byte**
 
-Byte programs drive the real gateway and Go world in virtual time, through reconnects, deaths and lost evidence. Each input runs twice and every socket's transcript must match byte for byte, while [oracles](engine/go/worldtest/README.md) check outcomes, economy and saved characters. Native fuzzing runs on `main`.
+Byte programs drive the real gateway and Go world in virtual time, through reconnects, deaths and lost evidence. Each input runs twice and every socket's transcript must match byte for byte, with only opaque session IDs normalized, while [oracles](engine/go/worldtest/README.md) check outcomes, economy and saved characters. Native fuzzing runs on `main`.
 
 </td>
 </tr>
@@ -68,21 +68,21 @@ Byte programs drive the real gateway and Go world in virtual time, through recon
 
 **🗄️ One writer, forward-only schema**
 
-The server holds a PostgreSQL advisory lease for its whole life and refuses a database with foreign objects or another migration history. Learning saves skills and SP in one transaction, and shutdown joins participant work before the final checkpoints.
+The server holds a PostgreSQL [advisory lease](engine/go/server/internal/pgstore/store.go) for its whole life and refuses a database with foreign objects or another migration history. Learning saves skills and SP in one transaction, and shutdown joins participant work before the final checkpoints.
 
 </td>
 <td width="33%" valign="top">
 
 **🧪 Every merge is a release rehearsal**
 
-On both native platforms the image passes readiness, authenticated participant entry, a save on live shutdown, a restart, and a backup restore into a clean stack. Its world must match the repository bytes.
+On both native platforms the [image](.github/workflows/build.yml) passes readiness, authenticated participant entry, a save on live shutdown, a restart, and a backup restore into an empty schema. Its shipped world files must match the repository.
 
 </td>
 <td width="33%" valign="top">
 
 **🛡️ Signed, promoted, hardened**
 
-Each `main` image is signed with cosign and carries build provenance; a release promotes that digest and never rebuilds it. Actions are pinned by commit, and Trivy blocks a fixable critical or high finding. The server runs as user `10001` on a read-only root, with no capabilities and a 256 MiB memory limit.
+Each `main` image is signed with cosign and carries build provenance; a [release](.github/workflows/release.yml) promotes that digest and never rebuilds it. Actions are pinned by commit, and Trivy blocks a fixable critical or high finding. The server runs as user `10001` on a read-only root, with no capabilities and a 256 MiB memory limit.
 
 </td>
 </tr>
@@ -90,7 +90,9 @@ Each `main` image is signed with cosign and carries build provenance; a release 
 
 ## Architecture
 
-<a href="https://l2go.github.io/alatyr/#architecture" title="Open the architecture on the project site"><img src="assets/architecture.svg" width="100%" alt="A participant client speaks alatyr/1 over a secure WebSocket through a trusted TLS proxy to alatyr-server. In one Go process the gateway, the world port, the Go world and persistence hand work to each other; the world loads the authored files, and persistence writes the world schema in PostgreSQL 18."></a>
+<a href="assets/architecture.svg" title="Open the full-size diagram"><img src="assets/architecture.svg" width="100%" alt="A participant client speaks alatyr/1 over a secure WebSocket through a trusted TLS proxy to alatyr-server. In one Go process the gateway, the world port, the Go world and persistence hand work to each other; the world loads the authored files, and persistence writes the world schema in PostgreSQL 18."></a>
+
+<p align="center"><sub>Participant client → TLS proxy → <b>alatyr-server</b>: gateway → <i>raw-port contract</i> → world port → Go world → persistence → PostgreSQL 18</sub></p>
 
 The [Go components](docs/engine-go/README.md) keep protocol, transport, world
 mechanics and persistence separate. The reusable module depends only on the

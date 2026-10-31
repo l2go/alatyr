@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 460" width="1200" height="460" role="img" aria-labelledby="arch-title arch-desc">
 <title id="arch-title">Alatyr architecture</title>
-<desc id="arch-desc">A participant client speaks alatyr/1 over a secure WebSocket to a trusted TLS proxy, which forwards a bearer token to alatyr-server. Inside one Go process the gateway admits bounded sessions, the world port carries facts and receipts across the raw-port contract, the Go world runs one simulation loop over the authored world files, and persistence saves checkpoints with pgx. PostgreSQL 18 holds the world schema under goose migrations, with one writer holding an advisory lease.</desc>
+<desc id="arch-desc">A participant client speaks alatyr/1 over a secure WebSocket to a trusted TLS proxy, which forwards a bearer token to alatyr-server. Inside one Go process the gateway admits bounded sessions, the gateway and the world port meet at the raw-port contract, the world port carries facts and receipts, the Go world runs one simulation loop over the authored world files, and persistence saves checkpoints with pgx. PostgreSQL 18 holds the world schema under goose migrations, with one writer holding an advisory lease.</desc>
 <defs>
 <radialGradient id="glow" cx=".3" cy=".4" r=".7">
 <stop offset="0" stop-color="#d9a441" stop-opacity=".07"/>
@@ -27,14 +27,14 @@
 .t--steel { fill: #8fa3c7; }
 .t--mono { fill: #aebbd6; font: 500 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
 .rule { stroke: rgba(143, 163, 199, .25); }
+.tick { stroke: rgba(242, 196, 107, .45); stroke-dasharray: 2 3; }
 .wire { fill: none; stroke: rgba(242, 196, 107, .45); stroke-width: 1.6; }
 .wire--db { stroke: rgba(143, 163, 199, .5); }
-.flow { fill: none; stroke: #fff6e0; stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 6 220; animation: flow 3.4s linear infinite; filter: url(#spark); }
+.flow { fill: none; stroke: #fff6e0; stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 6 84; animation: flow 1.36s linear infinite; filter: url(#spark); }
 .flow--db { stroke: #cfe0ff; }
-.f2 { animation-delay: -.9s; } .f3 { animation-delay: -1.8s; } .f4 { animation-delay: -2.5s; }
-.f5 { animation-delay: -1.2s; } .f6 { animation-delay: -2.9s; } .f7 { animation-delay: -.4s; }
+.f2 { animation-delay: -.5s; } .f3 { animation-delay: -.9s; }
 .pulse { fill: #f6d58e; animation: pulse 2.6s ease-in-out infinite; }
-@keyframes flow { to { stroke-dashoffset: -226; } }
+@keyframes flow { to { stroke-dashoffset: -90; } }
 @keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .flow { animation: none; opacity: 0; } .pulse { animation: none; opacity: .8; } }
 </style>
@@ -55,13 +55,10 @@
 <path class="wire wire--db" d="M336 332 H385"/>
 <path class="wire wire--db" d="M835 332 C 900 332, 892 166, 950 166"/>
 
-<path class="flow" d="M194 130 H218"/>
-<path class="flow f2" d="M336 130 H385"/>
-<path class="flow f3" d="M595 132 H625"/>
-<path class="flow f4" d="M730 168 C 730 236, 490 228, 490 296"/>
-<path class="flow f5" d="M595 332 H625"/>
-<path class="flow flow--db f6" d="M336 332 H385"/>
-<path class="flow flow--db f7" d="M835 332 C 900 332, 892 166, 950 166"/>
+<!-- One continuous stream per direction: nodes are drawn above it, so sparks pass behind them. -->
+<path class="flow" d="M194 130 H490 V132 H730 V168 C 730 236, 490 228, 490 296 V332 H835"/>
+<path class="flow flow--db f2" d="M336 332 H385"/>
+<path class="flow flow--db f3" d="M835 332 C 900 332, 892 166, 950 166"/>
 
 <rect class="node node--ext" x="24" y="96" width="170" height="68" rx="34"/>
 <text class="t" x="109" y="126" text-anchor="middle">Participant client</text>
@@ -79,8 +76,9 @@
 <text class="t" x="730" y="127" text-anchor="middle">World port</text>
 <text class="t t--small" x="730" y="149" text-anchor="middle">FACTS · RECEIPTS</text>
 
-<rect class="tag" x="522" y="218" width="176" height="28" rx="3"/>
-<text class="t t--small" x="610" y="236" text-anchor="middle">RAW-PORT CONTRACT</text>
+<path class="tick" d="M610 133 V186"/>
+<rect class="tag" x="522" y="186" width="176" height="28" rx="3"/>
+<text class="t t--small" x="610" y="204" text-anchor="middle">RAW-PORT CONTRACT</text>
 
 <rect class="node" x="385" y="296" width="210" height="72" rx="6"/>
 <text class="t" x="490" y="327" text-anchor="middle">Go world</text>
