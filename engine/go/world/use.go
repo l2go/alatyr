@@ -61,7 +61,11 @@ func (w *World) useItem(s *state, p *player, req Request) {
 		apply(s)
 		s.finish(StageDone)
 	} else {
-		s.afterRule(time.Duration(sk.HitTime)*time.Millisecond, RuleItemEffect, apply)
+		s.afterRule(time.Duration(sk.HitTime)*time.Millisecond, RuleItemEffect, func(s *state) {
+			// The timer releases this command's effect without rewriting its
+			// original outcome. Keep the consumption attributed to that intent.
+			s.source(Cause{Intent: intent}, func() { apply(s) })
+		})
 	}
 }
 

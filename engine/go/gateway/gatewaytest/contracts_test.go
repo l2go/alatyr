@@ -89,6 +89,13 @@ func checkOracle(t *testing.T, key string, got transcript) {
 
 func both(t *testing.T, run func(*rig)) {
 	t.Helper()
+	runBoth(t, run, true)
+}
+
+// New contract scenarios use explicit assertions and fixture/Client parity.
+// Frozen historical entries are changed only for the retired refusal rule.
+func runBoth(t *testing.T, run func(*rig), frozen bool) {
+	t.Helper()
 	var want transcript
 	for _, client := range []bool{false, true} {
 		t.Run(map[bool]string{false: "fixture", true: "Client"}[client], func(t *testing.T) {
@@ -136,7 +143,9 @@ func both(t *testing.T, run func(*rig)) {
 				got.handoffs = slices.Clone(r.handoffs)
 				r.mu.Unlock()
 				if !client {
-					checkOracle(t, strings.TrimSuffix(t.Name(), "/fixture"), got)
+					if frozen {
+						checkOracle(t, strings.TrimSuffix(t.Name(), "/fixture"), got)
+					}
 					want = got
 				} else {
 					if !slices.Equal(got.frames, want.frames) {
@@ -273,12 +282,7 @@ func TestG07LateRefusal(t *testing.T) {
 		r.p.Result(1, wire.StageSent)
 		log := r.log()
 		r.reply(log[0], wire.StageRefused, wire.ReasonWorld, meaning.Event{})
-		r.expect(1, 5, 5, wire.StageUnknown, wire.ReasonInterrupted, wire.DeliveryBackend, 0)
-		res := r.p.Result(1, wire.StageUnknown)
-		text, ok := wire.Find(res.Fields, 4)
-		if !ok || len(text.Fields) == 0 {
-			r.t.Fatal("missing system explanation")
-		}
+		r.expect(1, 5, 5, wire.StageRefused, wire.ReasonWorld, wire.DeliveryNone, 0)
 		before := len(r.p.Records)
 		// A retained duplicate receipt is diagnostic only on both implementations.
 		v := r.receipt(log[0], wire.StageRefused, wire.ReasonWorld)

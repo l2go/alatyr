@@ -21,7 +21,7 @@ func TestDependencyBoundary(t *testing.T) {
 	const parent = "github.com/l2go/alatyr/engine/go"
 	const own = parent + "/gateway"
 	const protocol = "github.com/l2go/alatyr/engine/go/protocol"
-	const version = "v0.0.0-20261023084050-3b52c8d267a0"
+	const version = "v0.0.0-20261031085835-fd03dfdaa563"
 	const bridge = "github.com/l2go/alatyr/engine/go/bridge"
 	modCmd := exec.CommandContext(t.Context(), "go", "mod", "edit", "-json")
 	modJSON, err := modCmd.Output()

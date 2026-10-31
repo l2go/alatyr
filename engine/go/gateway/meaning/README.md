@@ -63,10 +63,12 @@ Done requires `Source.ItemUse`, a matching `Input.Used` attempt attribution, and
 a live inventory fact with the same object/template and a decreased quantity or
 changed known slot. Delivery receipts, snapshots, unrelated changes, and a
 missing attribution grant no success. Healing at full health can still consume
-the item; Done proves consumption, not an HP increase. A refused world request
-is reported with the existing post-handoff Unknown/Interrupted result and an
-explicit world-rejection explanation; local stale/dead requests are Refused.
-The pinned protocol's post-contact uncertainty rules remain unchanged.
+the item; Done proves consumption, not an HP increase. A world refusal after
+handoff is Refused/DeliveryNone only when the adapter proves that the entire
+attempt had no effects. The action class remains usable. Missing evidence,
+partial delivery and ordinary failures remain Unknown and permanently taint
+the class; a later proven refusal cannot remove that taint. Local stale/dead
+requests remain Refused. The meaning identifier remains `alatyr/1`.
 
 For `Say`, an attributed live `Shop`, `Offer`, or `Practice` window is also a
 witness. `Input.Chosen` must identify the same attempt and the NPC observation

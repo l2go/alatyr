@@ -97,6 +97,9 @@ func TestCloseJoinsInFlightHTTPHandshake(t *testing.T) {
 		if err := g.Close(); err != nil {
 			t.Fatalf("Close = %v, want completed join", err)
 		}
+		// Close joins ServeHTTP's deferred owner accounting. Let the wrapper
+		// publish its later completion signal before checking it.
+		synctest.Wait()
 		select {
 		case <-handlerDone:
 		default:

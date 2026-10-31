@@ -676,7 +676,14 @@ func (s *game) checkpoint(c *connection, welcome *wire.Record, hold bool) bool {
 	if s.closed || !c.acceptsInput() {
 		return false
 	}
-	snapshot, err := s.state.Snapshot(s.gate.now())
+	return s.checkpointAt(c, welcome, hold, s.gate.now())
+}
+
+func (s *game) checkpointAt(c *connection, welcome *wire.Record, hold bool, now int64) bool {
+	if s.closed || !c.acceptsInput() {
+		return false
+	}
+	snapshot, err := s.state.Snapshot(now)
 	if !c.acceptsInput() {
 		return false
 	}
@@ -688,7 +695,7 @@ func (s *game) checkpoint(c *connection, welcome *wire.Record, hold bool) bool {
 	c.ready = false
 	c.transfer = true
 	c.capturedReady = ready
-	c.incompleteAt = s.gate.now()
+	c.incompleteAt = now
 	c.generation++
 	if c.generation == 0 {
 		s.fail(wire.CloseInternal)

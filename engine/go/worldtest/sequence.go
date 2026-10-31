@@ -100,7 +100,8 @@ func scenarioSeeds() [][]byte {
 		{2, opHarmTarget, 0, 0, opTake, 0, 0, opReplay, 0, 0, opRespawn, 0, 0},
 		{0, opTalk, 0, 0, opStopWorld, 0, 0},
 		{3, opRise, 0, 0, opAdvance, 3, 0},
-		{2, opHarmTarget, 0, 1}, // Two world players observe target clearing and NPC decay.
+		{2, opHarmTarget, 0, 1},                                                                                   // Two world players observe target clearing and NPC decay.
+		{0, opUseItem, 1, 0, opAdvance, 1, 0, opUseItem, 1, 0, opAdvance, 3, 0, opUseItem, 1, 0, opAdvance, 1, 0}, // Item reuse refuses without poisoning trade.
 	}
 }
 
@@ -163,6 +164,10 @@ type sequencer struct {
 // The caller runs each input twice in separate bubbles and compares the bytes.
 func ExerciseSequence(t *testing.T, data []byte, h SequenceHost) []byte {
 	t.Helper()
+	h.Port.mu.Lock()
+	h.Port.commits = h.Commits
+	h.Port.owner = h.Owner
+	h.Port.mu.Unlock()
 	s := &sequencer{t: t, h: h, origin: time.Now(), actor: h.Peer, peers: []*gatewaytest.Peer{h.Peer}, n: 1, read: make(map[*gatewaytest.Peer]int), closed: make(map[*gatewaytest.Peer]bool)}
 	s.openScope()
 	for i := 1; i+2 < len(data) && i < 193; i += 3 {
@@ -749,6 +754,9 @@ func checkTranscript(records []wire.Record, attempts map[uint64]*sequenceAttempt
 		}
 		if r.Type == wire.Fact && gatewaytest.U(r, 32) != 0 {
 			n := gatewaytest.U(r, 32)
+			if old, ok := stages[n]; ok && gatewaytest.U(old, 2) == uint64(wire.StageRefused) {
+				return fmt.Errorf("refused attempt %d has a later causal effect", n)
+			}
 			a := attempts[n]
 			f, _ := wire.Find(r.Fields, 3)
 			if a == nil || snapshot || gatewaytest.U(r, 4) != epoch || f.S < a.at || f.S > a.at+2*evidenceMS {

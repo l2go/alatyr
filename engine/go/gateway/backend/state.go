@@ -10,6 +10,7 @@ import (
 	"github.com/l2go/alatyr/engine/go/bridge/profile"
 	"github.com/l2go/alatyr/engine/go/gateway"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
+	"github.com/l2go/alatyr/engine/go/protocol/proto"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
 
@@ -21,6 +22,8 @@ type plan struct {
 	helperSent, helperDone, effectDone bool
 	receiptMS                          int64
 	contact, deadline                  int64
+	writes                             int
+	writeFailed                        bool
 }
 type operation struct {
 	value meaning.Operation
@@ -152,9 +155,10 @@ func (s *state) Apply(u gateway.Update, now int64) (gateway.Observation, error) 
 		return gateway.Observation{}, wire.ErrFrame
 	}
 	var failures []gateway.Failure
+	var refusals []gateway.Refusal
 	for _, r := range p.receipts {
 		binding, ok := s.world.pending[r.Key]
-		if !ok || r.Replay {
+		if !ok || r.Replay || p.snapshot {
 			continue
 		}
 		if r.N != binding.n || r.Requested != binding.verb || r.Effective != binding.verb || r.GatewayEpoch != s.epoch {
@@ -186,6 +190,10 @@ func (s *state) Apply(u gateway.Update, now int64) (gateway.Observation, error) 
 		case binding.role == gateway.StepHelper && (r.Stage == wire.StageRefused || r.Stage == wire.StageUnknown):
 			reason = wire.ReasonTargetUnconfirmed
 		case r.Stage == wire.StageRefused:
+			if binding.role == gateway.StepEffect && plan.writes == 1 && !plan.helperSent && !plan.writeFailed && r.Delivery == wire.DeliveryNone && worldRefusalReason(r.Reason) && len(r.Effects) == 0 {
+				refusals = append(refusals, gateway.Refusal{N: plan.n, Evidence: proto.RefusalEvidence{Reason: r.Reason, ObservedMS: at}})
+				continue
+			}
 			reason = wire.ReasonInterrupted
 			text = "The world rejected the request after handoff."
 		case r.Reason == wire.ReasonInterrupted:
@@ -196,7 +204,7 @@ func (s *state) Apply(u gateway.Update, now int64) (gateway.Observation, error) 
 		}
 	}
 	if p.record.Type == 0 {
-		return gateway.Observation{Failures: failures}, nil
+		return gateway.Observation{Failures: failures, Refusals: refusals}, nil
 	}
 	r := p.record
 	if p.at.IsZero() {
@@ -220,7 +228,7 @@ func (s *state) Apply(u gateway.Update, now int64) (gateway.Observation, error) 
 			s.input.Complete = []string{"objects", "self", "trade", "dialogue"}
 		}
 		_, err := s.State.Apply(gateway.Update{Value: s.input}, now)
-		return gateway.Observation{Failures: failures}, err
+		return gateway.Observation{Failures: failures, Refusals: refusals}, err
 	}
 	e, err := event(r)
 	if err != nil {
@@ -240,7 +248,7 @@ func (s *state) Apply(u gateway.Update, now int64) (gateway.Observation, error) 
 			return gateway.Observation{}, wire.ErrFrame
 		}
 		if g <= s.g {
-			return gateway.Observation{Failures: failures}, nil
+			return gateway.Observation{Failures: failures, Refusals: refusals}, nil
 		}
 		s.g = g
 		s.ready = false
@@ -260,6 +268,7 @@ func (s *state) Apply(u gateway.Update, now int64) (gateway.Observation, error) 
 	}
 	obs, err := s.State.Apply(gateway.Update{Value: s.input}, now)
 	obs.Failures = failures
+	obs.Refusals = refusals
 	return obs, err
 }
 
@@ -383,3 +392,13 @@ func (s *state) Stop() *gateway.Step {
 }
 
 var _ gateway.State = (*state)(nil)
+
+// Only the producer's zero-effect dispositions can authorize a refusal proof.
+func worldRefusalReason(reason wire.Reason) bool {
+	switch reason {
+	case wire.ReasonWorld, wire.ReasonInvalid, wire.ReasonQueueExpired:
+		return true
+	default:
+		return false
+	}
+}

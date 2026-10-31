@@ -18,6 +18,28 @@ Optional `Handoff` reports numeric correlation only, never payloads or errors.
 writes; expired bindings are removed before another write. This adapter bound
 is independent of the configured participant pending-attempt limit.
 
+A post-contact Refused needs a live receipt for the only write of that attempt:
+the same command Key, raw N, requested/effective verb and GatewayEpoch, not Replay
+or a snapshot, observed at or after original contact and strictly before its
+original deadline. The receipt must be StageRefused/DeliveryNone, carry World, Invalid or
+QueueExpired (the producer's zero-effect reasons), and contain no effects. For the Go world this is authored by
+`worldbridge/receipt.go` from an owned refusal or expired admission with no effect
+groups, or from a pre-execution `p.refusal`. No write may have returned an error.
+The actor removes the remaining action before it can perform another step.
+Scope closure and backend errors retain their existing failure disposition.
+
+| Step role | Refusal authority |
+| --- | --- |
+| Effect | A live no-effect refusal can certify the attempt only when this was its sole write. |
+| Helper | Selection can change the target and intention. Once written, it prevents certifying the whole attempt, even if a later effect is refused. A helper skipped because the target is already confirmed was never written and does not prevent proof. |
+| System | N is zero; guarded stop and relocation service are independent operations and never certify a participant outcome. |
+
+The trusted proof reaches `proto.Session.ConfirmRefusal` through
+`Observation.Refusals`. Ordinary `Observation.Failures`, missing or late evidence,
+write errors and partial delivery keep the existing Unknown and class-taint
+rules. A proven refusal releases its slot without adding or clearing taint.
+Receipts from snapshots and recovery are diagnostic and cannot create outcomes.
+
 Ready snapshots require explicit complete inventory, skill, and quest lists.
 Unknown does not become known-empty. The audited bridge buy/sell packets carry
 one complete goods list even when the optional completeness flag is absent.

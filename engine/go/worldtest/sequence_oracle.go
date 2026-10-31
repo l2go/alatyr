@@ -52,7 +52,9 @@ func checkRawEvidence(records []wire.Record, attempts map[uint64]*sequenceAttemp
 		n := gatewaytest.U(r, 1)
 		stage := wire.Stage(gatewaytest.U(r, 2))
 		if stage == wire.StageRefused && len(byAttempt[n]) != 0 {
-			return fmt.Errorf("refused attempt %d reached the world", n)
+			if err := checkRefusalEvidence(r, byAttempt[n], trace, writes, evidenceMS); err != nil {
+				return err
+			}
 		}
 		if stage != wire.StageDone {
 			continue
@@ -166,8 +168,20 @@ func checkEconomy(commits []world.Commit) error {
 		item   world.Ref
 	}
 	used := make(map[consumption]bool)
+	refused := make(map[world.IntentID]bool)
+	for _, c := range commits {
+		if c.Outcome.Stage == world.StageRefused || c.Outcome.Stage == world.StageExpired {
+			if c.Intent.ID.N == 0 || c.Outcome.Intent != c.Intent.ID || len(c.Groups) != 0 {
+				return fmt.Errorf("refused world intent %v changed the world or lost its identity", c.Intent.ID)
+			}
+			refused[c.Intent.ID] = true
+		}
+	}
 	for _, c := range commits {
 		for _, g := range c.Groups {
+			if refused[g.Cause.Intent] {
+				return fmt.Errorf("refused world intent %v produced a deferred effect", g.Cause.Intent)
+			}
 			for _, effect := range g.Effects {
 				e, ok := effect.(world.ResourceTransferred)
 				if !ok {
