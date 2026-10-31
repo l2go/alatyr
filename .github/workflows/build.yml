@@ -151,8 +151,8 @@ jobs:
           (cd engine/go/server && GOWORK=off go mod tidy -diff)
           (cd engine/go && GOWORK=off go mod tidy -diff)
           printf '%s\n' \
-            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0 h1:rMwRQ7Ky/sqoadBzm0G8x1JznT9qSwVIoEIzajZFh/A=' \
-            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/go.sum
+            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261031063443-5f0b3d838443 h1:6ibOuNMTODeOD2PiCizWr8/AP7Fk8QUrIVEvZRpnkBU=' \
+            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261031063443-5f0b3d838443/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/go.sum
 
       - name: Vet and test the boundary checker
         env:
@@ -343,8 +343,8 @@ jobs:
             test ! -e "$module/go.sum"
           done
           printf '%s\n' \
-            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0 h1:rMwRQ7Ky/sqoadBzm0G8x1JznT9qSwVIoEIzajZFh/A=' \
-            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261023084050-3b52c8d267a0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/go.sum
+            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261031063443-5f0b3d838443 h1:6ibOuNMTODeOD2PiCizWr8/AP7Fk8QUrIVEvZRpnkBU=' \
+            'github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261031063443-5f0b3d838443/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=' | cmp - engine/go/go.sum
 
   # Formats, vets, and tests the world tool, then checks that the authored world matches a fresh render.
   # It runs independently of the application image.

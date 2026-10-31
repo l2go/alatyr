@@ -104,10 +104,7 @@ func TestParticipantUseItem(t *testing.T) {
 		r.p.Send(r.intent(4, 14, wire.S(21, true, 12)))
 		r.sync()
 		r.p.Send(r.intent(5, 14, wire.S(21, true, 12)))
-		res := r.p.Result(5, wire.StageUnknown)
-		if _, ok := wire.Find(res.Fields, 4); !ok {
-			t.Fatal("world refusal explanation absent")
-		}
+		r.expect(5, wire.StageRefused, wire.ReasonWorld, wire.DeliveryNone, 0)
 		r.advance(time.Second)
 		if quantity(inventory(t, r), 1060) != 2 {
 			t.Fatal("reuse consumed twice")

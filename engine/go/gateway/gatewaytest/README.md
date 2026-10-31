@@ -26,10 +26,16 @@ it never writes or updates fixtures.
 | G04 | `TestG04TradeRemainsUnknown` | buy-receipt-is-not-a-fact, sell-receipt-is-not-a-fact |
 | G05 | `TestG05LearningFullWindow` | learning-requires-separate-witness |
 | G06 | `TestG06ReturnAndDrain` | rise-sent-is-not-revival |
-| G07 | `TestG07LateRefusal`, `TestG07TerminalSentIsImmutable` | ordinary-refusal-after-handoff, cast-sent-is-not-completion |
+| G07 | `TestG07LateRefusal`, `TestG07TerminalSentIsImmutable` | proven zero-effect refusal; terminal Sent is immutable |
 | G08 | `TestG08WorldCloseByContact` | transport-lost-before-run |
 | G09 | `TestG09DetachAndExplicitResume` | handoff-sent; explicit recovery checks are additional |
 | G10 | `TestG10RejectFalseWitnesses` | separate-witness IDs; source, epoch, generation, and deadline checks are additional |
+| G11 | `TestG11ProvenRefusalPreservesClass` | a live effect refusal releases its class; a fresh action can complete |
+
+G11 uses explicit outcome and cause assertions and the same exact fixture/Client
+comparison. Its new semantics do not rewrite the historical frozen inputs.
+Only the G07 gateway oracle for the retired post-contact refusal rule changes;
+the raw bridge refusal contract remains unchanged.
 
 `TestPinnedBridgeContracts` resolves the bridge package in the same server module and reads its unchanged
 15-scenario fixture, checks its hash, and fails on a missing fixture or replacement.

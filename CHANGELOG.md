@@ -16,8 +16,13 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 - Alatyr ships the authored Go world and participant gateway as `ghcr.io/l2go/alatyr`, for linux/amd64 and linux/arm64. Compose supplies PostgreSQL 18, file-based credentials, a static participant registry and operator character import. Native image checks cover readiness, authenticated entry, live shutdown persistence, restart and backup restore.
 - PostgreSQL persistence saves learned skills and the SP balance in one transaction. Detached final checkpoints preserve participants when the world stops itself.
 
+### Changed
+
+- `alatyr/1` clients can receive Refused after Sent when live, exclusive world evidence proves that the entire attempt had no effects. The action class remains usable; genuine Unknown outcomes still taint it permanently.
+
 ### Fixed
 
+- Deferred healing-item consumption retains its originating intent in the source audit, so separate uses are checked independently.
 - Recovery accepts a visible dialogue page after its final learning action was consumed, while retaining original-lifetime checks for actionable proposals.
 - Visibility changes and participant checkpoint traversal follow stable object and admission order so identical command sequences can be replayed exactly.
 

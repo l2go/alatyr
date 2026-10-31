@@ -1,6 +1,6 @@
 # Participant gateway on the Go world
 
-This test composition runs G01–G10 through the existing `gatewaytest` participant
+This test composition runs G01–G11 through the existing `gatewaytest` participant
 transport, the production gateway/backend, and a real `worldbridge.Client` over
 `world.World`. It loads the repository's authored world and uses `memstore`.
 The deterministic suite needs no image, database, alternative driver or generated oracle.
@@ -112,7 +112,7 @@ The checks follow existing contracts:
 | Process and owned loops survive | `gateway/README.md`, world and backend lifecycle ownership; any panic fails the test process, any leaked blocked goroutine fails the synctest bubble |
 | One immutable terminal outcome per admitted attempt | G02/G07, protocol Sent/terminal rules and gateway cached outcomes; `checkTranscript` distinguishes nonwaiting Sent, progression, exact Intent replay and checkpoint replay |
 | Done requires a live timely witness | G01/G03/G05/G06/G10 and `meaning/README.md`; ordered causal fact before Done, same projection epoch and target generation, then independent raw kind, subject, effect key, receipt and original first-contact deadline checks in `checkRawEvidence` |
-| Honest refusal | `wire` reason vocabulary and protocol pre-contact refusal; no causal fact and no raw handoff for a Refused attempt; observer and stale-control probes also compare the complete world capture |
+| Honest refusal | `wire` reason vocabulary; no causal fact, and either no handoff or one live, exclusive no-effect receipt matching the raw command, scope epoch and original window. The actual world command and later commitments contain no effect groups for its intent; observer and stale-control probes also compare the complete world capture |
 | Bounded drain | Gateway Status budgets after each step; after joined closure, gateway admission/connection/action maps and backend binding maps remain within their existing budgets and every backend update channel is closed |
 | Consistent world and saved state | World resource/character/departure contracts; HP/MP ranges, finite vitals, unique inventory rows, nonnegative balances, exact integer debit/credit arithmetic, one item consumption per world intent, and complete saved-character equality with rounded vitals and departure timestamp |
 
@@ -124,7 +124,11 @@ Outcome, raw-evidence, drain and world-state oracle tests include positive
 controls and deliberately broken observations, outcomes, accounting, transfers
 and saves. Panic and goroutine-leak sensitivity can also be checked by temporary
 source overlays; a blanket recover would defeat the first invariant.
-The original G01–G10 suites and both frozen `contracts.json` files remain intact.
+G11 checks refusal followed by successful reuse of the same action class, including
+the real world's healing cooldown. A purchase rejected after handoff also leaves
+trade usable. Missing evidence still causes permanent taint after Unknown.
+The raw bridge oracle is unchanged. Only the G07 gateway oracle pinning the old
+post-contact refusal rule is revised; all other historical entries remain intact.
 The named opcode, verb and fact constants are checked against the meaning
 dictionary by `TestSequenceDictionaryCodes`. Drain limits use the configured
 participant pending budget and the backend contract's eight raw bindings; the
@@ -142,7 +146,7 @@ GOWORK=off go test -run='^$' -fuzz='^FuzzGatewaySequence$' -fuzztime=20s -parall
 ```
 
 From `engine/go/server`, run `go test -race -p=1 -run '^TestHostGatewayReliability$'
-./cmd/alatyr-server`. Ordinary PR tests run all 14 fixed scenarios, 75 directed seeds, committed
+./cmd/alatyr-server`. Ordinary PR tests run all 15 fixed scenarios, 76 directed seeds, committed
 corpus entries and 32 generated programs. In each workspace mode CI invokes
 fixed scenarios and other package tests, generated programs, and the native
 corpus as three separate test batches, each retaining `-race` and double replay.

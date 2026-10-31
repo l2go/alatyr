@@ -625,7 +625,7 @@ func TestApplicationModuleBoundaries(t *testing.T) {
 		{"wrong-target", "=> ../", "=> ../../"},
 		{"uncanonical-parent", "=> ../", "=> .."},
 		{"parent-pseudoversion", serverModule + " v0.0.0", serverModule + " " + protocolVersion},
-		{"protocol-newer", modulePrefix + "protocol " + protocolVersion, modulePrefix + "protocol v0.0.0-20261023084051-3b52c8d267a0"},
+		{"protocol-other-version", modulePrefix + "protocol " + protocolVersion, modulePrefix + "protocol v0.0.0-20261023084051-3b52c8d267a0"},
 		{"transitive-direct", "github.com/jackc/puddle/v2 v2.2.3 // indirect", "github.com/jackc/puddle/v2 v2.2.3"},
 		{"absolute-target", "=> ../", "=> /tmp/other"},
 		{"versioned-target", "=> ../", "=> example.org/other v1.0.0"},

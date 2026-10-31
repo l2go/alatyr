@@ -110,9 +110,12 @@ type Update struct {
 type Observation struct {
 	// Facts is the owned public projection in backend receive order.
 	Facts []wire.Record
-	// Failures applies asynchronous refusals even when Facts is empty. It cannot
-	// complete an attempt; Done remains exclusively a State.Witness decision.
+	// Failures reports asynchronous errors without proof of no effects. It
+	// cannot authorize Done or a proven refusal after contact.
 	Failures []Failure
+	// Refusals carries proofs of no effects after contact. Only a trusted
+	// backend can supply this proof; unproven refusals belong in Failures.
+	Refusals []Refusal
 	// WorldClosed ends the scope and closes its world. It excludes Detached.
 	WorldClosed bool
 	// Detached ends the scope but retains the raw session for explicit recovery.
@@ -129,6 +132,15 @@ type Failure struct {
 	Reason wire.Reason
 	// Text is an optional bounded explanation owned by the trusted adapter.
 	Text string
+}
+
+// Refusal binds a trusted proof of no effects to a participant attempt.
+// It cannot authorize Done or undo a terminal outcome or an earlier class taint.
+type Refusal struct {
+	// N identifies the participant attempt, never a raw bridge number.
+	N uint64
+	// Evidence covers every contacted step within the original evidence window.
+	Evidence proto.RefusalEvidence
 }
 
 // Detacher separates scope termination from closing the retained raw session.

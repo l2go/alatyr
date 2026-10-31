@@ -370,7 +370,7 @@ func (s *game) observe(update Update) bool {
 		return false
 	}
 	var results []wire.Record
-	if len(observation.Failures) > s.gate.cfg.Attempts.Pending {
+	if len(observation.Failures)+len(observation.Refusals) > s.gate.cfg.Attempts.Pending {
 		s.fail(wire.CloseInternal)
 		return false
 	}
@@ -390,6 +390,19 @@ func (s *game) observe(update Update) bool {
 		}
 		results = append(results, r)
 		delete(s.actions, failure.N)
+	}
+	for _, refusal := range observation.Refusals {
+		entry, ok := s.attempts.Lookup(refusal.N)
+		if !ok || entry.Terminal {
+			continue
+		}
+		o, err := s.attempts.ConfirmRefusal(refusal.N, refusal.Evidence, s.gate.now())
+		if err != nil {
+			s.fail(wire.CloseInternal)
+			return false
+		}
+		results = append(results, o.Record())
+		delete(s.actions, refusal.N)
 	}
 	if update.Relocate {
 		for _, c := range s.connections() {

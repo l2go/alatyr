@@ -40,7 +40,7 @@ func newState(t testing.TB, c Config, policy Policy) *State {
 func protocolModuleDir(t testing.TB) string {
 	t.Helper()
 	const path = "github.com/l2go/alatyr/engine/go/protocol"
-	const version = "v0.0.0-20261023084050-3b52c8d267a0"
+	const version = "v0.0.0-20261031063443-5f0b3d838443"
 	cmd := exec.CommandContext(t.Context(), "go", "list", "-m", "-json", path)
 	// Resolve the pinned module even when the surrounding test uses go.work.
 	cmd.Env = append(os.Environ(), "GOWORK=off")

@@ -12,6 +12,7 @@ import (
 
 	"github.com/l2go/alatyr/engine/go/bridge"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/world"
 )
 
 // SequencePort schedules real raw observations at explicit test barriers. It
@@ -27,11 +28,15 @@ type SequencePort struct {
 	writes  []sequenceWrite
 	fault   byte
 	held    []bridge.Update
+	epoch   uint64
+	commits func() []world.Commit
+	owner   func() world.Ref
 }
 
-// NewSequencePort wraps a real port before backend.New takes ownership of it.
+// NewSequencePort wraps a fresh Go-world port at raw epoch one, before
+// backend.New takes ownership of it. Resume records each subsequent raw epoch.
 func NewSequencePort(p bridge.Port) *SequencePort {
-	return &SequencePort{Port: p, updates: make(chan bridge.Update, 8)}
+	return &SequencePort{Port: p, updates: make(chan bridge.Update, 8), epoch: 1}
 }
 
 // Updates exposes observations released by Flush.
@@ -98,14 +103,49 @@ func (p *SequencePort) Close() error {
 type sequenceWrite struct {
 	command bridge.Command
 	at      time.Time
+	epoch   uint64
+	commits []world.Commit
+	audited bool
+	failed  bool
+	owner   world.Ref
 }
 
 // Write records the real contact time before forwarding the command.
 func (p *SequencePort) Write(ctx context.Context, c bridge.Command) (uint64, error) {
 	p.mu.Lock()
-	p.writes = append(p.writes, sequenceWrite{c, time.Now()})
+	i, commits, owner := len(p.writes), p.commits, p.owner
+	p.writes = append(p.writes, sequenceWrite{command: c, at: time.Now(), epoch: p.epoch, audited: commits != nil})
 	p.mu.Unlock()
-	return p.Port.Write(ctx, c)
+	var current world.Ref
+	if owner != nil {
+		current = owner()
+	}
+	before := 0
+	if commits != nil {
+		before = len(commits())
+	}
+	n, err := p.Port.Write(ctx, c)
+	var captured []world.Commit
+	if commits != nil {
+		after := commits()
+		captured = slices.Clone(after[before:])
+	}
+	p.mu.Lock()
+	p.writes[i].commits, p.writes[i].failed, p.writes[i].owner = captured, err != nil, current
+	p.mu.Unlock()
+	return n, err
+}
+
+// Resume records the raw scope epoch without replaying any retained receipt as
+// a live update. The underlying world port starts at epoch one.
+func (p *SequencePort) Resume(ctx context.Context) (bridge.Recovery, error) {
+	r, err := p.Port.Resume(ctx)
+	if err == nil {
+		p.mu.Lock()
+		p.epoch = r.Snapshot.GatewayEpoch
+		p.mu.Unlock()
+	}
+	return r, err
 }
 
 // Fault chooses observation loss: 0 live, 1 receipts only, 2 facts only,

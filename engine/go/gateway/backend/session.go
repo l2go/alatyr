@@ -264,7 +264,7 @@ func (w *World) pump() {
 				return
 			}
 			if len(b.Records) == 0 {
-				if !send(packet{kind: bridge.LiveBatch, receipts: b.Receipts}) {
+				if !send(packet{kind: bridge.LiveBatch, receipts: b.Receipts, snapshot: b.Snapshot}) {
 					return
 				}
 			}
@@ -324,7 +324,9 @@ func (w *World) Write(ctx context.Context, step gateway.Step) error {
 	if step.Role == gateway.StepEffect && (c.Verb == 14 || c.Verb == 6) {
 		op.plan.effectKey = key
 	}
+	op.plan.writes++
 	n, err := w.session.port.Write(ctx, c)
+	op.plan.writeFailed = op.plan.writeFailed || err != nil
 	if fn := w.session.cfg.Handoff; fn != nil {
 		fn(Handoff{N: step.N, Index: step.Index, Role: step.Role, Key: key, RawN: n})
 	}
