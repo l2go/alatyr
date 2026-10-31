@@ -321,7 +321,11 @@ func (s *game) write(ctx context.Context, step Step) error {
 	return s.world.Write(ctx, step)
 }
 func (s *game) observe(update Update) bool {
-	s.expire()
+	if s.closed {
+		return false
+	}
+	now := s.gate.now()
+	s.expireAt(now)
 	if s.closed {
 		return false
 	}
@@ -350,7 +354,7 @@ func (s *game) observe(update Update) bool {
 		return false
 	}
 	s.services = append(s.services, update.Service...)
-	observation, err := s.state.Apply(update, s.gate.now())
+	observation, err := s.state.Apply(update, now)
 	if err != nil {
 		s.fail(wire.CloseInternal)
 		return false
@@ -396,10 +400,14 @@ func (s *game) observe(update Update) bool {
 		if !ok || entry.Terminal {
 			continue
 		}
-		o, err := s.attempts.ConfirmRefusal(refusal.N, refusal.Evidence, s.gate.now())
+		o, err := s.attempts.ConfirmRefusal(refusal.N, refusal.Evidence, now)
 		if err != nil {
-			s.fail(wire.CloseInternal)
-			return false
+			// A late or inconsistent proof cannot establish absence of effects.
+			// Keep uncertainty local to this attempt, just like a timeout.
+			o, err = s.attempts.Fail(refusal.N, wire.ReasonTimeout)
+			if err != nil {
+				continue
+			}
 		}
 		results = append(results, o.Record())
 		delete(s.actions, refusal.N)
@@ -410,16 +418,16 @@ func (s *game) observe(update Update) bool {
 				return false
 			}
 			if c.hello {
-				if !s.checkpoint(c, nil, true) && s.closed {
+				if !s.checkpointAt(c, nil, true, now) && s.closed {
 					return false
 				}
 			}
 		}
 	}
-	observed := s.gate.now()
+	observed := now
 	if update.ReceivedMS != nil {
 		observed = *update.ReceivedMS
-		if observed < 0 || observed > s.gate.now() {
+		if observed < 0 || observed > now {
 			s.fail(wire.CloseInternal)
 			return false
 		}
@@ -452,7 +460,7 @@ func (s *game) observe(update Update) bool {
 				s.fail(wire.CloseInternal)
 				return false
 			}
-			o, e := s.attempts.CommitWitness(n, observed, s.gate.now())
+			o, e := s.attempts.CommitWitness(n, observed, now)
 			if e == nil {
 				set(&observation.Facts[0], 32, wire.U(32, true, n))
 				results = append(results, o.Record())
@@ -482,7 +490,7 @@ func (s *game) observe(update Update) bool {
 		if !c.acceptsInput() || !c.hello || c.ready {
 			continue
 		}
-		snapshot, err := s.state.Snapshot(s.gate.now())
+		snapshot, err := s.state.Snapshot(now)
 		if !c.acceptsInput() {
 			continue
 		}
@@ -520,7 +528,7 @@ func (s *game) observe(update Update) bool {
 			c.mu.Unlock()
 			c.wake()
 		} else if snapshot.Ready && !c.transfer {
-			if !s.checkpoint(c, nil, false) && s.closed {
+			if !s.checkpointAt(c, nil, false, now) && s.closed {
 				return false
 			}
 		}
@@ -528,14 +536,20 @@ func (s *game) observe(update Update) bool {
 
 	// A live candidate may arrive after the checkpoint has already drained.
 	// This is still the same readiness gate, never raw-ready alone.
-	s.commitReadyWitnesses()
+	s.commitReadyWitnessesAt(now)
 	return !s.closed
 }
 func (s *game) expire() {
 	if s.closed {
 		return
 	}
-	now := s.gate.now()
+	s.expireAt(s.gate.now())
+}
+
+func (s *game) expireAt(now int64) {
+	if s.closed {
+		return
+	}
 	for n, ex := range s.actions {
 		if s.closed {
 			return
@@ -640,6 +654,13 @@ func (s *game) commitReadyWitnesses() {
 	if s.closed {
 		return
 	}
+	s.commitReadyWitnessesAt(s.gate.now())
+}
+
+func (s *game) commitReadyWitnessesAt(now int64) {
+	if s.closed {
+		return
+	}
 	owner, _ := s.attempts.Controller()
 	ready := false
 	for _, c := range s.connections() {
@@ -662,7 +683,7 @@ func (s *game) commitReadyWitnesses() {
 			s.fail(wire.CloseInternal)
 			return
 		}
-		r, err := s.state.Proof(ex.action, s.gate.now())
+		r, err := s.state.Proof(ex.action, now)
 		if err != nil {
 			s.fail(wire.CloseInternal)
 			return
@@ -670,7 +691,7 @@ func (s *game) commitReadyWitnesses() {
 		// Readiness releases the original live fact even if its attempt timed
 		// out during drain. Only an eligible candidate may add a cause/result.
 		if valid {
-			o, err := s.attempts.CommitWitness(n, ex.candidate, s.gate.now())
+			o, err := s.attempts.CommitWitness(n, ex.candidate, now)
 			if err == nil {
 				set(&r, 32, wire.U(32, true, n))
 				if !s.fact(r) {
