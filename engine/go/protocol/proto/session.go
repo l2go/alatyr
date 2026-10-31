@@ -345,8 +345,8 @@ func (s *Session) finish(i int, o Outcome) Outcome {
 	return o
 }
 
-// Refuse finishes attempt n as refused. After contact with the world it
-// finishes the attempt as unknown instead, through Fail.
+// Refuse rejects attempt n without evidence from the world. After contact it
+// delegates to Fail; only ConfirmRefusal can certify absence of effects then.
 func (s *Session) Refuse(n uint64, reason wire.Reason) (Outcome, error) {
 	if reason < wire.ReasonNotReady || reason > wire.ReasonBackendError {
 		return Outcome{}, ErrState
@@ -364,8 +364,8 @@ func (s *Session) Refuse(n uint64, reason wire.Reason) (Outcome, error) {
 	return s.finish(i, o), nil
 }
 
-// Fail finishes attempt n as unknown after contact with the world. Before
-// contact it refuses the attempt instead, through Refuse.
+// Fail records uncertainty after contact and permanently taints the class.
+// Before contact it delegates to Refuse. It never certifies absence of effects.
 func (s *Session) Fail(n uint64, reason wire.Reason) (Outcome, error) {
 	i := s.index(n)
 	if i < 0 || s.entries[i].Terminal {
