@@ -69,3 +69,8 @@ owned by the protocol module; the gateway does not implement another record code
 See [Go components](../../../docs/engine-go/README.md).
 
 License: [AGPL-3.0-or-later](LICENSE).
+
+## Player appearance
+
+See [the meaning dictionary](meaning/README.md#player-appearance) for player
+appearance fields, presence rules and live/snapshot behavior.

@@ -77,3 +77,27 @@ This path does not require a speech receipt: a window is its own separate
 witness. `Talk` still requires speech. A checkpoint, late window, wrong key,
 foreign NPC, or bare receipt cannot complete a choice. Raw attribution remains
 inside the trusted adapter; participant facts contain only the causal attempt.
+
+## Player appearance
+
+An optional nonessential Fact object at field 35 describes a player: race (1),
+sex (2) and base visual branch (3). The closed `wire` vocabulary distinguishes
+human, elf, dark elf, Kruvan and dwarf; male and female; fighter and mystic.
+Zero explicitly means unknown. An absent appearance object means no report,
+not an empty object and not a default fighter. Numeric class IDs are never sent.
+
+The real Go-world producer includes appearance in self descriptions and visible
+player appearances, both live and in snapshots. Full self Vitals reports also
+carry it; partial health reports may omit it. A missing report preserves known
+appearance within an observation lifetime. Gone and scope invalidation discard
+it; Resume restores it from the world's snapshot. An explicit refresh is an
+honest appearance fact, not a capability or causal witness. NPC descriptions
+cannot carry player appearance.
+
+`ClassKindKnown` and `Mage` supply the branch. Missing metadata stays unknown,
+regardless of numeric class ID or stats. The world currently exposes no race,
+sex or class mutation during an incarnation; changing character creation or
+class selection is outside this change. Any future mutator must publish a new
+player/self description. The name `alatyr/1`, action policies and historical
+contract fixtures are unchanged. Clients select representations from these
+facts independently of permissions.

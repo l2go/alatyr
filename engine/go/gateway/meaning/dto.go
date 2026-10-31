@@ -3,6 +3,8 @@
 
 package meaning
 
+import "github.com/l2go/alatyr/engine/go/protocol/wire"
+
 // Event kinds.
 const (
 	// Appeared identifies an object entering the observed horizon.
@@ -182,8 +184,22 @@ type Entry struct {
 // Number represents a known stat value, including zero.
 func Number(v int64) *int64 { return &v }
 
+// Appearance describes a player without exposing a class ID or granting actions.
+// Each zero member explicitly means unknown; nil Event.Appearance is no report.
+type Appearance struct {
+	// Race is the player's authored people, or RaceUnknown.
+	Race wire.Race `json:"race"`
+	// Sex is the reported sex, or SexUnknown.
+	Sex wire.Sex `json:"sex"`
+	// Branch is fighter/mystic only when authored class-kind metadata is known.
+	Branch wire.Branch `json:"branch"`
+}
+
 // Event is one thing the server has already decided.
 type Event struct {
+	// Appearance is an optional player report. It is valid on Appeared for a
+	// player or Vitals for self; absence does not erase a known appearance.
+	Appearance *Appearance `json:"appearance,omitempty"`
 	// MS is the original backend fact time in milliseconds.
 	MS int64 `json:"ms"`
 	// Kind selects one of the fixed fact kinds.

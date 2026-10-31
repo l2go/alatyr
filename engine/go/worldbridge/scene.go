@@ -29,7 +29,7 @@ func (t translator) self(s world.Self) ([]fact, error) {
 	if err != nil {
 		return nil, err
 	}
-	f := fact{1, "objects", []wire.Field{wire.S(64, true, int64(s.Entity.ID)), wire.Data(11, true, "player"), name, point(13, world.Point{X: s.Char.X, Y: s.Char.Y, Z: s.Char.Z}), wire.U(15, true, uint64(speed)), boolean(19, true), boolean(70, !s.Dead)}}
+	f := fact{1, "objects", []wire.Field{wire.S(64, true, int64(s.Entity.ID)), wire.Data(11, true, "player"), name, point(13, world.Point{X: s.Char.X, Y: s.Char.Y, Z: s.Char.Z}), wire.U(15, true, uint64(speed)), boolean(19, true), boolean(70, !s.Dead), appearance(s)}}
 	stats := []wire.Field{}
 	for i, v := range []float64{s.Char.CurHP, s.Char.MaxHP, s.Char.CurMP, s.Char.MaxMP} {
 		n, err := display(v)
@@ -43,7 +43,7 @@ func (t translator) self(s world.Self) ([]fact, error) {
 	if s.PDefKnown {
 		stats = append(stats, wire.S(9, true, int64(s.PDef)))
 	}
-	return []fact{f, {16, "self", []wire.Field{wire.S(64, true, int64(s.Entity.ID)), wire.Obj(25, true, stats)}}}, nil
+	return []fact{f, {16, "self", []wire.Field{wire.S(64, true, int64(s.Entity.ID)), wire.Obj(25, true, stats), appearance(s)}}}, nil
 }
 
 func (t translator) npc(v world.NPCView, class int32) (fact, error) {

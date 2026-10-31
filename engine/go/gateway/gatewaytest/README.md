@@ -31,6 +31,7 @@ it never writes or updates fixtures.
 | G09 | `TestG09DetachAndExplicitResume` | handoff-sent; explicit recovery checks are additional |
 | G10 | `TestG10RejectFalseWitnesses` | separate-witness IDs; source, epoch, generation, and deadline checks are additional |
 | G11 | `TestG11ProvenRefusalPreservesClass` | a live effect refusal releases its class; a fresh action can complete |
+| G12 | `TestG12PlayerAppearance` | explicit player appearance survives live delivery and an observer checkpoint |
 
 G11 uses explicit outcome and cause assertions and the same exact fixture/Client
 comparison. Its new semantics do not rewrite the historical frozen inputs.
@@ -55,3 +56,7 @@ its producer exclusivity; the same participant driver is available for that
 later integration.
 
 License: [AGPL-3.0-or-later](../LICENSE).
+
+G12 uses semantic assertions and exact fixture/Client parity. Its optional
+appearance data does not change any frozen `contracts.json` entry; historical
+inputs without an appearance report retain their original bytes.

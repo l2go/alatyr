@@ -190,6 +190,17 @@ func (s *State) Apply(update gateway.Update, now int64) (gateway.Observation, er
 	if e.Kind == "" {
 		return gateway.Observation{}, nil
 	}
+	if e.Appearance != nil && e.Kind == Vitals {
+		actor, exists := s.actors[e.ID]
+		if !exists || e.ID != s.self || actor.Role != RolePlayer {
+			return gateway.Observation{}, wire.ErrFrame
+		}
+	}
+	if e.Kind == Appeared && e.Role == RolePlayer && e.Appearance == nil {
+		if old, ok := s.actors[e.ID]; ok && old.Role == RolePlayer {
+			e.Appearance = old.Appearance
+		}
+	}
 	// The backend hands off owned values; retain only canonical bounded copies.
 	id, target, err := s.observed.Apply(e)
 	if err != nil {
@@ -267,6 +278,11 @@ func (s *State) Apply(update gateway.Update, now int64) (gateway.Observation, er
 		delete(s.dead, e.Target)
 		delete(s.vitals, e.Target)
 	case Vitals:
+		if public.Appearance != nil {
+			actor := s.actors[e.ID]
+			actor.Appearance = public.Appearance
+			s.actors[e.ID] = actor
+		}
 		if e.ID == s.self {
 			old := s.vitals[e.ID]
 			if old == nil || e.Stats == nil || e.Stats.Level != nil && (old.Level == nil || *e.Stats.Level > *old.Level) {
@@ -428,7 +444,7 @@ func (s *State) Snapshot(now int64) (gateway.Snapshot, error) {
 		}
 	}
 	if v := s.vitals[s.self]; v != nil {
-		if err := appendEvent(Event{Kind: Vitals, ID: s.self, Stats: v, MS: now}); err != nil {
+		if err := appendEvent(Event{Kind: Vitals, ID: s.self, Stats: v, Appearance: s.actors[s.self].Appearance, MS: now}); err != nil {
 			return gateway.Snapshot{}, err
 		}
 	}

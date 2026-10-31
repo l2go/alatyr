@@ -100,3 +100,11 @@ packet's matching effect key and original evidence deadline before providing
 `Input.Chosen`; meaning then verifies the captured NPC and audited Dialogue
 source. Window attribution never appears on checkpoint facts. It does not prove
 that a purchase, sale, or skill acquisition occurred.
+
+Player/self descriptions carry optional appearance field 35. The world view
+supplies the character's race and sex and detached `ClassKindKnown`/`Mage`
+metadata. The translator maps source race IDs explicitly to the closed wire
+vocabulary; unsupported races remain unknown. A missing class kind never becomes
+a fighter or mystic by numeric class-ID inference. NPC descriptions omit this
+object. Full SelfChanged and snapshot paths use the same translation; partial
+vitals updates need not repeat appearance. Appearance grants no action authority.

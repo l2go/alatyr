@@ -59,6 +59,7 @@ func NeutralRegistry() wire.Registry {
 	entries := list(entry)
 	entries.Essential = false
 	payload := wire.Schema{10: ref, 11: wire.Essential(wire.String), 12: text, 13: position, 14: position, 15: u31, 16: ref, 17: i32, 18: wire.Essential(wire.Bool), 19: wire.Essential(wire.Bool), 20: text, 21: list(option), 22: i32, 23: wire.Essential(wire.Int), 24: list(good), 25: obj(stats), 26: wire.Optional(wire.String), 27: wire.Essential(wire.Int), 28: entries, 29: list(quest), 30: list(skill), 31: wire.Essential(wire.Bool), 32: positive(wire.Essential(wire.UInt)), 33: positive(wire.Essential(wire.UInt)), 34: list(lesson)}
+	payload[wire.AppearanceField] = wire.AppearanceSpec()
 	for n, s := range payload {
 		r[wire.Fact][n] = s
 	}
