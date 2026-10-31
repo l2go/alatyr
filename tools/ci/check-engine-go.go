@@ -37,7 +37,7 @@ const goVersion = "1.27.1"
 const toolchainVersion = "go1.27.3"
 const serverModule = "github.com/l2go/alatyr/engine/go"
 const modulePrefix = serverModule + "/"
-const protocolVersion = "v0.0.0-20261031085835-fd03dfdaa563"
+const protocolVersion = "v0.0.0-20261031113231-b145a2d5cf9d"
 const apacheSHA256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
 
 type modulePolicy struct {

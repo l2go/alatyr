@@ -1,6 +1,6 @@
 # Participant gateway on the Go world
 
-This test composition runs G01–G11 through the existing `gatewaytest` participant
+This test composition runs G01–G12 through the existing `gatewaytest` participant
 transport, the production gateway/backend, and a real `worldbridge.Client` over
 `world.World`. It loads the repository's authored world and uses `memstore`.
 The deterministic suite needs no image, database, alternative driver or generated oracle.
@@ -155,3 +155,13 @@ existing main-only fuzz job verifies target readiness before searching for new
 sequences. Reproduce a retained input with `go test -run
 '^FuzzGatewaySequence/<corpus-name>$' ./worldtest`; minimize new failures with Go's
 native fuzzing and keep an explicit regression alongside the corpus entry.
+
+`TestG12WorldAppearanceMatrix` exercises all five peoples, both sexes and the
+fighter/mystic/unknown branches through a catalog and the real Go-world pipeline.
+The shipped catalog has one fighter; test-only catalog copies add explicit mage
+and missing-kind templates without changing authored world data. Visibility,
+full self refresh and Resume are covered by `TestWorldAppearanceVisibilityAndResume`.
+`checkPlayerAppearances` independently compares public appearance fields with
+actual captured world views on existing sequence inputs; its mutation tests
+reject missing, guessed, mismatched and extra metadata. No new opcode or seed
+format is needed, and all previous reliability inputs remain in place.

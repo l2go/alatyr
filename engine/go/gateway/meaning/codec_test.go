@@ -307,6 +307,12 @@ func TestRegistryMatchesFrozenDictionary(t *testing.T) {
 	for n := uint32(10); n <= 34; n++ {
 		expected = append(expected, n)
 	}
+	// Historical fields stay fixed; appearance is one optional addition.
+	expected = append(expected, wire.AppearanceField)
+	appearance := r[wire.Fact][wire.AppearanceField]
+	if appearance.Required || appearance.Essential || appearance.Shape != wire.Object {
+		t.Fatal("appearance must remain optional")
+	}
 	if !reflect.DeepEqual(fields, expected) {
 		t.Fatal(fields)
 	}
@@ -320,6 +326,17 @@ func TestRegistryMatchesFrozenDictionary(t *testing.T) {
 
 func FuzzDecodeMeaning(f *testing.F) {
 	c := codec(f)
+	for _, branch := range []wire.Branch{wire.BranchUnknown, wire.BranchMystic} {
+		r, err := EventRecord(Event{Kind: Appeared, ID: 1, Role: RolePlayer, Appearance: &Appearance{Race: wire.RaceHuman, Sex: wire.SexFemale, Branch: branch}}, FactContext{Seq: 1, Epoch: 1})
+		if err != nil {
+			f.Fatal(err)
+		}
+		b, err := c.Encode([]wire.Record{r})
+		if err != nil {
+			f.Fatal(err)
+		}
+		f.Add(b)
+	}
 	for _, v := range vectors(f).Vectors {
 		b, e := hex.DecodeString(strings.ReplaceAll(v.Hex, " ", ""))
 		if e != nil {

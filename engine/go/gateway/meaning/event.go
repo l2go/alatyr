@@ -159,6 +159,13 @@ func EventRecord(ev Event, ctx FactContext) (wire.Record, error) {
 	if ctx.Dialog != 0 {
 		f = append(f, wire.U(33, true, ctx.Dialog))
 	}
+	if ev.Appearance != nil {
+		if !appearanceEvent(ev) || !validAppearance(*ev.Appearance) {
+			return wire.Record{}, wire.ErrFrame
+		}
+		a := ev.Appearance
+		f = append(f, wire.Obj(wire.AppearanceField, false, []wire.Field{wire.U(1, true, uint64(a.Race)), wire.U(2, true, uint64(a.Sex)), wire.U(3, true, uint64(a.Branch))}))
+	}
 	return wire.Record{Type: wire.Fact, Fields: f}, nil
 }
 func goodsValues(goods []Good, offers []uint64, origin wire.Provenance) []wire.Value {
@@ -285,6 +292,18 @@ func EventValue(r wire.Record) (DecodedEvent, error) {
 		e.Goods = lessons
 		ctx.Offers = offers
 	}
+	if v, yes := wire.Find(f, wire.AppearanceField); yes {
+		for _, n := range []uint32{1, 2, 3} {
+			if _, present := wire.Find(v.Fields, n); !present {
+				return DecodedEvent{}, wire.ErrFrame
+			}
+		}
+		a := Appearance{Race: wire.Race(getU(v.Fields, 1)), Sex: wire.Sex(getU(v.Fields, 2)), Branch: wire.Branch(getU(v.Fields, 3))}
+		if !appearanceEvent(e) || !validAppearance(a) {
+			return DecodedEvent{}, wire.ErrFrame
+		}
+		e.Appearance = &a
+	}
 	return DecodedEvent{e, ctx}, nil
 }
 
@@ -316,6 +335,11 @@ func (c *Codec) validate(r []wire.Record, writing bool) ([]wire.Record, error) {
 			if k, ok := KindByCode(getU(item.Fields, 1)); ok {
 				if k.Domain != getString(item.Fields, 5) || getU(item.Fields, 6) != 1 {
 					return nil, wire.ErrFrame
+				}
+				if !item.Unsupported && has(item.Fields, wire.AppearanceField) {
+					if _, err := EventValue(item); err != nil {
+						return nil, err
+					}
 				}
 				if !item.Unsupported && k.Name == Practice && has(item.Fields, 24) && has(item.Fields, 34) {
 					if _, err := EventValue(item); err != nil {
@@ -362,4 +386,11 @@ func (c *Codec) Write(w io.Writer, records []wire.Record) error {
 		return err
 	}
 	return c.wire.Write(w, checked)
+}
+
+func appearanceEvent(e Event) bool {
+	return e.Kind == Appeared && e.Role == RolePlayer || e.Kind == Vitals
+}
+func validAppearance(a Appearance) bool {
+	return a.Race <= wire.RaceDwarf && a.Sex <= wire.SexFemale && a.Branch <= wire.BranchMystic
 }

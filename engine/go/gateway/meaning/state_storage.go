@@ -68,6 +68,9 @@ func eventStorage(e Event) int {
 	for _, v := range e.Quests {
 		n += len(v.Name) + len(v.State)
 	}
+	if e.Appearance != nil {
+		n += int(unsafe.Sizeof(*e.Appearance))
+	}
 	if e.Stats != nil {
 		n += int(unsafe.Sizeof(*e.Stats)) + 9*8
 	}

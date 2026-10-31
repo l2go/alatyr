@@ -106,6 +106,9 @@ type Self struct {
 	Dead, Running, Sitting, Teleporting bool
 	PAtk, PDef                          int32
 	PDefKnown                           bool
+	// ClassKindKnown and Mage are authored visual metadata, never inferred
+	// from ClassID. They are detached with every own/visible player view.
+	ClassKindKnown, Mage bool
 }
 
 // Entry supplies a ready character's initial self view and live notifications.
@@ -213,7 +216,7 @@ func (w *World) selfOf(p *player) Self {
 	c.X, c.Y, c.Z, c.Heading = p.pos.X, p.pos.Y, p.pos.Z, p.heading
 	c.MaxHP, c.MaxMP, c.MaxCP = float64(p.stats.MaxHP()), float64(p.stats.MaxMP()), float64(p.stats.MaxCP())
 	c.CurHP, c.CurMP, c.CurCP = p.hp, p.mp, p.cp
-	return Self{Entity: p.ref(), Char: c, RunSpeed: p.stats.RunSpeed(), WalkSpeed: p.stats.WalkSpeed(), Dead: p.dead, Running: p.running, Sitting: p.sitting, Teleporting: p.teleporting, PAtk: p.stats.PAtk(), PDef: p.stats.PDef(), PDefKnown: p.stats.PDefKnown()}
+	return Self{Entity: p.ref(), Char: c, RunSpeed: p.stats.RunSpeed(), WalkSpeed: p.stats.WalkSpeed(), Dead: p.dead, Running: p.running, Sitting: p.sitting, Teleporting: p.teleporting, PAtk: p.stats.PAtk(), PDef: p.stats.PDef(), PDefKnown: p.stats.PDefKnown(), ClassKindKnown: p.stats.Template.ClassKindKnown, Mage: p.stats.Template.Mage}
 }
 
 // savedCharacter captures the same complete durable state for departure and

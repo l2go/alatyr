@@ -57,3 +57,9 @@ tests with a controlled raw peer verify participant semantics, not real-world
 producer exclusivity. Live endpoint and host integration are separate work.
 
 License: [AGPL-3.0-or-later](../LICENSE).
+
+Player appearance passes unchanged through the neutral part of bridge facts
+(field 35) into the meaning DTO. It is supplied only by player/self descriptions,
+not derived from NPC templates, raw class IDs, role labels or capabilities.
+Both the profile codec and the meaning codec validate the closed object. Resume
+retains no guessed default: its fresh snapshot supplies the same source values.
