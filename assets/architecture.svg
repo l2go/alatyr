@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 460" width="1200" height="460" role="img" aria-labelledby="arch-title arch-desc">
+<title id="arch-title">Alatyr architecture</title>
+<desc id="arch-desc">A participant client speaks alatyr/1 over a secure WebSocket to a trusted TLS proxy, which forwards a bearer token to alatyr-server. Inside one Go process the gateway admits bounded sessions, the gateway and the world port meet at the raw-port contract, the world port carries facts and receipts, the Go world runs one simulation loop over the authored world files, and persistence saves checkpoints with pgx. PostgreSQL 18 holds the world schema under goose migrations, with one writer holding an advisory lease.</desc>
+<defs>
+<radialGradient id="glow" cx=".3" cy=".4" r=".7">
+<stop offset="0" stop-color="#d9a441" stop-opacity=".07"/>
+<stop offset="1" stop-color="#d9a441" stop-opacity="0"/>
+</radialGradient>
+<filter id="spark" x="-50%" y="-50%" width="200%" height="200%">
+<feGaussianBlur stdDeviation="2.2" result="b"/>
+<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+</filter>
+</defs>
+<style>
+.bg { fill: #0a0b12; stroke: rgba(242, 196, 107, .14); }
+.frame { fill: rgba(27, 23, 18, .55); stroke: rgba(242, 196, 107, .35); stroke-width: 1.2; }
+.frame--db { fill: rgba(20, 26, 38, .55); stroke: rgba(143, 163, 199, .45); }
+.node { fill: #1b1712; stroke: #d9a441; stroke-width: 1.8; }
+.node--ext { fill: #0f0d0a; stroke: #f2c46b; }
+.node--data { fill: #141a26; stroke: #8fa3c7; stroke-width: 1.6; }
+.db { fill: #141a26; stroke: #8fa3c7; stroke-width: 1.6; }
+.tag { fill: #05060c; stroke: rgba(242, 196, 107, .35); }
+.t { fill: #efe3c4; font: 500 15px -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+.t--title { fill: #f6d58e; font-size: 13px; font-weight: 600; letter-spacing: .22em; }
+.t--db { fill: #e6ecf7; font: 500 15px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+.t--small { fill: #8f8268; font-size: 11.5px; letter-spacing: .08em; }
+.t--steel { fill: #8fa3c7; }
+.t--mono { fill: #aebbd6; font: 500 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+.rule { stroke: rgba(143, 163, 199, .25); }
+.tick { stroke: rgba(242, 196, 107, .45); stroke-dasharray: 2 3; }
+.wire { fill: none; stroke: rgba(242, 196, 107, .45); stroke-width: 1.6; }
+.wire--db { stroke: rgba(143, 163, 199, .5); }
+.flow { fill: none; stroke: #fff6e0; stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 6 84; animation: flow 1.36s linear infinite; filter: url(#spark); }
+.flow--db { stroke: #cfe0ff; }
+.f2 { animation-delay: -.5s; } .f3 { animation-delay: -.9s; }
+.pulse { fill: #f6d58e; animation: pulse 2.6s ease-in-out infinite; }
+@keyframes flow { to { stroke-dashoffset: -90; } }
+@keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .flow { animation: none; opacity: 0; } .pulse { animation: none; opacity: .8; } }
+</style>
+
+<rect class="bg" x="1" y="1" width="1198" height="458" rx="14"/>
+<rect x="1" y="1" width="1198" height="458" rx="14" fill="url(#glow)"/>
+
+<rect class="frame" x="360" y="40" width="500" height="380" rx="10"/>
+<text class="t t--title" x="610" y="74" text-anchor="middle">ALATYR-SERVER · ONE GO PROCESS</text>
+<rect class="frame frame--db" x="920" y="40" width="250" height="380" rx="10"/>
+<text class="t t--title" x="1045" y="74" text-anchor="middle">POSTGRESQL 18</text>
+
+<path class="wire" d="M194 130 H218"/>
+<path class="wire" d="M336 130 H385"/>
+<path class="wire" d="M595 132 H625"/>
+<path class="wire" d="M730 168 C 730 236, 490 228, 490 296"/>
+<path class="wire" d="M595 332 H625"/>
+<path class="wire wire--db" d="M336 332 H385"/>
+<path class="wire wire--db" d="M835 332 C 900 332, 892 166, 950 166"/>
+
+<!-- One continuous stream per direction: nodes are drawn above it, so sparks pass behind them. -->
+<path class="flow" d="M194 130 H490 V132 H730 V168 C 730 236, 490 228, 490 296 V332 H835"/>
+<path class="flow flow--db f2" d="M336 332 H385"/>
+<path class="flow flow--db f3" d="M835 332 C 900 332, 892 166, 950 166"/>
+
+<rect class="node node--ext" x="24" y="96" width="170" height="68" rx="34"/>
+<text class="t" x="109" y="126" text-anchor="middle">Participant client</text>
+<text class="t t--small" x="109" y="147" text-anchor="middle">ALATYR/1 · WSS</text>
+
+<rect class="node node--ext" x="218" y="96" width="118" height="68" rx="6"/>
+<text class="t" x="277" y="126" text-anchor="middle">TLS proxy</text>
+<text class="t t--small" x="277" y="147" text-anchor="middle">BEARER TOKEN</text>
+
+<rect class="node" x="385" y="96" width="210" height="72" rx="6"/>
+<text class="t" x="490" y="127" text-anchor="middle">Gateway</text>
+<text class="t t--small" x="490" y="149" text-anchor="middle">BOUNDED SESSIONS</text>
+
+<rect class="node" x="625" y="96" width="210" height="72" rx="6"/>
+<text class="t" x="730" y="127" text-anchor="middle">World port</text>
+<text class="t t--small" x="730" y="149" text-anchor="middle">FACTS · RECEIPTS</text>
+
+<path class="tick" d="M610 133 V186"/>
+<rect class="tag" x="522" y="186" width="176" height="28" rx="3"/>
+<text class="t t--small" x="610" y="204" text-anchor="middle">RAW-PORT CONTRACT</text>
+
+<rect class="node" x="385" y="296" width="210" height="72" rx="6"/>
+<text class="t" x="490" y="327" text-anchor="middle">Go world</text>
+<text class="t t--small" x="490" y="349" text-anchor="middle">ONE SIMULATION LOOP</text>
+<circle class="pulse" cx="403" cy="314" r="3"/>
+
+<rect class="node" x="625" y="296" width="210" height="72" rx="6"/>
+<text class="t" x="730" y="327" text-anchor="middle">Persistence</text>
+<text class="t t--small" x="730" y="349" text-anchor="middle">PGX · CHECKPOINTS</text>
+
+<rect class="node node--data" x="170" y="296" width="166" height="72" rx="6"/>
+<text class="t" x="253" y="327" text-anchor="middle">Authored world</text>
+<text class="t t--small t--steel" x="253" y="349" text-anchor="middle">OKOLITSA · FILES</text>
+
+<path class="db" d="M950 152 a 95 12 0 0 1 190 0 v 30 a 95 12 0 0 1 -190 0 z"/>
+<path class="db" d="M950 152 a 95 12 0 0 0 190 0" fill="none"/>
+<text class="t t--db" x="1045" y="180" text-anchor="middle">world</text>
+<text class="t t--mono" x="1045" y="226" text-anchor="middle">player · item · player_skill</text>
+<text class="t t--mono" x="1045" y="248" text-anchor="middle">goose_db_version</text>
+<path class="rule" d="M968 280 H1122"/>
+<text class="t t--small t--steel" x="1045" y="314" text-anchor="middle">FORWARD-ONLY MIGRATIONS</text>
+<text class="t t--small t--steel" x="1045" y="336" text-anchor="middle">ONE WRITER · ADVISORY LEASE</text>
+</svg>

@@ -12,7 +12,7 @@
 
 ### An authored world · A Go server · PostgreSQL
 
-**[Project site](https://l2go.github.io/alatyr/)** · [Start](#start) · [Architecture](#architecture) · [Deploy guide](deploy/README.md) · [Security](SECURITY.md)
+**[Project site](https://l2go.github.io/alatyr/)** · [Start](#start) · [Engineering](#engineering) · [Architecture](#architecture) · [Releases](#releases) · [Deploy guide](deploy/README.md) · [Security](SECURITY.md)
 
 </div>
 
@@ -37,38 +37,73 @@ There is no registration service; the operator owns the participant registry.
 Each deployment starts with a fresh dedicated database. Existing data from other
 server implementations is not imported.
 
+## Engineering
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**🧱 Boundaries the build enforces**
+
+Protocol, transport, world mechanics and persistence are separate packages. A boundary checker reads every Go file, tests and inactive build tags included, and fails the build on any import outside its [policy](tools/ci/engine-go-policy.json). The protocol module is Apache-2.0 and depends only on the standard library.
+
+</td>
+<td width="33%" valign="top">
+
+**✅ Done is proven, never assumed**
+
+A participant sees Done only after a live world fact with its own cause arrives in time. Receipts, snapshots and late events cannot claim success. Once a request has reached the world, an outcome without proof ends as Unknown, never as Done. Frozen [outcome scenarios](engine/go/gateway/gatewaytest/README.md) pin these rules.
+
+</td>
+<td width="33%" valign="top">
+
+**🎲 Replayed byte for byte**
+
+Byte programs drive the real gateway and Go world in virtual time, through reconnects, deaths and lost evidence. Each input runs twice and every socket's transcript must match byte for byte, with only opaque session IDs normalized, while [oracles](engine/go/worldtest/README.md) check outcomes, economy and saved characters. Native fuzzing runs on `main`.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+**🗄️ One writer, forward-only schema**
+
+The server holds a PostgreSQL [advisory lease](engine/go/server/internal/pgstore/store.go) for its whole life and refuses a database with foreign objects or another migration history. Learning saves skills and SP in one transaction, and shutdown joins participant work before the final checkpoints.
+
+</td>
+<td width="33%" valign="top">
+
+**🧪 Every merge is a release rehearsal**
+
+On both native platforms the [image](.github/workflows/build.yml) passes readiness, authenticated participant entry, a save on live shutdown, a restart, and a backup restore into an empty schema. Its shipped world files must match the repository.
+
+</td>
+<td width="33%" valign="top">
+
+**🛡️ Signed, promoted, hardened**
+
+Each `main` image is signed with cosign and carries build provenance; a [release](.github/workflows/release.yml) promotes that digest and never rebuilds it. Actions are pinned by commit, and Trivy blocks a fixable critical or high finding. The server runs as user `10001` on a read-only root, with no capabilities and a 256 MiB memory limit.
+
+</td>
+</tr>
+</table>
+
 ## Architecture
 
-```mermaid
-flowchart LR
-    client[Participant client] --> proxy[Trusted TLS proxy]
-    proxy --> gateway[Authenticated gateway]
-    subgraph process[alatyr-server]
-      gateway --> port[World port]
-      port --> world[Go simulation]
-      world --> store[Detached persistence]
-    end
-    content[Authored world files] --> world
-    store --> pg[(PostgreSQL 18)]
-```
+<a href="assets/architecture.svg" title="Open the full-size diagram"><img src="assets/architecture.svg" width="100%" alt="A participant client speaks alatyr/1 over a secure WebSocket through a trusted TLS proxy to alatyr-server. In one Go process the gateway, the world port, the Go world and persistence hand work to each other; the world loads the authored files, and persistence writes the world schema in PostgreSQL 18."></a>
+
+<p align="center"><sub>Participant client → TLS proxy → <b>alatyr-server</b>: gateway → <i>raw-port contract</i> → world port → Go world → persistence → PostgreSQL 18</sub></p>
 
 The [Go components](docs/engine-go/README.md) keep protocol, transport, world
 mechanics and persistence separate. The reusable module depends only on the
 Apache-2.0 protocol module. Database dependencies belong to the nested server
 application. The boundary checker enforces package directions and dependency pins.
 
-Learning stores skills and the absolute SP balance in one transaction. Shutdown
-joins participant operations before saving final world checkpoints, including
-when the world stops itself. The container runs as user `10001` with a read-only
-root, dropped capabilities and explicit memory limits.
-
-## Verification and releases
+## Releases
 
 Go checks cover unit tests, races, module boundaries, formatting, static analysis
 and vulnerabilities. PostgreSQL tests exercise rollback, ownership, fresh-schema
-admission and participant restart. Native image checks exercise readiness,
-authenticated entry, live shutdown saves, restart and backup restore on both
-platforms. The image world must match the authored repository bytes.
+admission and participant restart.
 
 Main publishes signed, attested `edge` and `sha-<commit>` images only after its
 gates pass. A release promotes that verified digest with maintainer approval;
