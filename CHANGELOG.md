@@ -4,41 +4,34 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-11-01
+
+Alatyr 5.0.0 is the first release of the Go server: the authored world on the island of Buyan, including the village of Okolitsa, served through the participant protocol. The Java 3.x line is finished and is not supported.
+
+**Upgrade**
+
+- Create a new database. Earlier databases are not migrated; the server refuses them before migration.
+- The image name is `ghcr.io/l2go/alatyr`.
+- The participant protocol is `alatyr/1`. Module `engine/go/protocol` is v0.1.0, Apache-2.0.
+- This release includes no public game client.
+
 ### Added
 
+- Alatyr ships the authored Go world and participant gateway as `ghcr.io/l2go/alatyr`, for linux/amd64 and linux/arm64. Compose supplies PostgreSQL 18, file-based credentials, a static participant registry and operator character import. Native image checks cover readiness, authenticated entry, live shutdown persistence, restart and backup restore.
+- The Go world settles per-life hunting contributions and party rewards, supports equipment and healing items, and keeps experience at x1 regardless of stored vitality.
+- Participants can toggle authored equipment and consume healing items through `use-item`. Live intent-attributed inventory changes prove completion; equipment slots and physical attack/defense are visible in participant facts.
+- A dialogue choice can complete when its selected NPC opens an intent-attributed shop, sale, or learning window. Delivery receipts and unrelated windows cannot prove completion.
 - `alatyr/1` player facts and snapshots report people, sex and the known fighter/mystic visual branch. Missing class-kind metadata remains explicitly unknown; numeric class IDs and NPC player appearance are not exposed.
 - `alatyr/1` NPC appearance facts may carry the template's visual form, an opaque world label. An unset form is absent. Players, drops and empty or illegal tokens do not receive one.
-
-- A deterministic participant-command reliability harness checks the real Go world and production host composition, with replayed transcripts, lifecycle and economy invariants, mutation checks, and native sequence fuzzing.
-
-- A dialogue choice can complete when its selected NPC opens an intent-attributed shop, sale, or learning window. Delivery receipts and unrelated windows cannot prove completion.
-
-- Participants can toggle authored equipment and consume healing items through `use-item`. Live intent-attributed inventory changes prove completion; equipment slots and physical attack/defense are visible in participant facts.
-
-- The Go world settles per-life hunting contributions and party rewards, supports equipment and healing items, and keeps experience at x1 regardless of stored vitality.
-- Alatyr ships the authored Go world and participant gateway as `ghcr.io/l2go/alatyr`, for linux/amd64 and linux/arm64. Compose supplies PostgreSQL 18, file-based credentials, a static participant registry and operator character import. Native image checks cover readiness, authenticated entry, live shutdown persistence, restart and backup restore.
 - PostgreSQL persistence saves learned skills and the SP balance in one transaction. Detached final checkpoints preserve participants when the world stops itself.
-
-### Changed
-
-- `alatyr/1` clients can receive Refused after Sent when live, exclusive world evidence proves that the entire attempt had no effects. The action class remains usable; genuine Unknown outcomes still taint it permanently.
-
-### Fixed
-
-- Deferred healing-item consumption retains its originating intent in the source audit, so separate uses are checked independently.
-- Recovery accepts a visible dialogue page after its final learning action was consumed, while retaining original-lifetime checks for actionable proposals.
-- Visibility changes and participant checkpoint traversal follow stable object and admission order so identical command sequences can be replayed exactly.
-
-- Rapid local selection followed by an action requiring target confirmation no longer crashes the participant gateway when selection interrupts that queued action.
-
-- The Go host grants audited exclusive evidence authority for dialogue, pickup, learning and return, so confirmed participant actions can finish as Done.
-- Normal shutdown closes HTTP listeners through their owner and tolerates already-closed listeners while preserving other shutdown and save errors. Startup rejects configurations whose combined shutdown phases and join reserves exceed the 60-second deployment stop grace.
+- A deterministic participant-command reliability harness checks the real Go world and production host composition, with replayed transcripts, lifecycle and economy invariants, mutation checks, and native sequence fuzzing.
 
 ### Changed
 
 - Deployments begin with a fresh dedicated database managed by goose. Foreign database objects are refused before migration; previous player databases are not imported.
 - Release promotion, signatures, provenance, vulnerability scans and image retention use the new image name. Releases promote the tested digest without rebuilding.
 - Gateway, bridge, world and worldbridge share one AGPL Go module; the nested server application alone requires database modules. The Apache-2.0 protocol module and its pin remain independent. Go-world contracts exercise the participant gateway with the shared deterministic driver.
+- `alatyr/1` clients can receive Refused after Sent when live, exclusive world evidence proves that the entire attempt had no effects. The action class remains usable; genuine Unknown outcomes still taint it permanently.
 
 ### Removed
 
@@ -178,7 +171,8 @@ Final 2.x release: Java 25 bytecode, HikariCP, Jython 2.7.5b1, Logback configura
 the bundled datapack, CI unit tests, and dependency upgrades. See the
 [release](https://github.com/l2go/alatyr/releases/tag/v2.5.0).
 
-[Unreleased]: https://github.com/l2go/alatyr/compare/v3.2.1...HEAD
+[Unreleased]: https://github.com/l2go/alatyr/compare/v5.0.0...HEAD
+[5.0.0]: https://github.com/l2go/alatyr/compare/v3.2.1...v5.0.0
 [3.2.1]: https://github.com/l2go/alatyr/compare/v3.2.0...v3.2.1
 [3.2.0]: https://github.com/l2go/alatyr/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/l2go/alatyr/compare/v3.1.0...v3.1.1
