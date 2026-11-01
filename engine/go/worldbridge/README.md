@@ -108,3 +108,9 @@ vocabulary; unsupported races remain unknown. A missing class kind never becomes
 a fighter or mystic by numeric class-ID inference. NPC descriptions omit this
 object. Full SelfChanged and snapshot paths use the same translation; partial
 vitals updates need not repeat appearance. Appearance grants no action authority.
+
+NPC descriptions carry optional form field 36 when the template's `client_class`
+is a world label. An empty cell omits the field. The translator does not invent
+a label from the name, role, client id or template id, and it refuses a token
+outside the grammar. Players and drops omit the field. Form grants no action
+authority.

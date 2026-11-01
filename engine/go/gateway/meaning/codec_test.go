@@ -307,11 +307,15 @@ func TestRegistryMatchesFrozenDictionary(t *testing.T) {
 	for n := uint32(10); n <= 34; n++ {
 		expected = append(expected, n)
 	}
-	// Historical fields stay fixed; appearance is one optional addition.
-	expected = append(expected, wire.AppearanceField)
+	// Historical fields stay fixed; appearance and form are optional additions.
+	expected = append(expected, wire.AppearanceField, wire.FormField)
 	appearance := r[wire.Fact][wire.AppearanceField]
 	if appearance.Required || appearance.Essential || appearance.Shape != wire.Object {
 		t.Fatal("appearance must remain optional")
+	}
+	form := r[wire.Fact][wire.FormField]
+	if form.Required || form.Essential || form.Shape != wire.String || form.MaxBytes != 32 || !form.Token {
+		t.Fatal("form must remain an optional world label")
 	}
 	if !reflect.DeepEqual(fields, expected) {
 		t.Fatal(fields)
@@ -337,6 +341,15 @@ func FuzzDecodeMeaning(f *testing.F) {
 		}
 		f.Add(b)
 	}
+	npc, err := EventRecord(Event{Kind: Appeared, ID: 2, Role: "creature", Form: "field_wolf"}, FactContext{Seq: 1, Epoch: 1})
+	if err != nil {
+		f.Fatal(err)
+	}
+	b, err := c.Encode([]wire.Record{npc})
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(b)
 	for _, v := range vectors(f).Vectors {
 		b, e := hex.DecodeString(strings.ReplaceAll(v.Hex, " ", ""))
 		if e != nil {

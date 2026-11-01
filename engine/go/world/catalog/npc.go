@@ -46,6 +46,9 @@ type NPCTemplate struct {
 	WalkSpeed, RunSpeed            float64
 	AIType                         string
 	DropsHerbs                     bool
+	// Form is the visual label from client_class. Empty means the template
+	// sets no form. It does not change combat, targeting or permissions.
+	Form string
 }
 
 // Spawn describes an authored NPC population and respawn interval.
@@ -93,7 +96,7 @@ func (c *Catalog) npcTemplateRow(r row) error {
 		PAtkSpd: r.float("p_atk_speed"), MAtkSpd: r.float("m_atk_speed"), AggroRange: r.int("aggro_range"),
 		RightHand: r.int("right_hand_item_template_id"), LeftHand: r.int("left_hand_item_template_id"),
 		Armor: r.int("armor_item_template_id"), WalkSpeed: r.float("walk_speed"), RunSpeed: r.float("run_speed"),
-		AIType: r.str("ai_type"), DropsHerbs: r.bool("drops_herbs"),
+		AIType: r.str("ai_type"), DropsHerbs: r.bool("drops_herbs"), Form: r.str("client_class"),
 	}
 	if r.err != nil {
 		return r.err
@@ -121,8 +124,26 @@ func (c *Catalog) npcTemplateRow(r row) error {
 	if _, dup := c.npcs[t.ID]; dup {
 		return fmt.Errorf("catalog: duplicate npc %d", t.ID)
 	}
+	if t.Form != "" && !formToken(t.Form) {
+		return fmt.Errorf("catalog: npc %d form is not a world label", t.ID)
+	}
 	c.npcs[t.ID] = t
 	return nil
+}
+
+// formToken matches the alatyr/1 field 36 world-label grammar. Empty is not a
+// token. The catalog cannot import the protocol module, so the rule is duplicated.
+func formToken(s string) bool {
+	raw := []byte(s)
+	if len(raw) < 1 || len(raw) > 32 || raw[0] < 'a' || raw[0] > 'z' {
+		return false
+	}
+	for _, b := range raw[1:] {
+		if (b < 'a' || b > 'z') && (b < '0' || b > '9') && b != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Catalog) spawnRow(r row) error {

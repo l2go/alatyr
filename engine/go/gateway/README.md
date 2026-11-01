@@ -74,3 +74,8 @@ License: [AGPL-3.0-or-later](LICENSE).
 
 See [the meaning dictionary](meaning/README.md#player-appearance) for player
 appearance fields, presence rules and live/snapshot behavior.
+
+## NPC form
+
+See [the meaning dictionary](meaning/README.md#npc-form) for the NPC form
+label, presence rules and live/snapshot behavior.

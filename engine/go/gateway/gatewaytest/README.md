@@ -32,6 +32,7 @@ it never writes or updates fixtures.
 | G10 | `TestG10RejectFalseWitnesses` | separate-witness IDs; source, epoch, generation, and deadline checks are additional |
 | G11 | `TestG11ProvenRefusalPreservesClass` | a live effect refusal releases its class; a fresh action can complete |
 | G12 | `TestG12PlayerAppearance` | explicit player appearance survives live delivery and an observer checkpoint |
+| G13 | `TestG13NPCForm` | optional NPC form survives live delivery and an observer checkpoint; an unset form stays absent |
 
 G11 uses explicit outcome and cause assertions and the same exact fixture/Client
 comparison. Its new semantics do not rewrite the historical frozen inputs.
@@ -60,3 +61,6 @@ License: [AGPL-3.0-or-later](../LICENSE).
 G12 uses semantic assertions and exact fixture/Client parity. Its optional
 appearance data does not change any frozen `contracts.json` entry; historical
 inputs without an appearance report retain their original bytes.
+
+G13 uses the same semantic assertions and exact fixture/Client parity. Optional
+form bytes do not change any frozen `contracts.json` entry.

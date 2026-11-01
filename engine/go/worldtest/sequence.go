@@ -700,6 +700,9 @@ func (s *sequencer) check(final bool) {
 		if err := checkPlayerAppearances(s.scope.monitor.Records, scene); err != nil {
 			s.t.Fatal(err)
 		}
+		if err := checkNPCForms(s.scope.monitor.Records, scene); err != nil {
+			s.t.Fatal(err)
+		}
 		if err := checkCharacter(scene.Self.Char); err != nil {
 			s.t.Fatal(err)
 		}

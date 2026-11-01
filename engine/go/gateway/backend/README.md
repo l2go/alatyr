@@ -63,3 +63,4 @@ Player appearance passes unchanged through the neutral part of bridge facts
 not derived from NPC templates, raw class IDs, role labels or capabilities.
 Both the profile codec and the meaning codec validate the closed object. Resume
 retains no guessed default: its fresh snapshot supplies the same source values.
+NPC form passes the same way at field 36. The adapter does not derive it.

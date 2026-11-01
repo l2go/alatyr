@@ -245,6 +245,8 @@ func (s *State) Apply(update gateway.Update, now int64) (gateway.Observation, er
 		// A fresh description replaces spatial state. A producer that still moves
 		// must follow it with fresh motion, never replay the previous position.
 		delete(s.motion, e.ID)
+		// Form stays with the Appeared fact that carried it. A later NPC description
+		// is complete, so an omitted form means the template has none.
 		s.actors[e.ID] = public
 		if e.Mine {
 			s.self = e.ID

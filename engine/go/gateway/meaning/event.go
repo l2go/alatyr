@@ -166,6 +166,12 @@ func EventRecord(ev Event, ctx FactContext) (wire.Record, error) {
 		a := ev.Appearance
 		f = append(f, wire.Obj(wire.AppearanceField, false, []wire.Field{wire.U(1, true, uint64(a.Race)), wire.U(2, true, uint64(a.Sex)), wire.U(3, true, uint64(a.Branch))}))
 	}
+	if ev.Form != "" {
+		if !formEvent(ev) || !wire.ValidForm(ev.Form) {
+			return wire.Record{}, wire.ErrFrame
+		}
+		f = append(f, wire.Data(wire.FormField, false, ev.Form))
+	}
 	return wire.Record{Type: wire.Fact, Fields: f}, nil
 }
 func goodsValues(goods []Good, offers []uint64, origin wire.Provenance) []wire.Value {
@@ -304,6 +310,13 @@ func EventValue(r wire.Record) (DecodedEvent, error) {
 		}
 		e.Appearance = &a
 	}
+	if v, yes := wire.Find(f, wire.FormField); yes {
+		token := string(v.Data)
+		if !formEvent(e) || !wire.ValidForm(token) {
+			return DecodedEvent{}, wire.ErrFrame
+		}
+		e.Form = token
+	}
 	return DecodedEvent{e, ctx}, nil
 }
 
@@ -336,7 +349,7 @@ func (c *Codec) validate(r []wire.Record, writing bool) ([]wire.Record, error) {
 				if k.Domain != getString(item.Fields, 5) || getU(item.Fields, 6) != 1 {
 					return nil, wire.ErrFrame
 				}
-				if !item.Unsupported && has(item.Fields, wire.AppearanceField) {
+				if !item.Unsupported && (has(item.Fields, wire.AppearanceField) || has(item.Fields, wire.FormField)) {
 					if _, err := EventValue(item); err != nil {
 						return nil, err
 					}
@@ -390,6 +403,12 @@ func (c *Codec) Write(w io.Writer, records []wire.Record) error {
 
 func appearanceEvent(e Event) bool {
 	return e.Kind == Appeared && e.Role == RolePlayer || e.Kind == Vitals
+}
+
+// formEvent reports an NPC appearance. Players and drops have no form.
+// Only Appeared may carry the label; any other fact that carries it is invalid.
+func formEvent(e Event) bool {
+	return e.Kind == Appeared && e.Role != "" && e.Role != RolePlayer && e.Role != RoleDrop
 }
 func validAppearance(a Appearance) bool {
 	return a.Race <= wire.RaceDwarf && a.Sex <= wire.SexFemale && a.Branch <= wire.BranchMystic
