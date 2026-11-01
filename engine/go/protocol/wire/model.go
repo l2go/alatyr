@@ -322,6 +322,7 @@ type Spec struct {
 	Nonzero             bool     // UInt or Bool must not be zero
 	Bits                int      // width limit for UInt and Int; 0 means 64
 	MaxBytes            int      // byte limit for text and bytes; 0 means the Limits default
+	Token               bool     // String must be a world-label token; empty is invalid
 	Enum                []uint64 // allowed UInt values; nil allows any
 	Object              Schema   // fields of an Object
 	Element             *Spec    // element of a List

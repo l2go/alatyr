@@ -36,6 +36,13 @@ appearance are outside this object. `AppearanceSpec` supplies the closed schema;
 profiles opt in without changing the neutral envelopes or historical vectors.
 Older codecs skip the nonessential object. The meaning name remains `alatyr/1`.
 
+`alatyr/1` may carry a nonessential NPC form at Fact field 36. The value is an
+opaque world label, not a closed list, matching `[a-z][a-z0-9_]{0,31}`.
+Absence means no form. An empty string or any other token is an invalid frame.
+`FormSpec` supplies the constraint; profiles opt in without changing the
+neutral envelopes or historical vectors. Older codecs skip the nonessential
+field. The meaning name remains `alatyr/1`.
+
 The codec validates a complete frame before returning records. Field presence
 is retained separately from zero values. Unknown optional extensions may be
 skipped; unsupported essential extensions retain the core disposition rules.
