@@ -5,7 +5,7 @@ go 1.27.1
 require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/l2go/alatyr/engine/go v0.0.0
-	github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261101164810-8e5881f96c9f
+	github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261101175801-321eb9b7c8f0
 	github.com/pressly/goose/v3 v3.29.0
 )
 
