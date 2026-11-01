@@ -32,7 +32,7 @@ func New(l Limits, r Registry) (*Codec, error) {
 	var copySchema func(Schema, int) (Schema, error)
 	var copySpec func(Spec, int) (Spec, error)
 	copySpec = func(s Spec, depth int) (Spec, error) {
-		if s.Shape > Fixed || depth > l.Depth+1 || s.MaxBytes < 0 || s.Bits < 0 || s.Bits > 64 {
+		if s.Shape > Fixed || depth > l.Depth+1 || s.MaxBytes < 0 || s.Bits < 0 || s.Bits > 64 || (s.Token && s.Shape != String) {
 			return Spec{}, ErrConfig
 		}
 		s.Enum = slices.Clone(s.Enum)
@@ -289,6 +289,9 @@ func (c *Codec) value(v *Value, raw []byte, s Spec, depth int) (bool, error) {
 			return false, ErrFrame
 		}
 		if s.Shape == Language && !languageTag(raw) {
+			return false, ErrFrame
+		}
+		if s.Token && !formToken(raw) {
 			return false, ErrFrame
 		}
 		v.Data = slices.Clone(raw)
