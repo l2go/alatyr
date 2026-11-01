@@ -101,3 +101,19 @@ class selection is outside this change. Any future mutator must publish a new
 player/self description. The name `alatyr/1`, action policies and historical
 contract fixtures are unchanged. Clients select representations from these
 facts independently of permissions.
+
+## NPC form
+
+An optional nonessential Fact string at field 36 names an NPC's visual form.
+The value is an opaque world label matching `[a-z][a-z0-9_]{0,31}`, not a
+closed list of creatures and not a capability. Absence means the template set
+no form. An empty string or any other token is an invalid frame.
+
+The field is valid only on `Appeared` for a role other than `player` or `drop`.
+Players keep appearance field 35. Drops, movement, vitals and other facts omit
+form; placing it there is an invalid frame. A later `Appeared` is a complete
+description, so an omitted form clears a previously stored label. `Gone` ends
+the observation. Resume restores the form from the world's snapshot of the
+current description. The producer copies `client_class` and does not derive a
+label from the display name, role, client id or template id. The name
+`alatyr/1` and historical contract fixtures are unchanged.

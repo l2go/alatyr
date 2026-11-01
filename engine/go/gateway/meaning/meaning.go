@@ -197,6 +197,7 @@ func Registry(c Config) wire.Registry {
 		29: list(quest), 30: list(skill), 31: wire.Essential(wire.Bool), 32: positive(wire.Essential(wire.UInt)), 33: positive(wire.Essential(wire.UInt)), 34: list(lesson),
 	}
 	payload[wire.AppearanceField] = wire.AppearanceSpec()
+	payload[wire.FormField] = wire.FormSpec()
 	for n, s := range payload {
 		r[wire.Fact][n] = s
 	}

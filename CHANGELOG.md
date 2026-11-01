@@ -7,6 +7,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 ### Added
 
 - `alatyr/1` player facts and snapshots report people, sex and the known fighter/mystic visual branch. Missing class-kind metadata remains explicitly unknown; numeric class IDs and NPC player appearance are not exposed.
+- `alatyr/1` NPC appearance facts may carry the template's visual form, an opaque world label. An unset form is absent. Players, drops and empty or illegal tokens do not receive one.
 
 - A deterministic participant-command reliability harness checks the real Go world and production host composition, with replayed transcripts, lifecycle and economy invariants, mutation checks, and native sequence fuzzing.
 

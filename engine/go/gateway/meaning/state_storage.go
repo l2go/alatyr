@@ -54,7 +54,7 @@ func (s *State) BackendStorageBytes() int {
 }
 
 func eventStorage(e Event) int {
-	n := len(e.Kind) + len(e.Role) + len(e.Name) + len(e.Text) + len(e.Category)
+	n := len(e.Kind) + len(e.Role) + len(e.Name) + len(e.Form) + len(e.Text) + len(e.Category)
 	n += cap(e.Lines)*int(unsafe.Sizeof(Line{})) + cap(e.Goods)*int(unsafe.Sizeof(Good{})) + cap(e.Entries)*int(unsafe.Sizeof(Entry{})) + cap(e.Quests)*int(unsafe.Sizeof(QuestState{})) + cap(e.Skills)*int(unsafe.Sizeof(Skill{}))
 	for _, v := range e.Lines {
 		n += len(v.Label) + len(v.Say)

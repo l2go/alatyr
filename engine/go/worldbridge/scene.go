@@ -69,6 +69,14 @@ func (t translator) npc(v world.NPCView, class int32) (fact, error) {
 		return fact{}, errSource
 	}
 	fields := []wire.Field{wire.S(64, true, int64(v.ObjectID)), wire.Data(11, true, role), point(13, v.Pos), wire.U(15, true, uint64(n)), boolean(70, !v.Dead), wire.S(73, true, int64(v.Template.ID))}
+	// Form is the template label only. An empty cell stays absent; a name,
+	// role, client id or template id is never a substitute.
+	if v.Template.Form != "" {
+		if !wire.ValidForm(v.Template.Form) {
+			return fact{}, errSource
+		}
+		fields = append(fields, wire.Data(wire.FormField, false, v.Template.Form))
+	}
 	// A hidden template name is not a visible name.
 	if v.Template.SendsServerName {
 		name, err := text(12, v.Template.Name, wire.ProvenanceAuthored)

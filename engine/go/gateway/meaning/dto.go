@@ -200,6 +200,9 @@ type Event struct {
 	// Appearance is an optional player report. It is valid on Appeared for a
 	// player or Vitals for self; absence does not erase a known appearance.
 	Appearance *Appearance `json:"appearance,omitempty"`
+	// Form is an NPC visual world label. Empty means the template set none.
+	// It is valid only on Appeared, and only for a role other than player or drop.
+	Form string `json:"form,omitempty"`
 	// MS is the original backend fact time in milliseconds.
 	MS int64 `json:"ms"`
 	// Kind selects one of the fixed fact kinds.

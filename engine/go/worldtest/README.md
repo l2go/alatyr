@@ -165,3 +165,11 @@ full self refresh and Resume are covered by `TestWorldAppearanceVisibilityAndRes
 actual captured world views on existing sequence inputs; its mutation tests
 reject missing, guessed, mismatched and extra metadata. No new opcode or seed
 format is needed, and all previous reliability inputs remain in place.
+
+`TestNPCFormsMatchAuthoredTemplates` carries each authored NPC form through the
+Go world, a second participant and Resume. `TestNPCFormStaysOpaqueWhenTheTemplateChanges`
+checks an explicit label and an unset cell on a detached catalog copy.
+`checkNPCForms` compares visible appearance facts with the captured template on
+existing sequence inputs. A player, a drop, a non-appearance fact or a wrong
+token fails the oracle. Departed creatures are left to the check that ran while
+they were visible.

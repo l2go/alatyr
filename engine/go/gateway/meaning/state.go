@@ -201,6 +201,8 @@ func (s *State) Apply(update gateway.Update, now int64) (gateway.Observation, er
 			e.Appearance = old.Appearance
 		}
 	}
+	// Form stays with the Appeared fact that carried it. A later NPC description
+	// is complete, so an omitted form means the template has none.
 	// The backend hands off owned values; retain only canonical bounded copies.
 	id, target, err := s.observed.Apply(e)
 	if err != nil {

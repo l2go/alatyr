@@ -18,7 +18,7 @@ func TestNPCRejectsMissingAndSubIntegerStats(t *testing.T) {
 					rec = append(rec, v)
 				}
 				// Populate optional columns with empty values, as rendered CSV does.
-				for _, name := range []string{"client_template_id", "name", "title", "sends_server_name", "sends_server_title", "collision_radius", "collision_height", "sex", "attack_range", "max_mp", "hp_regen", "mp_regen", "strength", "constitution", "dexterity", "intelligence", "wit", "mental", "reward_exp", "reward_sp", "p_atk", "m_atk", "m_def", "m_atk_speed", "aggro_range", "right_hand_item_template_id", "left_hand_item_template_id", "armor_item_template_id", "ai_type", "drops_herbs"} {
+				for _, name := range []string{"client_template_id", "name", "title", "sends_server_name", "sends_server_title", "client_class", "collision_radius", "collision_height", "sex", "attack_range", "max_mp", "hp_regen", "mp_regen", "strength", "constitution", "dexterity", "intelligence", "wit", "mental", "reward_exp", "reward_sp", "p_atk", "m_atk", "m_def", "m_atk_speed", "aggro_range", "right_hand_item_template_id", "left_hand_item_template_id", "armor_item_template_id", "ai_type", "drops_herbs"} {
 					cols[name] = len(rec)
 					rec = append(rec, "")
 				}
