@@ -40,7 +40,16 @@ func (w *World) Run(ctx context.Context) error {
 		if s.err != nil {
 			return s.err
 		}
+		queued := len(s.timers)
+		start := time.Now()
 		wait, pending := s.runDue()
+		tick := time.Since(start)
+		w.paceTick.Store(int64(tick))
+		w.paceQueued.Store(int64(queued))
+		w.paceReady.Store(true)
+		if w.pace != nil {
+			w.pace(tick, queued)
+		}
 		if s.err != nil {
 			return s.err
 		}
@@ -58,6 +67,16 @@ func (w *World) Run(ctx context.Context) error {
 		case <-timer.C:
 		}
 	}
+}
+
+// Pace is the latest timer-drain cost and how many timers were waiting before
+// that drain. ok is false until Run has drained due timers once. It is a
+// same-process reading of the loop, not a metrics endpoint.
+func (w *World) Pace() (tick time.Duration, queued int, ok bool) {
+	if w == nil || !w.paceReady.Load() {
+		return 0, 0, false
+	}
+	return time.Duration(w.paceTick.Load()), int(w.paceQueued.Load()), true
 }
 
 func (w *World) do(ctx context.Context, f func(*state)) error {
@@ -137,6 +156,10 @@ type World struct {
 	durability      func(Durability)
 	idFirst, idLast int32
 	final           []Checkpoint
+	paceTick        atomic.Int64
+	paceQueued      atomic.Int64
+	paceReady       atomic.Bool
+	pace            func(time.Duration, int)
 }
 type state struct {
 	players                                                         map[int32]*player
