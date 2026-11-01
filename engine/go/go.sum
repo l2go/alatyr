@@ -1,2 +1,2 @@
-github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261101175801-321eb9b7c8f0 h1:GoB3sT2lW04GaCTdyXzuDStBgcbe7JGiE1QOvpn0Kg0=
-github.com/l2go/alatyr/engine/go/protocol v0.0.0-20261101175801-321eb9b7c8f0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=
+github.com/l2go/alatyr/engine/go/protocol v0.1.0 h1:dV/N+LmLX+qdnT5kqZPWnvH/tBmxTyKWHCDuY5zuSkw=
+github.com/l2go/alatyr/engine/go/protocol v0.1.0/go.mod h1:KxH0itUWLh+hHZM1yKrUsgtiLQnkhEe5BSL+CdrYic0=
