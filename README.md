@@ -3,6 +3,7 @@
 This branch holds the static site published with GitHub Pages at <https://l2go.github.io/alatyr/>. It shares no history with `main`, and nothing in it is built: the pages are plain HTML, CSS, and a small script, served as they are.
 
 - `index.html`: the project page.
+- `java-years/index.html`: the Java server as it ran through release 3.2.1, kept as history.
 - `notes/<slug>/index.html`: the engineering notes, one directory per note. The first series, "Reviving L2JFree", is complete in eight parts; a later series adds its notes beside them.
 - `assets/`: styles, script, the Cinzel typeface (SIL Open Font License, see `assets/fonts/OFL.txt`), and images cut from the banner art.
 
