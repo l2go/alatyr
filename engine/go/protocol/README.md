@@ -26,6 +26,13 @@ receipt, timeout, write error or partial delivery supplies no such proof.
 encoding and the `alatyr/1` name remain unchanged; clients must accept this
 additional Sent-to-Refused outcome.
 
+An Unknown taints its class because a later witness in that class might have
+been caused by the uncertain attempt. Evidence bound to one attempt, such as a
+live fact carrying that attempt's own command key, cannot have been: the
+backend may finish such an attempt with `EligibleBound` and `CommitBound`
+despite the taint. The class slot, contact, waiting and window rules are the
+same as for `CommitWitness`, and the taint still blocks every unbound witness.
+
 `alatyr/1` may carry a nonessential player appearance object at Fact field 35.
 Its required UInt members are race (1), sex (2) and base branch (3). Race codes
 are unknown (0), human (1), elf (2), dark elf (3), Kruvan (4) and dwarf (5).
