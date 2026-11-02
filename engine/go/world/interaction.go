@@ -241,7 +241,7 @@ func (w *World) sendPage(s *state, p *player, n *npc, page, html string) {
 	s.group([]Effect{SpeechCompleted{Speaker: n.ref(), Listener: p.ref(), Text: html}})
 	w.issueChoices(s, p, n)
 	if !p.slow {
-		p.send(DialoguePage{Dialogue: w.dialogueOf(p)})
+		p.send(DialoguePage{SpeechIntent: s.cause().Intent, Dialogue: w.dialogueOf(p)})
 		p.send(AffordancesChanged{Affordances: cloneAffordances(p.affordances)})
 	}
 }

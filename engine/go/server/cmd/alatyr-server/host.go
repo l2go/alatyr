@@ -291,7 +291,7 @@ func hostBackendConfig(mc meaning.Config, origin time.Time) backend.Config {
 // Participants cannot inject these events or this policy. Additional event
 // producers or parallel mutation paths require a new exclusivity audit here.
 func goWorldSource(meaning.Event) meaning.Source {
-	return meaning.Source{Dialogue: true, Pickup: true, Learning: true, Return: true, ItemUse: true}
+	return meaning.Source{Dialogue: true, Pickup: true, Learning: true, Return: true, ItemUse: true, Trade: true}
 }
 
 func (r *runtime) open(ctx context.Context, id string) (gateway.World, gateway.State, error) {

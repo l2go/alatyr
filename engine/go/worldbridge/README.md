@@ -28,7 +28,7 @@ Pages, lessons and skills use the event-owned source even if a later scene has
 changed. An affordance refresh does not repeat speech or lesson proposals.
 Merchant proposals retain their exact world-issued identity, price and expiry.
 Buy and sell exchange inventory and currency atomically; their receipts do not
-prove participant completion. Quests remain explicitly absent. Money is classified by the authored catalog's `asset` consumption type,
+prove participant completion, their attributed inventory change does. Quests remain explicitly absent. Money is classified by the authored catalog's `asset` consumption type,
 not a fixed item ID; distinct asset rows cannot be collapsed into one purse.
 
 One owner serializes `Write`, source observations and `Resume`. A key and attempt
@@ -89,7 +89,14 @@ originating world intent, including delayed potion launch. The session retains
 at most 64 shared intent/key bindings and annotates the matching live event with
 raw field 75 (the command Key). Eviction loses proof rather than guessing a key.
 This metadata never appears on snapshots or participant facts. The gateway
-requires its own matching effect key, live deadline, and audited ItemUse source.
+requires its own matching effect key, live deadline, and audited source.
+The same table attributes `DialoguePage.SpeechIntent` to talk (verb 5) for the
+captured speaker incarnation, `ItemPicked.PickupIntent` to take (verb 4) for the
+captured item picked by this participant, and `InventoryChanged.TradeIntent` to
+buy and sell (verbs 7 and 8). The world names these intents after a walk to the
+target too, so a talk or pickup that completes after Execute is still proven.
+Relocation drains every event Appear published before capturing the new scene,
+so a live revival after a crowd of appearances is never lost.
 Item change metadata occupies goods field 7; equipment slot occupies field 8.
 
 Choice windows reuse that bounded table and raw field 75 for verb 6. `TradeList`

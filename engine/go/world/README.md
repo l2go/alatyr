@@ -54,8 +54,10 @@ and returns an error for invalid input; without it, XP does not change level.
 
 `Snapshot` returns detached self state. `Entry.Events` carries semantic state
 notifications, not a wire format, command receipt or effect ledger. The host
-must drain events; a slow consumer has its channel closed without blocking the
-loop. `Entry.Subscription.End` distinguishes overflow, leave, stop and stream
+must drain events; a consumer more than 1024 events behind has its channel
+closed without blocking the loop. One turn may publish an event for every object
+a teleport forgets and reveals, and that burst stays within the bound.
+`Entry.Subscription.End` distinguishes overflow, leave, stop and stream
 replacement. Channel closure does not automatically remove or save the character.
 Each delivered event has source-assigned `Time()` and `Seq()` values. The latter
 orders publications across the world independently of commit sequences. Scene
@@ -77,7 +79,10 @@ talks or collects an item. Selecting the same target completes with
 `StageDone` and no groups. A dialogue choice completes with `StageDone` when
 its lesson list is issued, including an empty list. Cast retains the requested
 target and level even while queued. Deadlines are checked before execution and deferred effects;
-started work is not promoted from `StageUnknown` by later notifications.
+started work is not promoted from `StageUnknown` by later notifications. Those
+notifications name their cause instead: a dialogue page carries `SpeechIntent`,
+a pickup `PickupIntent` and a merchant exchange `TradeIntent`, also when the
+world first walked to the speaker or the item.
 Unsupported operations are refused before execution.
 
 Trainer pages and lesson lists issue `Affordance` values with stable identities,

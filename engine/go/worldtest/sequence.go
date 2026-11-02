@@ -841,7 +841,7 @@ func validWitnessKind(verb, kind uint64) bool {
 		return kind == kindRevived
 	case verbLearn:
 		return kind == kindKnown
-	case verbUseItem:
+	case verbUseItem, verbBuy, verbSell:
 		return kind == kindCarried || kind == kindInventory
 	default:
 		return false

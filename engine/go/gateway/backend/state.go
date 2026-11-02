@@ -353,10 +353,16 @@ func (s *state) Witness(a *gateway.Action, u gateway.Update) (gateway.Witness, e
 	in := s.input
 	if !packet.snapshot && p.effectKey != 0 && profile.U(packet.record, 75) == p.effectKey && in.ReceivedAt >= p.contact && in.ReceivedAt < p.deadline {
 		switch p.inner.Effective {
-		case 14:
-			in.Used = p.n
+		case 4:
+			in.Taken = p.n
+		case 5:
+			in.Spoken = p.n
 		case 6:
 			in.Chosen = p.n
+		case 7, 8:
+			in.Traded = p.n
+		case 14:
+			in.Used = p.n
 		}
 	}
 	if p.effectDone && in.ReceivedAt >= p.contact && in.ReceivedAt < p.deadline {
@@ -392,6 +398,16 @@ func (s *state) Stop() *gateway.Step {
 }
 
 var _ gateway.State = (*state)(nil)
+
+// attributed reports verbs whose completing fact carries the raw effect key:
+// take, talk, choose, buy, sell and use-item.
+func attributed(verb uint64) bool {
+	switch verb {
+	case 4, 5, 6, 7, 8, 14:
+		return true
+	}
+	return false
+}
 
 // Only the producer's zero-effect dispositions can authorize a refusal proof.
 func worldRefusalReason(reason wire.Reason) bool {

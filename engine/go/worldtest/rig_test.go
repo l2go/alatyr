@@ -192,7 +192,7 @@ func runWorld(t *testing.T, f func(*testing.T, *catalog.Catalog)) {
 	synctest.Test(t, func(t *testing.T) { f(t, cat) })
 }
 func allSources() meaning.Source {
-	return meaning.Source{Dialogue: true, Pickup: true, Learning: true, Return: true, ItemUse: true}
+	return meaning.Source{Dialogue: true, Pickup: true, Learning: true, Return: true, ItemUse: true, Trade: true}
 }
 func (r *rig) sync() {
 	r.t.Helper()

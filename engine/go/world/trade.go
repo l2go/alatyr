@@ -301,7 +301,7 @@ func (w *World) trade(s *state, p *player, req Request) {
 	// An issued merchant list remains valid until replacement or expiry.
 	// Request replay belongs to the command/session layer, not the offer.
 	s.finish(StageDone)
-	p.send(InventoryChanged{Changes: changes, Load: w.load(p)})
+	p.send(InventoryChanged{TradeIntent: s.cause().Intent, Changes: changes, Load: w.load(p)})
 	for _, change := range changes {
 		op := itemlog.Change
 		if change.Kind == "added" {

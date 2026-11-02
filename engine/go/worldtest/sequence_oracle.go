@@ -117,12 +117,23 @@ func checkRawEvidence(records []wire.Record, attempts map[uint64]*sequenceAttemp
 					if subject.S != id.S {
 						continue
 					}
-					if effective == verbChoose || effective == verbUseItem {
-						if gatewaytest.U(raw, 75) != h.Key {
+					// The raw effect key binds a fact to this attempt's world intent,
+					// also when the world completed it after walking to the target.
+					keyed := gatewaytest.U(raw, 75) == h.Key
+					switch effective {
+					case verbChoose, verbUseItem, verbBuy, verbSell:
+						if !keyed {
 							continue
 						}
-					} else if effective != verbRise && !matchingReceipt(trace, h, contact[n], deadline, gatewaytest.U(raw, 4)) {
-						continue
+					case verbTalk, verbTake:
+						if !keyed && !matchingReceipt(trace, h, contact[n], deadline, gatewaytest.U(raw, 4)) {
+							continue
+						}
+					case verbRise:
+					default:
+						if !matchingReceipt(trace, h, contact[n], deadline, gatewaytest.U(raw, 4)) {
+							continue
+						}
 					}
 					if effective == verbTake {
 						picked, _ := wire.Find(raw.Fields, 65)
@@ -141,6 +152,7 @@ func checkRawEvidence(records []wire.Record, attempts map[uint64]*sequenceAttemp
 	}
 	return nil
 }
+
 func sameRef(a, b wire.Value) bool {
 	ai, _ := wire.Find(a.Fields, 1)
 	bi, _ := wire.Find(b.Fields, 1)

@@ -194,7 +194,7 @@ func (w *World) doPickup(s *state, p *player, item int32) {
 		p.send(ActionIgnored{})
 		return
 	}
-	w.broadcastToKnown(s, p, ItemPicked{PlayerID: p.id, ObjectID: g.id, Pos: g.pos})
+	w.broadcastToKnown(s, p, ItemPicked{PickupIntent: s.cause().Intent, PlayerID: p.id, ObjectID: g.id, Pos: g.pos})
 	before := int64(0)
 	tmpl, _ := w.cat.Item(it.TemplateID)
 	if tmpl.Stackable() {

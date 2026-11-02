@@ -165,13 +165,13 @@ func runParityCase(r *parityRig, name string) parityResult {
 		}
 		r.wait(func() bool { s := r.current(); return s.count(57) == wantCoin && s.count(1060) == wantItem })
 		r.advance(5100 * time.Millisecond)
-		out.Outcomes = append(out.Outcomes, r.outcome(3, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0))
+		out.Outcomes = append(out.Outcomes, r.outcome(3, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1))
 		before := len(r.port.commands())
 		r.p.Send(request)
 		r.wait(func() bool {
 			count := 0
 			for _, f := range r.p.Records {
-				if f.Type == wire.Result && gatewaytest.U(f, 1) == 3 && gatewaytest.U(f, 2) == uint64(wire.StageUnknown) {
+				if f.Type == wire.Result && gatewaytest.U(f, 1) == 3 && gatewaytest.U(f, 2) == uint64(wire.StageDone) {
 					count++
 				}
 			}
@@ -193,7 +193,7 @@ func runParityCase(r *parityRig, name string) parityResult {
 		}
 		r.wait(func() bool { s := r.current(); return s.count(57) == wantCoin && s.count(1060) == wantItem })
 		r.advance(5100 * time.Millisecond)
-		out.Outcomes = append(out.Outcomes, r.outcome(4, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0))
+		out.Outcomes = append(out.Outcomes, r.outcome(4, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1))
 		beforeRefusal := len(r.port.commands())
 		r.p.Send(r.intent(5, verb, wire.S(14, true, int64(list.Event.List)), wire.U(15, true, list.Context.Offers[row]), wire.S(16, true, 1), wire.S(17, true, price+1)))
 		out.Outcomes = append(out.Outcomes, r.outcome(5, wire.StageRefused, wire.ReasonStaleOffer, wire.DeliveryNone, 0))

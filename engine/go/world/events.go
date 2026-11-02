@@ -155,7 +155,10 @@ type Revived struct {
 // Dialogue.HTML is presentation, not permission to execute arbitrary text.
 type DialoguePage struct {
 	stamp
-	Dialogue Dialogue
+	// SpeechIntent identifies the talk or choice intent whose transition sent
+	// this page, including one that first walked to the speaker.
+	SpeechIntent IntentID
+	Dialogue     Dialogue
 }
 
 // LearnList supplies available trainer lessons, not learning outcomes.
@@ -229,6 +232,9 @@ type ItemDropped struct {
 // ItemPicked announces pickup before insertion into inventory, not a transfer receipt.
 type ItemPicked struct {
 	stamp
+	// PickupIntent identifies the picker's intent, including one that first
+	// walked to the item. Other observers match no binding of theirs.
+	PickupIntent       IntentID
 	PlayerID, ObjectID int32
 	Pos                Point
 }
@@ -244,8 +250,10 @@ type InventoryChanged struct {
 	stamp
 	// UseIntent identifies the item-use intent that changed these rows.
 	UseIntent IntentID
-	Changes   []ItemChange
-	Load      int64
+	// TradeIntent identifies the buy or sell intent that changed these rows.
+	TradeIntent IntentID
+	Changes     []ItemChange
+	Load        int64
 }
 
 // ActionIgnored is housekeeping for requests that did not start work. It
