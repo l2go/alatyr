@@ -9,11 +9,21 @@ import (
 	"slices"
 	"time"
 
+	"github.com/l2go/alatyr/engine/go/protocol/proto"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
 
 // result and fact report whether the scope is still open. Output may fail
 // synchronously through a checkpoint restart, so callers must stop immediately.
+// commitWitness finishes attempt n on ex's evidence observed at observed.
+// Bound evidence is not blocked by an earlier Unknown in the class.
+func (s *game) commitWitness(n uint64, ex *execution, observed, now int64) (proto.Outcome, error) {
+	if ex.bound {
+		return s.attempts.CommitBound(n, observed, now)
+	}
+	return s.attempts.CommitWitness(n, observed, now)
+}
+
 func (s *game) result(o wire.Record) bool {
 	if s.closed {
 		return false
@@ -333,7 +343,7 @@ func (s *game) observe(update Update) bool {
 		var survivor uint64
 		for n, ex := range s.actions {
 			if ex.action.SurviveRelocation {
-				ex.hasCandidate = false
+				ex.hasCandidate, ex.bound = false, false
 				survivor = n
 			}
 		}
@@ -440,7 +450,7 @@ func (s *game) observe(update Update) bool {
 			return false
 		}
 		entry, ok := s.attempts.Lookup(n)
-		if !ok || entry.Terminal || !s.attempts.Eligible(n, observed) {
+		if !ok || entry.Terminal || !s.attempts.EligibleBound(n, observed) {
 			continue
 		}
 		witness, err := s.state.Witness(ex.action, update)
@@ -448,8 +458,16 @@ func (s *game) observe(update Update) bool {
 			s.fail(wire.CloseInternal)
 			return false
 		}
+		bound := witness == WitnessBound
+		if bound {
+			witness = WitnessMatch
+		} else if !s.attempts.Eligible(n, observed) {
+			// After an Unknown in the class, unbound evidence may be its effect.
+			continue
+		}
 		switch witness {
 		case WitnessMatch:
+			ex.bound = bound
 			if ex.action.AfterCheckpoint {
 				ex.candidate = observed
 				ex.hasCandidate = true
@@ -460,7 +478,7 @@ func (s *game) observe(update Update) bool {
 				s.fail(wire.CloseInternal)
 				return false
 			}
-			o, e := s.attempts.CommitWitness(n, observed, now)
+			o, e := s.commitWitness(n, ex, observed, now)
 			if e == nil {
 				set(&observation.Facts[0], 32, wire.U(32, true, n))
 				results = append(results, o.Record())
@@ -469,6 +487,7 @@ func (s *game) observe(update Update) bool {
 		case WitnessCandidate:
 			ex.candidate = observed
 			ex.hasCandidate = true
+			ex.bound = false
 		}
 	}
 	if !update.Relocate && !holdLive {
@@ -572,7 +591,7 @@ func (s *game) expireAt(now int64) {
 				continue
 			}
 			// Commit at the original deadline even when a scheduler tick arrives late.
-			o, err := s.attempts.CommitWitness(n, ex.candidate, e.Deadline)
+			o, err := s.commitWitness(n, ex, ex.candidate, e.Deadline)
 			if err == nil {
 				r, err := s.state.Proof(ex.action, now)
 				if err != nil {
@@ -691,7 +710,7 @@ func (s *game) commitReadyWitnessesAt(now int64) {
 		// Readiness releases the original live fact even if its attempt timed
 		// out during drain. Only an eligible candidate may add a cause/result.
 		if valid {
-			o, err := s.attempts.CommitWitness(n, ex.candidate, now)
+			o, err := s.commitWitness(n, ex, ex.candidate, now)
 			if err == nil {
 				set(&r, 32, wire.U(32, true, n))
 				if !s.fact(r) {

@@ -70,7 +70,9 @@ the item; Done proves consumption, not an HP increase. A world refusal after
 handoff is Refused/DeliveryNone only when the adapter proves that the entire
 attempt had no effects. The action class remains usable. Missing evidence,
 partial delivery and ordinary failures remain Unknown and permanently taint
-the class; a later proven refusal cannot remove that taint. Local stale/dead
+the class; a later proven refusal cannot remove that taint. A later attempt
+still finishes on evidence keyed to it: every Match from this state is
+`WitnessBound`, while full-window learning remains an unbound candidate. Local stale/dead
 requests remain Refused. The meaning identifier remains `alatyr/1`.
 
 `Buy` and `Sell` are Done with `Source.Trade`, a matching `Input.Traded`

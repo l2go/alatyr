@@ -89,8 +89,8 @@ func TestItemWitnessRequiresAttributedTransition(t *testing.T) {
 		kind   string
 		want   gateway.Witness
 	}{
-		{"equipment", Good{Object: 42, ID: 4, Count: 1, Slot: Number(7)}, 1, true, Inventory, gateway.WitnessMatch},
-		{"consumption", Good{Object: 42, ID: 4, Count: 0, Slot: Number(-1)}, 1, true, Inventory, gateway.WitnessMatch},
+		{"equipment", Good{Object: 42, ID: 4, Count: 1, Slot: Number(7)}, 1, true, Inventory, gateway.WitnessBound},
+		{"consumption", Good{Object: 42, ID: 4, Count: 0, Slot: Number(-1)}, 1, true, Inventory, gateway.WitnessBound},
 		{"unchanged", Good{Object: 42, ID: 4, Count: 1, Slot: Number(-1)}, 1, true, Inventory, gateway.WitnessNone},
 		{"other object", Good{Object: 43, ID: 4, Count: 0}, 1, true, Inventory, gateway.WitnessNone},
 		{"other template", Good{Object: 42, ID: 5, Count: 0}, 1, true, Inventory, gateway.WitnessNone},

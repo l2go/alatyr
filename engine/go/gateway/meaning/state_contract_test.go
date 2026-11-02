@@ -51,7 +51,7 @@ func TestWitnessRequiresAuditedSourceAndMatchingCompletion(t *testing.T) {
 					npc:  s.observed.Reference(7), eligible: true, relocated: true, baselineLevel: Number(5)}
 				a := &gateway.Action{Value: p, AfterCheckpoint: kind == Rise}
 				input := Input{Completed: 42, Source: Source{Dialogue: true, Pickup: true, Learning: true, Return: true}}
-				want := gateway.WitnessMatch
+				want := gateway.WitnessBound
 				switch kind {
 				case Talk, Say:
 					input.Event = Event{Kind: Spoke, ID: 7}
@@ -115,7 +115,7 @@ func TestDeferredWitnessUsesIntentAttribution(t *testing.T) {
 				want := gateway.WitnessNone
 				switch branch {
 				case "attributed":
-					want = gateway.WitnessMatch
+					want = gateway.WitnessBound
 				case "no_key":
 					*key = 0
 				case "other_attempt":
@@ -400,7 +400,7 @@ func TestReturnProofRetainsLiveFactAndCannotResurrectNewerDeath(t *testing.T) {
 	if _, err := s.Apply(u, 20); err != nil {
 		t.Fatal(err)
 	}
-	if witness, err := s.Witness(a, u); err != nil || witness != gateway.WitnessMatch {
+	if witness, err := s.Witness(a, u); err != nil || witness != gateway.WitnessBound {
 		t.Fatal(witness, err)
 	}
 	if valid, err := s.CandidateValid(a); err != nil || !valid {

@@ -127,7 +127,8 @@ and saves. Panic and goroutine-leak sensitivity can also be checked by temporary
 source overlays; a blanket recover would defeat the first invariant.
 G11 checks refusal followed by successful reuse of the same action class, including
 the real world's healing cooldown. A purchase rejected after handoff also leaves
-trade usable. Missing evidence still causes permanent taint after Unknown.
+trade usable. Missing evidence still taints the class after Unknown; only
+evidence bound to a later attempt by its own key finishes that attempt.
 The raw bridge oracle is unchanged. Only the G07 gateway oracle pinning the old
 post-contact refusal rule is revised; all other historical entries remain intact.
 The named opcode, verb and fact constants are checked against the meaning

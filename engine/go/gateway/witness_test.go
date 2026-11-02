@@ -18,6 +18,7 @@ func TestWitnessNamesAndValues(t *testing.T) {
 		{"none", gateway.WitnessNone, 0},
 		{"match", gateway.WitnessMatch, 1},
 		{"candidate", gateway.WitnessCandidate, 2},
+		{"bound", gateway.WitnessBound, 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.got != tc.want {

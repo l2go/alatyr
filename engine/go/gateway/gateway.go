@@ -62,6 +62,8 @@ type execution struct {
 	helperAt     int64
 	candidate    int64
 	hasCandidate bool
+	// bound marks the retained candidate as WitnessBound evidence.
+	bound bool
 }
 type input struct {
 	received   int64

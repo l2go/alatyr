@@ -651,21 +651,21 @@ func (s *State) Witness(a *gateway.Action, u gateway.Update) (gateway.Witness, e
 	case Talk, Say:
 		spoken := p.plan.Command.Kind == Talk && input.Spoken != 0 && input.Spoken == getU(p.record.Fields, 1)
 		if (p.completed || spoken) && input.Source.Dialogue && e.Kind == Spoke && s.lastRef == p.npc {
-			return gateway.WitnessMatch, nil
+			return gateway.WitnessBound, nil
 		}
 		if p.plan.Command.Kind == Say && input.Source.Dialogue && input.Chosen == getU(p.record.Fields, 1) && s.lastRef == p.npc && (e.Kind == Shop || e.Kind == Offer || e.Kind == Practice) {
-			return gateway.WitnessMatch, nil
+			return gateway.WitnessBound, nil
 		}
 	case Take:
 		taken := input.Taken != 0 && input.Taken == getU(p.record.Fields, 1)
 		if (p.completed || taken) && input.Source.Pickup && e.Kind == Took && e.ID == s.self && s.lastTarget == p.plan.Item {
-			return gateway.WitnessMatch, nil
+			return gateway.WitnessBound, nil
 		}
 	case Buy, Sell:
 		if input.Source.Trade && input.Traded != 0 && input.Traded == getU(p.record.Fields, 1) && e.Kind == Inventory {
 			for _, row := range e.Goods {
 				if p.plan.Command.Kind == Buy && row.ID == p.plan.Command.Item || p.plan.Command.Kind == Sell && row.Object == p.plan.Command.Target {
-					return gateway.WitnessMatch, nil
+					return gateway.WitnessBound, nil
 				}
 			}
 		}
@@ -674,7 +674,7 @@ func (s *State) Witness(a *gateway.Action, u gateway.Update) (gateway.Witness, e
 			for _, row := range e.Goods {
 				b := p.baselineItem
 				if row.Object == b.Object && row.ID == b.ID && ((row.Count >= 0 && row.Count < b.Count) || (row.Count == b.Count && row.Slot != nil && b.Slot != nil && *row.Slot != *b.Slot)) {
-					return gateway.WitnessMatch, nil
+					return gateway.WitnessBound, nil
 				}
 			}
 		}
@@ -705,7 +705,7 @@ func (s *State) Witness(a *gateway.Action, u gateway.Update) (gateway.Witness, e
 			}
 			p.riseProof = cloneRecord(proof)
 			if p.completed || p.returned {
-				return gateway.WitnessMatch, nil
+				return gateway.WitnessBound, nil
 			}
 		}
 	}
