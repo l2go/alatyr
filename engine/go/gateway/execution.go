@@ -85,9 +85,10 @@ func (s *game) service(ctx context.Context) {
 		}
 		if s.pacer == nil || s.pacer.Ready(*step, s.gate.now()) {
 			s.stop = false
-			if s.write(ctx, *step) != nil {
-				s.fail(wire.CloseWorldClosed)
-			}
+			// The stop only spares an uncontrolled character its last action.
+			// A refused write leaves that to the world rather than ending the
+			// game; a world that really closed ends it through Updates.
+			_ = s.write(ctx, *step)
 			return
 		}
 		// Keep the stop pending without delaying local actions or refusals.
