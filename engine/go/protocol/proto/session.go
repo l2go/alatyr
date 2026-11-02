@@ -517,13 +517,26 @@ func (s *Session) Taint(class string) error {
 
 // Eligible reports whether attempt n may still be finished as done at now.
 func (s *Session) Eligible(n uint64, now int64) bool {
+	return s.eligible(n, now, false)
+}
+
+// EligibleBound is Eligible for evidence bound to attempt n itself, such as a
+// live fact carrying the attempt's own command key. Such evidence cannot come
+// from an earlier attempt, so an earlier Unknown in the class does not block
+// it. The class slot, contact, waiting and window rules still apply, and the
+// taint remains for every witness that is not bound.
+func (s *Session) EligibleBound(n uint64, now int64) bool {
+	return s.eligible(n, now, true)
+}
+
+func (s *Session) eligible(n uint64, now int64, bound bool) bool {
 	i := s.index(n)
 	if i < 0 {
 		return false
 	}
 	e := s.entries[i]
 	state, ok := s.classes[e.Class]
-	return !s.closed && !e.Terminal && e.Waiting && e.Contact && ok && state.open == n && !state.tainted && now >= e.Deadline-s.config.EvidenceMS && now < e.Deadline
+	return !s.closed && !e.Terminal && e.Waiting && e.Contact && ok && state.open == n && (bound || !state.tainted) && now >= e.Deadline-s.config.EvidenceMS && now < e.Deadline
 }
 
 // Done is called only with an exclusive, typed witness established by a backend.
@@ -535,7 +548,17 @@ func (s *Session) Done(n uint64, now int64) (Outcome, error) {
 // The witness itself must have arrived strictly before the deadline. Call this
 // before Expire when a profile requires a full-window exclusion check.
 func (s *Session) CommitWitness(n uint64, observed, now int64) (Outcome, error) {
-	if !s.Eligible(n, observed) {
+	return s.commit(n, observed, now, false)
+}
+
+// CommitBound is CommitWitness for evidence bound to attempt n; see
+// EligibleBound.
+func (s *Session) CommitBound(n uint64, observed, now int64) (Outcome, error) {
+	return s.commit(n, observed, now, true)
+}
+
+func (s *Session) commit(n uint64, observed, now int64, bound bool) (Outcome, error) {
+	if !s.eligible(n, observed, bound) {
 		return Outcome{}, ErrState
 	}
 	i := s.index(n)
