@@ -31,7 +31,7 @@ Scope closure and backend errors retain their existing failure disposition.
 | Step role | Refusal authority |
 | --- | --- |
 | Effect | A live no-effect refusal can certify the attempt only when this was its sole write. |
-| Helper | Selection can change the target and intention. Once written, it prevents certifying the whole attempt, even if a later effect is refused. A helper skipped because the target is already confirmed was never written and does not prevent proof. |
+| Helper | Selection can change the target and intention. Once written, it prevents certifying the whole attempt, even if a later effect is refused. A live no-effect refusal of the helper itself certifies the attempt when the helper was its sole write. A helper skipped because the target is already confirmed was never written and does not prevent proof. |
 | System | N is zero; guarded stop and relocation service are independent operations and never certify a participant outcome. |
 
 The trusted proof reaches `proto.Session.ConfirmRefusal` through

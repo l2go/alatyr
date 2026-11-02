@@ -187,13 +187,15 @@ func (s *state) Apply(u gateway.Update, now int64) (gateway.Observation, error) 
 			return gateway.Observation{WorldClosed: true}, nil
 		case r.Stage == wire.StageUnrecoverable || r.Reason == wire.ReasonBackendError:
 			reason = wire.ReasonBackendError
+		case r.Stage == wire.StageRefused && plan.writes == 1 && !plan.writeFailed && r.Delivery == wire.DeliveryNone && worldRefusalReason(r.Reason) && len(r.Effects) == 0 &&
+			(binding.role == gateway.StepEffect && !plan.helperSent || binding.role == gateway.StepHelper):
+			// The only write was refused without effects: a selection helper
+			// changed nothing, so the whole attempt is proven not executed.
+			refusals = append(refusals, gateway.Refusal{N: plan.n, Evidence: proto.RefusalEvidence{Reason: r.Reason, ObservedMS: at}})
+			continue
 		case binding.role == gateway.StepHelper && (r.Stage == wire.StageRefused || r.Stage == wire.StageUnknown):
 			reason = wire.ReasonTargetUnconfirmed
 		case r.Stage == wire.StageRefused:
-			if binding.role == gateway.StepEffect && plan.writes == 1 && !plan.helperSent && !plan.writeFailed && r.Delivery == wire.DeliveryNone && worldRefusalReason(r.Reason) && len(r.Effects) == 0 {
-				refusals = append(refusals, gateway.Refusal{N: plan.n, Evidence: proto.RefusalEvidence{Reason: r.Reason, ObservedMS: at}})
-				continue
-			}
 			reason = wire.ReasonInterrupted
 			text = "The world rejected the request after handoff."
 		case r.Reason == wire.ReasonInterrupted:

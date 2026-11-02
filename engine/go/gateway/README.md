@@ -44,8 +44,9 @@ and shrinking queue budget are not renewed by delayed processing or recovery.
 After contact, Refused requires a trusted live proof that the entire attempt
 had no effects. `Observation.Refusals` carries that proof separately from ordinary
 failures. A valid proof releases the class slot with DeliveryNone and the world's
-reason; it never clears a class tainted by a genuine Unknown. A helper already
-written, partial delivery, an error or missing evidence retains uncertainty.
+reason; it never clears a class tainted by a genuine Unknown. A refused helper
+that was the only write is such a proof. A helper followed by another write,
+partial delivery, an error or missing evidence retains uncertainty.
 Relocation fences invalidate old references. A live revival is held until raw
 readiness and participant checkpoint drain, then released once; a timeout cannot
 reopen a terminal attempt.

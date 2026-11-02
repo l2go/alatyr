@@ -116,10 +116,12 @@ func readyCharacter() world.Character {
 		Items: []world.Item{{ObjectID: 10, TemplateID: 57, Count: 1000, Slot: -1}, {ObjectID: 11, TemplateID: 4, Count: 1, Slot: catalog.SlotRHand}, {ObjectID: 12, TemplateID: 1060, Count: 3, Slot: -1}}, Skills: []world.Skill{{ID: 3, Level: 1}}}
 }
 func newRig(t *testing.T, cat *catalog.Catalog, char world.Character, source meaning.Source, filter func(bridge.Update) bridge.Update, opts ...world.Option) *rig {
-	policy := meaning.Policy{Classify: func(o meaning.Observed) meaning.Capabilities {
+	return newRigWithPolicy(t, cat, char, source, filter, rigPolicy(), opts...)
+}
+func rigPolicy() meaning.Policy {
+	return meaning.Policy{Classify: func(o meaning.Observed) meaning.Capabilities {
 		return meaning.Capabilities{Talk: o.Role == "tutor" || o.Role == "provisioner", Pickup: o.Role == meaning.RoleDrop}
 	}}
-	return newRigWithPolicy(t, cat, char, source, filter, policy, opts...)
 }
 
 func newRigWithPolicy(t *testing.T, cat *catalog.Catalog, char world.Character, source meaning.Source, filter func(bridge.Update) bridge.Update, policy meaning.Policy, opts ...world.Option) *rig {
@@ -227,7 +229,7 @@ func (r *rig) ref(id int32, field uint32) wire.Field {
 }
 func (r *rig) actor(template int32) world.Ref {
 	r.t.Helper()
-	raw := r.port.Port.(*worldbridge.Client)
+	raw := r.port.Port.(interface{ Owner() world.Ref })
 	scene, err := r.w.Capture(r.t.Context(), raw.Owner())
 	if err != nil {
 		r.t.Fatal(err)
