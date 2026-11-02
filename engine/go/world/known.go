@@ -100,8 +100,10 @@ func (w *World) broadcastToKnown(s *state, a actor, e Event) {
 			}
 		}
 	case *npc:
+		// An NPC can learn a player before the player's own visibility pass
+		// learns the NPC. Only a player who knows the NPC may hear about it.
 		for id := range v.knownPlayers {
-			if p, ok := s.players[id]; ok {
+			if p, ok := s.players[id]; ok && p.known[v.id] {
 				p.send(e)
 			}
 		}
