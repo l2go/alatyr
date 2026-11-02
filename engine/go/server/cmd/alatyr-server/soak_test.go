@@ -48,8 +48,10 @@ import (
 // and goroutines at most half a goroutine per minute. A shorter window does
 // not use slope: allocator noise over a minute is steeper than a real leak
 // averaged over an hour. The absolute cap still rejects a large step. Every
-// sampling interval must finish at least one attempt, and every class the
-// window can reach must complete one. The economy oracle remembers the latest
+// sampling interval must finish at least one attempt; every class the window
+// can reach, and every verb with soakVerbMinimum results, must complete one.
+// Unknown with ReasonTimeout is reported as unconfirmed; any other Unknown or
+// Unrecoverable result fails the run. The economy oracle remembers the latest
 // soakEconomyWindow intents of each kind, so its own memory stays flat.
 const (
 	soakShort      = 90 * time.Second
@@ -232,6 +234,9 @@ func TestSoak(t *testing.T) {
 	if err := cohort.classesHeld(duration >= 10*time.Minute); err != nil {
 		note("%v", err)
 	}
+	if err := cohort.verbsHeld(); err != nil {
+		note("%v", err)
+	}
 	stopHost()
 	if err := <-hostDone; err != nil {
 		note("host stop: %v", err)
@@ -364,7 +369,11 @@ func soakObserve(t *testing.T, duration time.Duration, bots *soakCohort, note fu
 		case <-ticker.C:
 			take()
 		case <-end.C:
-			take()
+			// The last tick may coincide with the end; an empty interval
+			// carries no liveness information.
+			if time.Since(samples[len(samples)-1].at) >= time.Second {
+				take()
+			}
 			if time.Since(start) < duration/2 {
 				note("soak ended early")
 			}
@@ -676,8 +685,42 @@ func (c *soakCohort) totals(column func(*soakBot) map[string]int) map[string]int
 
 var soakClasses = []string{"move", "combat", "pickup", "dialogue", "shop", "use", "return"}
 
+// soakVerbMinimum is how many terminal results a verb needs before the run
+// requires one of them to be completed.
+const soakVerbMinimum = 10
+
+// verbsHeld requires a completed attempt from every verb that finished at least
+// soakVerbMinimum attempts, so a verb that can never be confirmed fails even
+// when its class completes through another verb.
+func (c *soakCohort) verbsHeld() error {
+	finished, completed := map[uint64]int{}, map[uint64]int{}
+	for _, b := range c.bots {
+		b.mu.Lock()
+		for k, n := range b.outcomes {
+			if k.verb == 0 {
+				continue // refused while planning, before a verb resolved
+			}
+			finished[k.verb] += n
+			if k.stage == wire.StageDone || k.stage == wire.StageSent {
+				completed[k.verb] += n
+			}
+		}
+		b.mu.Unlock()
+	}
+	var missing []string
+	for _, verb := range slices.Sorted(maps.Keys(finished)) {
+		if finished[verb] >= soakVerbMinimum && completed[verb] == 0 {
+			missing = append(missing, fmt.Sprintf("%d (%d results)", verb, finished[verb]))
+		}
+	}
+	if len(missing) != 0 {
+		return fmt.Errorf("verbs never completed: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
 // classesHeld requires a completed attempt in every class the window can
-// reach. Done or a final Sent counts; a refusal or an unproven outcome does
+// reach. Done or a final Sent counts; a refusal or an unconfirmed outcome does
 // not. Two bots on the meadow reach movement, combat, dialogue and items in
 // the short run; pickup, trade and return need the long window.
 func (c *soakCohort) classesHeld(long bool) error {
@@ -708,7 +751,7 @@ func (c *soakCohort) classText() string {
 		{"done", func(b *soakBot) map[string]int { return b.done }},
 		{"sent", func(b *soakBot) map[string]int { return b.sent }},
 		{"refused", func(b *soakBot) map[string]int { return b.refused }},
-		{"unproven", func(b *soakBot) map[string]int { return b.unproven }},
+		{"unconfirmed", func(b *soakBot) map[string]int { return b.unconfirmed }},
 	} {
 		totals := c.totals(column.get)
 		out.WriteString(column.name)
@@ -744,7 +787,7 @@ type soakOutcome struct {
 
 func newSoakBot(addr, token, id string, seed int64, note func(string, ...any)) *soakBot {
 	return &soakBot{addr: addr, token: token, id: id, seed: seed, note: note, stopCh: make(chan struct{}),
-		done: map[string]int{}, sent: map[string]int{}, refused: map[string]int{}, unproven: map[string]int{}, outcomes: map[soakOutcome]int{}, goods: map[int32]int64{}}
+		done: map[string]int{}, sent: map[string]int{}, refused: map[string]int{}, unconfirmed: map[string]int{}, outcomes: map[soakOutcome]int{}, goods: map[int32]int64{}}
 }
 
 func startSoakBots(t *testing.T, cfg Config, tokens []string, seed int64, note func(string, ...any), passive bool) *soakCohort {
@@ -752,6 +795,7 @@ func startSoakBots(t *testing.T, cfg Config, tokens []string, seed int64, note f
 	c := &soakCohort{}
 	for i, token := range tokens {
 		b := newSoakBot(cfg.StreamAddress, token, cfg.Participants[i].ID, seed+int64(i), note)
+		b.fighter = i%2 == 0
 		b.passive.Store(passive)
 		c.bots = append(c.bots, b)
 		b.wg.Add(1)
@@ -769,44 +813,47 @@ type liveObj struct {
 }
 
 type soakBot struct {
-	addr     string
-	token    string
-	id       string
-	seed     int64
-	note     func(string, ...any)
-	stopCh   chan struct{}
-	open     atomic.Bool
-	ready    atomic.Bool
-	passive  atomic.Bool
-	unknown  atomic.Int64
-	finished atomic.Int64
-	wg       sync.WaitGroup
-	mu       sync.Mutex
-	control  uint64
-	selfX    int32
-	selfY    int32
-	hp, mp   int64
-	vitals   bool
-	coin     int64
-	coinOK   bool
-	dead     bool
-	live     map[int32]liveObj
-	dialog   meaning.DecodedEvent
-	shop     meaning.DecodedEvent
-	offer    meaning.DecodedEvent
-	practice meaning.DecodedEvent
-	items    []int64
-	goods    map[int32]int64
-	pending  map[uint64]string
-	done     map[string]int
-	sent     map[string]int
-	refused  map[string]int
-	unproven map[string]int
-	outcomes map[soakOutcome]int
-	seq      uint64
-	closed   bool
-	needPong bool
-	pong     uint64
+	addr        string
+	token       string
+	id          string
+	seed        int64
+	note        func(string, ...any)
+	stopCh      chan struct{}
+	open        atomic.Bool
+	ready       atomic.Bool
+	passive     atomic.Bool
+	unknown     atomic.Int64
+	finished    atomic.Int64
+	wg          sync.WaitGroup
+	mu          sync.Mutex
+	control     uint64
+	selfX       int32
+	selfY       int32
+	hp, mp      int64
+	vitals      bool
+	coin        int64
+	coinOK      bool
+	dead        bool
+	live        map[int32]liveObj
+	dialog      meaning.DecodedEvent
+	shop        meaning.DecodedEvent
+	offer       meaning.DecodedEvent
+	practice    meaning.DecodedEvent
+	items       []int64
+	goods       map[int32]int64
+	pending     map[uint64]string
+	fighter     bool
+	quarry      int32
+	holdUntil   time.Time
+	done        map[string]int
+	sent        map[string]int
+	refused     map[string]int
+	unconfirmed map[string]int
+	outcomes    map[soakOutcome]int
+	seq         uint64
+	closed      bool
+	needPong    bool
+	pong        uint64
 }
 
 func (b *soakBot) inflight() int {
@@ -1048,8 +1095,10 @@ func (b *soakBot) consume(rs []wire.Record) error {
 				b.done[class]++
 			case stage == wire.StageRefused:
 				b.refused[class]++
-			case stage == wire.StageUnknown && reason == wire.ReasonTimeout && unprovable(effective):
-				b.unproven[class]++
+			case stage == wire.StageUnknown && reason == wire.ReasonTimeout:
+				// The world did not confirm within the evidence window, for
+				// example after a long walk to the target. That is honest.
+				b.unconfirmed[class]++
 			default:
 				if b.unknown.Add(1) == 1 {
 					b.note("%s unexpected result verb %d stage %d reason %d", b.id, effective, stage, reason)
@@ -1093,6 +1142,9 @@ func (b *soakBot) absorb(ev meaning.DecodedEvent) {
 			b.mp = *ev.Event.Stats.MP
 		}
 	case meaning.Died:
+		if ev.Event.ID == b.quarry {
+			b.quarry = 0
+		}
 		if ev.Event.Mine {
 			b.dead = true
 		}
@@ -1134,10 +1186,19 @@ func (b *soakBot) act(codec *meaning.Codec, stream *gateway.Stream, next func() 
 	if b.control == 0 || len(b.pending) != 0 {
 		return
 	}
+	// A strike is final at Sent. A fighter lets the fight run until the target
+	// dies or leaves view, so creatures fall and drop items to pick up; the
+	// other bots keep cycling the whole alphabet quickly.
+	if _, fighting := b.live[b.quarry]; b.fighter && fighting && time.Now().Before(b.holdUntil) && !b.dead {
+		return
+	}
 	verb := meaning.Rise
 	if !b.dead {
 		order := []string{meaning.Walk, meaning.Aim, meaning.Strike, meaning.Take, meaning.Talk, meaning.Say, meaning.Buy, meaning.Sell, meaning.Learn, meaning.UseItem, meaning.Focus, meaning.Engage, meaning.Cast}
 		verb = order[next()%uint64(len(order))]
+		if _, ok := b.pick(meaning.Take, next); ok {
+			verb = meaning.Take
+		}
 	}
 	cmd := meaning.Command{Kind: verb}
 	ctx := meaning.CommandContext{Control: b.control}
@@ -1211,17 +1272,9 @@ func (b *soakBot) act(codec *meaning.Codec, stream *gateway.Stream, next func() 
 	}
 	b.seq = ctx.N
 	b.pending[ctx.N] = soakClass(verb)
-}
-
-// unprovable reports verbs whose completion the bridge cannot witness. When
-// the world finishes one inside its own execution, the participant sees
-// Unknown with ReasonTimeout; that is the bridge contract, not a failure.
-func unprovable(effective uint64) bool {
-	switch effective {
-	case 1, 3, 9, 12: // walk, strike, rise, cast
-		return true
+	if verb == meaning.Strike || verb == meaning.Cast || verb == meaning.Engage && b.live[cmd.Target].role == "creature" {
+		b.quarry, b.holdUntil = cmd.Target, time.Now().Add(20*time.Second)
 	}
-	return false
 }
 
 func soakClass(verb string) string {
@@ -1495,7 +1548,7 @@ func TestBotClassifiesResults(t *testing.T) {
 	if err := b.consume([]wire.Record{
 		result(1, wire.StageSent, wire.ReasonNone, 2),       // aim has no witness: Sent is final
 		result(2, wire.StageSent, wire.ReasonNone, 4),       // take waits for its witness
-		result(3, wire.StageUnknown, wire.ReasonTimeout, 1), // a walk finished inside execution
+		result(3, wire.StageUnknown, wire.ReasonTimeout, 1), // not confirmed inside the window
 		result(5, wire.StageRefused, wire.ReasonWorld, 5),
 	}); err != nil {
 		t.Fatal(err)
@@ -1503,10 +1556,10 @@ func TestBotClassifiesResults(t *testing.T) {
 	if !maps.Equal(b.pending, map[uint64]string{2: "pickup", 4: "pickup"}) {
 		t.Fatalf("pending %v", b.pending)
 	}
-	if b.sent["combat"] != 1 || b.unproven["move"] != 1 || b.refused["dialogue"] != 1 || b.finished.Load() != 3 || b.unknown.Load() != 0 {
-		t.Fatalf("sent %v unproven %v refused %v finished %d unknown %d", b.sent, b.unproven, b.refused, b.finished.Load(), b.unknown.Load())
+	if b.sent["combat"] != 1 || b.unconfirmed["move"] != 1 || b.refused["dialogue"] != 1 || b.finished.Load() != 3 || b.unknown.Load() != 0 {
+		t.Fatalf("sent %v unconfirmed %v refused %v finished %d unknown %d", b.sent, b.unconfirmed, b.refused, b.finished.Load(), b.unknown.Load())
 	}
-	if err := b.consume([]wire.Record{result(2, wire.StageDone, wire.ReasonNone, 4), result(4, wire.StageUnknown, wire.ReasonTimeout, 4)}); err != nil {
+	if err := b.consume([]wire.Record{result(2, wire.StageDone, wire.ReasonNone, 4), result(4, wire.StageUnknown, wire.ReasonBackendError, 4)}); err != nil {
 		t.Fatal(err)
 	}
 	if b.done["pickup"] != 1 || b.unknown.Load() != 1 || len(notes) != 1 || len(b.pending) != 0 {
