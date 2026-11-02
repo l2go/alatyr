@@ -169,67 +169,85 @@ func CheckEconomy(commits []world.Commit) error {
 }
 
 func checkEconomy(commits []world.Commit) error {
-	type consumption struct {
-		intent world.IntentID
-		item   world.Ref
-	}
-	used := make(map[consumption]bool)
-	refused := make(map[world.IntentID]bool)
+	var live Economy
 	for _, c := range commits {
-		if c.Outcome.Stage == world.StageRefused || c.Outcome.Stage == world.StageExpired {
-			if c.Intent.ID.N == 0 || c.Outcome.Intent != c.Intent.ID || len(c.Groups) != 0 {
-				return fmt.Errorf("refused world intent %v changed the world or lost its identity", c.Intent.ID)
-			}
-			refused[c.Intent.ID] = true
+		if err := live.Observe(c); err != nil {
+			return err
 		}
 	}
-	for _, c := range commits {
-		for _, g := range c.Groups {
-			if refused[g.Cause.Intent] {
-				return fmt.Errorf("refused world intent %v produced a deferred effect", g.Cause.Intent)
+	return nil
+}
+
+// Economy checks commitments as they arrive. It keeps refused intent ids and
+// one-item consumptions, not the commitments themselves.
+type Economy struct {
+	used    map[consumption]bool
+	refused map[world.IntentID]bool
+}
+
+type consumption struct {
+	intent world.IntentID
+	item   world.Ref
+}
+
+// Observe applies one commitment. A refusal is recorded before a later effect
+// that names it; the world emits the refusal first.
+func (e *Economy) Observe(c world.Commit) error {
+	if e.used == nil {
+		e.used = map[consumption]bool{}
+	}
+	if e.refused == nil {
+		e.refused = map[world.IntentID]bool{}
+	}
+	if c.Outcome.Stage == world.StageRefused || c.Outcome.Stage == world.StageExpired {
+		if c.Intent.ID.N == 0 || c.Outcome.Intent != c.Intent.ID || len(c.Groups) != 0 {
+			return fmt.Errorf("refused world intent %v changed the world or lost its identity", c.Intent.ID)
+		}
+		e.refused[c.Intent.ID] = true
+	}
+	for _, g := range c.Groups {
+		if e.refused[g.Cause.Intent] {
+			return fmt.Errorf("refused world intent %v produced a deferred effect", g.Cause.Intent)
+		}
+		for _, effect := range g.Effects {
+			moved, ok := effect.(world.ResourceTransferred)
+			if !ok {
+				continue
 			}
-			for _, effect := range g.Effects {
-				e, ok := effect.(world.ResourceTransferred)
-				if !ok {
+			amount, integer := moved.Amount.Integer()
+			if !integer {
+				continue
+			}
+			if amount < 0 {
+				return fmt.Errorf("negative resource transfer")
+			}
+			for _, side := range []struct {
+				location world.ResourceLocation
+				balance  world.Balance
+				debit    bool
+			}{{moved.From, moved.FromBalance, true}, {moved.To, moved.ToBalance, false}} {
+				if side.location.Entity == (world.Ref{}) {
 					continue
 				}
-				amount, integer := e.Amount.Integer()
-				if !integer {
-					continue
+				before, okBefore := side.balance.Before.Integer()
+				after, okAfter := side.balance.After.Integer()
+				if !okBefore || !okAfter || before < 0 || after < 0 {
+					return fmt.Errorf("invalid integer resource balance")
 				}
-				if amount < 0 {
-					return fmt.Errorf("negative resource transfer")
+				if side.debit {
+					if before < amount || before-amount != after {
+						return fmt.Errorf("resource debit underflow or mismatch")
+					}
+				} else if after < before || after-before != amount {
+					return fmt.Errorf("resource credit overflow or mismatch")
 				}
-				for _, side := range []struct {
-					location world.ResourceLocation
-					balance  world.Balance
-					debit    bool
-				}{{e.From, e.FromBalance, true}, {e.To, e.ToBalance, false}} {
-					if side.location.Entity == (world.Ref{}) {
-						continue
-					}
-					before, okBefore := side.balance.Before.Integer()
-					after, okAfter := side.balance.After.Integer()
-					if !okBefore || !okAfter || before < 0 || after < 0 {
-						return fmt.Errorf("invalid integer resource balance")
-					}
-					if side.debit {
-						if before < amount || before-amount != after {
-							return fmt.Errorf("resource debit underflow or mismatch")
-						}
-					} else {
-						if after < before || after-before != amount {
-							return fmt.Errorf("resource credit overflow or mismatch")
-						}
-					}
+			}
+			if moved.To.Place == world.PlaceConsumption && moved.Resource.Kind == world.ResourceItem {
+				key := consumption{g.Cause.Intent, moved.From.Item}
+				if e.used[key] || amount != 1 {
+					return fmt.Errorf("item consumed more than once per intent")
 				}
-				if e.To.Place == world.PlaceConsumption && e.Resource.Kind == world.ResourceItem {
-					key := consumption{g.Cause.Intent, e.From.Item}
-					if used[key] || amount != 1 {
-						return fmt.Errorf("item consumed more than once per intent")
-					}
-					used[key] = true
-				}
+				e.used[key] = true
 			}
 		}
 	}

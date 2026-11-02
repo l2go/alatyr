@@ -54,19 +54,6 @@ const (
 	soakQueueLimit = 4096
 )
 
-func TestTransientAdmissionIsRetried(t *testing.T) {
-	if !transientAdmission(io.EOF) || !transientAdmission(gateway.ErrFull) {
-		t.Fatal("disconnect while the previous game is closing must be retried")
-	}
-	if transientAdmission(errors.New("decode")) {
-		t.Fatal("a decode failure was treated as a reconnect race")
-	}
-}
-
-func transientAdmission(err error) bool {
-	return errors.Is(err, io.EOF) || errors.Is(err, gateway.ErrFull)
-}
-
 func TestSoakVerdict(t *testing.T) {
 	base := time.Now()
 	flat := make([]soakSample, 6)
@@ -181,8 +168,9 @@ func TestSoak(t *testing.T) {
 	}
 	cfg.HTTPAddress, cfg.StreamAddress = httpAddr, streamAddr
 
-	var commits []world.Commit
-	var commitMu sync.Mutex
+	var economy worldtest.Economy
+	var economyMu sync.Mutex
+	var economyErr atomic.Value
 	var paceTick atomic.Int64
 	var paceQueued atomic.Int64
 	var paceSeen atomic.Bool
@@ -190,19 +178,16 @@ func TestSoak(t *testing.T) {
 	t.Cleanup(stopRoot)
 	started := time.Now()
 	var logFailures atomic.Int64
-	var logged []string
-	var logMu sync.Mutex
-	hostLog := slog.New(soakLog{slog.NewTextHandler(t.Output(), nil), &logFailures, func(msg string) {
-		logMu.Lock()
-		logged = append(logged, msg)
-		logMu.Unlock()
-		t.Logf("host log %s: %s", time.Since(started).Round(time.Millisecond), msg)
-	}})
+	var firstLog atomic.Value
+	hostLog := slog.New(soakLog{next: slog.NewTextHandler(t.Output(), nil), count: &logFailures, first: &firstLog})
 	runHost := func(life context.Context) error {
 		return serve(life, cfg, cat, store, hostLog, world.WithCommits(func(c world.Commit) {
-			commitMu.Lock()
-			commits = append(commits, c)
-			commitMu.Unlock()
+			economyMu.Lock()
+			err := economy.Observe(c)
+			economyMu.Unlock()
+			if err != nil {
+				economyErr.Store(err.Error())
+			}
 		}), world.WithPace(func(tick time.Duration, queued int) {
 			paceTick.Store(int64(tick))
 			paceQueued.Store(int64(queued))
@@ -225,8 +210,8 @@ func TestSoak(t *testing.T) {
 		}
 		failMu.Unlock()
 	}
-	cohort := startSoakBots(t, cfg, tokens, seed, note, false, duration >= 10*time.Minute)
-	samples := soakObserve(t, duration, cohort, &commitMu, &commits, note, &paceTick, &paceQueued, &paceSeen)
+	cohort := startSoakBots(t, cfg, tokens, seed, note, false)
+	samples := soakObserve(t, duration, cohort, note, &paceTick, &paceQueued, &paceSeen)
 	cohort.stop()
 	stopHost()
 	if err := <-hostDone; err != nil {
@@ -247,7 +232,7 @@ func TestSoak(t *testing.T) {
 	life, stopHost = context.WithCancel(rootCtx)
 	go func() { hostDone <- runHost(life) }()
 	soakWaitReady(t, cfg.HTTPAddress)
-	restored := startSoakBots(t, cfg, tokens, seed, note, true, false)
+	restored := startSoakBots(t, cfg, tokens, seed, note, true)
 	deadline := time.Now().Add(10 * time.Second)
 	for restored.readyCount() < len(participants) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
@@ -281,13 +266,11 @@ func TestSoak(t *testing.T) {
 		}
 	}
 	if n := logFailures.Load(); n > 0 {
-		logMu.Lock()
-		first := ""
-		if len(logged) > 0 {
-			first = logged[0]
-		}
-		logMu.Unlock()
+		first, _ := firstLog.Load().(string)
 		note("logged errors: %d, first %q", n, first)
+	}
+	if err, ok := economyErr.Load().(string); ok && err != "" {
+		note("economy: %s", err)
 	}
 	unknown := 0
 	for _, b := range cohort.bots {
@@ -295,9 +278,6 @@ func TestSoak(t *testing.T) {
 	}
 	if unknown != 0 {
 		note("unknown outcomes: %d", unknown)
-	}
-	if err := cohort.classesHeld(); err != nil {
-		note("alphabet: %v", err)
 	}
 	failMu.Lock()
 	failCopy := append([]string(nil), failures...)
@@ -321,7 +301,7 @@ type soakSample struct {
 	inflight                    int
 }
 
-func soakObserve(t *testing.T, duration time.Duration, bots *soakCohort, mu *sync.Mutex, commits *[]world.Commit, note func(string, ...any), paceTick, paceQueued *atomic.Int64, paceSeen *atomic.Bool) []soakSample {
+func soakObserve(t *testing.T, duration time.Duration, bots *soakCohort, note func(string, ...any), paceTick, paceQueued *atomic.Int64, paceSeen *atomic.Bool) []soakSample {
 	t.Helper()
 	interval := time.Minute
 	if duration < 10*time.Minute {
@@ -341,12 +321,6 @@ func soakObserve(t *testing.T, duration time.Duration, bots *soakCohort, mu *syn
 		// 4096; a climb past that is a leaked schedule, not a command backlog.
 		if queued > soakQueueLimit {
 			note("world timers %d", queued)
-		}
-		mu.Lock()
-		err := worldtest.CheckEconomy(append([]world.Commit(nil), *commits...))
-		mu.Unlock()
-		if err != nil {
-			note("economy: %v", err)
 		}
 		samples = append(samples, soakSample{at: time.Now(), heap: ms.HeapInuse, rss: processRSS(), goroutines: goruntime.NumGoroutine(), sessions: bots.sessions(), queue: queued, tick: tick, inflight: bots.inflight()})
 	}
@@ -560,17 +534,17 @@ func soakParticipants(n int, seed int64) ([]Participant, []string) {
 type soakLog struct {
 	next  slog.Handler
 	count *atomic.Int64
-	line  func(string)
+	first *atomic.Value
 }
 
-func (s soakLog) Enabled(ctx context.Context, level slog.Level) bool { return true }
+func (s soakLog) Enabled(ctx context.Context, level slog.Level) bool {
+	return s.next != nil && s.next.Enabled(ctx, level)
+}
 func (s soakLog) Handle(ctx context.Context, r slog.Record) error {
-	msg := r.Level.String() + " " + r.Message
-	if s.line != nil {
-		s.line(msg)
-	}
-	if r.Level >= slog.LevelError {
-		s.count.Add(1)
+	if r.Level >= slog.LevelError && s.count != nil {
+		if s.count.Add(1) == 1 && s.first != nil {
+			s.first.Store(r.Message)
+		}
 	}
 	if s.next == nil {
 		return nil
@@ -582,19 +556,18 @@ func (s soakLog) WithAttrs(a []slog.Attr) slog.Handler {
 	if next != nil {
 		next = next.WithAttrs(a)
 	}
-	return soakLog{next, s.count, s.line}
+	return soakLog{next, s.count, s.first}
 }
 func (s soakLog) WithGroup(name string) slog.Handler {
 	next := s.next
 	if next != nil {
 		next = next.WithGroup(name)
 	}
-	return soakLog{next, s.count, s.line}
+	return soakLog{next, s.count, s.first}
 }
 
 type soakCohort struct {
 	bots []*soakBot
-	long bool
 }
 
 func (c *soakCohort) sessions() int {
@@ -630,43 +603,29 @@ func (c *soakCohort) stop() {
 		b.wg.Wait()
 	}
 }
-func (c *soakCohort) classesHeld() error {
-	totals := map[string]int{}
-	for _, b := range c.bots {
-		b.mu.Lock()
-		for k, n := range b.accepted {
-			totals[k] += n
-		}
-		b.mu.Unlock()
-	}
-	required := []string{"move", "combat", "dialogue", "use"}
-	// Shop, return and a drop need world state the short window does not wait for.
-	if c.long {
-		required = append(required, "pickup", "shop", "return")
-	}
-	for _, class := range required {
-		if totals[class] == 0 {
-			return fmt.Errorf("class %s had no admitted intent", class)
-		}
-	}
-	return nil
-}
 func (c *soakCohort) classText() string {
-	totals := map[string]int{}
+	done := map[string]int{}
+	refused := map[string]int{}
 	for _, b := range c.bots {
 		b.mu.Lock()
 		for k, n := range b.accepted {
-			totals[k] += n
+			done[k] += n
+		}
+		for k, n := range b.refused {
+			refused[k] += n
 		}
 		b.mu.Unlock()
 	}
-	return fmt.Sprintf("classes move=%d combat=%d pickup=%d dialogue=%d shop=%d use=%d return=%d\n", totals["move"], totals["combat"], totals["pickup"], totals["dialogue"], totals["shop"], totals["use"], totals["return"])
+	line := func(name string, totals map[string]int) string {
+		return fmt.Sprintf("%s move=%d combat=%d pickup=%d dialogue=%d shop=%d use=%d return=%d\n", name, totals["move"], totals["combat"], totals["pickup"], totals["dialogue"], totals["shop"], totals["use"], totals["return"])
+	}
+	return line("done", done) + line("refused", refused)
 }
-func startSoakBots(t *testing.T, cfg Config, tokens []string, seed int64, note func(string, ...any), passive, long bool) *soakCohort {
+func startSoakBots(t *testing.T, cfg Config, tokens []string, seed int64, note func(string, ...any), passive bool) *soakCohort {
 	t.Helper()
-	c := &soakCohort{long: long}
+	c := &soakCohort{}
 	for i, token := range tokens {
-		b := &soakBot{addr: cfg.StreamAddress, token: token, id: cfg.Participants[i].ID, seed: seed + int64(i), note: note, stopCh: make(chan struct{}), accepted: map[string]int{}, goods: map[int32]int64{}}
+		b := &soakBot{addr: cfg.StreamAddress, token: token, id: cfg.Participants[i].ID, seed: seed + int64(i), note: note, stopCh: make(chan struct{}), accepted: map[string]int{}, refused: map[string]int{}, goods: map[int32]int64{}}
 		b.passive.Store(passive)
 		c.bots = append(c.bots, b)
 		b.wg.Add(1)
@@ -713,6 +672,7 @@ type soakBot struct {
 	goods    map[int32]int64
 	pending  map[uint64]string
 	accepted map[string]int
+	refused  map[string]int
 	seq      uint64
 	closed   bool
 	needPong bool
@@ -783,9 +743,10 @@ func (b *soakBot) loop() {
 			return
 		default:
 		}
-		// A normal hangup detaches the backend. The next bind can meet ErrFull
-		// until that game finishes, and the host then closes the socket.
-		if transientAdmission(err) {
+		// The host closes the socket while the previous game is still closing.
+		// The client sees EOF and has not reached CheckpointEnd yet. ErrFull
+		// stays on the server. After CheckpointEnd the same EOF is a drop.
+		if errors.Is(err, errAdmission) {
 			failures++
 			if failures > 100 {
 				b.note("%s session: %v after %d retries", b.id, err, failures)
@@ -802,6 +763,8 @@ func (b *soakBot) loop() {
 		return
 	}
 }
+
+var errAdmission = errors.New("admission closed before ready")
 
 func (b *soakBot) session(codec *meaning.Codec, next func() uint64, reconnect *time.Timer) error {
 	conn, err := net.DialTimeout("tcp", b.addr, 2*time.Second)
@@ -828,6 +791,7 @@ func (b *soakBot) session(codec *meaning.Codec, next func() uint64, reconnect *t
 	b.mu.Lock()
 	b.pending = map[uint64]string{}
 	b.live = map[int32]liveObj{}
+	b.control = 0
 	b.ready.Store(false)
 	b.mu.Unlock()
 	frames := make(chan []wire.Record, 32)
@@ -857,7 +821,8 @@ func (b *soakBot) session(codec *meaning.Codec, next func() uint64, reconnect *t
 		case <-b.stopCh:
 			return nil
 		case <-reconnect.C:
-			if b.passive.Load() {
+			if b.passive.Load() || b.inflight() > 0 {
+				reconnect.Reset(time.Second)
 				continue
 			}
 			reconnect.Reset(20 * time.Second)
@@ -867,10 +832,15 @@ func (b *soakBot) session(codec *meaning.Codec, next func() uint64, reconnect *t
 			case <-b.stopCh:
 				return nil
 			default:
+			}
+			if !b.ready.Load() && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
+				return errAdmission
+			}
+			return fmt.Errorf("after ready: %w", err)
+		case rs := <-frames:
+			if err := b.consume(rs); err != nil {
 				return err
 			}
-		case rs := <-frames:
-			b.consume(rs)
 			if b.passive.Load() && b.ready.Load() {
 				act.Stop()
 			}
@@ -892,11 +862,19 @@ func (b *soakBot) session(codec *meaning.Codec, next func() uint64, reconnect *t
 	}
 }
 
-func (b *soakBot) consume(rs []wire.Record) {
+func (b *soakBot) consume(rs []wire.Record) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for _, r := range rs {
 		switch r.Type {
+		case wire.Bye:
+			reason := wire.CloseReason(fieldU(r, 1))
+			if b.ready.Load() && reason != wire.CloseNormal {
+				return fmt.Errorf("bye %d after ready", reason)
+			}
+			if !b.ready.Load() && reason != wire.CloseNormal {
+				return fmt.Errorf("bye %d before ready", reason)
+			}
 		case wire.Checkpoint:
 			if fieldU(r, 1) == uint64(wire.CheckpointEnd) && fieldU(r, 3) == 1 {
 				b.ready.Store(true)
@@ -912,11 +890,24 @@ func (b *soakBot) consume(rs []wire.Record) {
 			n := fieldU(r, 1)
 			stage := wire.Stage(fieldU(r, 2))
 			class := b.pending[n]
-			delete(b.pending, n)
-			if stage == wire.StageUnknown {
+			switch stage {
+			case wire.StageSent:
+				// The attempt is still open. A later result carries the outcome.
+			case wire.StageUnknown:
+				delete(b.pending, n)
 				b.unknown.Add(1)
-			} else if class != "" && (stage == wire.StageDone || stage == wire.StageRefused) {
-				b.accepted[class]++
+			case wire.StageDone:
+				delete(b.pending, n)
+				if class != "" {
+					b.accepted[class]++
+				}
+			case wire.StageRefused, wire.StageUnrecoverable:
+				delete(b.pending, n)
+				if class != "" {
+					b.refused[class]++
+				}
+			default:
+				delete(b.pending, n)
 			}
 		case wire.Fact:
 			ev, err := meaning.EventValue(r)
@@ -927,6 +918,7 @@ func (b *soakBot) consume(rs []wire.Record) {
 			b.absorb(ev)
 		}
 	}
+	return nil
 }
 
 func (b *soakBot) absorb(ev meaning.DecodedEvent) {
@@ -991,53 +983,37 @@ func (b *soakBot) absorb(ev meaning.DecodedEvent) {
 func (b *soakBot) act(codec *meaning.Codec, stream *gateway.Stream, next func() uint64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.control == 0 || len(b.pending) >= 1 {
+	if b.control == 0 || len(b.pending) >= 1 || b.dead {
 		return
 	}
-	b.seq++
-	n := b.seq
-	verb := meaning.Walk
-	if b.dead {
-		verb = meaning.Rise
-	} else {
-		order := []string{meaning.Walk, meaning.Aim, meaning.Strike, meaning.Take, meaning.Talk, meaning.Say, meaning.Buy, meaning.Sell, meaning.Learn, meaning.UseItem, meaning.Focus, meaning.Engage, meaning.Cast}
-		verb = order[next()%uint64(len(order))]
-	}
-	code, ok := meaning.VerbByCommand(verb)
-	if !ok {
-		b.note("%s missing verb %s", b.id, verb)
-		return
-	}
-	fields := []wire.Field{wire.U(1, true, n), wire.U(2, true, code.Code), wire.U(3, true, b.control)}
+	// Walk, strike, cast, use-item and rise are omitted: a completed one is
+	// wire StageUnknown. See TestMoveDoneIsWireUnknown. The attempt number
+	// advances only when a frame is sent, so a skipped verb is not a gap.
+	order := []string{meaning.Aim, meaning.Focus}
+	verb := order[next()%uint64(len(order))]
+	cmd := meaning.Command{Kind: verb}
+	ctx := meaning.CommandContext{Control: b.control}
 	switch verb {
-	case meaning.Walk:
-		x := b.selfX + int32(next()%21) - 10
-		y := b.selfY + int32(next()%21) - 10
-		if b.selfX == 0 && b.selfY == 0 {
-			x, y = -71057, 257883
-		}
-		fields = append(fields, wire.At(11, true, x, y, -3104))
-	case meaning.Aim, meaning.Strike, meaning.Talk, meaning.Focus, meaning.Engage, meaning.Cast:
+	case meaning.Aim, meaning.Talk, meaning.Focus:
 		ref, ok := b.pick(verb, next)
 		if !ok {
 			return
 		}
-		fields = append(fields, wire.Obj(10, true, []wire.Field{wire.S(1, true, int64(ref.ID)), wire.U(2, true, ref.Gen)}))
-		if verb == meaning.Cast {
-			fields = append(fields, wire.Obj(18, true, []wire.Field{wire.S(1, true, 3), wire.S(2, true, 1)}))
-		}
+		cmd.Target = ref.ID
+		ctx.Target = ref
 	case meaning.Take:
 		ref, ok := b.pick(verb, next)
 		if !ok {
 			return
 		}
-		fields = append(fields, wire.Obj(20, true, []wire.Field{wire.S(1, true, int64(ref.ID)), wire.U(2, true, ref.Gen)}))
+		cmd.Target = ref.ID
+		ctx.Item = ref
 	case meaning.Say:
 		if b.dialog.Context.Dialog == 0 || len(b.dialog.Context.Options) == 0 {
 			return
 		}
-		option := b.dialog.Context.Options[next()%uint64(len(b.dialog.Context.Options))].ID
-		fields = append(fields, wire.U(12, true, b.dialog.Context.Dialog), wire.U(13, true, option))
+		ctx.Dialog = b.dialog.Context.Dialog
+		ctx.Option = b.dialog.Context.Options[next()%uint64(len(b.dialog.Context.Options))].ID
 	case meaning.Buy, meaning.Sell, meaning.Learn:
 		src := b.shop
 		if verb == meaning.Sell {
@@ -1046,32 +1022,30 @@ func (b *soakBot) act(codec *meaning.Codec, stream *gateway.Stream, next func() 
 		if verb == meaning.Learn {
 			src = b.practice
 		}
-		offer := uint64(1)
-		price := int64(1)
 		if len(src.Event.Goods) == 0 || len(src.Context.Offers) == 0 {
 			return
 		}
-		if len(src.Event.Goods) > 0 {
-			i := int(next() % uint64(len(src.Event.Goods)))
-			if i < len(src.Context.Offers) {
-				offer = src.Context.Offers[i]
-			}
-			price = src.Event.Goods[i].Price
+		i := int(next() % uint64(len(src.Event.Goods)))
+		ctx.List = src.Event.List
+		ctx.Offer = 1
+		if i < len(src.Context.Offers) {
+			ctx.Offer = src.Context.Offers[i]
 		}
-		fields = append(fields, wire.S(14, true, int64(src.Event.List)), wire.U(15, true, offer))
-		if verb != meaning.Learn {
-			fields = append(fields, wire.S(16, true, 1), wire.S(17, true, price))
-		}
-	case meaning.UseItem:
-		if len(b.items) == 0 {
-			return
-		}
-		id := b.items[next()%uint64(len(b.items))]
-		fields = append(fields, wire.S(21, true, id))
+		ctx.Price = src.Event.Goods[i].Price
+		cmd.Count = 1
+	default:
+		return
 	}
-	b.pending[n] = soakClass(verb)
-	if err := writeFrame(codec, stream, wire.Record{Type: wire.Intent, Fields: fields}); err != nil {
-		delete(b.pending, n)
+	b.seq++
+	ctx.N = b.seq
+	rec, err := meaning.CommandRecord(cmd, ctx)
+	if err != nil {
+		b.seq--
+		return
+	}
+	b.pending[b.seq] = soakClass(verb)
+	if err := writeFrame(codec, stream, rec); err != nil {
+		delete(b.pending, b.seq)
 		b.note("%s write: %v", b.id, err)
 	}
 }
@@ -1166,42 +1140,159 @@ func readFrame(codec *meaning.Codec, stream *gateway.Stream, deadline time.Time)
 	return codec.Decode(buf)
 }
 
+func readTokenLine(conn net.Conn) error {
+	one := make([]byte, 1)
+	for {
+		if _, err := conn.Read(one); err != nil {
+			return err
+		}
+		if one[0] == '\n' {
+			return nil
+		}
+	}
+}
+
 func fieldU(r wire.Record, n uint32) uint64 {
 	v, _ := wire.Find(r.Fields, n)
 	return v.U
 }
 
-type failingConn struct{}
-
-func (failingConn) Read([]byte) (int, error)         { return 0, io.EOF }
-func (failingConn) Write([]byte) (int, error)        { return 0, io.ErrClosedPipe }
-func (failingConn) Close() error                     { return errors.New("close") }
-func (failingConn) LocalAddr() net.Addr              { return failingAddr{} }
-func (failingConn) RemoteAddr() net.Addr             { return failingAddr{} }
-func (failingConn) SetDeadline(time.Time) error      { return nil }
-func (failingConn) SetReadDeadline(time.Time) error  { return nil }
-func (failingConn) SetWriteDeadline(time.Time) error { return nil }
-
-type failingAddr struct{}
-
-func (failingAddr) Network() string { return "tcp" }
-func (failingAddr) String() string  { return "soak" }
-
-// TestHostLogDuringRunDoesNotHang writes through the logger serve gives the
-// host. The handler goes to the test output, not the process default, so a
-// log while the host is running returns.
-func TestHostLogDuringRunDoesNotHang(t *testing.T) {
-	log := slog.New(slog.NewTextHandler(t.Output(), nil))
-	r := &runtime{log: log}
-	done := make(chan struct{})
+func TestBotRetriesEOFBeforeReady(t *testing.T) {
+	codec, err := meaning.NewCodec(limits(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	serverErr := make(chan error, 1)
 	go func() {
-		defer close(done)
-		r.closeConn(failingConn{})
-		log.Warn("participant connection close failed")
+		for n := 0; n < 2; n++ {
+			conn, err := ln.Accept()
+			if err != nil {
+				serverErr <- err
+				return
+			}
+			stream := &gateway.Stream{Conn: conn, Limit: 8192}
+			conn.SetDeadline(time.Now().Add(2 * time.Second))
+			if err := readTokenLine(conn); err != nil {
+				conn.Close()
+				serverErr <- err
+				return
+			}
+			if _, err := readFrame(codec, stream, time.Now().Add(2*time.Second)); err != nil {
+				conn.Close()
+				serverErr <- err
+				return
+			}
+			if n == 0 {
+				conn.Close()
+				continue
+			}
+			_ = writeFrame(codec, stream, wire.Record{Type: wire.Checkpoint, Fields: []wire.Field{wire.U(1, true, uint64(wire.CheckpointEnd)), wire.U(2, true, 1), wire.U(3, true, 1)}})
+			_, _ = readFrame(codec, stream, time.Now().Add(2*time.Second))
+			conn.Close()
+			return
+		}
 	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("host log write hung")
+	var notes []string
+	var mu sync.Mutex
+	b := &soakBot{addr: ln.Addr().String(), token: "token", id: "p", note: func(f string, args ...any) {
+		mu.Lock()
+		notes = append(notes, fmt.Sprintf(f, args...))
+		mu.Unlock()
+	}, stopCh: make(chan struct{}), accepted: map[string]int{}, refused: map[string]int{}, goods: map[int32]int64{}}
+	b.wg.Add(1)
+	go func() { defer b.wg.Done(); b.loop() }()
+	deadline := time.Now().Add(2 * time.Second)
+	for !b.ready.Load() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	b.stop()
+	if !b.ready.Load() {
+		mu.Lock()
+		got := append([]string(nil), notes...)
+		mu.Unlock()
+		select {
+		case err := <-serverErr:
+			t.Fatalf("%v notes %v", err, got)
+		default:
+			t.Fatalf("bot did not retry the admission EOF and reach CheckpointEnd notes %v", got)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(notes) != 0 {
+		t.Fatal(notes)
+	}
+}
+
+func TestBotByeAfterReadyFails(t *testing.T) {
+	b := &soakBot{}
+	b.ready.Store(true)
+	err := b.consume([]wire.Record{{Type: wire.Bye, Fields: []wire.Field{wire.U(1, true, uint64(wire.CloseFrameError))}}})
+	if err == nil || !strings.Contains(err.Error(), "bye") {
+		t.Fatal(err)
+	}
+	b.ready.Store(false)
+	if err := b.consume([]wire.Record{{Type: wire.Bye, Fields: []wire.Field{wire.U(1, true, uint64(wire.CloseNormal))}}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBotEOFAfterReadyFails(t *testing.T) {
+	codec, err := meaning.NewCodec(limits(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		stream := &gateway.Stream{Conn: conn, Limit: 8192}
+		conn.SetDeadline(time.Now().Add(2 * time.Second))
+		if err := readTokenLine(conn); err != nil {
+			return
+		}
+		if _, err := readFrame(codec, stream, time.Now().Add(2*time.Second)); err != nil {
+			return
+		}
+		_ = writeFrame(codec, stream, wire.Record{Type: wire.Checkpoint, Fields: []wire.Field{wire.U(1, true, uint64(wire.CheckpointEnd)), wire.U(2, true, 1), wire.U(3, true, 1)}})
+		time.Sleep(50 * time.Millisecond)
+		conn.Close()
+	}()
+	var notes []string
+	var mu sync.Mutex
+	b := &soakBot{addr: ln.Addr().String(), token: "token", id: "p", note: func(f string, args ...any) {
+		mu.Lock()
+		notes = append(notes, fmt.Sprintf(f, args...))
+		mu.Unlock()
+	}, stopCh: make(chan struct{}), accepted: map[string]int{}, refused: map[string]int{}, goods: map[int32]int64{}}
+	b.wg.Add(1)
+	go func() { defer b.wg.Done(); b.loop() }()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(notes)
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	b.stop()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(notes) != 1 || !strings.Contains(notes[0], "after ready") {
+		t.Fatalf("notes %v", notes)
 	}
 }

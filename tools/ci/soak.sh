@@ -26,14 +26,14 @@ source "$root/tools/ci/ephemeral-postgres.sh"
 start_ephemeral_postgres
 export SOAK_DURATION="${SOAK_DURATION:-60m}"
 # Leave headroom under the 90 minute test timeout and the 100 minute job.
-case "$SOAK_DURATION" in
-    ''|*[!0-9ms]*) echo "SOAK_DURATION must be a number of seconds or minutes" >&2; exit 2 ;;
-esac
-number="${SOAK_DURATION%[ms]}"
-unit="${SOAK_DURATION#"$number"}"
-seconds="$number"
-if [[ "$unit" == m ]]; then
-    seconds=$((number * 60))
+# Only a whole number of seconds or a whole number of minutes: 60 and 1m30s are rejected.
+if [[ "$SOAK_DURATION" =~ ^([0-9]+)s$ ]]; then
+    seconds="${BASH_REMATCH[1]}"
+elif [[ "$SOAK_DURATION" =~ ^([0-9]+)m$ ]]; then
+    seconds=$((10#${BASH_REMATCH[1]} * 60))
+else
+    echo "SOAK_DURATION must be <N>s or <N>m" >&2
+    exit 2
 fi
 if (( seconds < 1 || seconds > 4800 )); then
     echo "SOAK_DURATION must be from 1s to 80m" >&2

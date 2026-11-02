@@ -47,7 +47,7 @@ func WithCommits(observe func(Commit)) Option {
 
 // WithPace receives the timer-drain cost and how many timers were waiting
 // before that drain. It runs on the world loop, must not call the world, and
-// must be bounded. Nil records the same values only on World.Pace.
+// must be bounded. A nil observer is ignored.
 func WithPace(observe func(tick time.Duration, queued int)) Option {
 	return func(w *World) {
 		if observe != nil {

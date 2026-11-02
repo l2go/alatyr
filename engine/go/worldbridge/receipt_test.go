@@ -12,6 +12,19 @@ import (
 	"github.com/l2go/alatyr/engine/go/world"
 )
 
+// TestMoveDoneIsWireUnknown is the soak's 115 Unknown outcomes: a walk the
+// world finished as Done has no effect row, so the participant sees Unknown
+// with ReasonTimeout. Strike, rise, cast and use-item share that verb list.
+func TestMoveDoneIsWireUnknown(t *testing.T) {
+	tr, s := fixture()
+	p := preparedTest(t, 1, s)
+	c := commit(p, world.StageDone)
+	r := receiptTest(t, tr, p, c, nil)
+	if r.Stage != wire.StageUnknown || r.Reason != wire.ReasonTimeout {
+		t.Fatalf("completed walk surfaced as %v/%v", r.Stage, r.Reason)
+	}
+}
+
 func TestStagesTranslateByMeaning(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

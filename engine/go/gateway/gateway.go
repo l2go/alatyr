@@ -575,7 +575,6 @@ func (s *game) finish(c *connection, reason wire.CloseReason) {
 	c.mu.Unlock()
 	c.wake()
 }
-
 func (s *game) fail(reason wire.CloseReason) {
 	s.endScope(reason, false)
 }
