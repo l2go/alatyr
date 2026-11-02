@@ -22,7 +22,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Changed
 
-- `alatyr/1` clients can receive Refused after Sent when live, exclusive world evidence proves that the entire attempt had no effects. The action class remains usable; genuine Unknown outcomes still taint it permanently.
+- `alatyr/1` clients can receive Refused after Sent when live, exclusive world evidence proves that the entire attempt had no effects. The action class remains usable. A genuine Unknown still taints it for unbound evidence, while evidence keyed to a later attempt completes that attempt.
 
 ### Fixed
 
@@ -32,7 +32,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 - Rapid local selection followed by an action requiring target confirmation no longer crashes the participant gateway when selection interrupts that queued action.
 
-- The Go host grants audited exclusive evidence authority for dialogue, pickup, learning and return, so confirmed participant actions can finish as Done.
+- The Go host grants audited exclusive evidence authority for dialogue, pickup, trade, learning and return, so confirmed participant actions can finish as Done, including a talk or pickup completed after a walk to the target. Cast finishes at Sent.
 - Normal shutdown closes HTTP listeners through their owner and tolerates already-closed listeners while preserving other shutdown and save errors. Startup rejects configurations whose combined shutdown phases and join reserves exceed the 60-second deployment stop grace.
 
 ### Changed
