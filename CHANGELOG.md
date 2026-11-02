@@ -26,6 +26,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Fixed
 
+- A participant's world session no longer refuses every command after its 4096th one; it now admits only increasing command keys and keeps no per-key state.
 - Deferred healing-item consumption retains its originating intent in the source audit, so separate uses are checked independently.
 - Recovery accepts a visible dialogue page after its final learning action was consumed, while retaining original-lifetime checks for actionable proposals.
 - Visibility changes and participant checkpoint traversal follow stable object and admission order so identical command sequences can be replayed exactly.

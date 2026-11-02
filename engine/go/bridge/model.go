@@ -84,10 +84,10 @@ type Config struct {
 	Now          func() time.Time
 }
 
-// Command is one raw command for the endpoint. Key is nonzero and unique for
-// the lifetime of the client, including across recovery. Verb selects the
-// bridge verb and the payload fields it requires. QueueTTLMS, when set, is at
-// most 5000.
+// Command is one raw command for the endpoint. Key is nonzero and greater than
+// every key written before on the client, including across recovery. Verb
+// selects the bridge verb and the payload fields it requires. QueueTTLMS, when
+// set, is at most 5000.
 type Command struct {
 	Key, Verb  uint64
 	Payload    []wire.Field

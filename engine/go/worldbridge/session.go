@@ -19,7 +19,6 @@ const (
 	operationTimeout    = 10 * time.Second
 	maxBacklogBytes     = 256 << 10
 	maxBacklogUpdates   = 1024
-	maxSessionKeys      = 4096
 	maxRetainedReceipts = 64
 )
 
@@ -45,7 +44,7 @@ type session struct {
 	sub                                     world.Subscription
 	origin                                  world.Time
 	epoch, nextFact, nextAttempt, sourceSeq uint64
-	keys                                    map[uint64]bool
+	lastKey                                 uint64 // highest admitted command key
 	receipts                                []bridge.Receipt
 	queue                                   []pending
 	queueBytes, deliveredBytes              int
@@ -237,10 +236,12 @@ func (s *session) write(ctx, lifetime context.Context, command bridge.Command, d
 	if s.ended || !s.detached.IsZero() {
 		return result{err: portError(bridge.StateError)}
 	}
-	if s.keys[command.Key] {
+	// Keys increase: refusing any key at or below the last admitted one keeps
+	// reuse impossible without retaining every key of a long session.
+	if command.Key <= s.lastKey {
 		return result{err: portError(bridge.StateError)}
 	}
-	if s.nextAttempt == 0 || len(s.keys) >= maxSessionKeys {
+	if s.nextAttempt == 0 {
 		return result{err: portError(bridge.Capacity)}
 	}
 	if err := ctx.Err(); err != nil {
@@ -291,7 +292,7 @@ func (s *session) write(ctx, lifetime context.Context, command bridge.Command, d
 	}
 	n := s.nextAttempt
 	s.nextAttempt++ // uint64 wraps to zero, an exhausted state, never reused.
-	s.keys[command.Key] = true
+	s.lastKey = command.Key
 	var commit world.Commit
 	if p.refusal == "" {
 		commit, err = s.client.cfg.World.Execute(ctx, p.request)
