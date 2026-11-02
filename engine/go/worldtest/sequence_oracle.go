@@ -162,6 +162,12 @@ func matchingReceipt(trace []bridge.Update, h backend.Handoff, contact, deadline
 	return false
 }
 
+// CheckEconomy reports a refused intent that still changed the world, a negative
+// resource balance, or an item consumed twice for one intent.
+func CheckEconomy(commits []world.Commit) error {
+	return checkEconomy(commits)
+}
+
 func checkEconomy(commits []world.Commit) error {
 	type consumption struct {
 		intent world.IntentID

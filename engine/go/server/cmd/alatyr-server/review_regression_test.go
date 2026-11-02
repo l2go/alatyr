@@ -193,7 +193,7 @@ func TestParticipantFatalWorldExitPersists(t *testing.T) {
 		}
 	}()
 	go func() {
-		done <- serve(ctx, cfg, cat, store, world.WithIDRange(1<<28, (1<<28)+int32(spawned)-1), func(w *world.World) { captured <- w }, world.WithCommits(func(c world.Commit) {
+		done <- serve(ctx, cfg, cat, store, nil, world.WithIDRange(1<<28, (1<<28)+int32(spawned)-1), func(w *world.World) { captured <- w }, world.WithCommits(func(c world.Commit) {
 			for _, g := range c.Groups {
 				for _, e := range g.Effects {
 					if e, ok := e.(world.ExistenceChanged); ok && e.After && e.Entity.ID == 1 {

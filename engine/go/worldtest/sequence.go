@@ -848,6 +848,12 @@ func validWitnessKind(verb, kind uint64) bool {
 	}
 }
 
+// CheckCharacter reports vitals outside [0, max], a negative progression
+// balance, or a duplicate or negative inventory row.
+func CheckCharacter(c world.Character) error {
+	return checkCharacter(c)
+}
+
 func checkCharacter(c world.Character) error {
 	for _, v := range [][2]float64{{c.CurHP, c.MaxHP}, {c.CurMP, c.MaxMP}} {
 		if math.IsNaN(v[0]) || math.IsInf(v[0], 0) || math.IsNaN(v[1]) || math.IsInf(v[1], 0) || v[1] < 0 || v[0] < 0 || v[0] > v[1] {

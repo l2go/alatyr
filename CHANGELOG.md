@@ -6,6 +6,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Added
 
+- A manual `soak` workflow runs the production host against PostgreSQL with participant bots and reports heap, RSS, goroutines, sessions, scheduled world timers and timer-drain time.
 - `alatyr/1` player facts and snapshots report people, sex and the known fighter/mystic visual branch. Missing class-kind metadata remains explicitly unknown; numeric class IDs and NPC player appearance are not exposed.
 - `alatyr/1` NPC appearance facts may carry the template's visual form, an opaque world label. An unset form is absent. Players, drops and empty or illegal tokens do not receive one.
 
