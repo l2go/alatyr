@@ -488,6 +488,9 @@ func (s *sequencer) checkScope(scope *sequenceScope, final bool) {
 	if err := checkRawEvidence(scope.monitor.Records, scope.attempts, handoffs[scope.firstHandoff:end], trace, writes, s.h.Config.Attempts.EvidenceMS); err != nil {
 		s.t.Fatal(err)
 	}
+	if err := checkProvenUnknown(scope.monitor.Records, handoffs[scope.firstHandoff:end], trace, s.h.Port.deliveries(), writes, s.h.Config.Attempts.EvidenceMS); err != nil {
+		s.t.Fatal(err)
+	}
 
 	if err := checkTranscript(scope.monitor.Records, scope.attempts, final, s.h.Config.Attempts.EvidenceMS); err != nil {
 		s.t.Fatal(err)

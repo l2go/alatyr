@@ -153,6 +153,46 @@ func checkRawEvidence(records []wire.Record, attempts map[uint64]*sequenceAttemp
 	return nil
 }
 
+// checkProvenUnknown rejects Unknown for an attempt whose effect a keyed live
+// fact proved: the gateway received it inside the attempt's evidence window.
+// delivered[i] is when the gateway received trace[i]; a held update may arrive
+// after the window it was produced in.
+func checkProvenUnknown(records []wire.Record, handoffs []backend.Handoff, trace []bridge.Update, delivered []time.Time, writes []sequenceWrite, evidenceMS int64) error {
+	for _, r := range records {
+		if r.Type != wire.Result || wire.Stage(gatewaytest.U(r, 2)) != wire.StageUnknown {
+			continue
+		}
+		n := gatewaytest.U(r, 1)
+		for _, h := range handoffs {
+			if h.N != n || h.Role != gateway.StepEffect {
+				continue
+			}
+			var contact time.Time
+			for _, w := range writes {
+				if w.command.Key == h.Key {
+					contact = w.at
+					break
+				}
+			}
+			if contact.IsZero() {
+				continue
+			}
+			deadline := contact.Add(time.Duration(evidenceMS) * time.Millisecond)
+			for i, u := range trace {
+				if u.Kind != bridge.LiveBatch || u.Batch.Snapshot || delivered[i].Before(contact) || !delivered[i].Before(deadline) {
+					continue
+				}
+				for _, raw := range u.Batch.Records {
+					if raw.Type == wire.Fact && gatewaytest.U(raw, 75) == h.Key {
+						return fmt.Errorf("unknown %d (verb %d, reason %d) although a live fact proved its effect", n, gatewaytest.U(r, 6), gatewaytest.U(r, 3))
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func sameRef(a, b wire.Value) bool {
 	ai, _ := wire.Find(a.Fields, 1)
 	bi, _ := wire.Find(b.Fields, 1)
