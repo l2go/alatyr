@@ -4,6 +4,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/csv"
@@ -716,12 +717,34 @@ func (c *soakCohort) classText() string {
 		}
 		out.WriteString("\n")
 	}
+	// Terminal results by effective verb, stage and reason, for diagnosis.
+	outcomes := map[soakOutcome]int{}
+	for _, b := range c.bots {
+		b.mu.Lock()
+		for k, n := range b.outcomes {
+			outcomes[k] += n
+		}
+		b.mu.Unlock()
+	}
+	keys := slices.SortedFunc(maps.Keys(outcomes), func(a, b soakOutcome) int {
+		return cmp.Or(cmp.Compare(a.verb, b.verb), cmp.Compare(a.stage, b.stage), cmp.Compare(a.reason, b.reason))
+	})
+	for _, k := range keys {
+		fmt.Fprintf(&out, "outcome verb=%d stage=%d reason=%d count=%d\n", k.verb, k.stage, k.reason, outcomes[k])
+	}
 	return out.String()
+}
+
+// soakOutcome is one terminal participant result shape.
+type soakOutcome struct {
+	verb   uint64
+	stage  wire.Stage
+	reason wire.Reason
 }
 
 func newSoakBot(addr, token, id string, seed int64, note func(string, ...any)) *soakBot {
 	return &soakBot{addr: addr, token: token, id: id, seed: seed, note: note, stopCh: make(chan struct{}),
-		done: map[string]int{}, sent: map[string]int{}, refused: map[string]int{}, unproven: map[string]int{}, goods: map[int32]int64{}}
+		done: map[string]int{}, sent: map[string]int{}, refused: map[string]int{}, unproven: map[string]int{}, outcomes: map[soakOutcome]int{}, goods: map[int32]int64{}}
 }
 
 func startSoakBots(t *testing.T, cfg Config, tokens []string, seed int64, note func(string, ...any), passive bool) *soakCohort {
@@ -779,6 +802,7 @@ type soakBot struct {
 	sent     map[string]int
 	refused  map[string]int
 	unproven map[string]int
+	outcomes map[soakOutcome]int
 	seq      uint64
 	closed   bool
 	needPong bool
@@ -939,6 +963,17 @@ func (b *soakBot) session(codec *meaning.Codec, next func() uint64, reconnect *t
 				return nil
 			default:
 			}
+			// Frames read before the error, such as a Bye, explain it.
+			for drained := false; !drained; {
+				select {
+				case rs := <-frames:
+					if err := b.consume(rs); err != nil {
+						return err
+					}
+				default:
+					drained = true
+				}
+			}
 			if !b.ready.Load() && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
 				return errAdmission
 			}
@@ -1000,6 +1035,9 @@ func (b *soakBot) consume(rs []wire.Record) error {
 			}
 			stage, reason, effective := wire.Stage(fieldU(r, 2)), wire.Reason(fieldU(r, 3)), fieldU(r, 6)
 			verb, _ := meaning.VerbByCode(effective)
+			if stage != wire.StageSent || !verb.Waiting {
+				b.outcomes[soakOutcome{effective, stage, reason}]++
+			}
 			switch {
 			case stage == wire.StageSent && verb.Waiting:
 				// A witnessed verb stays open; a later result finishes it.
@@ -1256,8 +1294,12 @@ func (b *soakBot) pick(verb string, next func() uint64) (meaning.Ref, bool) {
 			if o.role == "creature" {
 				matches = append(matches, o)
 			}
+		case meaning.Talk:
+			if o.role == "tutor" || o.role == "provisioner" || o.role == "folk" {
+				matches = append(matches, o)
+			}
 		default:
-			if o.role == "tutor" || o.role == "provisioner" || o.role == "creature" {
+			if o.role == "tutor" || o.role == "provisioner" || o.role == "folk" || o.role == "creature" {
 				matches = append(matches, o)
 			}
 		}
