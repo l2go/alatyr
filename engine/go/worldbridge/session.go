@@ -609,8 +609,10 @@ func (s *session) relocate(ctx context.Context, fence world.Fence) error {
 		return err
 	}
 	// Preserve live records emitted by Appear (notably Revived) before adopting
-	// the barrier. They remain live, never synthesized from the snapshot.
-	for range 64 {
+	// the barrier. They remain live, never synthesized from the snapshot. Appear
+	// published its whole turn before returning, and Revived follows every
+	// object it revealed, so drain all of it, not a fixed prefix.
+	for range len(s.sub.Events) {
 		select {
 		case e, ok := <-s.sub.Events:
 			if !ok {

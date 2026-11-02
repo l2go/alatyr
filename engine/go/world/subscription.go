@@ -32,8 +32,14 @@ type eventStream struct {
 	closed bool
 }
 
+// eventBacklog bounds a stream's undelivered events. One loop turn can publish
+// an event for every object a teleport forgets and every object it reveals,
+// while the consumer waits for that same turn; that burst is not a slow
+// consumer. The bound matches the bridge's own live backlog of updates.
+const eventBacklog = 1024
+
 func newEventStream() *eventStream {
-	return &eventStream{events: make(chan Event, 64), end: make(chan CloseReason, 1)}
+	return &eventStream{events: make(chan Event, eventBacklog), end: make(chan CloseReason, 1)}
 }
 
 func (s *eventStream) subscription() Subscription {

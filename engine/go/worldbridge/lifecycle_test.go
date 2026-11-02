@@ -6,6 +6,7 @@ package worldbridge
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"reflect"
 	"testing"
@@ -199,6 +200,66 @@ func TestWorldPortTeleportFenceAndLiveRevival(t *testing.T) {
 		scene, err := w.Capture(t.Context(), c.Owner())
 		if err != nil || scene.Self.Teleporting || scene.Self.Dead || !scene.End.Ready {
 			t.Fatalf("final scene: %+v/%v", scene.End, err)
+		}
+	})
+}
+
+// TestWorldPortRiseIntoCrowdKeepsSessionAndRevival returns a dead participant
+// into a crowd larger than one stream turn used to hold. The world must not
+// close the subscription for that burst, and the live revival that follows
+// every revealed object must still reach the participant.
+func TestWorldPortRiseIntoCrowdKeepsSessionAndRevival(t *testing.T) {
+	cat := authoredCatalog(t)
+	synctest.Test(t, func(t *testing.T) {
+		const crowd = 80
+		ids := []int32{}
+		for i := range crowd {
+			ids = append(ids, int32(10+i))
+		}
+		cfg, w := startPortWorld(t, cat, memstore.New(), world.WithReservedIDs(ids))
+		cfg.Load = func(context.Context, bridge.Identity) (world.Character, error) {
+			char := sessionCharacter()
+			char.CurHP = 0
+			return char, nil
+		}
+		c, _ := openPort(t, cfg)
+		// Beyond the participant's watch range, so the crowd appears only on arrival.
+		dest := world.Point{X: -66000, Y: 257883, Z: -3104}
+		for _, id := range ids {
+			char := sessionCharacter()
+			char.ObjectID, char.Name = id, fmt.Sprintf("Crowd%d", id)
+			char.X, char.Y, char.Z = dest.X+40, dest.Y+int32(id), dest.Z
+			entry, err := w.Enter(t.Context(), char)
+			if err != nil {
+				t.Fatal(err)
+			}
+			go func() {
+				for range entry.Events {
+				}
+			}()
+		}
+		if _, err := w.Execute(t.Context(), world.Request{Owner: c.Owner(), Verb: world.VerbTeleport, Position: dest, Revive: true}); err != nil {
+			t.Fatal(err)
+		}
+		revived, appeared, end := 0, 0, 0
+		for end == 0 {
+			u := nextPortUpdate(t, c)
+			if u.Kind != bridge.LiveBatch {
+				t.Fatalf("rise into a crowd ended the session: %+v", u)
+			}
+			for _, r := range u.Batch.Records {
+				switch {
+				case r.Type == wire.Checkpoint && profile.U(r, 1) == uint64(wire.CheckpointEnd):
+					end++
+				case r.Type == wire.Fact && profile.U(r, 1) == 7 && !u.Batch.Snapshot:
+					revived++
+				case r.Type == wire.Fact && profile.U(r, 1) == 1 && !u.Batch.Snapshot:
+					appeared++
+				}
+			}
+		}
+		if revived != 1 || appeared < crowd {
+			t.Fatalf("rise into a crowd: live revival %d, live appearances %d", revived, appeared)
 		}
 	})
 }
@@ -486,7 +547,8 @@ func TestWorldPortSourceOverflowKeepsIncarnation(t *testing.T) {
 			close(done)
 		}()
 		<-entered
-		for i := range 80 {
+		// More changes than the world's 1024-event backlog while the bridge is busy.
+		for i := range 1100 {
 			if err := w.SetRunning(t.Context(), c.Owner().ID, i%2 == 0); err != nil {
 				t.Fatal(err)
 			}
