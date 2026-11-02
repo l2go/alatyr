@@ -162,12 +162,6 @@ func matchingReceipt(trace []bridge.Update, h backend.Handoff, contact, deadline
 	return false
 }
 
-// CheckEconomy reports a refused intent that still changed the world, a negative
-// resource balance, or an item consumed twice for one intent.
-func CheckEconomy(commits []world.Commit) error {
-	return checkEconomy(commits)
-}
-
 func checkEconomy(commits []world.Commit) error {
 	var live Economy
 	for _, c := range commits {
@@ -178,11 +172,16 @@ func checkEconomy(commits []world.Commit) error {
 	return nil
 }
 
-// Economy checks commitments as they arrive. It keeps refused intent ids and
-// one-item consumptions, not the commitments themselves.
+// Economy checks commitments as they arrive: a refused intent that still
+// changed the world, in either order, a negative or mismatched resource
+// balance, or an item consumed twice for one intent. A zero Window remembers
+// every intent; a positive one remembers the latest Window refused intents,
+// intents with effects and consumptions, so a long run keeps flat memory.
 type Economy struct {
-	used    map[consumption]bool
-	refused map[world.IntentID]bool
+	Window   int
+	used     recent[consumption]
+	refused  recent[world.IntentID]
+	effected recent[world.IntentID]
 }
 
 type consumption struct {
@@ -190,24 +189,52 @@ type consumption struct {
 	item   world.Ref
 }
 
-// Observe applies one commitment. A refusal is recorded before a later effect
-// that names it; the world emits the refusal first.
+// recent is a set that forgets its oldest key beyond limit when limit > 0.
+type recent[K comparable] struct {
+	seen  map[K]bool
+	order []K
+	next  int
+}
+
+func (r *recent[K]) has(k K) bool { return r.seen[k] }
+
+func (r *recent[K]) add(k K, limit int) {
+	if r.seen[k] {
+		return
+	}
+	if r.seen == nil {
+		r.seen = map[K]bool{}
+	}
+	r.seen[k] = true
+	if limit <= 0 {
+		return
+	}
+	if len(r.order) < limit {
+		r.order = append(r.order, k)
+		return
+	}
+	delete(r.seen, r.order[r.next])
+	r.order[r.next] = k
+	r.next = (r.next + 1) % limit
+}
+
+// Observe applies one commitment.
 func (e *Economy) Observe(c world.Commit) error {
-	if e.used == nil {
-		e.used = map[consumption]bool{}
-	}
-	if e.refused == nil {
-		e.refused = map[world.IntentID]bool{}
-	}
 	if c.Outcome.Stage == world.StageRefused || c.Outcome.Stage == world.StageExpired {
 		if c.Intent.ID.N == 0 || c.Outcome.Intent != c.Intent.ID || len(c.Groups) != 0 {
 			return fmt.Errorf("refused world intent %v changed the world or lost its identity", c.Intent.ID)
 		}
-		e.refused[c.Intent.ID] = true
+		if e.effected.has(c.Intent.ID) {
+			return fmt.Errorf("refused world intent %v changed the world earlier", c.Intent.ID)
+		}
+		e.refused.add(c.Intent.ID, e.Window)
 	}
 	for _, g := range c.Groups {
-		if e.refused[g.Cause.Intent] {
+		if e.refused.has(g.Cause.Intent) {
 			return fmt.Errorf("refused world intent %v produced a deferred effect", g.Cause.Intent)
+		}
+		if g.Cause.Intent.N != 0 {
+			e.effected.add(g.Cause.Intent, e.Window)
 		}
 		for _, effect := range g.Effects {
 			moved, ok := effect.(world.ResourceTransferred)
@@ -244,10 +271,10 @@ func (e *Economy) Observe(c world.Commit) error {
 			}
 			if moved.To.Place == world.PlaceConsumption && moved.Resource.Kind == world.ResourceItem {
 				key := consumption{g.Cause.Intent, moved.From.Item}
-				if e.used[key] || amount != 1 {
+				if e.used.has(key) || amount != 1 {
 					return fmt.Errorf("item consumed more than once per intent")
 				}
-				e.used[key] = true
+				e.used.add(key, e.Window)
 			}
 		}
 	}
