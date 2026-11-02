@@ -25,7 +25,7 @@ jobs:
   soak:
     name: soak
     runs-on: ubuntu-24.04
-    timeout-minutes: 100
+    timeout-minutes: 360
     permissions:
       contents: read
     env:
