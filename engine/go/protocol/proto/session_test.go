@@ -93,6 +93,50 @@ func TestTaintSurvivesExpiryAndProjection(t *testing.T) {
 		t.Fatal("ambiguous evidence used")
 	}
 }
+func TestBoundEvidenceIgnoresEarlierTaint(t *testing.T) {
+	s := fixture(t)
+	add(t, s, 1, "a", true)
+	s.Contact(1, 10)
+	s.Sent(1, false)
+	if o := s.Expire(110); len(o) != 1 || o[0].Stage != wire.StageUnknown {
+		t.Fatal(o)
+	}
+	add(t, s, 2, "a", true)
+	s.Contact(2, 120)
+	s.Sent(2, false)
+	if s.Eligible(2, 121) || !s.EligibleBound(2, 121) {
+		t.Fatal("bound evidence follows the unbound taint")
+	}
+	if s.EligibleBound(2, 119) || s.EligibleBound(2, 220) {
+		t.Fatal("bound evidence outside its window")
+	}
+	if _, e := s.CommitWitness(2, 121, 121); e == nil {
+		t.Fatal("unbound witness used after taint")
+	}
+	if _, e := s.CommitBound(2, 121, 221); e == nil {
+		t.Fatal("bound witness committed after the deadline")
+	}
+	o, e := s.CommitBound(2, 121, 122)
+	if e != nil || o.Stage != wire.StageDone || o.Delivery != wire.DeliveryBackend {
+		t.Fatal(o, e)
+	}
+	if _, e := s.CommitBound(2, 121, 122); e == nil {
+		t.Fatal("terminal outcome replaced")
+	}
+	add(t, s, 3, "a", true)
+	s.Contact(3, 130)
+	s.Sent(3, false)
+	if s.Eligible(3, 131) || !s.EligibleBound(3, 131) {
+		t.Fatal("bound Done cleared or extended the taint")
+	}
+	add(t, s, 4, "", true)
+	s.Contact(4, 130)
+	s.Sent(4, false)
+	if s.EligibleBound(4, 131) {
+		t.Fatal("classless attempt has no evidence slot")
+	}
+}
+
 func TestBusyUsesResolvedEffectAndClassesAreIndependent(t *testing.T) {
 	s := fixture(t)
 	add(t, s, 1, "a", true)
