@@ -6,6 +6,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Added
 
+- A manual `soak` workflow runs the production host against PostgreSQL with participant bots and reports heap, RSS, goroutines, sessions, scheduled world timers and timer-drain time.
 - `alatyr/1` player facts and snapshots report people, sex and the known fighter/mystic visual branch. Missing class-kind metadata remains explicitly unknown; numeric class IDs and NPC player appearance are not exposed.
 - `alatyr/1` NPC appearance facts may carry the template's visual form, an opaque world label. An unset form is absent. Players, drops and empty or illegal tokens do not receive one.
 
@@ -21,7 +22,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Changed
 
-- `alatyr/1` clients can receive Refused after Sent when live, exclusive world evidence proves that the entire attempt had no effects. The action class remains usable; genuine Unknown outcomes still taint it permanently.
+- `alatyr/1` clients can receive Refused after Sent when live, exclusive world evidence proves that the entire attempt had no effects. The action class remains usable. A genuine Unknown still taints it for unbound evidence, while evidence keyed to a later attempt completes that attempt.
 
 ### Fixed
 
@@ -31,7 +32,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 - Rapid local selection followed by an action requiring target confirmation no longer crashes the participant gateway when selection interrupts that queued action.
 
-- The Go host grants audited exclusive evidence authority for dialogue, pickup, learning and return, so confirmed participant actions can finish as Done.
+- The Go host grants audited exclusive evidence authority for dialogue, pickup, trade, learning and return, so confirmed participant actions can finish as Done, including a talk or pickup completed after a walk to the target. Cast finishes at Sent.
 - Normal shutdown closes HTTP listeners through their owner and tolerates already-closed listeners while preserving other shutdown and save errors. Startup rejects configurations whose combined shutdown phases and join reserves exceed the 60-second deployment stop grace.
 
 ### Changed

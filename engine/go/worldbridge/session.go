@@ -296,7 +296,7 @@ func (s *session) write(ctx, lifetime context.Context, command bridge.Command, d
 	if p.refusal == "" {
 		commit, err = s.client.cfg.World.Execute(ctx, p.request)
 	}
-	if (command.Verb == 6 || command.Verb == 14) && commit.Intent.ID.N != 0 && err == nil && commit.Outcome.Stage != world.StageRefused {
+	if attributable(command.Verb) && commit.Intent.ID.N != 0 && err == nil && commit.Outcome.Stage != world.StageRefused {
 		if len(s.intentBindings) == 64 {
 			copy(s.intentBindings, s.intentBindings[1:])
 			s.intentBindings = s.intentBindings[:63]
@@ -473,34 +473,58 @@ func (s *session) event(ctx context.Context, e world.Event) error {
 	return nil
 }
 
+// attributable reports verbs whose completing world event names its intent:
+// take, talk, choose, buy, sell and use-item. The world may complete take and
+// talk only after walking to the target, long after Execute returned.
+func attributable(verb uint64) bool {
+	switch verb {
+	case 4, 5, 6, 7, 8, 14:
+		return true
+	}
+	return false
+}
+
 // attribute adds a raw effect key only to an event carrying the exact source
-// intent. A mismatched NPC consumes the binding without granting evidence.
+// intent. A mismatched NPC or item consumes the binding without granting
+// evidence.
 func (s *session) attribute(e world.Event, fs []fact) {
 	var intent world.IntentID
-	var verb uint64
-	var speaker world.Ref
+	var verbs []uint64
+	names := func(intentBinding) bool { return true }
+	speaker := func(speaker world.Ref) func(intentBinding) bool {
+		return func(b intentBinding) bool { return b.target == speaker }
+	}
 	switch v := e.(type) {
 	case world.InventoryChanged:
-		intent, verb = v.UseIntent, 14
-	case world.TradeList:
-		intent, verb, speaker = v.ChoiceIntent, 6, v.Dialogue.Speaker
-	case world.LearnList:
-		intent, verb, speaker = v.ChoiceIntent, 6, v.Dialogue.Speaker
-	}
-	if intent.N != 0 {
-		for i, binding := range s.intentBindings {
-			if binding.intent != intent || binding.verb != verb {
-				continue
-			}
-			// A choice key can attest only its captured NPC incarnation.
-			if verb == 14 || binding.target == speaker {
-				for j := range fs {
-					fs[j].fields = append(fs[j].fields, wire.U(75, true, binding.key))
-				}
-			}
-			s.intentBindings = append(s.intentBindings[:i], s.intentBindings[i+1:]...)
-			break
+		intent, verbs = v.UseIntent, []uint64{14}
+		if intent.N == 0 {
+			intent, verbs = v.TradeIntent, []uint64{7, 8}
 		}
+	case world.TradeList:
+		intent, verbs, names = v.ChoiceIntent, []uint64{6}, speaker(v.Dialogue.Speaker)
+	case world.LearnList:
+		intent, verbs, names = v.ChoiceIntent, []uint64{6}, speaker(v.Dialogue.Speaker)
+	case world.DialoguePage:
+		intent, verbs, names = v.SpeechIntent, []uint64{5}, speaker(v.Dialogue.Speaker)
+	case world.ItemPicked:
+		intent, verbs = v.PickupIntent, []uint64{4}
+		names = func(b intentBinding) bool { return b.target.ID == v.ObjectID && v.PlayerID == s.client.owner.ID }
+	}
+	if intent.N == 0 {
+		return
+	}
+	for i, binding := range s.intentBindings {
+		if binding.intent != intent || !slices.Contains(verbs, binding.verb) {
+			continue
+		}
+		// A key can attest only its captured NPC incarnation or item.
+		if names(binding) {
+			for j := range fs {
+				fs[j].fields = append(fs[j].fields, wire.U(75, true, binding.key))
+			}
+		}
+		s.intentBindings = append(s.intentBindings[:i], s.intentBindings[i+1:]...)
+		break
 	}
 }
 
@@ -609,8 +633,10 @@ func (s *session) relocate(ctx context.Context, fence world.Fence) error {
 		return err
 	}
 	// Preserve live records emitted by Appear (notably Revived) before adopting
-	// the barrier. They remain live, never synthesized from the snapshot.
-	for range 64 {
+	// the barrier. They remain live, never synthesized from the snapshot. Appear
+	// published its whole turn before returning, and Revived follows every
+	// object it revealed, so drain all of it, not a fixed prefix.
+	for range len(s.sub.Events) {
 		select {
 		case e, ok := <-s.sub.Events:
 			if !ok {

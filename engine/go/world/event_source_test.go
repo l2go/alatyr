@@ -202,14 +202,14 @@ func TestEventOverflowIsBoundedAndInactiveFlushDoesNotPublish(t *testing.T) {
 		p.send(ActionIgnored{})
 	}
 	w.flush(w.s)
-	if len(p.stream.events) != 64 || w.s.eventSeq != 64 || <-p.stream.end != CloseOverflow || !p.slow {
+	if len(p.stream.events) != eventBacklog || w.s.eventSeq != eventBacklog || <-p.stream.end != CloseOverflow || !p.slow {
 		t.Fatalf("overflow: buffered %d, seq %d, slow %v", len(p.stream.events), w.s.eventSeq, p.slow)
 	}
 	for range 100 {
 		p.send(ActionIgnored{})
 		w.flush(w.s)
 	}
-	if w.s.eventSeq != 64 || len(p.outbox) != 0 {
+	if w.s.eventSeq != eventBacklog || len(p.outbox) != 0 {
 		t.Fatal("inactive stream continued publication")
 	}
 }

@@ -5,12 +5,12 @@ package worldtest
 
 import (
 	"reflect"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/l2go/alatyr/engine/go/bridge"
-	"github.com/l2go/alatyr/engine/go/gateway/gatewaytest"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
@@ -84,15 +84,22 @@ func TestWorldBuyRefusalPreservesTradeClass(t *testing.T) {
 	})
 }
 
-func TestUnknownAfterContactStillTaintsTrade(t *testing.T) {
+// TestUnknownAfterContactDoesNotBlockBoundEvidence loses the attempt key of a
+// first item use, which ends Unknown and taints the trade class while its
+// inventory fact still updates the projection. The second use is proven by an
+// inventory change keyed to its own attempt, so it is Done despite the taint.
+func TestUnknownAfterContactDoesNotBlockBoundEvidence(t *testing.T) {
 	runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
 		var lost atomic.Bool
 		lost.Store(true)
 		filter := func(u bridge.Update) bridge.Update {
 			if lost.Load() && u.Kind == bridge.LiveBatch {
-				u.Batch.Records = nil
-				u.Batch.ReceivedAt = nil
-				u.Batch.Receipts = nil
+				records := make([]wire.Record, len(u.Batch.Records))
+				for i, r := range u.Batch.Records {
+					r.Fields = slices.DeleteFunc(slices.Clone(r.Fields), func(f wire.Field) bool { return f.Number == 75 })
+					records[i] = r
+				}
+				u.Batch.Records = records
 			}
 			return u
 		}
@@ -104,14 +111,7 @@ func TestUnknownAfterContactStillTaintsTrade(t *testing.T) {
 		lost.Store(false)
 		r.p.Send(r.intent(2, verbUseItem, wire.S(21, true, 11)))
 		r.p.Result(2, wire.StageSent)
-		r.sync()
-		for _, r := range r.p.Records {
-			if r.Type == wire.Result && gatewaytest.U(r, 1) == 2 && gatewaytest.U(r, 2) == uint64(wire.StageDone) {
-				t.Fatal("true Unknown lost its class taint")
-			}
-		}
-		r.advance(5 * time.Second)
-		r.expect(2, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0)
+		r.expect(2, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 		if len(r.port.commands()) != 2 {
 			t.Fatal("second action did not test live world evidence")
 		}

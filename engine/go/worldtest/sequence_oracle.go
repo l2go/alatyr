@@ -117,12 +117,23 @@ func checkRawEvidence(records []wire.Record, attempts map[uint64]*sequenceAttemp
 					if subject.S != id.S {
 						continue
 					}
-					if effective == verbChoose || effective == verbUseItem {
-						if gatewaytest.U(raw, 75) != h.Key {
+					// The raw effect key binds a fact to this attempt's world intent,
+					// also when the world completed it after walking to the target.
+					keyed := gatewaytest.U(raw, 75) == h.Key
+					switch effective {
+					case verbChoose, verbUseItem, verbBuy, verbSell:
+						if !keyed {
 							continue
 						}
-					} else if effective != verbRise && !matchingReceipt(trace, h, contact[n], deadline, gatewaytest.U(raw, 4)) {
-						continue
+					case verbTalk, verbTake:
+						if !keyed && !matchingReceipt(trace, h, contact[n], deadline, gatewaytest.U(raw, 4)) {
+							continue
+						}
+					case verbRise:
+					default:
+						if !matchingReceipt(trace, h, contact[n], deadline, gatewaytest.U(raw, 4)) {
+							continue
+						}
 					}
 					if effective == verbTake {
 						picked, _ := wire.Find(raw.Fields, 65)
@@ -141,6 +152,47 @@ func checkRawEvidence(records []wire.Record, attempts map[uint64]*sequenceAttemp
 	}
 	return nil
 }
+
+// checkProvenUnknown rejects Unknown for an attempt whose effect a keyed live
+// fact proved: the gateway received it inside the attempt's evidence window.
+// delivered[i] is when the gateway received trace[i]; a held update may arrive
+// after the window it was produced in.
+func checkProvenUnknown(records []wire.Record, handoffs []backend.Handoff, trace []bridge.Update, delivered []time.Time, writes []sequenceWrite, evidenceMS int64) error {
+	for _, r := range records {
+		if r.Type != wire.Result || wire.Stage(gatewaytest.U(r, 2)) != wire.StageUnknown {
+			continue
+		}
+		n := gatewaytest.U(r, 1)
+		for _, h := range handoffs {
+			if h.N != n || h.Role != gateway.StepEffect {
+				continue
+			}
+			var contact time.Time
+			for _, w := range writes {
+				if w.command.Key == h.Key {
+					contact = w.at
+					break
+				}
+			}
+			if contact.IsZero() {
+				continue
+			}
+			deadline := contact.Add(time.Duration(evidenceMS) * time.Millisecond)
+			for i, u := range trace {
+				if u.Kind != bridge.LiveBatch || u.Batch.Snapshot || delivered[i].Before(contact) || !delivered[i].Before(deadline) {
+					continue
+				}
+				for _, raw := range u.Batch.Records {
+					if raw.Type == wire.Fact && gatewaytest.U(raw, 75) == h.Key {
+						return fmt.Errorf("unknown %d (verb %d, reason %d) although a live fact proved its effect", n, gatewaytest.U(r, 6), gatewaytest.U(r, 3))
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func sameRef(a, b wire.Value) bool {
 	ai, _ := wire.Find(a.Fields, 1)
 	bi, _ := wire.Find(b.Fields, 1)
@@ -163,67 +215,118 @@ func matchingReceipt(trace []bridge.Update, h backend.Handoff, contact, deadline
 }
 
 func checkEconomy(commits []world.Commit) error {
-	type consumption struct {
-		intent world.IntentID
-		item   world.Ref
-	}
-	used := make(map[consumption]bool)
-	refused := make(map[world.IntentID]bool)
+	var live Economy
 	for _, c := range commits {
-		if c.Outcome.Stage == world.StageRefused || c.Outcome.Stage == world.StageExpired {
-			if c.Intent.ID.N == 0 || c.Outcome.Intent != c.Intent.ID || len(c.Groups) != 0 {
-				return fmt.Errorf("refused world intent %v changed the world or lost its identity", c.Intent.ID)
-			}
-			refused[c.Intent.ID] = true
+		if err := live.Observe(c); err != nil {
+			return err
 		}
 	}
-	for _, c := range commits {
-		for _, g := range c.Groups {
-			if refused[g.Cause.Intent] {
-				return fmt.Errorf("refused world intent %v produced a deferred effect", g.Cause.Intent)
+	return nil
+}
+
+// Economy checks commitments as they arrive: a refused intent that still
+// changed the world, in either order, a negative or mismatched resource
+// balance, or an item consumed twice for one intent. A zero Window remembers
+// every intent; a positive one remembers the latest Window refused intents,
+// intents with effects and consumptions, so a long run keeps flat memory.
+type Economy struct {
+	Window   int
+	used     recent[consumption]
+	refused  recent[world.IntentID]
+	effected recent[world.IntentID]
+}
+
+type consumption struct {
+	intent world.IntentID
+	item   world.Ref
+}
+
+// recent is a set that forgets its oldest key beyond limit when limit > 0.
+type recent[K comparable] struct {
+	seen  map[K]bool
+	order []K
+	next  int
+}
+
+func (r *recent[K]) has(k K) bool { return r.seen[k] }
+
+func (r *recent[K]) add(k K, limit int) {
+	if r.seen[k] {
+		return
+	}
+	if r.seen == nil {
+		r.seen = map[K]bool{}
+	}
+	r.seen[k] = true
+	if limit <= 0 {
+		return
+	}
+	if len(r.order) < limit {
+		r.order = append(r.order, k)
+		return
+	}
+	delete(r.seen, r.order[r.next])
+	r.order[r.next] = k
+	r.next = (r.next + 1) % limit
+}
+
+// Observe applies one commitment.
+func (e *Economy) Observe(c world.Commit) error {
+	if c.Outcome.Stage == world.StageRefused || c.Outcome.Stage == world.StageExpired {
+		if c.Intent.ID.N == 0 || c.Outcome.Intent != c.Intent.ID || len(c.Groups) != 0 {
+			return fmt.Errorf("refused world intent %v changed the world or lost its identity", c.Intent.ID)
+		}
+		if e.effected.has(c.Intent.ID) {
+			return fmt.Errorf("refused world intent %v changed the world earlier", c.Intent.ID)
+		}
+		e.refused.add(c.Intent.ID, e.Window)
+	}
+	for _, g := range c.Groups {
+		if e.refused.has(g.Cause.Intent) {
+			return fmt.Errorf("refused world intent %v produced a deferred effect", g.Cause.Intent)
+		}
+		if g.Cause.Intent.N != 0 {
+			e.effected.add(g.Cause.Intent, e.Window)
+		}
+		for _, effect := range g.Effects {
+			moved, ok := effect.(world.ResourceTransferred)
+			if !ok {
+				continue
 			}
-			for _, effect := range g.Effects {
-				e, ok := effect.(world.ResourceTransferred)
-				if !ok {
+			amount, integer := moved.Amount.Integer()
+			if !integer {
+				continue
+			}
+			if amount < 0 {
+				return fmt.Errorf("negative resource transfer")
+			}
+			for _, side := range []struct {
+				location world.ResourceLocation
+				balance  world.Balance
+				debit    bool
+			}{{moved.From, moved.FromBalance, true}, {moved.To, moved.ToBalance, false}} {
+				if side.location.Entity == (world.Ref{}) {
 					continue
 				}
-				amount, integer := e.Amount.Integer()
-				if !integer {
-					continue
+				before, okBefore := side.balance.Before.Integer()
+				after, okAfter := side.balance.After.Integer()
+				if !okBefore || !okAfter || before < 0 || after < 0 {
+					return fmt.Errorf("invalid integer resource balance")
 				}
-				if amount < 0 {
-					return fmt.Errorf("negative resource transfer")
+				if side.debit {
+					if before < amount || before-amount != after {
+						return fmt.Errorf("resource debit underflow or mismatch")
+					}
+				} else if after < before || after-before != amount {
+					return fmt.Errorf("resource credit overflow or mismatch")
 				}
-				for _, side := range []struct {
-					location world.ResourceLocation
-					balance  world.Balance
-					debit    bool
-				}{{e.From, e.FromBalance, true}, {e.To, e.ToBalance, false}} {
-					if side.location.Entity == (world.Ref{}) {
-						continue
-					}
-					before, okBefore := side.balance.Before.Integer()
-					after, okAfter := side.balance.After.Integer()
-					if !okBefore || !okAfter || before < 0 || after < 0 {
-						return fmt.Errorf("invalid integer resource balance")
-					}
-					if side.debit {
-						if before < amount || before-amount != after {
-							return fmt.Errorf("resource debit underflow or mismatch")
-						}
-					} else {
-						if after < before || after-before != amount {
-							return fmt.Errorf("resource credit overflow or mismatch")
-						}
-					}
+			}
+			if moved.To.Place == world.PlaceConsumption && moved.Resource.Kind == world.ResourceItem {
+				key := consumption{g.Cause.Intent, moved.From.Item}
+				if e.used.has(key) || amount != 1 {
+					return fmt.Errorf("item consumed more than once per intent")
 				}
-				if e.To.Place == world.PlaceConsumption && e.Resource.Kind == world.ResourceItem {
-					key := consumption{g.Cause.Intent, e.From.Item}
-					if used[key] || amount != 1 {
-						return fmt.Errorf("item consumed more than once per intent")
-					}
-					used[key] = true
-				}
+				e.used.add(key, e.Window)
 			}
 		}
 	}

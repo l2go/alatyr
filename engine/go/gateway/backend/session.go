@@ -321,7 +321,7 @@ func (w *World) Write(ctx context.Context, step gateway.Step) error {
 	if step.Role == gateway.StepEffect && c.Verb == 9 {
 		w.returnPlan = op.plan
 	}
-	if step.Role == gateway.StepEffect && (c.Verb == 14 || c.Verb == 6) {
+	if step.Role == gateway.StepEffect && attributed(c.Verb) {
 		op.plan.effectKey = key
 	}
 	op.plan.writes++

@@ -488,6 +488,9 @@ func (s *sequencer) checkScope(scope *sequenceScope, final bool) {
 	if err := checkRawEvidence(scope.monitor.Records, scope.attempts, handoffs[scope.firstHandoff:end], trace, writes, s.h.Config.Attempts.EvidenceMS); err != nil {
 		s.t.Fatal(err)
 	}
+	if err := checkProvenUnknown(scope.monitor.Records, handoffs[scope.firstHandoff:end], trace, s.h.Port.deliveries(), writes, s.h.Config.Attempts.EvidenceMS); err != nil {
+		s.t.Fatal(err)
+	}
 
 	if err := checkTranscript(scope.monitor.Records, scope.attempts, final, s.h.Config.Attempts.EvidenceMS); err != nil {
 		s.t.Fatal(err)
@@ -841,11 +844,17 @@ func validWitnessKind(verb, kind uint64) bool {
 		return kind == kindRevived
 	case verbLearn:
 		return kind == kindKnown
-	case verbUseItem:
+	case verbUseItem, verbBuy, verbSell:
 		return kind == kindCarried || kind == kindInventory
 	default:
 		return false
 	}
+}
+
+// CheckCharacter reports vitals outside [0, max], a negative progression
+// balance, or a duplicate or negative inventory row.
+func CheckCharacter(c world.Character) error {
+	return checkCharacter(c)
 }
 
 func checkCharacter(c world.Character) error {

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"slices"
+	"time"
 
 	"github.com/l2go/alatyr/engine/go/world/itemlog"
 )
@@ -42,6 +43,17 @@ func WithRandomSource(source rand.Source) Option {
 // external delivery. There is no retained history or automatic retry here.
 func WithCommits(observe func(Commit)) Option {
 	return func(w *World) { w.s.observe = observe }
+}
+
+// WithPace receives the timer-drain cost and how many timers were waiting
+// before that drain. It runs on the world loop, must not call the world, and
+// must be bounded. A nil observer is ignored.
+func WithPace(observe func(tick time.Duration, queued int)) Option {
+	return func(w *World) {
+		if observe != nil {
+			w.pace = observe
+		}
+	}
 }
 
 // WithDurability observes completion of external skill writes separately from

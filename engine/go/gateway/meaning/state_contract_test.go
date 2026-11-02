@@ -51,7 +51,7 @@ func TestWitnessRequiresAuditedSourceAndMatchingCompletion(t *testing.T) {
 					npc:  s.observed.Reference(7), eligible: true, relocated: true, baselineLevel: Number(5)}
 				a := &gateway.Action{Value: p, AfterCheckpoint: kind == Rise}
 				input := Input{Completed: 42, Source: Source{Dialogue: true, Pickup: true, Learning: true, Return: true}}
-				want := gateway.WitnessMatch
+				want := gateway.WitnessBound
 				switch kind {
 				case Talk, Say:
 					input.Event = Event{Kind: Spoke, ID: 7}
@@ -79,6 +79,76 @@ func TestWitnessRequiresAuditedSourceAndMatchingCompletion(t *testing.T) {
 					t.Fatal(err)
 				}
 				if got, err := s.Witness(a, u); err != nil || got != want {
+					t.Fatalf("witness = %v, error = %v, want %v", got, err, want)
+				}
+			})
+		}
+	}
+}
+
+// TestDeferredWitnessUsesIntentAttribution covers talk and take completed after
+// the world walked to the target, and merchant exchanges: only the fact keyed
+// to this attempt, from an audited source and with the planned shape, is Done.
+func TestDeferredWitnessUsesIntentAttribution(t *testing.T) {
+	for _, kind := range []string{Talk, Take, Buy, Sell} {
+		for _, branch := range []string{"attributed", "no_key", "other_attempt", "no_source", "other_verb_key", "other_row"} {
+			t.Run(kind+"/"+branch, func(t *testing.T) {
+				s := newState(t, testConfig(), Policy{})
+				for _, ev := range []Event{{Kind: Appeared, ID: 1, Mine: true}, {Kind: Appeared, ID: 7}, {Kind: Dropped, ID: 9}} {
+					if err := apply(t, s, ev); err != nil {
+						t.Fatal(err)
+					}
+				}
+				p := &planned{owner: s, record: wire.Record{Type: wire.Intent, Fields: []wire.Field{wire.U(1, true, 42)}},
+					plan: Plan{Command: Command{Kind: kind, Item: 1060, Target: 12}, Item: s.observed.Reference(9)}, npc: s.observed.Reference(7)}
+				input := Input{Source: Source{Dialogue: true, Pickup: true, Trade: true}}
+				key := &input.Traded
+				switch kind {
+				case Talk:
+					key, input.Event = &input.Spoken, Event{Kind: Spoke, ID: 7}
+				case Take:
+					key, input.Event = &input.Taken, Event{Kind: Took, ID: 1, Target: 9}
+				default:
+					input.Event = Event{Kind: Inventory, Goods: []Good{{Object: 12, ID: 1060, Count: 1}}}
+				}
+				*key = 42
+				want := gateway.WitnessNone
+				switch branch {
+				case "attributed":
+					want = gateway.WitnessBound
+				case "no_key":
+					*key = 0
+				case "other_attempt":
+					*key = 41
+				case "no_source":
+					input.Source = Source{}
+				case "other_verb_key":
+					*key = 0
+					input.Used, input.Chosen = 42, 42
+					if kind != Talk {
+						input.Spoken = 42
+					}
+					if kind != Take {
+						input.Taken = 42
+					}
+					if kind != Buy && kind != Sell {
+						input.Traded = 42
+					}
+				case "other_row":
+					switch kind {
+					case Talk:
+						input.Event.ID = 1
+					case Take:
+						input.Event.Target = 7
+					default:
+						input.Event.Goods = []Good{{Object: 13, ID: 1061, Count: 1}}
+					}
+				}
+				u := gateway.Update{Value: input}
+				if _, err := s.Apply(u, 0); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := s.Witness(&gateway.Action{Value: p}, u); err != nil || got != want {
 					t.Fatalf("witness = %v, error = %v, want %v", got, err, want)
 				}
 			})
@@ -330,7 +400,7 @@ func TestReturnProofRetainsLiveFactAndCannotResurrectNewerDeath(t *testing.T) {
 	if _, err := s.Apply(u, 20); err != nil {
 		t.Fatal(err)
 	}
-	if witness, err := s.Witness(a, u); err != nil || witness != gateway.WitnessMatch {
+	if witness, err := s.Witness(a, u); err != nil || witness != gateway.WitnessBound {
 		t.Fatal(witness, err)
 	}
 	if valid, err := s.CandidateValid(a); err != nil || !valid {

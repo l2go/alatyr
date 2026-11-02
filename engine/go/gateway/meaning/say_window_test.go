@@ -44,7 +44,7 @@ func TestSayWindowRequiresChoiceAttributionAndNPC(t *testing.T) {
 				got, err := s.Witness(&gateway.Action{Value: p}, u)
 				want := gateway.WitnessNone
 				if branch == "match" {
-					want = gateway.WitnessMatch
+					want = gateway.WitnessBound
 				}
 				if err != nil || got != want {
 					t.Fatalf("witness=%v/%v want %v", got, err, want)

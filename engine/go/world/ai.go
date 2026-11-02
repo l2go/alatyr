@@ -46,7 +46,10 @@ type ai struct {
 	followRange int32
 	followTask  bool
 
-	clientMoving  bool
+	clientMoving bool
+	// pawn is the object the current client movement approaches, zero for a
+	// point. It is separate from target, which a new intention sets first.
+	pawn          int32
 	pawnOffset    int32
 	pawnTimeout   int64
 	autoAttacking bool
@@ -385,7 +388,7 @@ func (w *World) moveToPawn(s *state, a actor, pawn int32, offset int32) {
 	minOffset := a.collision() + pcoll
 	offset = max(10, offset, minOffset)
 	send := true
-	if c.ai.clientMoving && c.ai.target == pawn {
+	if c.ai.clientMoving && c.ai.pawn == pawn {
 		if c.ai.pawnOffset == offset {
 			if s.ticks < c.ai.pawnTimeout {
 				return
@@ -394,6 +397,7 @@ func (w *World) moveToPawn(s *state, a actor, pawn int32, offset int32) {
 		}
 	}
 	c.ai.clientMoving = true
+	c.ai.pawn = pawn
 	c.ai.pawnOffset = offset
 	c.ai.target = pawn
 	c.ai.pawnTimeout = s.ticks + 200/100
@@ -422,6 +426,7 @@ func (w *World) moveToPawn(s *state, a actor, pawn int32, offset int32) {
 func (w *World) aiMoveTo(s *state, a actor, to Point) {
 	c := a.base()
 	c.ai.clientMoving = true
+	c.ai.pawn = 0
 	c.ai.pawnOffset = 0
 	w.moveTo(s, a, to, 0)
 	dest := c.pos

@@ -24,7 +24,10 @@ distinct from a known zero. Snapshots and proofs own their returned records.
 `Source` is an audited producer assertion, not participant configuration. Its
 zero value grants no causal authority. Positive dialogue, pickup, learning, and
 return evidence also requires an attributable handoff supplied by the trusted
-adapter. Speech, pickup, and learning require matching effect completion;
+adapter. Speech and pickup require matching effect completion or the attempt's
+own `Input.Spoken` or `Input.Taken` attribution, which also covers a talk or
+pickup the world finished after walking to the target; learning requires
+matching effect completion;
 return accepts `Returned` only for the handed-off rise attempt because raw rise
 does not report Done. Return proof retains an actual live revival, not a
 fabricated snapshot outcome. Raw receipt matching and readiness fences belong
@@ -67,8 +70,16 @@ the item; Done proves consumption, not an HP increase. A world refusal after
 handoff is Refused/DeliveryNone only when the adapter proves that the entire
 attempt had no effects. The action class remains usable. Missing evidence,
 partial delivery and ordinary failures remain Unknown and permanently taint
-the class; a later proven refusal cannot remove that taint. Local stale/dead
+the class; a later proven refusal cannot remove that taint. A later attempt
+still finishes on evidence keyed to it: every Match from this state is
+`WitnessBound`, while full-window learning remains an unbound candidate. Local stale/dead
 requests remain Refused. The meaning identifier remains `alatyr/1`.
+
+`Buy` and `Sell` are Done with `Source.Trade`, a matching `Input.Traded`
+attempt attribution, and a live inventory fact naming the bought template or the
+sold object. Without that source they remain Unknown after their window.
+`Cast` does not wait for a witness: the world publishes no fact naming a
+finished cast, so, like `Strike`, its final outcome is Sent.
 
 For `Say`, an attributed live `Shop`, `Offer`, or `Practice` window is also a
 witness. `Input.Chosen` must identify the same attempt and the NPC observation

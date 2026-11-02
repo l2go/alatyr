@@ -98,7 +98,10 @@ func TestG02HelperNeedsTargetAndReceipt(t *testing.T) {
 	}
 }
 
-func TestG04MerchantBuySellStayUnknown(t *testing.T) {
+// TestG04MerchantBuySellAreWitnessed runs an authored trade through a host
+// that audits merchant exchanges: the inventory change names the trade intent,
+// so the participant sees Done. Without that source G04 stays Unknown.
+func TestG04MerchantBuySellAreWitnessed(t *testing.T) {
 	for _, sell := range []bool{false, true} {
 		t.Run(map[bool]string{false: "buy", true: "sell"}[sell], func(t *testing.T) {
 			runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
@@ -164,7 +167,7 @@ func TestG04MerchantBuySellStayUnknown(t *testing.T) {
 					t.Fatalf("atomic trade: got %d coins/%d items, want %d/%d", coin, count, wantCoin, wantCount)
 				}
 				r.advance(5 * time.Second)
-				r.expect(3, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0)
+				r.expect(3, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 				r.expect(2, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 				// A distinct command can reuse a live list; Intent replay remains
 				// covered separately by the participant contract.
@@ -186,11 +189,27 @@ func TestG04MerchantBuySellStayUnknown(t *testing.T) {
 					t.Fatal("distinct trade did not update both balances")
 				}
 				r.advance(5 * time.Second)
-				r.expect(4, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0)
+				r.expect(4, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 
 			})
 		})
 	}
+}
+
+// TestDeferredTalkIsWitnessed starts beyond interaction range of the merchant.
+// The world walks there before it speaks; the page names the talk intent, so
+// the participant sees Done instead of a timeout.
+func TestDeferredTalkIsWitnessed(t *testing.T) {
+	runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
+		char := readyCharacter()
+		char.Y = 258243 - 400
+		r := newRig(t, cat, char, allSources(), nil)
+		target := r.actor(30002)
+		r.p.Send(r.intent(1, 5, r.ref(target.ID, 10)))
+		r.p.Result(1, wire.StageSent)
+		r.advance(4 * time.Second)
+		r.expect(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
+	})
 }
 
 func TestG05AuthoredLearningFullWindow(t *testing.T) {

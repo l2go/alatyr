@@ -149,7 +149,7 @@ func TestSubscriptionCloseReasonsAndRecovery(t *testing.T) {
 				switch tc.reason {
 				case CloseOverflow:
 					if err := w.do(ctx, func(s *state) {
-						for range 65 {
+						for range eventBacklog + 1 {
 							s.players[1].send(ActionIgnored{})
 						}
 					}); err != nil {

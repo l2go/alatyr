@@ -25,12 +25,14 @@ type SequencePort struct {
 	updates chan bridge.Update
 	closed  bool
 	trace   []bridge.Update
-	writes  []sequenceWrite
-	fault   byte
-	held    []bridge.Update
-	epoch   uint64
-	commits func() []world.Commit
-	owner   func() world.Ref
+	// delivered[i] is when Flush handed trace[i] to the gateway.
+	delivered []time.Time
+	writes    []sequenceWrite
+	fault     byte
+	held      []bridge.Update
+	epoch     uint64
+	commits   func() []world.Commit
+	owner     func() world.Ref
 }
 
 // NewSequencePort wraps a fresh Go-world port at raw epoch one, before
@@ -82,6 +84,7 @@ func (p *SequencePort) Flush() {
 			}
 		}
 		p.trace = append(p.trace, u)
+		p.delivered = append(p.delivered, time.Now())
 		p.updates <- u
 		p.mu.Unlock()
 	}
@@ -176,6 +179,14 @@ func (p *SequencePort) disturb(u bridge.Update) bridge.Update {
 	}
 	return u
 }
+
+// deliveries returns when each audited update reached the gateway.
+func (p *SequencePort) deliveries() []time.Time {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return slices.Clone(p.delivered)
+}
+
 func (p *SequencePort) audit() ([]bridge.Update, []sequenceWrite) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

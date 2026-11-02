@@ -123,4 +123,22 @@ func TestSequenceRefusalCannotHaveDeferredWorldEffects(t *testing.T) {
 	if err := checkEconomy([]world.Commit{c, later}); err == nil {
 		t.Fatal("deferred world effect escaped refusal oracle")
 	}
+	if err := checkEconomy([]world.Commit{later, c}); err == nil {
+		t.Fatal("earlier world effect escaped refusal oracle")
+	}
+	// A bounded window forgets the oldest intents, not the latest ones.
+	e := Economy{Window: 2}
+	for n := uint64(2); n <= 4; n++ {
+		other := world.IntentID{Owner: id.Owner, N: n}
+		if err := e.Observe(world.Commit{Intent: world.Intent{ID: other}, Outcome: world.Outcome{Intent: other, Stage: world.StageRefused}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(e.refused.seen) != 2 || e.refused.has(world.IntentID{Owner: id.Owner, N: 2}) {
+		t.Fatalf("window kept %v", e.refused.seen)
+	}
+	recentLater := world.Commit{Groups: []world.EffectGroup{{Cause: world.Cause{Intent: world.IntentID{Owner: id.Owner, N: 4}}}}}
+	if err := e.Observe(recentLater); err == nil {
+		t.Fatal("deferred effect of a recent refusal escaped the bounded oracle")
+	}
 }

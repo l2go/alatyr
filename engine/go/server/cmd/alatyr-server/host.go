@@ -57,6 +57,7 @@ type runtime struct {
 	failed        map[world.Ref]bool
 	closing       bool
 	ready         atomic.Bool
+	log           *slog.Logger
 }
 
 // Run owns the listeners, gateway, raw ports and World.Run. On every exit it
@@ -64,10 +65,10 @@ type runtime struct {
 // then joins Run and persists its detached final checkpoints, including on a
 // fatal world exit. The caller closes Store after Run returns.
 func Run(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store) error {
-	return serve(ctx, cfg, cat, store)
+	return serve(ctx, cfg, cat, store, nil)
 }
 
-func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, options ...world.Option) error {
+func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, log *slog.Logger, options ...world.Option) error {
 	if cat == nil || store == nil {
 		return errors.New("host: missing world dependencies")
 	}
@@ -86,14 +87,17 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, o
 	if err != nil {
 		return err
 	}
+	if log == nil {
+		log = slog.Default()
+	}
 	characters := &characterStore{store: store, catalog: cat, hidden: make(map[int32]hidden)}
-	options = append([]world.Option{world.WithReservedIDs(ids), world.WithIDRange(first, last)}, options...)
+	options = append([]world.Option{world.WithLogger(log), world.WithReservedIDs(ids), world.WithIDRange(first, last)}, options...)
 	w := world.New(cat, characters, options...)
 	life, cancel := context.WithCancel(context.Background())
 	worldDone := make(chan error, 1)
 	go func() { worldDone <- w.Run(life) }()
 	defer cancel()
-	r := &runtime{cfg: cfg, store: store, characters: characters, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool)}
+	r := &runtime{cfg: cfg, store: store, characters: characters, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), log: log}
 	r.openingCancel = make(map[string]context.CancelFunc)
 	origin := time.Now()
 	mc := limits(len(admissions))
@@ -231,14 +235,14 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, o
 					select {
 					case slots <- struct{}{}:
 					default:
-						closeConnection(conn)
+						r.closeConn(conn)
 						continue
 					}
 					pendingMu.Lock()
 					if stopping {
 						pendingMu.Unlock()
 						<-slots
-						closeConnection(conn)
+						r.closeConn(conn)
 						return
 					}
 					pending[conn] = true
@@ -248,7 +252,7 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, o
 						defer owners.Done()
 						defer func() { <-slots; pendingMu.Lock(); delete(pending, conn); pendingMu.Unlock() }()
 						if err := r.accept(ctx, conn); err != nil {
-							closeConnection(conn)
+							r.closeConn(conn)
 						}
 					}()
 				}
@@ -287,7 +291,7 @@ func hostBackendConfig(mc meaning.Config, origin time.Time) backend.Config {
 // Participants cannot inject these events or this policy. Additional event
 // producers or parallel mutation paths require a new exclusivity audit here.
 func goWorldSource(meaning.Event) meaning.Source {
-	return meaning.Source{Dialogue: true, Pickup: true, Learning: true, Return: true, ItemUse: true}
+	return meaning.Source{Dialogue: true, Pickup: true, Learning: true, Return: true, ItemUse: true, Trade: true}
 }
 
 func (r *runtime) open(ctx context.Context, id string) (gateway.World, gateway.State, error) {
@@ -476,8 +480,8 @@ func (r *runtime) handler(address string) http.Handler {
 	})
 }
 
-func closeConnection(conn net.Conn) {
+func (r *runtime) closeConn(conn net.Conn) {
 	if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-		slog.Warn("participant connection close failed")
+		r.log.Warn("participant connection close failed")
 	}
 }

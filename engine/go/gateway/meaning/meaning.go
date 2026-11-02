@@ -66,7 +66,7 @@ var verbRegistry = []Verb{
 	{4, "take", Take, "take", true}, {5, "talk", Talk, "dialog", true}, {6, "choose", Say, "dialog", true},
 	{7, "buy", Buy, "trade", true}, {8, "sell", Sell, "trade", true}, {9, "rise", Rise, "revive", true},
 	{10, "focus", Focus, "", false}, {11, "engage", Engage, "", false},
-	{12, "cast", Cast, "", true}, {13, "learn", Learn, "learn", true},
+	{12, "cast", Cast, "", false}, {13, "learn", Learn, "learn", true},
 	{14, "use-item", UseItem, "trade", true},
 }
 

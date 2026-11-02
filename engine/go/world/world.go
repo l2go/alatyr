@@ -40,7 +40,12 @@ func (w *World) Run(ctx context.Context) error {
 		if s.err != nil {
 			return s.err
 		}
+		queued := len(s.timers)
+		start := time.Now()
 		wait, pending := s.runDue()
+		if w.pace != nil {
+			w.pace(time.Since(start), queued)
+		}
 		if s.err != nil {
 			return s.err
 		}
@@ -137,6 +142,7 @@ type World struct {
 	durability      func(Durability)
 	idFirst, idLast int32
 	final           []Checkpoint
+	pace            func(time.Duration, int)
 }
 type state struct {
 	players                                                         map[int32]*player

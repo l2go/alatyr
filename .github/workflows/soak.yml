@@ -1,0 +1,57 @@
+name: soak
+
+# Manual durability run of the production host. Push and pull_request do not start it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: Go duration, default 60m
+        required: false
+        default: 60m
+      bots:
+        description: Participant count, default 8
+        required: false
+        default: "8"
+      seed:
+        description: Bot seed
+        required: false
+        default: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    name: soak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    permissions:
+      contents: read
+    env:
+      GOTOOLCHAIN: local
+      # Same process cap as the ordinary PostgreSQL acceptance job. Compose
+      # itself does not limit CPU; this only keeps the runner comparable.
+      GOMAXPROCS: "2"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.3"
+          cache: false
+      - name: Run the host soak
+        env:
+          SOAK_DURATION: ${{ inputs.duration }}
+          SOAK_BOTS: ${{ inputs.bots }}
+          SOAK_SEED: ${{ inputs.seed }}
+        run: bash tools/ci/soak.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: soak
+          path: |
+            ${{ runner.temp }}/alatyr-soak/soak.csv
+            ${{ runner.temp }}/alatyr-soak/soak.txt
+            ${{ runner.temp }}/alatyr-soak/goroutine.pprof
+            ${{ runner.temp }}/alatyr-soak/postgres.log
+          if-no-files-found: warn

@@ -167,6 +167,11 @@ const (
 	WitnessMatch
 	// WitnessCandidate must remain valid until the full window or checkpoint ends.
 	WitnessCandidate
+	// WitnessBound is WitnessMatch for evidence bound to the action's own
+	// attempt, such as a fact carrying its command key. An earlier Unknown in
+	// the action's class does not block it, because no other attempt can have
+	// produced it.
+	WitnessBound
 )
 
 // State is the injected dictionary/projection; it contains no transport logic.
@@ -188,11 +193,13 @@ type State interface {
 	// Invalid adapter values return an error, not false; the runtime closes the
 	// participant with an internal reason without logging the value or error text.
 	Confirmed(*Action) (bool, error)
-	// Witness is called by the loop for eligible actions on observed facts.
-	// For an action without AfterCheckpoint, WitnessMatch is valid only when
-	// Apply returns exactly one Fact for the update. The runtime attaches the
-	// cause to that Fact and emits its Result afterward. Returning WitnessMatch
-	// with any other Fact count closes the participant with CloseInternal.
+	// Witness is called by the loop for eligible actions on observed facts,
+	// including actions whose class an earlier Unknown tainted; only
+	// WitnessBound can finish those. For an action without AfterCheckpoint,
+	// WitnessMatch and WitnessBound are valid only when Apply returns exactly
+	// one Fact for the update. The runtime attaches the cause to that Fact and
+	// emits its Result afterward. Returning either with any other Fact count
+	// closes the participant with CloseInternal.
 	// Invalid adapter values return an error, not WitnessNone; the runtime closes
 	// the participant with an internal reason without logging the value or error text.
 	Witness(*Action, Update) (Witness, error)
