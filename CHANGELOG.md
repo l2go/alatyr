@@ -31,6 +31,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 - A canceled or timed-out database request no longer closes the server's only storage connection. Previously one slow login during a burst left the server without its database until restart, and every later save failed.
 - A guarded stop refused by the world after a controller disconnects is dropped instead of closing the participant's game.
 - A participant update no longer re-encodes the participant's whole snapshot to check its byte bound; only changed actors are measured again. In a crowded scene that work grew with every visible object, kept the CPU saturated and made a burst of logins miss the database budget.
+- A shutdown whose departure saves missed their close budget but were persisted by the host's retry now exits cleanly instead of reporting the recovered save failure.
 - NPC events reach only players who know that NPC, so a creature that noticed a player first can no longer detach the player's session with an event about an unseen object.
 - Deferred healing-item consumption retains its originating intent in the source audit, so separate uses are checked independently.
 - Recovery accepts a visible dialogue page after its final learning action was consumed, while retaining original-lifetime checks for actionable proposals.
