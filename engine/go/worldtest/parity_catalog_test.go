@@ -19,7 +19,7 @@ import (
 )
 
 func parityNames() []string {
-	return []string{"g01", "g02-target", "g02-receipt", "g03", "g04-buy", "g04-sell", "g05", "g06", "g07", "g08-before", "g08-after", "g09", "g10", "equip", "heal", "learning-next", "hunt-parties", "hunt-neutral", "death-save", "unknown-item"}
+	return []string{"g01", "g03", "g04-buy", "g04-sell", "g05", "g06", "g07", "g08-before", "g08-after", "g09", "g10", "equip", "heal", "learning-next", "hunt-parties", "hunt-neutral", "death-save", "unknown-item"}
 }
 
 func parityCharacter(index, actor int) world.Character {

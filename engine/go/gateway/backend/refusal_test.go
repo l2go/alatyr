@@ -14,7 +14,7 @@ import (
 )
 
 func TestRefusalNeedsExclusiveLiveNoEffectReceipt(t *testing.T) {
-	for _, name := range []string{"valid", "helper-sent", "multiple-writes", "write-error", "partial", "effects", "replay", "snapshot", "early", "deadline", "helper-role", "system-role"} {
+	for _, name := range []string{"valid", "multiple-writes", "write-error", "partial", "effects", "replay", "snapshot", "early", "deadline", "helper-role", "system-role"} {
 		t.Run(name, func(t *testing.T) {
 			s, w, st, _ := setup(t)
 			step := capturedWalk(t, st)
@@ -25,8 +25,6 @@ func TestRefusalNeedsExclusiveLiveNoEffectReceipt(t *testing.T) {
 			r := bridge.Receipt{N: 1, Key: 1, GatewayEpoch: 1, Requested: 1, Effective: 1, Stage: wire.StageRefused, Reason: wire.ReasonWorld, Delivery: wire.DeliveryNone, ObservedAt: s.cfg.Origin.Add(time.Millisecond)}
 			p := packet{kind: bridge.LiveBatch, receipts: []bridge.Receipt{r}}
 			switch name {
-			case "helper-sent":
-				binding.plan.helperSent = true
 			case "multiple-writes":
 				binding.plan.writes++
 			case "write-error":

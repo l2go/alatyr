@@ -66,13 +66,11 @@ type Input struct {
 	ProposalBorn *int64
 }
 
-// Operation is the default captured backend step. Selection is a target helper,
-// not an effect; adapters inspect it through OperationValue.
+// Operation is the default captured backend step, the attempt's single effect
+// write; adapters inspect it through OperationValue.
 type Operation struct {
 	// Command is the captured backend request; it must not be logged.
 	Command Command
-	// Selection distinguishes a target helper from the single effect write.
-	Selection bool
 }
 type planned struct {
 	plan                           Plan
@@ -617,7 +615,8 @@ func (s *State) Validate(a *gateway.Action, now int64) wire.Reason {
 	return wire.ReasonNone
 }
 
-// Confirmed is called before a selection helper or its effect is written.
+// Confirmed is called around a custom strategy's awaited selection step; the
+// default strategy plans none.
 // Foreign or nil Action values return ErrValue; the runtime closes the participant
 // with an internal reason without logging the value or error text.
 func (s *State) Confirmed(a *gateway.Action) (bool, error) {

@@ -93,10 +93,6 @@ func newParityRig(t *testing.T, index int, cat *catalog.Catalog) *parityRig {
 	}
 	var lost func(bridge.Update) bridge.Update
 	switch name {
-	case "g02-target":
-		lost = lose(nil, true)
-	case "g02-receipt":
-		lost = lose(map[uint64]bool{24: true}, false)
 	case "g08-before", "g08-after":
 		lost = lose(map[uint64]bool{11: true}, true)
 	}

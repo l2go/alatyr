@@ -34,8 +34,9 @@ type Policy struct {
 	Steps func(Plan) ([]gateway.Step, error)
 }
 
-// PlanSteps captures a target helper followed by one effect write. Local aim and
-// focus perform no writes. The helper must be confirmed before the effect.
+// PlanSteps captures one effect write. Local aim and focus perform no writes.
+// The world selects the target within that write, so no separate selection can
+// change the world while the effect is still pending.
 func PlanSteps(plan Plan) ([]gateway.Step, error) {
 	if plan.Command.Kind == Aim || plan.Command.Kind == Focus {
 		return nil, nil
@@ -43,15 +44,11 @@ func PlanSteps(plan Plan) ([]gateway.Step, error) {
 	if _, ok := VerbByCommand(plan.Command.Kind); !ok {
 		return nil, wire.ErrUnsupported
 	}
-	var steps []gateway.Step
-	if plan.Effect.ConfirmSelection {
-		steps = append(steps, gateway.Step{Value: Operation{Command: Command{Kind: Talk, Target: plan.Target.ID}, Selection: true}, Await: true, Interferes: []string{"dialog"}})
-	}
 	step := gateway.Step{Value: Operation{Command: plan.Command}}
 	if plan.Command.Kind == Say {
 		step.Interferes = []string{"learn"}
 	}
-	return append(steps, step), nil
+	return []gateway.Step{step}, nil
 }
 
 // ErrValue identifies a foreign, nil, or wrong-owner adapter value. It contains

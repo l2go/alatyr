@@ -36,7 +36,7 @@ Gateway and bridge share the [server module](../README.md), which pins only
 protocol without replacements. Package dependency rules are enforced by the
 boundary checker. The [server application](../server/README.md) supplies the running host.
 
-The adapter binds participant attempt, step index, helper/effect/system role,
+The adapter binds participant attempt, step index, effect/system role,
 command key, and raw attempt before accepting a receipt. Raw Done is not a
 participant outcome. Facts retain receive order and precede their results;
 asynchronous refusal also works without a Fact. The original contact, deadline,
@@ -44,8 +44,8 @@ and shrinking queue budget are not renewed by delayed processing or recovery.
 After contact, Refused requires a trusted live proof that the entire attempt
 had no effects. `Observation.Refusals` carries that proof separately from ordinary
 failures. A valid proof releases the class slot with DeliveryNone and the world's
-reason; it never clears a class tainted by a genuine Unknown. A helper already
-written, partial delivery, an error or missing evidence retains uncertainty.
+reason; it never clears a class tainted by a genuine Unknown. Partial delivery,
+an error or missing evidence retains uncertainty.
 Relocation fences invalidate old references. A live revival is held until raw
 readiness and participant checkpoint drain, then released once; a timeout cannot
 reopen a terminal attempt.

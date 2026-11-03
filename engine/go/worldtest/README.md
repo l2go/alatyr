@@ -11,8 +11,8 @@ with `GOWORK=off`. The original scripted and bridge-client contract suites keep
 their frozen oracles. Go-world assertions are separate and explicit: authored
 NPCs, offers and prices differ from the scripted fixture.
 
-The raw-port wrapper records writes and can remove evidence to exercise helper
-confirmation, missing source authority, and closure around contact. It forwards
+The raw-port wrapper records writes and can remove evidence to exercise missing
+source authority and closure around contact. It forwards
 real world observations and never creates gameplay results. World.Run, ports,
 backend scopes and participant readers each have an owner and a joined cleanup.
 

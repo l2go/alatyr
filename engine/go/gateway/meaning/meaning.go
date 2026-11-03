@@ -256,8 +256,6 @@ type Effect struct {
 	Class string
 	// Waiting requires evidence after delivery.
 	Waiting bool
-	// ConfirmSelection requires current selection before the effect write.
-	ConfirmSelection bool
 }
 
 // Resolve runs before class reservation. It changes permission, not packet bytes.
@@ -274,7 +272,6 @@ func Resolve(verb uint64, capability Capabilities, force bool) (Effect, wire.Rea
 		if !hostile && !peaceful {
 			return Effect{}, wire.ReasonNoAction
 		}
-		e.ConfirmSelection = true
 		if peaceful && !force {
 			e.Effective = 5
 			e.Class = "dialog"
@@ -300,7 +297,6 @@ func Resolve(verb uint64, capability Capabilities, force bool) (Effect, wire.Rea
 		if !capability.Cast {
 			return Effect{}, wire.ReasonNoAction
 		}
-		e.ConfirmSelection = true
 	}
 	return e, wire.ReasonNone
 }

@@ -351,9 +351,6 @@ func (r *rig) ref(id int32) wire.Field {
 	r.t.Fatalf("missing ref %d", id)
 	return wire.Field{}
 }
-func targetEffect(id int32) wire.Value {
-	return wire.Value{Fields: []wire.Field{wire.U(1, true, 5), wire.S(8, true, int64(id))}}
-}
 func itemEffect() wire.Value {
 	return wire.Value{Fields: []wire.Field{wire.U(1, true, 1), wire.S(2, true, 30), wire.S(3, true, 40), wire.S(4, true, 1)}}
 }

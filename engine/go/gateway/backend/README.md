@@ -10,12 +10,12 @@ See `ExampleNew` for a synthetic complete snapshot.
 Only the gateway actor calls State or Write. The bounded pump transfers raw
 records and original receive times in order; it never performs business writes.
 Receipt keys bind to captured attempt/index/role before `Port.Write` returns.
-Target helpers require both their own Done and current target confirmation.
-Effect receipts cannot authorize helpers or system steps, and raw Done cannot
-authorize participant Done without live, exclusive, timely dictionary evidence.
+An attempt is one effect write: the world selects any target within it, and the
+adapter rejects helper steps. Effect receipts cannot authorize system steps, and
+raw Done cannot authorize participant Done without live, exclusive, timely
+dictionary evidence.
 Optional `Handoff` reports numeric correlation only, never payloads or errors.
-`World.Write` retains at most eight raw bindings, including helper and system
-writes; expired bindings are removed before another write. This adapter bound
+`World.Write` retains at most eight raw bindings, including system writes; expired bindings are removed before another write. This adapter bound
 is independent of the configured participant pending-attempt limit.
 
 A post-contact Refused needs a live receipt for the only write of that attempt:
@@ -31,7 +31,6 @@ Scope closure and backend errors retain their existing failure disposition.
 | Step role | Refusal authority |
 | --- | --- |
 | Effect | A live no-effect refusal can certify the attempt only when this was its sole write. |
-| Helper | Selection can change the target and intention. Once written, it prevents certifying the whole attempt, even if a later effect is refused. A helper skipped because the target is already confirmed was never written and does not prevent proof. |
 | System | N is zero; guarded stop and relocation service are independent operations and never certify a participant outcome. A refused guarded stop is dropped and does not end the scope. |
 
 The trusted proof reaches `proto.Session.ConfirmRefusal` through

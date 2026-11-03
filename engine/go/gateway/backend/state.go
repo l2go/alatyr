@@ -15,15 +15,15 @@ import (
 )
 
 type plan struct {
-	owner                              *state
-	inner                              *gateway.Action
-	n                                  uint64
-	effectKey                          uint64
-	helperSent, helperDone, effectDone bool
-	receiptMS                          int64
-	contact, deadline                  int64
-	writes                             int
-	writeFailed                        bool
+	owner             *state
+	inner             *gateway.Action
+	n                 uint64
+	effectKey         uint64
+	effectDone        bool
+	receiptMS         int64
+	contact, deadline int64
+	writes            int
+	writeFailed       bool
 }
 type operation struct {
 	value meaning.Operation
@@ -170,9 +170,6 @@ func (s *state) Apply(u gateway.Update, now int64) (gateway.Observation, error) 
 			continue
 		}
 		plan := binding.plan
-		if binding.role == gateway.StepHelper && r.Stage == wire.StageDone {
-			plan.helperDone = true
-		}
 		if binding.role == gateway.StepEffect && r.Stage == wire.StageDone {
 			plan.effectDone = true
 			plan.receiptMS = at
@@ -187,10 +184,8 @@ func (s *state) Apply(u gateway.Update, now int64) (gateway.Observation, error) 
 			return gateway.Observation{WorldClosed: true}, nil
 		case r.Stage == wire.StageUnrecoverable || r.Reason == wire.ReasonBackendError:
 			reason = wire.ReasonBackendError
-		case binding.role == gateway.StepHelper && (r.Stage == wire.StageRefused || r.Stage == wire.StageUnknown):
-			reason = wire.ReasonTargetUnconfirmed
 		case r.Stage == wire.StageRefused:
-			if binding.role == gateway.StepEffect && plan.writes == 1 && !plan.helperSent && !plan.writeFailed && r.Delivery == wire.DeliveryNone && worldRefusalReason(r.Reason) && len(r.Effects) == 0 {
+			if binding.role == gateway.StepEffect && plan.writes == 1 && !plan.writeFailed && r.Delivery == wire.DeliveryNone && worldRefusalReason(r.Reason) && len(r.Effects) == 0 {
 				refusals = append(refusals, gateway.Refusal{N: plan.n, Evidence: proto.RefusalEvidence{Reason: r.Reason, ObservedMS: at}})
 				continue
 			}
@@ -338,8 +333,7 @@ func (s *state) Confirmed(a *gateway.Action) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	confirmed, err := s.State.Confirmed(p.inner)
-	return confirmed && (!p.helperSent || p.helperDone), err
+	return s.State.Confirmed(p.inner)
 }
 func (s *state) Witness(a *gateway.Action, u gateway.Update) (gateway.Witness, error) {
 	p, err := s.plan(a)

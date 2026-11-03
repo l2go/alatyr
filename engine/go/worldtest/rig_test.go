@@ -227,7 +227,7 @@ func (r *rig) ref(id int32, field uint32) wire.Field {
 }
 func (r *rig) actor(template int32) world.Ref {
 	r.t.Helper()
-	raw := r.port.Port.(*worldbridge.Client)
+	raw := r.port.Port.(interface{ Owner() world.Ref }) // the client, or a test decorator embedding it
 	scene, err := r.w.Capture(r.t.Context(), raw.Owner())
 	if err != nil {
 		r.t.Fatal(err)

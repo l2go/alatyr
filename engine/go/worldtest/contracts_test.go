@@ -5,6 +5,8 @@ package worldtest
 
 import (
 	"bytes"
+	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,8 +26,8 @@ func TestG01AuthoredDialogue(t *testing.T) {
 		r.p.Send(r.intent(1, 11, r.ref(target.ID, 10)))
 		r.expect(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 		cmds := r.port.commands()
-		if len(cmds) != 2 || cmds[0].Verb != 2 || cmds[1].Verb != 5 {
-			t.Fatalf("helper/effect: got %+v", cmds)
+		if len(cmds) != 1 || cmds[0].Verb != 5 {
+			t.Fatalf("engage is not one talk: got %+v", cmds)
 		}
 		speech, result := -1, -1
 		codec, err := meaning.NewCodec(r.c)
@@ -76,22 +78,66 @@ func lose(kinds map[uint64]bool, receipts bool) func(bridge.Update) bridge.Updat
 		return u
 	}
 }
-func TestG02HelperNeedsTargetAndReceipt(t *testing.T) {
-	for _, branch := range []string{"target-only", "receipt-only"} {
-		t.Run(branch, func(t *testing.T) {
+
+// harmAround kills the participant once, just before or just after its first
+// engage write reaches the world. It forges no result.
+type harmAround struct {
+	*worldbridge.Client
+	w     *world.World
+	after bool
+	once  sync.Once
+}
+
+func (h *harmAround) Write(ctx context.Context, c bridge.Command) (uint64, error) {
+	harm := func() {
+		h.once.Do(func() {
+			if err := h.w.Harm(context.Background(), world.Ref{}, h.Owner(), 1e6); err != nil {
+				panic(err)
+			}
+		})
+	}
+	if !h.after {
+		harm()
+	}
+	n, err := h.Client.Write(ctx, c)
+	if h.after {
+		harm()
+	}
+	return n, err
+}
+
+// Engage on a creature is one strike: the world selects the target within it.
+// The soak once saw a participant die while Engage waited for a separate
+// selection, which left the attempt Unknown although the strike was never sent.
+// A death just before or just after the single write leaves nothing in doubt.
+func TestG02EngageIsOneWorldCommand(t *testing.T) {
+	for _, after := range []bool{false, true} {
+		t.Run(map[bool]string{false: "death-before", true: "death-after"}[after], func(t *testing.T) {
 			runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
-				kinds := map[uint64]bool{}
-				if branch == "receipt-only" {
-					kinds[24] = true
-				}
-				r := newRig(t, cat, readyCharacter(), allSources(), lose(kinds, branch == "target-only"))
-				target := r.actor(30001)
+				char := readyCharacter()
+				char.X, char.Y = -70357, 256863
+				var h *harmAround
+				policy := meaning.Policy{Classify: func(o meaning.Observed) meaning.Capabilities {
+					return meaning.Capabilities{Strike: o.Role == "creature"}
+				}}
+				r := newRigWithPort(t, cat, char, allSources(), nil, policy, func(p bridge.Port) bridge.Port {
+					h = &harmAround{Client: p.(*worldbridge.Client), after: after}
+					return h
+				})
+				h.w = r.w
+				target := r.actor(18003)
 				r.p.Send(r.intent(1, 11, r.ref(target.ID, 10)))
-				r.sync()
-				r.advance(1500 * time.Millisecond)
-				r.expect(1, wire.StageUnknown, wire.ReasonTargetUnconfirmed, wire.DeliveryPartial, 0)
-				if cmds := r.port.commands(); len(cmds) != 1 || cmds[0].Verb != 2 {
-					t.Fatalf("effect escaped unconfirmed helper: %+v", cmds)
+				// Strike is complete once handed off (G07): a strike refused for the
+				// dead attacker, or admitted just before the death, stays Sent.
+				r.expect(1, wire.StageSent, wire.ReasonNone, wire.DeliveryBackend, 0)
+				r.advance(2 * time.Second)
+				for _, rec := range r.p.Records {
+					if rec.Type == wire.Result && gatewaytest.U(rec, 2) == uint64(wire.StageUnknown) {
+						t.Fatalf("engage became Unknown: %+v", rec)
+					}
+				}
+				if cmds := r.port.commands(); len(cmds) != 1 || cmds[0].Verb != 3 {
+					t.Fatalf("engage is not one strike: %+v", cmds)
 				}
 			})
 		})

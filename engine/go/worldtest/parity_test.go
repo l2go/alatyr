@@ -99,8 +99,8 @@ func runParityCase(r *parityRig, name string) parityResult {
 		out.Outcomes = append(out.Outcomes, r.outcome(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1))
 		out.Order = r.causalOrder(1, "speech")
 		commands := r.port.commands()
-		if len(commands) != 2 || commands[0].Verb != 2 || commands[1].Verb != 5 {
-			r.t.Fatalf("helper command order: %+v", commands)
+		if len(commands) != 1 || commands[0].Verb != 5 {
+			r.t.Fatalf("engage is not one talk: %+v", commands)
 		}
 		codec, err := meaning.NewCodec(r.c)
 		if err != nil {
@@ -116,17 +116,6 @@ func runParityCase(r *parityRig, name string) parityResult {
 			}
 		}
 		out.Checks["saved-authority-private"] = true
-	case "g02-target", "g02-receipt":
-		target := r.actor(30001)
-		r.p.Send(r.intent(1, 11, r.ref(target.ID, 10)))
-		r.sync()
-		r.advance(1600 * time.Millisecond)
-		out.Outcomes = append(out.Outcomes, r.outcome(1, wire.StageUnknown, wire.ReasonTargetUnconfirmed, wire.DeliveryPartial, 0))
-		commands := r.port.commands()
-		if len(commands) != 1 || commands[0].Verb != 2 {
-			r.t.Fatalf("unconfirmed helper dispatched an effect: %+v", commands)
-		}
-		out.Checks["no-unconfirmed-effect"] = true
 	case "g03":
 		return parityHuntPickup(r)
 	case "g04-buy", "g04-sell":

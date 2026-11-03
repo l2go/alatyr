@@ -22,6 +22,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Changed
 
+- Engage and cast reach the Go world as one command that selects the target itself. The gateway no longer writes a separate target selection first, so a death or lost target during that selection can no longer leave the attempt Unknown, and engage and cast no longer wait for selection confirmation.
 - `alatyr/1` clients can receive Refused after Sent when live, exclusive world evidence proves that the entire attempt had no effects. The action class remains usable. A genuine Unknown still taints it for unbound evidence, while evidence keyed to a later attempt completes that attempt.
 
 ### Fixed
