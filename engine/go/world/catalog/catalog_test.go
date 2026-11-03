@@ -51,7 +51,7 @@ func TestCSVRejectsDuplicateHeadersAndNonfiniteValues(t *testing.T) {
 		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
-		err := readCSV(path, func(r row) error { r.float("n"); return r.err })
+		err := readCSV(os.DirFS(filepath.Dir(path)), filepath.Base(path), func(r row) error { r.float("n"); return r.err })
 		if err == nil {
 			t.Fatalf("accepted invalid CSV")
 		}

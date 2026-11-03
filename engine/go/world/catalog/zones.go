@@ -7,8 +7,8 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io/fs"
+	"path"
 	"strconv"
 	"strings"
 )
@@ -67,8 +67,8 @@ func (s zoneShape) contains(x, y, z int32) bool {
 	}
 	return false
 }
-func (c *Catalog) loadZones(dir string) error {
-	files, err := filepath.Glob(filepath.Join(dir, "*.xml"))
+func (c *Catalog) loadZones(fsys fs.FS, dir string) error {
+	files, err := fs.Glob(fsys, path.Join(dir, "*.xml"))
 	if err != nil {
 		return err
 	}
@@ -76,13 +76,13 @@ func (c *Catalog) loadZones(dir string) error {
 		return fmt.Errorf("no zone XML in %s", dir)
 	}
 	for _, f := range files {
-		raw, err := os.ReadFile(f)
+		raw, err := fs.ReadFile(fsys, f)
 		if err != nil {
 			return err
 		}
 		var list xmlNode
 		if err := xml.Unmarshal(raw, &list); err != nil {
-			return fmt.Errorf("%s: %w", filepath.Base(f), err)
+			return fmt.Errorf("%s: %w", path.Base(f), err)
 		}
 		for _, n := range list.Children {
 			if n.XMLName.Local != "zone" {

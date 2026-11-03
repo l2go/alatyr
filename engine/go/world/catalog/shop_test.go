@@ -39,7 +39,7 @@ func TestMerchantCatalogValidatesAuthoredTerms(t *testing.T) {
 				}
 			}
 			c := &Catalog{items: map[int32]ItemTemplate{57: {ID: 57, ConsumeType: "asset"}, 1060: {ID: 1060, Price: 12, Sellable: true}, 1061: {ID: 1061, Price: 12, Sellable: true}}, npcs: map[int32]NPCTemplate{30002: {ID: 30002, Role: Merchant}, 30001: {ID: 30001, Role: Trainer}}}
-			err := c.loadShops(root)
+			err := c.loadShops(os.DirFS(root))
 			if !tc.valid {
 				if err == nil {
 					t.Fatal("invalid merchant terms accepted")
