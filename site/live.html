@@ -1,0 +1,36 @@
+{{define "live-panel"}}
+  <div class="live" data-live>
+    <div class="live__start">
+      <button class="btn" type="button" data-live-start>Start the world</button>
+      <p class="live__note">Loads the world and its server, about three megabytes. Nothing leaves your browser.</p>
+    </div>
+    <div class="live__stage" hidden>
+      <div class="live__scene">
+        <svg class="live__map" data-live-map viewBox="0 0 900 600" role="img" aria-label="The village of Okolitsa and its meadow, as the visitor sees it"></svg>
+        <div class="live__controls" data-live-controls>
+          <p class="live__target" data-live-target>Choose someone on the map or in the list, or click the ground to walk.</p>
+          <ul class="live__near" data-live-near aria-label="Nearby"></ul>
+          <div class="live__buttons">
+            <button class="btn btn--small btn--ghost" type="button" data-verb="walk" disabled>Walk to it</button>
+            <button class="btn btn--small" type="button" data-verb="talk" disabled>Talk</button>
+            <button class="btn btn--small" type="button" data-verb="strike" disabled>Strike</button>
+            <button class="btn btn--small" type="button" data-verb="take" disabled>Pick up</button>
+            <button class="btn btn--small btn--ghost" type="button" data-verb="rise" hidden>Rise</button>
+          </div>
+          <div class="live__dialog" data-live-dialog hidden></div>
+          <label class="live__agent"><input type="checkbox" data-live-agent> Let the wanderer play</label>
+        </div>
+      </div>
+      <div class="live__logs">
+        <div class="live__tabs" role="tablist">
+          <button type="button" role="tab" aria-selected="true" data-log-tab="visitor">You</button>
+          <button type="button" role="tab" aria-selected="false" data-log-tab="agent">The wanderer</button>
+        </div>
+        <ol class="live__log" data-log="visitor" aria-live="polite"></ol>
+        <ol class="live__log" data-log="agent" hidden></ol>
+        <p class="live__legend"><span class="tag tag--intent">intent</span> what was asked · <span class="tag tag--done">Done</span> proved by the world · <span class="tag tag--refused">Refused</span> nothing happened · <span class="tag tag--unknown">Unknown</span> not proved in time · <span class="tag tag--cause">#n</span> the attempt a fact proves</p>
+      </div>
+    </div>
+    <p class="live__error" data-live-error role="alert" hidden></p>
+  </div>
+{{end}}

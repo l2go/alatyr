@@ -29,6 +29,7 @@ func main() {
 		world    *live.World
 		sessions = map[string]*live.Session{}
 		stop     context.CancelFunc
+		report   = func(string, live.Update) {}
 	)
 	api := map[string]any{
 		"start": js.FuncOf(func(_ js.Value, args []js.Value) any {
@@ -50,16 +51,13 @@ func main() {
 			}
 			callback := args[1]
 			for _, id := range []string{live.Visitor, live.Agent} {
-				s, err := world.Join(context.Background(), id, func(u live.Update) {
-					if b, err := json.Marshal(u); err == nil {
-						callback.Invoke(id, string(b))
-					}
-				})
+				s, err := world.Join(context.Background(), id, func(u live.Update) { post(callback, id, u) })
 				if err != nil {
 					return err.Error()
 				}
 				sessions[id] = s
 			}
+			report = func(id string, u live.Update) { post(callback, id, u) }
 			return ""
 		}),
 		"act": js.FuncOf(func(_ js.Value, args []js.Value) any {
@@ -74,10 +72,16 @@ func main() {
 			if err := json.Unmarshal([]byte(args[1].String()), &a); err != nil {
 				return err.Error()
 			}
-			// Writing blocks on the in-memory stream; the page must not.
+			// Writing blocks on the in-memory stream; the page must not. A
+			// refusal to act reaches the page as a log line.
+			id := args[0].String()
 			go func() {
-				if err := s.Do(a); err != nil && !errors.Is(err, live.ErrNotReady) {
-					js.Global().Get("console").Call("warn", err.Error())
+				if err := s.Do(a); err != nil {
+					text := err.Error()
+					if errors.Is(err, live.ErrNotReady) {
+						text = "not ready to act: no control, no ready view, or the target is out of sight"
+					}
+					report(id, live.Update{Log: &live.Entry{Kind: "error", Text: text}})
 				}
 			}()
 			return ""
@@ -91,11 +95,22 @@ func main() {
 			if s, ok := sessions[live.Agent]; ok && on {
 				var ctx context.Context
 				ctx, stop = context.WithCancel(context.Background())
-				go live.RunAgent(ctx, s, 1200*time.Millisecond)
+				go func() {
+					if err := live.RunAgent(ctx, s, 1200*time.Millisecond); err != nil && !errors.Is(err, context.Canceled) {
+						report(live.Agent, live.Update{Ended: "the agent stopped: " + err.Error()})
+					}
+				}()
 			}
 			return nil
 		}),
 	}
 	js.Global().Set("alatyr", js.ValueOf(api))
 	select {}
+}
+
+// post hands an update to the page's callback as JSON.
+func post(callback js.Value, id string, u live.Update) {
+	if b, err := json.Marshal(u); err == nil {
+		callback.Invoke(id, string(b))
+	}
 }

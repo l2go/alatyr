@@ -20,4 +20,9 @@
 <p>The gateway stays. It is the boundary with participants nobody trusts: transport, authentication, sessions, pace, the protocol and its versions, references that cannot reach an object a participant no longer sees. It also keeps the game out of the protocol, which matters for a protocol meant to serve any authoritative world.</p>
 <p>The layer in between is planned to go. The world will hand the gateway typed values in the same process: the participant's bounded view, which it already owns, and the causes it already records. One queue per participant will merge state, so a participant who falls behind receives the latest position instead of every step, and a full queue will mean a fresh snapshot rather than a lost connection. Outcomes will come from what the world committed.</p>
 <p>That work is planned for the next version, done in steps with the old path and the new running side by side until the new one passes the same contracts. The protocol on the wire does not change.</p>
+<h2>Receipts</h2>
+<ul>
+<li>The world's stream and its bound: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/world/subscription.go"><code>world/subscription.go</code></a>; the bridge's scene and queue: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/worldbridge/session.go"><code>worldbridge/session.go</code></a>; the backend that passes records on one by one: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/gateway/backend/session.go"><code>gateway/backend/session.go</code></a>; the gateway's table of observed references: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/gateway/meaning/references.go"><code>gateway/meaning/references.go</code></a>.</li>
+<li>The fixes named above: <a href="https://github.com/l2go/alatyr/pull/414">pull request 414</a>. The disconnect under overload is listed among the known limitations of the <a href="/alatyr/releases/#v5.0.0">5.0.0 release notes</a>.</li>
+</ul>
 {{end}}

@@ -25,4 +25,11 @@
 
 <h2>What is still open</h2>
 <p>The size of the set is an initial value, not a measurement. The model does not depend on it: the order of importance decides what is shown in any size. Telling a participant how many objects the bound hides, and letting an agent ask for a smaller view, belong to the next version of the protocol.</p>
+<h2>Receipts</h2>
+<ul>
+<li>The bounded set, its order of importance and the one way in: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/world/interest.go"><code>world/interest.go</code></a>; the visibility pass and the reverse indexes: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/world/known.go"><code>world/known.go</code></a>.</li>
+<li>The tests that hold it, each checking after every step that no participant sees more than the bound: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/world/interest_test.go"><code>world/interest_test.go</code></a> and <a href="https://github.com/l2go/alatyr/blob/main/engine/go/world/interest_lifecycle_test.go"><code>world/interest_lifecycle_test.go</code></a>.</li>
+<li>The gateway's bound it now respects: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/gateway/meaning/references.go"><code>gateway/meaning/references.go</code></a>.</li>
+<li>The change, with the review findings it fixed: <a href="https://github.com/l2go/alatyr/pull/414">pull request 414</a>.</li>
+</ul>
 {{end}}

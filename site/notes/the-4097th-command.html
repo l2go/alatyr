@@ -13,4 +13,10 @@
 <h2>The test that would have caught it</h2>
 <p>The reproduction writes five thousand commands to one session and then checks that keys at or below the last one are refused. Before the fix it failed exactly where the run did, at command 4097. It is a short test. The defect hid behind a duration, not behind complexity: every suite that ran for minutes passed, and only a run that played long enough reached the wall.</p>
 <p>That is why the release waited for long runs, and why those runs found what they found.</p>
+<h2>Receipts</h2>
+<ul>
+<li>The key the port keeps: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/worldbridge/session.go"><code>worldbridge/session.go</code></a>, field <code>lastKey</code>.</li>
+<li>The reproduction, five thousand commands on one session: <code>TestWorldPortAdmitsLongSessions</code> in <a href="https://github.com/l2go/alatyr/blob/main/engine/go/worldbridge/lifecycle_test.go"><code>worldbridge/lifecycle_test.go</code></a>.</li>
+<li>The change and the run that found it: <a href="https://github.com/l2go/alatyr/pull/414">pull request 414</a>.</li>
+</ul>
 {{end}}

@@ -574,3 +574,52 @@ code { font-family: var(--mono); font-size: .9em; }
   .article-head--whole .wrap { padding: 1.4rem 0 1rem; }
   .article-head--whole .dek, .article-head--whole h1 { text-shadow: none; }
 }
+.live__near { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0; padding: 0; list-style: none; }
+.live__pick { font: 500 .8rem/1.2 var(--sans); color: var(--parchment-2); background: rgba(242, 196, 107, .05); border: 1px solid rgba(242, 196, 107, .22); padding: .4rem .65rem; cursor: pointer; }
+.live__pick[aria-pressed="true"] { color: var(--gold-hi); border-color: var(--gold); }
+.live__pick:focus-visible, .live__tabs button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.entry--error { color: var(--ember); }
+
+/* Light theme. Pages turn to parchment; the painted bands, the live world,
+   the navigation and code stay at dusk, where their text was drawn for. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --night: #f5efe2;
+    --night-2: #ece3d1;
+    --ink: #e6dcc6;
+    --ink-2: #ddd1b8;
+    --gold-hi: #3b2a10;
+    --gold: #7a5212;
+    --gold-lo: #8f6118;
+    --rule: #b8862e;
+    --parchment: #221c13;
+    --parchment-2: #4a3f2e;
+    --parchment-3: #6e624c;
+    --steel: #47608a;
+    --ember: #b5531a;
+    color-scheme: light;
+  }
+  .hero, .article-head, .live-section, .bar, .code, .foot, .arch, .series-diagram, .island-map, .start, .toast, .plaque {
+    --night: #05060c;
+    --night-2: #0a0b12;
+    --ink: #12100c;
+    --ink-2: #1b1712;
+    --gold-hi: #fff6e0;
+    --gold: #f6d58e;
+    --gold-lo: #d9a441;
+    --rule: #f2c46b;
+    --parchment: #efe3c4;
+    --parchment-2: #c9b994;
+    --parchment-3: #8f8268;
+    --steel: #8fa3c7;
+    --ember: #ff9d3c;
+    color-scheme: dark;
+    color: var(--parchment);
+  }
+  .article-head, .live-section, .hero { background: var(--night); }
+  .bar { background: rgba(5, 6, 12, .88); }
+  .card { background: linear-gradient(180deg, #efe6d3, #e6dac2); border-color: rgba(143, 97, 24, .25); }
+  .card::before { opacity: .12; }
+  .note, .road { border-color: rgba(143, 97, 24, .25); }
+  .table, .prose th { border-color: rgba(143, 97, 24, .25); }
+}

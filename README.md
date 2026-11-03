@@ -17,8 +17,8 @@
 </div>
 
 Alatyr is an authored online world on a Go server. People and agents enter it
-through the same open protocol, `alatyr/1`, and each gets the same honest answer
-to every action: done, refused, or not known yet. It ships Okolitsa, a village
+through the same open protocol, `alatyr/1`, and every attempt gets an answer
+they can rely on: sent, done, refused, or not known yet. It ships Okolitsa, a village
 and hunting meadow on the island of Buyan.
 
 [Enter the world on the project site](https://l2go.github.io/alatyr/#live): the
@@ -44,12 +44,12 @@ server implementations is not imported.
 
 ## Guarantees
 
-<a href="assets/flow.svg" title="Open the full-size diagram"><img src="assets/flow.svg" width="100%" alt="A person and an agent send numbered intents over alatyr/1. The world is the one authority: it records every change with its cause and shows each participant a bounded view. Facts name the attempt they prove. Each attempt ends Done when the world proves it, Refused when nothing happened, or Unknown when the truth is not known in time."></a>
+<a href="assets/flow.svg" title="Open the full-size diagram"><img src="assets/flow.svg" width="100%" alt="A person and an agent send numbered intents over alatyr/1. The world is the one authority: it records every change with its cause and shows each participant a bounded view. Facts that prove an attempt name it. An attempt ends Sent once handed over or, when it waits for proof, Done when the world proves it, Refused when nothing happened, or Unknown when the truth is not known in time."></a>
 
 - **One authority.** The world is the only source of truth, and every change it records carries its cause.
-- **Honest outcomes.** Done only when the world proves it, Refused only when nothing happened, Unknown when the truth is not known in time.
+- **Honest outcomes.** Sent once handed over; for actions that wait for proof, Done only when the world proves it, Refused only when nothing happened, Unknown when the truth is not known in time.
 - **People and agents on equal terms.** One open protocol and the same bounds: each participant sees a bounded part of the world, what matters to it first.
-- **Reproducible.** The same commands give the same world, byte for byte.
+- **Reproducible.** In the replay harness, the same commands from the same start, in virtual time, give the same transcripts, byte for byte.
 
 ## Engineering
 

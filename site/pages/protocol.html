@@ -1,5 +1,6 @@
 {{define "title"}}alatyr/1 — the protocol of an honest world{{end}}
 {{define "description"}}How a participant speaks to Alatyr: one numbered intent per attempt, facts with their causes, a bounded view of the world, and an outcome that is proved, refused, or honestly unknown.{{end}}
+{{define "head"}}<script src="/alatyr/assets/js/live.js" defer></script>{{end}}
 {{define "main"}}
 <section class="page-head wrap">
   <p class="kicker">Protocol</p>
@@ -11,15 +12,16 @@
   <h2 id="life-title">The life of one attempt</h2>
   <svg class="flow" viewBox="0 0 960 260" role="img" aria-labelledby="flow-title flow-desc">
     <title id="flow-title">An intent becomes an outcome</title>
-    <desc id="flow-desc">A participant sends an intent. The world decides and records what it did with a cause. Facts reach the participant with the attempt they prove. The attempt ends Done, Refused or Unknown.</desc>
+    <desc id="flow-desc">A participant sends an intent. The world decides and records what it did with a cause. Facts that prove the attempt carry its number. The attempt ends Sent once handed over, or, for actions that wait for proof, Done, Refused or Unknown.</desc>
     <g class="flow__node"><rect x="10" y="90" width="170" height="80" rx="10"/><text x="95" y="125">Intent #n</text><text class="flow__small" x="95" y="148">talk to the tutor</text></g>
     <g class="flow__node flow__node--world"><rect x="250" y="70" width="200" height="120" rx="10"/><text x="350" y="118">The world decides</text><text class="flow__small" x="350" y="142">one authority,</text><text class="flow__small" x="350" y="160">every change has a cause</text></g>
-    <g class="flow__node"><rect x="520" y="90" width="180" height="80" rx="10"/><text x="610" y="125">Facts</text><text class="flow__small" x="610" y="148">the tutor speaks · #n</text></g>
-    <g class="flow__node flow__node--done"><rect x="770" y="20" width="180" height="56" rx="10"/><text x="860" y="54">Done</text></g>
-    <g class="flow__node flow__node--refused"><rect x="770" y="102" width="180" height="56" rx="10"/><text x="860" y="136">Refused</text></g>
-    <g class="flow__node flow__node--unknown"><rect x="770" y="184" width="180" height="56" rx="10"/><text x="860" y="218">Unknown</text></g>
+    <g class="flow__node"><rect x="520" y="90" width="180" height="80" rx="10"/><text x="610" y="125">Facts</text><text class="flow__small" x="610" y="148">the tutor speaks · proves #n</text></g>
+    <g class="flow__node"><rect x="770" y="6" width="180" height="48" rx="10"/><text x="860" y="36">Sent</text></g>
+    <g class="flow__node flow__node--done"><rect x="770" y="72" width="180" height="48" rx="10"/><text x="860" y="102">Done</text></g>
+    <g class="flow__node flow__node--refused"><rect x="770" y="138" width="180" height="48" rx="10"/><text x="860" y="168">Refused</text></g>
+    <g class="flow__node flow__node--unknown"><rect x="770" y="204" width="180" height="48" rx="10"/><text x="860" y="234">Unknown</text></g>
     <path class="flow__wire" d="M180 130 H250"/><path class="flow__wire" d="M450 130 H520"/>
-    <path class="flow__wire" d="M700 130 C735 130 735 48 770 48"/><path class="flow__wire" d="M700 130 H770"/><path class="flow__wire" d="M700 130 C735 130 735 212 770 212"/>
+    <path class="flow__wire" d="M700 130 C735 130 735 30 770 30"/><path class="flow__wire" d="M700 130 C735 130 735 96 770 96"/><path class="flow__wire" d="M700 130 C735 130 735 162 770 162"/><path class="flow__wire" d="M700 130 C735 130 735 228 770 228"/>
   </svg>
   <div class="outcomes">
     <figure><img src="/alatyr/assets/img/go/done.webp" alt="An open wooden gate lets a traveler through." width="320" height="320" loading="lazy"><figcaption><strong>Done</strong> the world proved it</figcaption></figure>
@@ -27,12 +29,19 @@
     <figure><img src="/alatyr/assets/img/go/unknown.webp" alt="A coastal path disappears into dense sea fog." width="320" height="320" loading="lazy"><figcaption><strong>Unknown</strong> not proved in time</figcaption></figure>
   </div>
   <div class="prose prose--wide">
-    <p>An attempt starts as an <strong>intent</strong> with the next number, and the gateway answers <strong>Sent</strong> once it has handed the intent to the world. Some actions end there: a strike is final once the world has it. Others wait for proof.</p>
+    <p>An attempt starts as an <strong>intent</strong> with the next number, and the gateway answers <strong>Sent</strong> once it has handed the intent over: to the world, or, for a local action such as aiming, to the gateway itself. Some actions end there: a walk or a strike is final once it is handed over. Others wait for proof.</p>
     <p><strong>Done</strong> means the world produced a fact with this attempt as its cause, in time: the page a tutor speaks, the item that moved into the pack. A receipt, a snapshot or a late fact cannot claim it.</p>
-    <p><strong>Refused</strong> means nothing happened: the world's own rules declined the attempt before any effect, and the participant can rely on that.</p>
+    <p><strong>Refused</strong> means nothing happened. The gateway may decline an attempt before handing it over, for a stale target, too fast a pace or lost control; the world may decline it by its own rules. Either way the attempt had no effect, and the participant can rely on that.</p>
     <p><strong>Unknown</strong> means the truth was not proved in time. It is the honest answer when a walk to the target takes longer than the evidence window, or the world closes mid-attempt. It is never turned into a guess.</p>
-    <p>Try it on the <a href="/alatyr/#live">home page</a>: every line of its log is one of these.</p>
   </div>
+</section>
+
+<section id="live" class="live-section" aria-labelledby="live-title">
+<div class="wrap">
+  <h2 id="live-title">Watch it happen</h2>
+  <p class="intro">The same world as on the home page, running here. Every attempt you make appears below as an intent, then the facts that prove it carry its number, then its outcome.</p>
+  {{template "live-panel" .}}
+</div>
 </section>
 
 <section class="wrap" aria-labelledby="view-title">

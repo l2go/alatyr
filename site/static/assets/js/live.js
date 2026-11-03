@@ -18,6 +18,8 @@
     const map = root.querySelector("[data-live-map]");
     const targetText = root.querySelector("[data-live-target]");
     const dialogBox = root.querySelector("[data-live-dialog]");
+    const nearList = root.querySelector("[data-live-near]");
+    const agentBox = root.querySelector("[data-live-agent]");
     const errorBox = root.querySelector("[data-live-error]");
     const buttons = {};
     root.querySelectorAll("[data-verb]").forEach((b) => { buttons[b.dataset.verb] = b; });
@@ -29,6 +31,7 @@
     let worker = null;
     let view = null;
     let selected = 0;
+    let ended = false;
     const motion = new Map();
 
     root.querySelector("[data-live-start]").addEventListener("click", (event) => {
@@ -40,7 +43,7 @@
       worker.postMessage({ type: "start" });
     });
 
-    root.querySelector("[data-live-agent]").addEventListener("change", (event) => {
+    agentBox.addEventListener("change", (event) => {
       if (worker) worker.postMessage({ type: "agent", on: event.currentTarget.checked });
     });
 
@@ -54,6 +57,7 @@
     Object.entries(buttons).forEach(([verb, button]) => {
       button.addEventListener("click", () => {
         if (verb === "rise") act({ verb });
+        else if (verb === "walk") walkTo(selected);
         else if (selected) act({ verb, target: selected });
       });
     });
@@ -74,7 +78,14 @@
     });
 
     function act(action) {
-      if (worker) worker.postMessage({ type: "act", who: "visitor", action });
+      if (worker && !ended) worker.postMessage({ type: "act", who: "visitor", action });
+    }
+
+    function walkTo(id) {
+      const entry = motion.get(id);
+      if (!entry) return;
+      const [x, y] = position(entry, performance.now());
+      act({ verb: "walk", x: Math.round(x), y: Math.round(y) });
     }
 
     function receive(msg) {
@@ -87,6 +98,7 @@
       } else if (msg.type === "update") {
         const update = JSON.parse(msg.json);
         if (update.log) append(logs[msg.who], update.log);
+        if (update.ended) finish(msg.who, update.ended);
         if (update.view && msg.who === "visitor") {
           view = update.view;
           track(view);
@@ -95,6 +107,20 @@
           draw();
         }
       }
+    }
+
+    // A participant's session ended: say so, and stop offering what it can
+    // no longer do.
+    function finish(who, why) {
+      append(logs[who], { kind: "error", text: "session ended: " + why });
+      if (who === "agent") {
+        agentBox.checked = false;
+        agentBox.disabled = true;
+        return;
+      }
+      ended = true;
+      fail("Your session ended: " + why + ". Reload the page to enter again.");
+      refreshControls();
     }
 
     function fail(text) {
@@ -124,7 +150,11 @@
       [v.self].concat(v.objects).forEach((o) => {
         if (!o || !o.id) return;
         seen.add(o.id);
-        motion.set(o.id, { o, t: now });
+        const old = motion.get(o.id);
+        // Movement restarts only when the world reports a new one; any
+        // other change keeps the time the current movement began.
+        const same = old && old.o.x === o.x && old.o.y === o.y && old.o.toX === o.toX && old.o.toY === o.toY && old.o.speed === o.speed;
+        motion.set(o.id, { o, t: same ? old.t : now });
       });
       Array.from(motion.keys()).forEach((id) => { if (!seen.has(id)) motion.delete(id); });
       if (selected && !seen.has(selected)) selected = 0;
@@ -187,11 +217,46 @@
     function refreshControls() {
       const target = selected && motion.get(selected) && motion.get(selected).o;
       const dead = Boolean(view && view.self.dead);
+      const off = ended || !view || !view.ready;
       buttons.rise.hidden = !dead;
-      buttons.talk.disabled = dead || !target || !FOLK.has(target.role);
-      buttons.strike.disabled = dead || !target || target.role !== "creature" || target.dead;
-      buttons.take.disabled = dead || !target || target.role !== "drop";
-      targetText.textContent = target ? "Chosen: " + (target.name || target.role) + (target.dead ? " (fallen)" : "") : "Choose someone on the map, or click the ground to walk.";
+      buttons.rise.disabled = off;
+      buttons.walk.disabled = off || dead || !target;
+      buttons.talk.disabled = off || dead || !target || !FOLK.has(target.role);
+      buttons.strike.disabled = off || dead || !target || target.role !== "creature" || target.dead;
+      buttons.take.disabled = off || dead || !target || target.role !== "drop";
+      renderNear();
+      targetText.textContent = target ? "Chosen: " + (target.name || target.role) + (target.dead ? " (fallen)" : "") : "Choose someone on the map or in the list, or click the ground to walk.";
+    }
+
+    // The same choices as the map, as buttons: nearest first.
+    function renderNear() {
+      const focused = nearList.contains(document.activeElement) ? document.activeElement.dataset.id : "";
+      while (nearList.firstChild) nearList.firstChild.remove();
+      if (!view) return;
+      const me = motion.get(view.self.id);
+      const [sx, sy] = me ? position(me, performance.now()) : [view.self.x, view.self.y];
+      const near = Array.from(motion.values())
+        .map((e) => e.o)
+        .filter((o) => o.id !== view.self.id && (FOLK.has(o.role) || o.role === "creature" || o.role === "drop" || o.role === "player"))
+        .sort((a, b) => Math.hypot(a.x - sx, a.y - sy) - Math.hypot(b.x - sx, b.y - sy))
+        .slice(0, 8);
+      near.forEach((o) => {
+        const li = document.createElement("li");
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "live__pick";
+        b.dataset.id = String(o.id);
+        b.setAttribute("aria-pressed", String(o.id === selected));
+        b.textContent = (o.name || o.role) + (o.dead ? " (fallen)" : "");
+        b.addEventListener("click", () => {
+          selected = o.id;
+          refreshControls();
+          draw();
+        });
+        li.append(b);
+        nearList.append(li);
+        if (focused === b.dataset.id) b.focus();
+      });
     }
 
     function showDialog(d) {
@@ -212,6 +277,7 @@
         b.type = "button";
         b.className = "btn btn--small btn--ghost";
         b.textContent = option.label;
+        b.disabled = ended;
         b.addEventListener("click", () => act({ verb: "say", option: option.id }));
         dialogBox.append(b);
       });

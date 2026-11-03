@@ -1,5 +1,5 @@
 {{define "title"}}Alatyr — a world that tells the truth{{end}}
-{{define "description"}}An authored online world on a Go server. People and agents enter it through one open protocol and get the same honest answer to every action: done, refused, or unknown. Its world runs on this page.{{end}}
+{{define "description"}}An authored online world on a Go server. People and agents enter it through one open protocol, and every attempt gets an answer they can rely on: sent, done, refused, or unknown. Its world runs on this page.{{end}}
 {{define "head"}}<script src="/alatyr/assets/js/live.js" defer></script>{{end}}
 {{define "main"}}
 <section class="hero" aria-labelledby="hero-title">
@@ -13,7 +13,7 @@
       <p class="eyebrow">An authored world · A Go server · An open protocol</p>
       <h1 id="hero-title">Alatyr</h1>
       <div class="rule"></div>
-      <p class="lede">A world that tells the truth about every action. People and agents enter it through the same open protocol, and each gets the same honest answer: done, refused, or not known yet. Never a guess.</p>
+      <p class="lede">A world that tells the truth about every action. People and agents enter it through the same open protocol, and every attempt gets an answer they can rely on: sent, done, refused, or not known yet. Never a guess.</p>
       <div class="actions">
         <a class="btn" href="#live">Enter the world</a>
         <a class="btn btn--ghost" href="/alatyr/protocol/">Read the protocol</a>
@@ -28,38 +28,7 @@
   <p class="kicker reveal">Live, on this page</p>
   <h2 id="live-title" class="reveal">Step into Okolitsa</h2>
   <p class="intro reveal">This is not a recording. The server's own world and participant gateway are compiled to WebAssembly and run in a worker in your browser. You are the visitor. The wanderer is an agent. Both speak <code>alatyr/1</code> to the same world, and the world answers both the same way.</p>
-  <div class="live" data-live>
-    <div class="live__start">
-      <button class="btn" type="button" data-live-start>Start the world</button>
-      <p class="live__note">Loads the world and its server, about three megabytes. Nothing leaves your browser.</p>
-    </div>
-    <div class="live__stage" hidden>
-      <div class="live__scene">
-        <svg class="live__map" data-live-map viewBox="0 0 900 600" role="img" aria-label="The village of Okolitsa and its meadow, as the visitor sees it"></svg>
-        <div class="live__controls" data-live-controls>
-          <p class="live__target" data-live-target>Choose someone on the map, or click the ground to walk.</p>
-          <div class="live__buttons">
-            <button class="btn btn--small" type="button" data-verb="talk" disabled>Talk</button>
-            <button class="btn btn--small" type="button" data-verb="strike" disabled>Strike</button>
-            <button class="btn btn--small" type="button" data-verb="take" disabled>Pick up</button>
-            <button class="btn btn--small btn--ghost" type="button" data-verb="rise" hidden>Rise</button>
-          </div>
-          <div class="live__dialog" data-live-dialog hidden></div>
-          <label class="live__agent"><input type="checkbox" data-live-agent> Let the wanderer play</label>
-        </div>
-      </div>
-      <div class="live__logs">
-        <div class="live__tabs" role="tablist">
-          <button type="button" role="tab" aria-selected="true" data-log-tab="visitor">You</button>
-          <button type="button" role="tab" aria-selected="false" data-log-tab="agent">The wanderer</button>
-        </div>
-        <ol class="live__log" data-log="visitor" aria-live="polite"></ol>
-        <ol class="live__log" data-log="agent" hidden></ol>
-        <p class="live__legend"><span class="tag tag--intent">intent</span> what was asked · <span class="tag tag--done">Done</span> proved by the world · <span class="tag tag--refused">Refused</span> nothing happened · <span class="tag tag--unknown">Unknown</span> not proved in time · <span class="tag tag--cause">#n</span> the attempt a fact proves</p>
-      </div>
-    </div>
-    <p class="live__error" data-live-error hidden></p>
-  </div>
+  {{template "live-panel" .}}
 </div>
 </section>
 
@@ -74,7 +43,7 @@
     </article>
     <article class="card reveal">
       <h3>Honest outcomes</h3>
-      <p>A participant hears Done only when the world proves it, Refused only when the attempt had no effect, and Unknown when the truth is not known in time. An answer is never assumed from silence.</p>
+      <p>Some actions end at Sent, once they are handed over. Others end Done only when the world proves them, Refused only when nothing happened, whoever declined, and Unknown when the truth is not known in time. An answer is never assumed from silence.</p>
       <p class="card__proof"><a href="/alatyr/protocol/">The life of one attempt</a></p>
     </article>
     <article class="card reveal">
@@ -84,7 +53,7 @@
     </article>
     <article class="card reveal">
       <h3>Reproducible</h3>
-      <p>The same commands give the same world, byte for byte. That makes the world something to test, debug and study, not only to play: a failure found once can be replayed until it is understood.</p>
+      <p>In the replay harness, the same commands from the same start, in virtual time, give the same transcripts, byte for byte. That makes the world something to test, debug and study, not only to play: a failure found once can be replayed until it is understood.</p>
       <p class="card__proof"><a href="https://github.com/l2go/alatyr/blob/main/engine/go/worldtest/README.md">The replay harness</a></p>
     </article>
   </div>
