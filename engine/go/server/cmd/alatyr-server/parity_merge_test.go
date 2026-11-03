@@ -11,6 +11,7 @@ import (
 	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
@@ -41,7 +42,7 @@ func TestRuntimeClassifiesActualHuntTargetsAndSavesPartyRewards(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	r := &runtime{cfg: cfg, store: store, characters: characters, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: limits(1), Origin: time.Now(), Policy: meaning.Policy{Classify: classify}}}
+	r := &runtime{cfg: cfg, store: store, characters: characters, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: goworld.Limits(1), Origin: time.Now(), Policy: meaning.Policy{Classify: goworld.Classify}}}
 	port, state, err := r.open(t.Context(), "one")
 	if err != nil {
 		t.Fatal(err)

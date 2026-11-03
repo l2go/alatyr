@@ -236,9 +236,23 @@
       ]
     },
     {
+      "source": "server/goworld",
+      "imports": [
+        "server/goworld",
+        "world/**",
+        "worldbridge/**",
+        "gateway",
+        "gateway/meaning",
+        "gateway/backend",
+        "bridge/**",
+        "protocol/**"
+      ]
+    },
+    {
       "source": "server/cmd/alatyr-server",
       "imports": [
         "server/cmd/alatyr-server",
+        "server/goworld",
         "server/internal/pgstore",
         "server/internal/migrate",
         "world/**",

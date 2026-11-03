@@ -19,6 +19,7 @@ import (
 	"github.com/l2go/alatyr/engine/go/gateway/gatewaytest"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
 	"github.com/l2go/alatyr/engine/go/worldtest"
@@ -52,8 +53,8 @@ func hostSequence(t *testing.T, cat *catalog.Catalog, data []byte) []byte {
 			}
 		})
 		t.Cleanup(stop)
-		mc, origin := limits(1), time.Now()
-		r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: hostBackendConfig(mc, origin)}
+		mc, origin := goworld.Limits(1), time.Now()
+		r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: goworld.BackendConfig(mc, origin)}
 		r.meaningConfig.Handoff = func(h backend.Handoff) { auditMu.Lock(); handoffs = append(handoffs, h); auditMu.Unlock() }
 		var mu sync.Mutex
 		var scopes []*backend.World
@@ -74,7 +75,7 @@ func hostSequence(t *testing.T, cat *catalog.Catalog, data []byte) []byte {
 			}
 			return scope, st, err
 		}
-		policy := gatewayPolicy(mc)
+		policy := goworld.GatewayPolicy(mc)
 		policy.Origin = origin
 		policy.Factory = factory
 		policy.Identities = map[string]gateway.Identity{"one": {Act: true}}

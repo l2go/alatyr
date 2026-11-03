@@ -13,6 +13,7 @@ import (
 	"github.com/l2go/alatyr/engine/go/gateway/gatewaytest"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
@@ -61,8 +62,8 @@ func TestHostExclusiveSources(t *testing.T) {
 						t.Error(err)
 					}
 				})
-				mc, origin := limits(1), time.Now()
-				r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: hostBackendConfig(mc, origin)}
+				mc, origin := goworld.Limits(1), time.Now()
+				r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: goworld.BackendConfig(mc, origin)}
 				g := gatewaytest.New(t, mc, r.open, origin)
 				p := gatewaytest.Join(t, g, mc, "one", wire.ModeAct, true)
 				sync := func() { synctest.Wait(); p.Drain(); synctest.Wait(); p.Drain() }
