@@ -981,7 +981,8 @@ var errAdmission = errors.New("admission closed before ready")
 
 // openingError classifies an error before ready. The host refuses an opening
 // by closing it, or by resetting it with the Hello still unread, which a
-// write in flight sees as a broken pipe.
+// write in flight sees as a broken pipe and a connect still in progress as a
+// reset.
 func openingError(err error) error {
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) {
 		return errAdmission
@@ -992,7 +993,8 @@ func openingError(err error) error {
 func (b *soakBot) session(codec *meaning.Codec, next func() uint64, reconnect *time.Timer) error {
 	conn, err := net.DialTimeout("tcp", b.addr, 2*time.Second)
 	if err != nil {
-		return err
+		// A reset can reach the bot while it still connects.
+		return openingError(err)
 	}
 	stream := &gateway.Stream{Conn: conn, Limit: 8192}
 	sessionDone := make(chan struct{})
