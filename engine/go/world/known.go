@@ -94,13 +94,12 @@ func (w *World) tickStance(s *state) {
 // set holds a, and to a itself. An NPC's own perception of players is AI
 // state; it never chooses who hears about the NPC.
 func (w *World) broadcastToKnown(s *state, a actor, e Event) {
-	id := a.base().id
 	if p, ok := a.(*player); ok {
 		w.deliver(p, e)
 	}
-	for _, p := range s.players {
-		if p.id != id && p.known[id] {
-			w.deliver(p, e)
+	for id := range s.watchers[a.base().id] {
+		if q, ok := s.players[id]; ok {
+			w.deliver(q, e)
 		}
 	}
 }
@@ -151,6 +150,11 @@ func (w *World) updateKnown(s *state, a actor) {
 	}
 }
 
+// playerForget drops what p no longer sees, and p from the players who see it
+// but are out of range. Visibility is not symmetric under the interest bound,
+// so the second part walks p's watchers, not p's own set. An NPC displaced
+// from p's set still perceives p; p's pass ends that perception by the NPC's
+// own forget distance, as the NPC's pass would.
 func (w *World) playerForget(s *state, p *player) {
 	limit := playerForgetDistance(len(p.known))
 	for _, id := range slices.Sorted(maps.Keys(p.known)) {
@@ -158,8 +162,15 @@ func (w *World) playerForget(s *state, p *player) {
 		if !ok || p.teleporting || distance3D(p.pos, pos) > limit {
 			w.playerForgetObject(s, p, id)
 		}
-		if q, ok := s.players[id]; ok && q.known[p.id] && distance3D(q.pos, p.pos) > playerForgetDistance(len(q.known)) {
+	}
+	for _, q := range s.watching(p.id) {
+		if distance3D(q.pos, p.pos) > playerForgetDistance(len(q.known)) {
 			w.playerForgetObject(s, q, p.id)
+		}
+	}
+	for _, n := range s.perceiving(p.id) {
+		if !p.known[n.id] && (p.teleporting || distance3D(n.pos, p.pos) > n.forgetDistance(p.id)) {
+			w.forgetPlayer(s, n, p.id)
 		}
 	}
 }
@@ -173,6 +184,7 @@ func (w *World) hide(s *state, p *player, id int32, perceive bool) {
 		s.change(p.ref(), PropertyKnownObject, RefValue(s.ref(id)), RefValue(Ref{}))
 	}
 	delete(p.known, id)
+	unlink(s.watchers, id, p.id)
 	if n, ok := s.npcs[id]; ok {
 		delete(n.base().listeners, p.id)
 		if perceive {
@@ -244,19 +256,27 @@ func (w *World) reveal(s *state, p *player, id int32, pos Point, now time.Time) 
 	if !w.admit(s, p, id, pos) {
 		return false
 	}
+	var a actor
 	switch {
 	case s.players[id] != nil:
 		q := s.players[id]
 		w.deliver(p, PlayerSeen{Player: w.selfOf(q)})
-		w.describeState(s, q, p)
+		a = q
 	case s.npcs[id] != nil:
 		n := s.npcs[id]
 		w.deliver(p, NPCSeen{NPC: n.view(now)})
-		w.describeState(s, n, p)
+		a = n
 	case s.ground[id] != nil:
 		g := s.ground[id]
 		t, _ := w.cat.Item(g.templateID)
 		w.deliver(p, ItemDropped{ObjectID: g.id, TemplateID: g.templateID, Count: g.count, Pos: g.pos, Stackable: t.Stackable()})
+	}
+	if a != nil {
+		w.describeState(s, a, p)
+		// The actor's held target, as a scene capture reports it.
+		if c := a.base(); c.target != 0 {
+			w.deliver(p, TargetChosen{ObjectID: c.id, TargetID: c.target, Pos: c.pos})
+		}
 	}
 	return true
 }

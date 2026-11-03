@@ -244,6 +244,7 @@ func (w *World) eraseGround(s *state, g *groundItem) {
 		if p.known[g.id] {
 			s.change(p.ref(), PropertyKnownObject, RefValue(g.ref()), RefValue(Ref{}))
 			delete(p.known, g.id)
+			unlink(s.watchers, g.id, p.id)
 			p.send(ObjectGone{ObjectID: g.id})
 			w.notifyForget(s, p, g.id)
 		}

@@ -21,8 +21,15 @@ func interestWorld(t *testing.T, limit int) (*World, Entry, func(func(*state, *p
 	entry := enterTest(t, w, ctx, syntheticCharacter(1))
 	do := func(f func(*state, *player)) {
 		t.Helper()
-		if err := w.do(ctx, func(s *state) { f(s, s.players[1]) }); err != nil {
+		var mirror error
+		if err := w.do(ctx, func(s *state) {
+			f(s, s.players[1])
+			mirror = indexesMirror(s)
+		}); err != nil {
 			t.Fatal(err)
+		}
+		if mirror != nil {
+			t.Fatal(mirror)
 		}
 	}
 	do(func(s *state, p *player) {
@@ -32,6 +39,29 @@ func interestWorld(t *testing.T, limit int) (*World, Entry, func(func(*state, *p
 		pass(w, s, p)
 	})
 	return w, entry, do
+}
+
+// indexesMirror checks that the reverse indexes hold exactly the pairs of
+// player.known and npc.knownPlayers.
+func indexesMirror(s *state) error {
+	watchers, perceivers := map[int32]map[int32]bool{}, map[int32]map[int32]bool{}
+	for _, p := range s.players {
+		for id := range p.known {
+			link(watchers, id, p.id)
+		}
+	}
+	for _, n := range s.npcs {
+		for id := range n.knownPlayers {
+			link(perceivers, id, n.id)
+		}
+	}
+	if !maps.EqualFunc(watchers, s.watchers, maps.Equal) {
+		return fmt.Errorf("watchers %v, known says %v", s.watchers, watchers)
+	}
+	if !maps.EqualFunc(perceivers, s.perceivers, maps.Equal) {
+		return fmt.Errorf("perceivers %v, knownPlayers says %v", s.perceivers, perceivers)
+	}
+	return nil
 }
 
 // pass runs the player's visibility pass now.
@@ -197,7 +227,7 @@ func TestInterestKeepsPinnedObjects(t *testing.T) {
 			for _, n := range s.npcs {
 				hunter = n.id
 				n.pos = Point{X: p.pos.X + 6*interestStep, Y: p.pos.Y, Z: p.pos.Z}
-				n.ai.target = p.id
+				n.ai.intention, n.ai.object = intentAttack, p.id
 				break
 			}
 		})

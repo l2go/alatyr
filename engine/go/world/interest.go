@@ -5,6 +5,7 @@ package world
 
 import (
 	"cmp"
+	"maps"
 	"slices"
 )
 
@@ -54,14 +55,13 @@ func (w *World) rank(s *state, p *player, id int32, pos Point) interestRank {
 }
 
 // pinned reports an object the player acts on or that acts on the player:
-// its target, the object of its current action, its dialogue partner, its
-// party, and anyone targeting, attacking or hating it.
+// its selected target, the object of a current or accepted action, its
+// dialogue partner, its party, and anyone targeting, acting on or hating it.
 func (w *World) pinned(s *state, p *player, id int32) bool {
 	if id == 0 || id == p.id {
 		return false
 	}
-	c := &p.creature
-	if id == c.target || id == c.attacking || id == c.ai.target || id == c.ai.object || id == c.ai.follow || id == c.ai.pawn || id == p.dialogueSpeaker.ID {
+	if id == p.target || id == p.dialogueSpeaker.ID || acts(&p.ai, id) {
 		return true
 	}
 	if p.party != nil && slices.ContainsFunc(p.party.members, func(m *player) bool { return m.id == id }) {
@@ -71,12 +71,75 @@ func (w *World) pinned(s *state, p *player, id int32) bool {
 	if !ok {
 		return false
 	}
-	o := a.base()
-	if o.target == p.id || o.attacking == p.id || o.ai.target == p.id {
+	if o := a.base(); o.target == p.id || acts(&o.ai, p.id) {
 		return true
 	}
 	n, ok := a.(*npc)
 	return ok && slices.ContainsFunc(n.hate, func(h hateEntry) bool { return h.id == p.id })
+}
+
+// acts reports whether an AI acts on id now or has accepted an order that
+// will: the object of its current action, the object it approaches or
+// follows, or the object of its queued order. Fields a finished action left
+// behind do not count.
+func acts(a *ai, id int32) bool {
+	switch a.intention {
+	case intentAttack, intentCast, intentPickUp, intentInteract:
+		if a.object == id {
+			return true
+		}
+	}
+	if a.clientMoving && a.pawn == id || a.followTask && a.follow == id {
+		return true
+	}
+	o := a.next
+	return o != nil && (o.object == id || o.cast != nil && o.cast.target.ID == id)
+}
+
+func link(m map[int32]map[int32]bool, key, id int32) {
+	set := m[key]
+	if set == nil {
+		set = map[int32]bool{}
+		m[key] = set
+	}
+	set[id] = true
+}
+
+func unlink(m map[int32]map[int32]bool, key, id int32) {
+	if set := m[key]; set != nil {
+		delete(set, id)
+		if len(set) == 0 {
+			delete(m, key)
+		}
+	}
+}
+
+// perceiving returns the NPCs that perceive player id, in ID order. An entry
+// for an NPC no longer in the world is dropped rather than followed.
+func (s *state) perceiving(id int32) []*npc {
+	var out []*npc
+	for _, nid := range slices.Sorted(maps.Keys(s.perceivers[id])) {
+		if n, ok := s.npcs[nid]; ok {
+			out = append(out, n)
+		} else {
+			unlink(s.perceivers, id, nid)
+		}
+	}
+	return out
+}
+
+// watching returns the players who see object id, in ID order, dropping an
+// entry for a player no longer in the world.
+func (s *state) watching(id int32) []*player {
+	var out []*player
+	for _, pid := range slices.Sorted(maps.Keys(s.watchers[id])) {
+		if p, ok := s.players[pid]; ok {
+			out = append(out, p)
+		} else {
+			unlink(s.watchers, id, pid)
+		}
+	}
+	return out
 }
 
 // admit is the only way into a player's interest set. When the set is full,
@@ -102,6 +165,7 @@ func (w *World) admit(s *state, p *player, id int32, pos Point) bool {
 		}
 	}
 	p.known[id] = true
+	link(s.watchers, id, p.id)
 	s.change(p.ref(), PropertyKnownObject, RefValue(Ref{}), RefValue(s.ref(id)))
 	return true
 }
