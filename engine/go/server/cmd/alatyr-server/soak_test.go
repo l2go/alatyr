@@ -33,6 +33,7 @@ import (
 	"github.com/l2go/alatyr/engine/go/gateway"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/server/internal/migrate"
 	"github.com/l2go/alatyr/engine/go/server/internal/pgstore"
 	"github.com/l2go/alatyr/engine/go/server/internal/pgtest"
@@ -926,7 +927,7 @@ func (b *soakBot) liveView() soakView {
 }
 
 func (b *soakBot) loop() {
-	codec, err := meaning.NewCodec(limits(1))
+	codec, err := meaning.NewCodec(goworld.Limits(1))
 	if err != nil {
 		b.note("%s codec: %v", b.id, err)
 		return
@@ -1476,7 +1477,7 @@ const (
 
 func testBotRetriesBeforeReady(t *testing.T, how refusal, refusals int) {
 	t.Helper()
-	codec, err := meaning.NewCodec(limits(1))
+	codec, err := meaning.NewCodec(goworld.Limits(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1579,7 +1580,7 @@ func TestBotByeAfterReadyFails(t *testing.T) {
 }
 
 func TestBotEOFAfterReadyFails(t *testing.T) {
-	codec, err := meaning.NewCodec(limits(1))
+	codec, err := meaning.NewCodec(goworld.Limits(1))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,6 +16,7 @@ import (
 
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
@@ -107,7 +108,7 @@ func testHostShutdown(t *testing.T, failures int32) {
 		t.Fatal(err)
 	}
 	defer socket.Close()
-	codec, err := meaning.NewCodec(limits(1))
+	codec, err := meaning.NewCodec(goworld.Limits(1))
 	if err != nil {
 		t.Fatal(err)
 	}

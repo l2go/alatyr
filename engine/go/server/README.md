@@ -116,3 +116,27 @@ It validates the JSON test stream against the closed test list in
 `postgres-tests.txt` beside this guide. A missing, skipped or duplicate
 test cannot satisfy that gate. Ordinary Go checks have no database and skip
 only the PostgreSQL scenarios.
+
+## Other hosts of the same world
+
+`goworld` holds the trusted composition of the Go world with the participant
+gateway: the advertised limits, the classification of world roles, the evidence
+authority of the world's exclusive sources and the opening of a character's
+world port. The server and every other host use it, so they serve the world on
+the same terms.
+
+`live` hosts the world and its gateway in one process, without a network or a
+database, and joins participants over in-memory `alatyr/1` streams. Its
+`Session` is a minimal participant, and `Dial` connects the same participant to
+a server's stream endpoint. `cmd/alatyr-live` runs it in a browser worker:
+
+```sh
+GOOS=js GOARCH=wasm go build -trimpath -o alatyr-live.wasm ./cmd/alatyr-live
+```
+
+`cmd/alatyr-site` builds the project site from `site/`, the participant
+dictionary, `CHANGELOG.md` and the rendered world:
+
+```sh
+go run ./cmd/alatyr-site -root ../../.. -out _site
+```

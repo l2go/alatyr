@@ -23,6 +23,7 @@ import (
 	"github.com/l2go/alatyr/engine/go/gateway"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/server/internal/migrate"
 	"github.com/l2go/alatyr/engine/go/server/internal/pgstore"
 	"github.com/l2go/alatyr/engine/go/server/internal/pgtest"
@@ -154,7 +155,7 @@ func TestParticipantProcessRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	stream := &gateway.Stream{Conn: conn, Limit: 8192}
-	codec, err := meaning.NewCodec(limits(1))
+	codec, err := meaning.NewCodec(goworld.Limits(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +193,7 @@ func TestParticipantProcessRestart(t *testing.T) {
 				advertised, ok := wire.Find(r.Fields, 7)
 				meaningID, _ := wire.Find(r.Fields, 2)
 				worldName, _ := wire.Find(r.Fields, 3)
-				if !ok || !reflect.DeepEqual(advertised.Fields, limits(len(cfg.Participants)).LimitsFields()) || testUint(r, 1) != meaning.WireVersion || string(meaningID.Data) != meaning.Meaning || string(worldName.Data) != cfg.WorldName {
+				if !ok || !reflect.DeepEqual(advertised.Fields, goworld.Limits(len(cfg.Participants)).LimitsFields()) || testUint(r, 1) != meaning.WireVersion || string(meaningID.Data) != meaning.Meaning || string(worldName.Data) != cfg.WorldName {
 					t.Fatalf("Welcome policy mismatch: %+v", r)
 				}
 			}

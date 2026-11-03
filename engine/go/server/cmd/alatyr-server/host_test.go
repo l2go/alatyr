@@ -17,6 +17,7 @@ import (
 
 	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
+	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
 	"github.com/l2go/alatyr/engine/go/world/memstore"
@@ -171,7 +172,7 @@ func TestOpenAuthoredCharacterPreservesHiddenTemplates(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: limits(1), Origin: time.Now()}}
+	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: goworld.Limits(1), Origin: time.Now()}}
 	port, state, err := r.open(t.Context(), "one")
 	if err != nil {
 		t.Fatal(err)
@@ -226,7 +227,7 @@ func TestFailedDepartureRetriesOriginalRefBeforeReload(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: limits(1), Origin: time.Now()}}
+	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: goworld.Limits(1), Origin: time.Now()}}
 	port, _, err := r.open(ctx, "one")
 	if err != nil {
 		t.Fatal(err)
@@ -277,7 +278,7 @@ func TestGoWorldTargetCapabilities(t *testing.T) {
 		{meaning.RolePlayer, meaning.Capabilities{}},
 		{meaning.RoleUnknown, meaning.Capabilities{}},
 	} {
-		if got := classify(meaning.Observed{Role: tc.role}); got != tc.want {
+		if got := goworld.Classify(meaning.Observed{Role: tc.role}); got != tc.want {
 			t.Fatalf("%q got %+v, want %+v", tc.role, got, tc.want)
 		}
 	}

@@ -8,9 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"os"
-	"path/filepath"
+	"path"
 	"strconv"
 )
 
@@ -124,8 +125,8 @@ func (r *row) bool(name string) bool {
 	return v
 }
 
-func readCSV(path string, each func(row) error) error {
-	f, err := os.Open(path)
+func readCSV(fsys fs.FS, name string, each func(row) error) error {
+	f, err := fsys.Open(name)
 	if err != nil {
 		return err
 	}
@@ -259,9 +260,13 @@ func (c *Catalog) PassiveFuncs(id, level int32) []ItemFunc {
 
 // Load reads the rendered world root. Source authoring files are never opened.
 // Templates, spawns, learning, drops and geometry come from the same root.
-func Load(root string) (*Catalog, error) {
+func Load(root string) (*Catalog, error) { return LoadFS(os.DirFS(root)) }
+
+// LoadFS reads a rendered world from fsys, rooted where Load's root would be.
+// It serves hosts without a file system, such as a world in a browser.
+func LoadFS(fsys fs.FS) (*Catalog, error) {
 	c := &Catalog{players: map[int32]PlayerTemplate{}, items: map[int32]ItemTemplate{}, itemFuncs: map[int32][]ItemFunc{}, passive: map[[2]int32][]ItemFunc{}}
-	if err := c.loadIdentity(root); err != nil {
+	if err := c.loadIdentity(fsys); err != nil {
 		return nil, err
 	}
 	c.npcs = map[int32]NPCTemplate{}
@@ -277,19 +282,19 @@ func Load(root string) (*Catalog, error) {
 		{"player_template.csv", c.playerRow}, {"level_up_gain.csv", c.levelRow},
 		{"weapon_template.csv", c.weaponRow}, {"armor_template.csv", c.armorRow}, {"etc_item_template.csv", c.etcRow},
 	} {
-		if err := readCSV(filepath.Join(root, "catalog", s.file), s.row); err != nil {
+		if err := readCSV(fsys, path.Join("catalog", s.file), s.row); err != nil {
 			return nil, fmt.Errorf("catalog: %s: %w", s.file, err)
 		}
 	}
 	for _, kind := range []string{"weapon", "armor", "etcitem", "skills"} {
-		if err := c.loadStatXML(filepath.Join(root, "data", "stats", kind), kind); err != nil {
+		if err := c.loadStatXML(fsys, path.Join("data", "stats", kind), kind); err != nil {
 			return nil, fmt.Errorf("catalog: %s XML: %w", kind, err)
 		}
 	}
-	if err := c.loadGameplay(root); err != nil {
+	if err := c.loadGameplay(fsys); err != nil {
 		return nil, err
 	}
-	if err := c.loadShops(root); err != nil {
+	if err := c.loadShops(fsys); err != nil {
 		return nil, err
 	}
 	for id := range c.classKinds {

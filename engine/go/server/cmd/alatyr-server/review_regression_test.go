@@ -19,6 +19,7 @@ import (
 	"github.com/l2go/alatyr/engine/go/gateway"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/server/internal/migrate"
 	"github.com/l2go/alatyr/engine/go/server/internal/pgstore"
 	"github.com/l2go/alatyr/engine/go/server/internal/pgtest"
@@ -28,8 +29,8 @@ import (
 
 func TestAdvertisedPolicyMatchesEnforcement(t *testing.T) {
 	for _, sessions := range []int{1, 64} {
-		c := limits(sessions)
-		g := gatewayPolicy(c)
+		c := goworld.Limits(sessions)
+		g := goworld.GatewayPolicy(c)
 		// Compare independent enforcement surfaces to the numbered wire contract.
 		actual := map[int]uint64{
 			1: uint64(c.Wire.FrameBytes), 2: uint64(c.Wire.StringBytes), 3: uint64(c.Wire.ListItems), 4: uint64(c.Wire.Depth), 5: uint64(c.Objects), 6: uint64(c.Attempts.Results), 7: uint64(c.Windows),
@@ -51,7 +52,7 @@ func TestAdvertisedPolicyMatchesEnforcement(t *testing.T) {
 		}
 		// A changed advertised deadline must change the runtime deadline too.
 		c.Advertised[19] = 3210
-		if gatewayPolicy(c).Hello != 3210*time.Millisecond {
+		if goworld.GatewayPolicy(c).Hello != 3210*time.Millisecond {
 			t.Fatal("duplicate Hello source")
 		}
 	}
@@ -238,11 +239,11 @@ func TestParticipantFatalWorldExitPersists(t *testing.T) {
 	}
 	// Complete participant negotiation and its opening checkpoint, then retain
 	// the live port throughout the autonomous fatal exit.
-	codec, err := meaning.NewCodec(limits(1))
+	codec, err := meaning.NewCodec(goworld.Limits(1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	stream := &gateway.Stream{Conn: conn, Limit: limits(1).Wire.FrameBytes}
+	stream := &gateway.Stream{Conn: conn, Limit: goworld.Limits(1).Wire.FrameBytes}
 	hello, err := codec.Encode([]wire.Record{{Type: wire.Hello, Fields: []wire.Field{wire.U(1, true, meaning.WireVersion), wire.U(2, true, meaning.WireVersion), wire.Data(3, true, meaning.Meaning), wire.U(4, true, uint64(wire.ParticipantPerson)), wire.U(5, true, uint64(wire.ModeAct))}}})
 	if err != nil {
 		t.Fatal(err)

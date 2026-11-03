@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>{{template "title" .}}</title>
+<meta name="description" content="{{template "description" .}}">
+<meta name="theme-color" content="#05060c">
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{template "title" .}}">
+<meta property="og:description" content="{{template "description" .}}">
+<meta property="og:url" content="https://l2go.github.io{{.Path}}">
+<meta property="og:image" content="https://l2go.github.io/alatyr/assets/img/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://l2go.github.io{{.Path}}">
+<link rel="icon" href="/alatyr/assets/img/favicon.svg" type="image/svg+xml">
+<link rel="author" href="/alatyr/humans.txt">
+<link rel="preload" href="/alatyr/assets/fonts/cinzel.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/alatyr/assets/css/site.css">
+<script src="/alatyr/assets/js/site.js"></script>
+{{block "head" .}}{{end}}
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="bar">
+  <a class="bar__mark" href="/alatyr/">ALATYR</a>
+  <nav aria-label="Sections">
+    <a href="/alatyr/protocol/">Protocol</a>
+    <a class="opt" href="/alatyr/agents/">Agents</a>
+    <a class="opt" href="/alatyr/world/">World</a>
+    <a href="/alatyr/notes/">Notes</a>
+    <a class="opt" href="/alatyr/run/">Run</a>
+    <a href="https://github.com/l2go/alatyr">GitHub</a>
+  </nav>
+</header>
+
+<main id="main">
+{{template "main" .}}
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__top">
+      <span class="foot__mark">ALATYR</span>
+      <nav aria-label="Project">
+        <a href="https://github.com/l2go/alatyr">Repository</a>
+        <a href="/alatyr/releases/">Releases</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">Deploy guide</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/SECURITY.md">Security</a>
+        <a href="/alatyr/java-years/">The Java years</a>
+      </nav>
+    </div>
+    <p>The project distributes no game client, client files or NCSOFT software. Lineage II and NCSOFT are trademarks of NCSOFT Corporation. This independent project is not affiliated with or endorsed by NCSOFT.</p>
+    <p>The server is under the GNU AGPLv3 and its protocol module under Apache-2.0; the world of Buyan is under CC BY-SA 4.0. Art generated with AI. Cinzel typeface under the SIL Open Font License.</p>
+  </div>
+</footer>
+</body>
+</html>

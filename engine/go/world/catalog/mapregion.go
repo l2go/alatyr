@@ -7,9 +7,9 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math"
-	"os"
-	"path/filepath"
+	"path"
 	"slices"
 	"strconv"
 )
@@ -67,9 +67,9 @@ func (c *Catalog) RestartAt(x, y, z int32) (Restart, bool) {
 	}
 	return Restart{}, false
 }
-func (c *Catalog) loadMapRegions(dir string) error {
+func (c *Catalog) loadMapRegions(fsys fs.FS, dir string) error {
 	c.restarts = map[int32]Restart{}
-	files, err := filepath.Glob(filepath.Join(dir, "*.xml"))
+	files, err := fs.Glob(fsys, path.Join(dir, "*.xml"))
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func (c *Catalog) loadMapRegions(dir string) error {
 		return int32(value), err
 	}
 	for _, file := range files {
-		raw, err := os.ReadFile(file)
+		raw, err := fs.ReadFile(fsys, file)
 		if err != nil {
 			return err
 		}

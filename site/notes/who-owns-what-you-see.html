@@ -1,0 +1,35 @@
+{{define "body"}}
+<p>A participant in Alatyr never sees the whole world. It sees a part: what is near, what it is fighting, who is talking to it. Before release 5.0 nobody decided which part. That was the defect.</p>
+
+<h2>The crowd</h2>
+<p>The release was gated on long runs of the production server with bots. With 64 bots in one place, the gateway began closing participants within a minute. Each one had just received its 129th visible object.</p>
+<p>The gateway tells every client, in its first message, how many objects it will track at most. It enforces that bound strictly, because a client that tracks references to objects it cannot hold would be holding broken references. The world knew nothing about the bound. It showed every participant everything within a radius that shrank as the crowd grew. It shrank, but it never stopped at a number.</p>
+<p>Three layers each kept their own idea of what a participant sees: the world's list of known objects, the bridge's picture of the scene, and the gateway's table of observed references. Each checked the others, and when they disagreed, the participant was punished for it. In the same week an event about a creature reached a player who did not know the creature, because creature events were routed by the creature's own perception list, and the bridge detached the session for the inconsistency.</p>
+
+<h2>One owner</h2>
+<p>The world decides what each participant sees, and only the world. It has the spatial truth and the causes, so it is the only layer that can choose well. The set it keeps for each participant is <em>bounded by construction</em>: its size comes from the same number the gateway advertises, less the participant itself. The gateway's bound cannot be broken, because nothing can break it.</p>
+<p>When the set is full, the world chooses by importance, not by arrival:</p>
+<ul>
+<li>first, what the participant acts on and what acts on it: its target, the object of its current or queued action, its dialogue partner, its party, anyone targeting, attacking or hunting it;</li>
+<li>then the nearest, measured in steps rather than exact distance, so that a step back and forth does not reorder the view.</li>
+</ul>
+<p>A nearer object displaces a farther one only from a whole step closer, and a single pass replaces at most a few objects with unpinned ones. A crowd does not churn the view. A displaced object leaves the view before the new one enters it, so the gateway's count never exceeds the bound, not even between two messages.</p>
+
+<h2>One way in, one way out</h2>
+<p>Every way an object can become visible goes through one function: the visibility pass, players noticing each other, an item dropping, a creature respawning. Every event about objects goes out through another: it reaches a participant only if the participant sees the event's subject and every object the event acts on. The target a visible actor holds is the one exception, because a snapshot of the world reports it too: the participant learns it as an object it does not see.</p>
+<p>Perception stayed where it belongs. Which players a creature notices is the creature's business, a matter of aggression. It no longer decides who hears about the creature.</p>
+
+<h2>What the review found</h2>
+<p>A bounded set is not symmetric: the participant who sees you may be invisible to you. The first version still assumed symmetry in places, and an independent review found where. A player walking away was forgotten only by the players it saw itself. A creature pushed out of a player's view kept perceiving the player after the player had left the world. A pin read a flag as if it were an identifier, and pins outlived the actions that set them.</p>
+<p>The fix gave the world two reverse indexes, who sees each object and which creatures perceive each player, changed only together with the sets they mirror, and tied pins to the relationships that hold now. The tests check after every step that the indexes mirror the sets.</p>
+
+<h2>What is still open</h2>
+<p>The size of the set is an initial value, not a measurement. The model does not depend on it: the order of importance decides what is shown in any size. Telling a participant how many objects the bound hides, and letting an agent ask for a smaller view, belong to the next version of the protocol.</p>
+<h2>Receipts</h2>
+<ul>
+<li>The bounded set, its order of importance and the one way in: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/world/interest.go"><code>world/interest.go</code></a>; the visibility pass and the reverse indexes: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/world/known.go"><code>world/known.go</code></a>.</li>
+<li>The tests that hold it, each checking after every step that no participant sees more than the bound: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/world/interest_test.go"><code>world/interest_test.go</code></a> and <a href="https://github.com/l2go/alatyr/blob/main/engine/go/world/interest_lifecycle_test.go"><code>world/interest_lifecycle_test.go</code></a>.</li>
+<li>The gateway's bound it now respects: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/gateway/meaning/references.go"><code>gateway/meaning/references.go</code></a>.</li>
+<li>The change, with the review findings it fixed: <a href="https://github.com/l2go/alatyr/pull/414">pull request 414</a>.</li>
+</ul>
+{{end}}

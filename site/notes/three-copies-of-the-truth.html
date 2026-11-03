@@ -1,0 +1,28 @@
+{{define "body"}}
+<p>Alatyr's gateway and bridge were built when the project had two servers behind them: the inherited one in Java, reached over a network port, and the new world in Go, inside the same process. The bridge was the contract that let the gateway speak to either. Release 5.0 ships only the Go server. The bridge is still there.</p>
+
+<h2>One event, three layers</h2>
+<p>When something happens in the world, the participant hears about it like this. The world puts the event into the participant's stream. The bridge reads it, updates its own picture of the participant's scene, translates the event into records of the bridge protocol, encodes them, and queues them. The gateway's backend decodes the records and passes them on one by one. The gateway decodes them again, updates its own table of what the participant observes, and encodes the participant's message.</p>
+<p>That is three copies of what the participant sees, kept in sync only by the stream of events. And three bounded queues in a row, each with its own rule for what to do when it fills.</p>
+
+<h2>Where the defects lived</h2>
+<p>Most defects found on the way to the release lived where those copies met:</p>
+<ul>
+<li>the bridge's bookkeeping of command keys stopped every session after its 4096th command;</li>
+<li>an event about a creature reached a player whose copy did not know the creature, and the bridge detached the session for the mismatch;</li>
+<li>the gateway's table refused the 129th object, while the world, which chose the objects, knew nothing of the limit;</li>
+<li>a two-step target selection, needed by the old backend only, produced outcomes the world never saw;</li>
+<li>under an overloaded processor, the bridge's queue filled while the gateway fell behind, and the bridge detached a participant who had done nothing wrong.</li>
+</ul>
+<p>The first four were fixed where they appeared, and each fix added agreement between layers instead of removing a seam. The last one is a known limitation of release 5.0.</p>
+
+<h2>What stays and what goes</h2>
+<p>The gateway stays. It is the boundary with participants nobody trusts: transport, authentication, sessions, pace, the protocol and its versions, references that cannot reach an object a participant no longer sees. It also keeps the game out of the protocol, which matters for a protocol meant to serve any authoritative world.</p>
+<p>The layer in between is planned to go. The world will hand the gateway typed values in the same process: the participant's bounded view, which it already owns, and the causes it already records. One queue per participant will merge state, so a participant who falls behind receives the latest position instead of every step, and a full queue will mean a fresh snapshot rather than a lost connection. Outcomes will come from what the world committed.</p>
+<p>That work is planned for the next version, done in steps with the old path and the new running side by side until the new one passes the same contracts. The protocol on the wire does not change.</p>
+<h2>Receipts</h2>
+<ul>
+<li>The world's stream and its bound: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/world/subscription.go"><code>world/subscription.go</code></a>; the bridge's scene and queue: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/worldbridge/session.go"><code>worldbridge/session.go</code></a>; the backend that passes records on one by one: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/gateway/backend/session.go"><code>gateway/backend/session.go</code></a>; the gateway's table of observed references: <a href="https://github.com/l2go/alatyr/blob/main/engine/go/gateway/meaning/references.go"><code>gateway/meaning/references.go</code></a>.</li>
+<li>The fixes named above: <a href="https://github.com/l2go/alatyr/pull/414">pull request 414</a>. The disconnect under overload is listed among the known limitations of the <a href="/alatyr/releases/#v5.0.0">5.0.0 release notes</a>.</li>
+</ul>
+{{end}}

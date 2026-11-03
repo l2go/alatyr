@@ -6,8 +6,7 @@ package catalog
 import (
 	"bufio"
 	"errors"
-	"os"
-	"path/filepath"
+	"io/fs"
 	"strconv"
 	"strings"
 )
@@ -15,9 +14,9 @@ import (
 // ID returns the authored world.id. Synthetic catalogs may omit a passport.
 func (c *Catalog) ID() string { return c.id }
 
-func (c *Catalog) loadIdentity(root string) error {
-	f, err := os.Open(filepath.Join(root, "world.properties"))
-	if errors.Is(err, os.ErrNotExist) {
+func (c *Catalog) loadIdentity(fsys fs.FS) error {
+	f, err := fsys.Open("world.properties")
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 	if err != nil {

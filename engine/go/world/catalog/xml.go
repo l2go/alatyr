@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -30,21 +28,26 @@ func (n xmlNode) attr(name string) (string, bool) {
 }
 
 // encoding/xml does not fetch the external document type or expand entities.
-func (c *Catalog) loadStatXML(dir, kind string) error {
-	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if errors.Is(err, fs.ErrNotExist) && path == dir && kind == "etcitem" {
+func (c *Catalog) loadStatXML(fsys fs.FS, dir, kind string) error {
+	// fs.WalkDir follows a symlinked root, so the root is checked on its own;
+	// a file system without links reports a plain stat here.
+	if info, err := fs.Lstat(fsys, dir); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		return errors.New("symlink in stat XML")
+	}
+	return fs.WalkDir(fsys, dir, func(name string, d fs.DirEntry, err error) error {
+		if errors.Is(err, fs.ErrNotExist) && name == dir && kind == "etcitem" {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		if d.Type()&os.ModeSymlink != 0 {
+		if d.Type()&fs.ModeSymlink != 0 {
 			return errors.New("symlink in stat XML")
 		}
 		if d.IsDir() || !strings.HasSuffix(d.Name(), ".xml") {
 			return nil
 		}
-		b, err := os.ReadFile(path)
+		b, err := fs.ReadFile(fsys, name)
 		if err != nil {
 			return err
 		}

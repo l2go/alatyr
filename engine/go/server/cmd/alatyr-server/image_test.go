@@ -27,6 +27,7 @@ import (
 	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
+	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
@@ -59,7 +60,7 @@ func TestImageParticipant(t *testing.T) {
 		}
 		return out
 	}
-	codec, err := meaning.NewCodec(limits(len(cfg.Participants)))
+	codec, err := meaning.NewCodec(goworld.Limits(len(cfg.Participants)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,10 +293,10 @@ func TestImageSocketUsesParticipantProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mc := limits(1)
+	mc := goworld.Limits(1)
 	origin := time.Now()
 	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: mc, Origin: origin}}
-	policy := gatewayPolicy(mc)
+	policy := goworld.GatewayPolicy(mc)
 	policy.Origin = origin
 	policy.Factory = r.open
 	policy.World = cfg.WorldName

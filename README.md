@@ -10,15 +10,20 @@
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/l2go/alatyr?label=openssf%20scorecard&style=for-the-badge&labelColor=1a1610)](https://scorecard.dev/viewer/?uri=github.com/l2go/alatyr)
 [![License: GPLv3 · AGPLv3 · CC BY-SA](https://img.shields.io/badge/license-GPLv3%20%C2%B7%20AGPLv3%20%C2%B7%20CC%20BY--SA-c9a86a?style=for-the-badge&labelColor=1a1610)](#origin-trademarks-and-license)
 
-### An authored world · A Go server · PostgreSQL
+### A world that tells the truth about every action
 
-**[Project site](https://l2go.github.io/alatyr/)** · [Start](#start) · [Engineering](#engineering) · [Architecture](#architecture) · [Releases](#releases) · [Deploy guide](deploy/README.md) · [Security](SECURITY.md)
+**[Project site](https://l2go.github.io/alatyr/)** · [Enter the world](https://l2go.github.io/alatyr/#live) · [Start](#start) · [Guarantees](#guarantees) · [Engineering](#engineering) · [Releases](#releases) · [Deploy guide](deploy/README.md) · [Security](SECURITY.md)
 
 </div>
 
-Alatyr runs an authored online world through a bounded participant protocol.
-The Go server owns the simulation, participant gateway and PostgreSQL persistence.
-It ships Okolitsa: a village and hunting meadow on the island of Buyan.
+Alatyr is an authored online world on a Go server. People and agents enter it
+through the same open protocol, `alatyr/1`, and every attempt gets an answer
+they can rely on: sent, done, refused, or not known yet. It ships Okolitsa, a village
+and hunting meadow on the island of Buyan.
+
+[Enter the world on the project site](https://l2go.github.io/alatyr/#live): the
+server's own world and gateway run there as WebAssembly, with an agent playing
+next to you.
 
 ## Start
 
@@ -36,6 +41,15 @@ A TLS proxy authenticates users and forwards the participant WebSocket endpoint.
 There is no registration service; the operator owns the participant registry.
 Each deployment starts with a fresh dedicated database. Existing data from other
 server implementations is not imported.
+
+## Guarantees
+
+<a href="assets/flow.svg" title="Open the full-size diagram"><img src="assets/flow.svg" width="100%" alt="A person and an agent send numbered intents over alatyr/1. The world is the one authority: it records every change with its cause and shows each participant a bounded view. Facts that prove an attempt name it. An attempt ends Sent once handed over or, when it waits for proof, Done when the world proves it, Refused when nothing happened, or Unknown when the truth is not known in time."></a>
+
+- **One authority.** The world is the only source of truth, and every change it records carries its cause.
+- **Honest outcomes.** Sent once handed over; for actions that wait for proof, Done only when the world proves it, Refused only when nothing happened, Unknown when the truth is not known in time.
+- **People and agents on equal terms.** One open protocol and the same bounds: each participant sees a bounded part of the world, what matters to it first.
+- **Reproducible.** In the replay harness, the same commands from the same start, in virtual time, give the same transcripts, byte for byte.
 
 ## Engineering
 
@@ -89,10 +103,6 @@ Each `main` image is signed with cosign and carries build provenance; a [release
 </table>
 
 ## Architecture
-
-<a href="assets/architecture.svg" title="Open the full-size diagram"><img src="assets/architecture.svg" width="100%" alt="A participant client speaks alatyr/1 over a secure WebSocket through a trusted TLS proxy to alatyr-server. In one Go process the gateway, the world port, the Go world and persistence hand work to each other; the world loads the authored files, and persistence writes the world schema in PostgreSQL 18."></a>
-
-<p align="center"><sub>Participant client → TLS proxy → <b>alatyr-server</b>: gateway → <i>raw-port contract</i> → world port → Go world → persistence → PostgreSQL 18</sub></p>
 
 The [Go components](docs/engine-go/README.md) keep protocol, transport, world
 mechanics and persistence separate. The reusable module depends only on the

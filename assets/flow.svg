@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" role="img" aria-labelledby="flow-title flow-desc">
+<title id="flow-title">How Alatyr answers an action</title>
+<desc id="flow-desc">A person and an agent send numbered intents over the same open protocol, alatyr/1. The world is the one authority: it decides, records every change with its cause, and shows each participant a bounded view. Facts that prove an attempt name it. An attempt ends Sent once it is handed over or, when it waits for proof, Done when the world proves it, Refused when nothing happened, or Unknown when the truth is not known in time.</desc>
+<defs>
+<radialGradient id="glow" cx=".45" cy=".45" r=".7">
+<stop offset="0" stop-color="#d9a441" stop-opacity=".08"/>
+<stop offset="1" stop-color="#d9a441" stop-opacity="0"/>
+</radialGradient>
+<filter id="spark" x="-50%" y="-50%" width="200%" height="200%">
+<feGaussianBlur stdDeviation="2.2" result="b"/>
+<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+</filter>
+</defs>
+<style>
+.bg { fill: #0a0b12; stroke: rgba(242, 196, 107, .14); }
+.node { fill: #1b1712; stroke: #d9a441; stroke-width: 1.8; }
+.node--world { fill: rgba(27, 23, 18, .75); stroke: #f2c46b; stroke-width: 2; }
+.node--agent { fill: #141a26; stroke: #8fa3c7; stroke-width: 1.8; }
+.out--done { fill: #1b1712; stroke: #f6d58e; stroke-width: 1.8; }
+.out--refused { fill: #1d1309; stroke: #ff9d3c; stroke-width: 1.8; }
+.out--unknown { fill: #141a26; stroke: #8fa3c7; stroke-width: 1.8; }
+.t { fill: #efe3c4; font: 500 16px -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+.t--title { fill: #f6d58e; font-size: 13px; font-weight: 600; letter-spacing: .22em; }
+.t--big { fill: #fff6e0; font-size: 18px; font-weight: 600; }
+.t--small { fill: #8f8268; font-size: 12px; letter-spacing: .06em; }
+.t--steel { fill: #8fa3c7; }
+.t--mono { fill: #aebbd6; font: 500 12px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+.wire { fill: none; stroke: rgba(242, 196, 107, .45); stroke-width: 1.6; }
+.flow { fill: none; stroke: #fff6e0; stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 6 84; animation: flow 1.36s linear infinite; filter: url(#spark); }
+.flow--steel { stroke: #cfe0ff; }
+.f2 { animation-delay: -.45s; } .f3 { animation-delay: -.9s; }
+.pulse { fill: #f6d58e; animation: pulse 2.6s ease-in-out infinite; }
+@keyframes flow { to { stroke-dashoffset: -90; } }
+@keyframes pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .flow { animation: none; opacity: 0; } .pulse { animation: none; opacity: .8; } }
+</style>
+
+<rect class="bg" x="1" y="1" width="1198" height="418" rx="14"/>
+<rect x="1" y="1" width="1198" height="418" rx="14" fill="url(#glow)"/>
+
+<text class="t t--title" x="110" y="58" text-anchor="middle">PARTICIPANTS</text>
+<rect class="node" x="30" y="90" width="160" height="78" rx="10"/>
+<text class="t t--big" x="110" y="124" text-anchor="middle">A person</text>
+<text class="t t--small" x="110" y="148" text-anchor="middle">intent #n</text>
+<rect class="node--agent" x="30" y="232" width="160" height="78" rx="10"/>
+<text class="t t--big" x="110" y="266" text-anchor="middle">An agent</text>
+<text class="t t--small t--steel" x="110" y="290" text-anchor="middle">intent #n</text>
+
+<text class="t t--mono" x="252" y="236" text-anchor="middle">alatyr/1</text>
+<path class="wire" d="M190 129 C240 129 250 205 300 205"/>
+<path class="wire" d="M190 271 C240 271 250 205 300 205"/>
+<path class="flow" d="M190 129 C240 129 250 205 300 205"/>
+<path class="flow flow--steel f2" d="M190 271 C240 271 250 205 300 205"/>
+
+<text class="t t--title" x="465" y="58" text-anchor="middle">THE WORLD</text>
+<rect class="node--world" x="300" y="90" width="330" height="230" rx="12"/>
+<circle class="pulse" cx="330" cy="120" r="5"/>
+<text class="t t--big" x="465" y="138" text-anchor="middle">One authority decides</text>
+<text class="t" x="465" y="182" text-anchor="middle">every change is recorded</text>
+<text class="t" x="465" y="204" text-anchor="middle">with its cause</text>
+<text class="t" x="465" y="248" text-anchor="middle">each participant sees a bounded view,</text>
+<text class="t" x="465" y="270" text-anchor="middle">what matters to it first</text>
+
+<path class="wire" d="M630 205 H720"/>
+<path class="flow f3" d="M630 205 H720"/>
+<text class="t t--title" x="805" y="58" text-anchor="middle">FACTS</text>
+<rect class="node" x="720" y="160" width="170" height="90" rx="10"/>
+<text class="t t--big" x="805" y="196" text-anchor="middle">Facts</text>
+<text class="t t--small" x="805" y="222" text-anchor="middle">those that prove it</text>
+<text class="t t--small" x="805" y="238" text-anchor="middle">name the attempt</text>
+
+<text class="t t--title" x="1065" y="58" text-anchor="middle">OUTCOME</text>
+<path class="wire" d="M890 205 C930 205 930 104 960 104"/>
+<path class="wire" d="M890 205 C930 205 930 172 960 172"/>
+<path class="wire" d="M890 205 C930 205 930 240 960 240"/>
+<path class="wire" d="M890 205 C930 205 930 308 960 308"/>
+<path class="flow" d="M890 205 C930 205 930 104 960 104"/>
+<path class="flow f2" d="M890 205 C930 205 930 172 960 172"/>
+<path class="flow f3" d="M890 205 C930 205 930 240 960 240"/>
+<path class="flow flow--steel" d="M890 205 C930 205 930 308 960 308"/>
+<rect class="node" x="960" y="80" width="210" height="48" rx="10"/>
+<text class="t t--big" x="1065" y="102" text-anchor="middle">Sent</text>
+<text class="t t--small" x="1065" y="120" text-anchor="middle">handed over</text>
+<rect class="out--done" x="960" y="148" width="210" height="48" rx="10"/>
+<text class="t t--big" x="1065" y="170" text-anchor="middle">Done</text>
+<text class="t t--small" x="1065" y="188" text-anchor="middle">the world proved it</text>
+<rect class="out--refused" x="960" y="216" width="210" height="48" rx="10"/>
+<text class="t t--big" x="1065" y="238" text-anchor="middle">Refused</text>
+<text class="t t--small" x="1065" y="256" text-anchor="middle">nothing happened</text>
+<rect class="out--unknown" x="960" y="284" width="210" height="48" rx="10"/>
+<text class="t t--big" x="1065" y="306" text-anchor="middle">Unknown</text>
+<text class="t t--small t--steel" x="1065" y="324" text-anchor="middle">not proved in time</text>
+
+<text class="t t--small" x="600" y="378" text-anchor="middle">The same protocol, the same bounds, the same honest answers — for a person and for an agent.</text>
+</svg>

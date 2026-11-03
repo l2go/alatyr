@@ -6,7 +6,7 @@ server application with `GOWORK=off`.
 
 | Component | Status and responsibility | License |
 |---|---|---|
-| [server](../../engine/go/server/README.md) | Checkout-built participant application, pgx storage, goose migrations and bounded shutdown | [AGPL-3.0-or-later](../../engine/go/server/LICENSE) |
+| [server](../../engine/go/server/README.md) | Checkout-built participant application, pgx storage, goose migrations and bounded shutdown; the Go world composition it shares with the in-browser host, and the site generator | [AGPL-3.0-or-later](../../engine/go/server/LICENSE) |
 | [protocol](../../engine/go/protocol/README.md) | Active transport and session core; a client SDK is planned separately | [Apache-2.0](../../engine/go/protocol/LICENSE) |
 | [gateway](../../engine/go/gateway/README.md) | Bounded participant runtime, `alatyr/1` dictionary, raw-port adapter, and shared contract driver | [AGPL-3.0-or-later](../../engine/go/gateway/LICENSE) |
 | [bridge](../../engine/go/bridge/README.md) | Raw-port contract, bounded client, profile validation, recovery and raw receipts | [AGPL-3.0-or-later](../../engine/go/bridge/LICENSE) |

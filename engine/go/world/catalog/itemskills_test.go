@@ -36,7 +36,7 @@ func TestWorldIdentityAndClassKinds(t *testing.T) {
 				t.Fatal(err)
 			}
 			c := &Catalog{}
-			err := c.loadIdentity(root)
+			err := c.loadIdentity(os.DirFS(root))
 			if (err == nil) != tc.valid {
 				t.Fatalf("identity: %v", err)
 			}

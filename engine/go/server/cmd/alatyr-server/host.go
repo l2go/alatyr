@@ -21,6 +21,7 @@ import (
 	"github.com/l2go/alatyr/engine/go/gateway"
 	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
+	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
 	"github.com/l2go/alatyr/engine/go/worldbridge"
@@ -92,7 +93,7 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, l
 		log = slog.Default()
 	}
 	characters := &characterStore{store: store, catalog: cat, hidden: make(map[int32]hidden)}
-	mc := limits(len(admissions))
+	mc := goworld.Limits(len(admissions))
 	// The world shows each player at most the objects the gateway advertises
 	// it observes, less the participant itself.
 	options = append([]world.Option{world.WithLogger(log), world.WithReservedIDs(ids), world.WithIDRange(first, last), world.WithInterest(mc.Objects - 1)}, options...)
@@ -104,7 +105,7 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, l
 	r := &runtime{cfg: cfg, store: store, characters: characters, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), log: log}
 	r.openingCancel = make(map[string]context.CancelFunc)
 	origin := time.Now()
-	r.meaningConfig = hostBackendConfig(mc, origin)
+	r.meaningConfig = goworld.BackendConfig(mc, origin)
 	codec, err := meaning.NewCodec(mc)
 	if err != nil {
 		cancel()
@@ -115,7 +116,7 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, l
 	for id := range admissions {
 		identities[id] = gateway.Identity{Act: true}
 	}
-	policy := gatewayPolicy(mc)
+	policy := goworld.GatewayPolicy(mc)
 	policy.Codec, policy.Factory, policy.Origin, policy.Identities = codec, r.open, origin, identities
 	policy.World = cfg.WorldName
 	policy.Shutdown = time.Duration(cfg.ShutdownSeconds) * time.Second
@@ -289,29 +290,6 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, l
 	return finish(runErr, worldEnded)
 }
 
-// hostBackendConfig binds evidence authority to this host's Go world only.
-func hostBackendConfig(mc meaning.Config, origin time.Time) backend.Config {
-	return backend.Config{Meaning: mc, Origin: origin, Policy: meaning.Policy{Classify: classify}, Source: goWorldSource}
-}
-
-// goWorldSource audits the five exclusive evidence families. Each admitted
-// identity has one backend scope and one fenced worldbridge port. World.Run is
-// the sole writer of that incarnation; worldbridge translates its ordered events
-// without merging another producer. Dialogue comes only from that player's
-// accepted interaction; choice windows additionally bind their original intent
-// and captured NPC incarnation to the raw effect key; pickup from its atomic
-// owned transfer; learning from its
-// serialized, durably committed skill/SP transaction; return from its fenced
-// revival and relocation. Item use carries the exact world intent through a
-// bounded raw key binding; only its live slot/count change may witness completion.
-// Trades and delayed observations cannot acquire that binding. Retired ports
-// are joined before replacement admission.
-// Participants cannot inject these events or this policy. Additional event
-// producers or parallel mutation paths require a new exclusivity audit here.
-func goWorldSource(meaning.Event) meaning.Source {
-	return meaning.Source{Dialogue: true, Pickup: true, Learning: true, Return: true, ItemUse: true, Trade: true}
-}
-
 func (r *runtime) open(ctx context.Context, id string) (gateway.World, gateway.State, error) {
 	return r.openPort(ctx, id, nil)
 }
@@ -382,10 +360,10 @@ func (r *runtime) openPort(ctx context.Context, id string, decorate func(bridge.
 		return nil, nil, errors.New("host: active subclasses are unsupported")
 	}
 	identity := bridge.Identity{Account: c.Account, Character: c.Name}
-	p, snapshot, err := worldbridge.Open(ctx, worldbridge.Config{World: r.world, Catalog: r.cat, Load: func(context.Context, bridge.Identity) (world.Character, error) {
+	p, s, w, state, err := goworld.Open(ctx, r.world, r.cat, identity, func(context.Context, bridge.Identity) (world.Character, error) {
 		return r.characters.load(c), nil
-	}}, identity)
-	if err != nil {
+	}, r.meaningConfig, decorate)
+	if p == nil {
 		var opening *worldbridge.OpenError
 		if errors.As(err, &opening) {
 			r.mu.Lock()
@@ -394,11 +372,6 @@ func (r *runtime) openPort(ctx context.Context, id string, decorate func(bridge.
 		}
 		return nil, nil, err
 	}
-	var port bridge.Port = p
-	if decorate != nil {
-		port = decorate(p)
-	}
-	s, w, state, err := backend.New(port, snapshot, r.meaningConfig)
 	if err != nil {
 		closeErr := p.Close()
 		if closeErr != nil {
@@ -443,7 +416,7 @@ func (r *runtime) authenticate(token string) string {
 }
 
 func (r *runtime) accept(ctx context.Context, c net.Conn) error {
-	if err := c.SetReadDeadline(time.Now().Add(gatewayPolicy(r.meaningConfig.Meaning).Hello)); err != nil {
+	if err := c.SetReadDeadline(time.Now().Add(goworld.GatewayPolicy(r.meaningConfig.Meaning).Hello)); err != nil {
 		return err
 	}
 	var token [65]byte

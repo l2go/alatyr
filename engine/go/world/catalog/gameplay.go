@@ -6,15 +6,15 @@ package catalog
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"math"
-	"os"
-	"path/filepath"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
 )
 
-func (c *Catalog) loadGameplay(root string) error {
+func (c *Catalog) loadGameplay(fsys fs.FS) error {
 	var rows []dropRow
 	for _, entry := range []struct {
 		name string
@@ -54,7 +54,7 @@ func (c *Catalog) loadGameplay(root string) error {
 			return nil
 		}},
 	} {
-		if err := readCSV(filepath.Join(root, "catalog", entry.name), entry.read); err != nil {
+		if err := readCSV(fsys, path.Join("catalog", entry.name), entry.read); err != nil {
 			return fmt.Errorf("catalog: %s: %w", entry.name, err)
 		}
 	}
@@ -82,29 +82,29 @@ func (c *Catalog) loadGameplay(root string) error {
 			}
 		}
 	}
-	if err := c.loadZones(filepath.Join(root, "data", "zone")); err != nil {
+	if err := c.loadZones(fsys, "data/zone"); err != nil {
 		return err
 	}
-	if err := c.loadMapRegions(filepath.Join(root, "data", "mapregion")); err != nil {
+	if err := c.loadMapRegions(fsys, "data/mapregion"); err != nil {
 		return err
 	}
 	for _, dir := range []string{"trainer", "merchant"} {
-		path := filepath.Join(root, "data", "html", dir)
-		entries, err := os.ReadDir(path)
-		if errors.Is(err, os.ErrNotExist) {
+		dirPath := path.Join("data", "html", dir)
+		entries, err := fs.ReadDir(fsys, dirPath)
+		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
 		if err != nil {
 			return err
 		}
 		for _, e := range entries {
-			if e.Type()&os.ModeSymlink != 0 {
+			if e.Type()&fs.ModeSymlink != 0 {
 				return errors.New("symlink in HTML")
 			}
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".htm") && !strings.HasSuffix(e.Name(), ".html") {
 				continue
 			}
-			raw, err := os.ReadFile(filepath.Join(path, e.Name()))
+			raw, err := fs.ReadFile(fsys, path.Join(dirPath, e.Name()))
 			if err != nil {
 				return err
 			}

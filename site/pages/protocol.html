@@ -1,0 +1,80 @@
+{{define "title"}}alatyr/1 — the protocol of an honest world{{end}}
+{{define "description"}}How a participant speaks to Alatyr: one numbered intent per attempt, facts with their causes, a bounded view of the world, and an outcome that is proved, refused, or honestly unknown.{{end}}
+{{define "head"}}<script src="/alatyr/assets/js/live.js" defer></script>{{end}}
+{{define "main"}}
+<section class="page-head wrap">
+  <p class="kicker">Protocol</p>
+  <h1>alatyr/1</h1>
+  <p class="lede">A participant, person or agent, speaks to the world in numbered intents and listens to facts. Every attempt ends in an answer the world can stand behind.</p>
+</section>
+
+<section class="wrap" aria-labelledby="life-title">
+  <h2 id="life-title">The life of one attempt</h2>
+  <svg class="flow" viewBox="0 0 960 260" role="img" aria-labelledby="flow-title flow-desc">
+    <title id="flow-title">An intent becomes an outcome</title>
+    <desc id="flow-desc">A participant sends an intent. The world decides and records what it did with a cause. Facts that prove the attempt carry its number. The attempt ends Sent once handed over, or, for actions that wait for proof, Done, Refused or Unknown.</desc>
+    <g class="flow__node"><rect x="10" y="90" width="170" height="80" rx="10"/><text x="95" y="125">Intent #n</text><text class="flow__small" x="95" y="148">talk to the tutor</text></g>
+    <g class="flow__node flow__node--world"><rect x="250" y="70" width="200" height="120" rx="10"/><text x="350" y="118">The world decides</text><text class="flow__small" x="350" y="142">one authority,</text><text class="flow__small" x="350" y="160">every change has a cause</text></g>
+    <g class="flow__node"><rect x="520" y="90" width="180" height="80" rx="10"/><text x="610" y="125">Facts</text><text class="flow__small" x="610" y="148">the tutor speaks · proves #n</text></g>
+    <g class="flow__node"><rect x="770" y="6" width="180" height="48" rx="10"/><text x="860" y="36">Sent</text></g>
+    <g class="flow__node flow__node--done"><rect x="770" y="72" width="180" height="48" rx="10"/><text x="860" y="102">Done</text></g>
+    <g class="flow__node flow__node--refused"><rect x="770" y="138" width="180" height="48" rx="10"/><text x="860" y="168">Refused</text></g>
+    <g class="flow__node flow__node--unknown"><rect x="770" y="204" width="180" height="48" rx="10"/><text x="860" y="234">Unknown</text></g>
+    <path class="flow__wire" d="M180 130 H250"/><path class="flow__wire" d="M450 130 H520"/>
+    <path class="flow__wire" d="M700 130 C735 130 735 30 770 30"/><path class="flow__wire" d="M700 130 C735 130 735 96 770 96"/><path class="flow__wire" d="M700 130 C735 130 735 162 770 162"/><path class="flow__wire" d="M700 130 C735 130 735 228 770 228"/>
+  </svg>
+  <div class="outcomes">
+    <figure><img src="/alatyr/assets/img/go/done.webp" alt="An open wooden gate lets a traveler through." width="320" height="320" loading="lazy"><figcaption><strong>Done</strong> the world proved it</figcaption></figure>
+    <figure><img src="/alatyr/assets/img/go/refused.webp" alt="A gatekeeper points to a broken hinge on a closed village gate." width="320" height="320" loading="lazy"><figcaption><strong>Refused</strong> nothing happened</figcaption></figure>
+    <figure><img src="/alatyr/assets/img/go/unknown.webp" alt="A coastal path disappears into dense sea fog." width="320" height="320" loading="lazy"><figcaption><strong>Unknown</strong> not proved in time</figcaption></figure>
+  </div>
+  <div class="prose prose--wide">
+    <p>An attempt starts as an <strong>intent</strong> with the next number, and the gateway answers <strong>Sent</strong> once it has handed the intent over: to the world, or, for a local action such as aiming, to the gateway itself. Some actions end there: a walk or a strike is final once it is handed over. Others wait for proof.</p>
+    <p><strong>Done</strong> means the world produced a fact with this attempt as its cause, in time: the page a tutor speaks, the item that moved into the pack. A receipt, a snapshot or a late fact cannot claim it.</p>
+    <p><strong>Refused</strong> means nothing happened. The gateway may decline an attempt before handing it over, for a stale target, too fast a pace or lost control; the world may decline it by its own rules. Either way the attempt had no effect, and the participant can rely on that.</p>
+    <p><strong>Unknown</strong> means the truth was not proved in time. It is the honest answer when a walk to the target takes longer than the evidence window, or the world closes mid-attempt. It is never turned into a guess.</p>
+  </div>
+</section>
+
+<section id="live" class="live-section" aria-labelledby="live-title">
+<div class="wrap">
+  <h2 id="live-title">Watch it happen</h2>
+  <p class="intro">The same world as on the home page, running here. Every attempt you make appears below as an intent, then the facts that prove it carry its number, then its outcome.</p>
+  {{template "live-panel" .}}
+</div>
+</section>
+
+<section class="wrap" aria-labelledby="view-title">
+  <h2 id="view-title">A bounded view</h2>
+  <div class="prose prose--wide">
+    <p>The world, not the gateway, decides what each participant sees. It keeps a bounded set per participant, ordered by importance: the participant's target and the objects of its actions, its dialogue partner, its party, and anyone targeting, attacking or hunting it come first; then the nearest. A participant never receives a fact about an object outside its set, except the target a visible actor holds, which it learns as an object it does not see.</p>
+    <p>References carry a generation: when an object leaves the view and returns, it is a new observation, and an old reference cannot reach it.</p>
+  </div>
+</section>
+
+<section class="wrap" aria-labelledby="ref-title">
+  <h2 id="ref-title">Reference</h2>
+  <p class="intro">Generated from the participant dictionary when this site is built.</p>
+  <h3>Verbs a participant can ask for</h3>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Code</th><th>Verb</th><th>Evidence class</th><th>Waits for proof</th></tr></thead>
+      <tbody>
+      {{range .Verbs}}<tr><td>{{.Code}}</td><td><code>{{.Name}}</code></td><td>{{if .Class}}{{.Class}}{{else}}—{{end}}</td><td>{{if .Waiting}}yes{{else}}no{{end}}</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  <h3>Facts the world reports</h3>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Code</th><th>Fact</th><th>Domain</th><th>Family</th></tr></thead>
+      <tbody>
+      {{range .Kinds}}<tr><td>{{.Code}}</td><td><code>{{.Name}}</code></td><td>{{.Domain}}</td><td>{{.Family}}</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  <p>The wire format and the session core live in the Apache-2.0 module <a href="https://github.com/l2go/alatyr/tree/main/engine/go/protocol"><code>engine/go/protocol</code></a>; the dictionary in <a href="https://github.com/l2go/alatyr/tree/main/engine/go/gateway/meaning"><code>gateway/meaning</code></a>.</p>
+</section>
+{{end}}

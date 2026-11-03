@@ -6,8 +6,8 @@ package catalog
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io/fs"
+	"path"
 	"slices"
 	"strconv"
 )
@@ -51,7 +51,7 @@ func optionalSellable(r *row) bool {
 	return r.bool("is_sellable")
 }
 
-func (c *Catalog) loadShops(root string) error {
+func (c *Catalog) loadShops(fsys fs.FS) error {
 	c.shops = make(map[int32]Shop)
 	for _, item := range c.items {
 		if item.ConsumeType == "asset" {
@@ -112,9 +112,8 @@ func (c *Catalog) loadShops(root string) error {
 			return nil
 		}},
 	} {
-		path := filepath.Join(root, "catalog", table.name)
-		if err := readCSV(path, table.read); err != nil {
-			if errors.Is(err, os.ErrNotExist) && len(c.shops) == 0 {
+		if err := readCSV(fsys, path.Join("catalog", table.name), table.read); err != nil {
+			if errors.Is(err, fs.ErrNotExist) && len(c.shops) == 0 {
 				continue
 			}
 			return fmt.Errorf("catalog: %s: %w", table.name, err)
