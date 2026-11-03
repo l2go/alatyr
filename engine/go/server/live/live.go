@@ -40,6 +40,9 @@ type World struct {
 
 	mu    sync.Mutex
 	ports map[string]opened
+
+	closeOnce sync.Once
+	closeErr  error
 }
 
 type opened struct {
@@ -116,8 +119,9 @@ func (h *World) open(ctx context.Context, id string) (gateway.World, gateway.Sta
 }
 
 // Join connects a participant to its identity over an in-memory stream.
-// watch receives every update; it runs on the session's reader and must not
-// block. The caller must Close the Session.
+// watch receives every update, one at a time and in order, from the
+// session's reader or from a Do; it must not block and must not call the
+// Session. The caller must Close the Session.
 func (h *World) Join(ctx context.Context, identity string, watch func(Update)) (*Session, error) {
 	stream, err := h.gateway.Pipe(ctx, identity)
 	if err != nil {
@@ -131,16 +135,20 @@ func (h *World) Join(ctx context.Context, identity string, watch func(Update)) (
 }
 
 // Close stops the gateway, departs the participants and stops the world.
+// Every call returns the result of the first.
 func (h *World) Close() error {
-	err := h.gateway.Close()
-	h.mu.Lock()
-	ports := h.ports
-	h.ports = map[string]opened{}
-	h.mu.Unlock()
-	for _, o := range ports {
-		err = errors.Join(err, o.session.Close())
-	}
-	return errors.Join(err, h.stopWorld())
+	h.closeOnce.Do(func() {
+		err := h.gateway.Close()
+		h.mu.Lock()
+		ports := h.ports
+		h.ports = map[string]opened{}
+		h.mu.Unlock()
+		for _, o := range ports {
+			err = errors.Join(err, o.session.Close())
+		}
+		h.closeErr = errors.Join(err, h.stopWorld())
+	})
+	return h.closeErr
 }
 
 func (h *World) stopWorld() error {

@@ -4,6 +4,7 @@
 package live
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -25,10 +26,12 @@ const (
 // ErrNotReady means the session has no control yet or the target is not seen.
 var ErrNotReady = errors.New("live: not ready")
 
-// Update is what a session reports: its current view or one log entry.
+// Update is what a session reports: its current view, one log entry, or,
+// last, that the session ended and why.
 type Update struct {
-	View *View  `json:"view,omitempty"`
-	Log  *Entry `json:"log,omitempty"`
+	View  *View  `json:"view,omitempty"`
+	Log   *Entry `json:"log,omitempty"`
+	Ended string `json:"ended,omitempty"`
 }
 
 // View is the participant's current picture of the world.
@@ -39,7 +42,8 @@ type View struct {
 	Dialog  *Dialog  `json:"dialog,omitempty"`
 }
 
-// Object is one seen object. ToX and ToY are its destination while it moves.
+// Object is one seen object. ToX and ToY are its destination while it moves
+// at Speed; Pace is the speed its description gives.
 type Object struct {
 	ID    int32  `json:"id"`
 	Role  string `json:"role"`
@@ -49,6 +53,7 @@ type Object struct {
 	ToX   int32  `json:"toX"`
 	ToY   int32  `json:"toY"`
 	Speed int32  `json:"speed"`
+	Pace  int32  `json:"-"`
 	Dead  bool   `json:"dead,omitempty"`
 	HP    int64  `json:"hp"`
 	MaxHP int64  `json:"maxHp"`
@@ -92,18 +97,24 @@ type tracked struct {
 	Object
 }
 
-// Session is one alatyr/1 participant over an in-memory stream.
+// Session is one alatyr/1 participant over a stream.
 type Session struct {
 	codec  *meaning.Codec
 	stream *gateway.Stream
 	watch  func(Update)
 	done   chan struct{}
 
-	writeMu sync.Mutex
+	// sendMu orders every frame the session writes: an intent's number is
+	// taken, logged and written as one step, so numbers leave in order.
+	sendMu sync.Mutex
+	// watchMu delivers one update at a time, from any goroutine.
+	watchMu sync.Mutex
 
-	mu      sync.Mutex
-	err     error
-	ready   bool
+	mu    sync.Mutex
+	err   error
+	ready bool
+	// epoch is the projection being shown; a checkpoint starts a new one.
+	epoch   uint64
 	control uint64
 	seq     uint64
 	self    Object
@@ -123,12 +134,17 @@ func newSession(codec *meaning.Codec, stream *gateway.Stream, kind wire.Particip
 }
 
 func (s *Session) write(r wire.Record) error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	return s.send(r)
+}
+
+// send writes one frame; the caller holds sendMu.
+func (s *Session) send(r wire.Record) error {
 	buf, err := s.codec.Encode([]wire.Record{r})
 	if err != nil {
 		return err
 	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
 	return s.stream.Write(buf, time.Now().Add(5*time.Second))
 }
 
@@ -144,8 +160,9 @@ func (s *Session) read() {
 		}
 		if err != nil {
 			s.mu.Lock()
-			s.err = err
+			s.err, s.ready, s.control = err, false, 0
 			s.mu.Unlock()
+			s.emit(Update{Ended: err.Error()})
 			return
 		}
 	}
@@ -169,9 +186,12 @@ func (s *Session) Close() error {
 }
 
 func (s *Session) emit(u Update) {
-	if s.watch != nil {
-		s.watch(u)
+	if s.watch == nil {
+		return
 	}
+	s.watchMu.Lock()
+	defer s.watchMu.Unlock()
+	s.watch(u)
 }
 
 func (s *Session) consume(rs []wire.Record) error {
@@ -185,22 +205,35 @@ func (s *Session) consume(rs []wire.Record) error {
 			s.mu.Unlock()
 			return fmt.Errorf("live: bye %d", fieldU(r, 1))
 		case wire.Checkpoint:
-			if fieldU(r, 1) == uint64(wire.CheckpointEnd) && fieldU(r, 3) == 1 {
-				s.ready, changed = true, true
+			// A checkpoint replaces the picture: nothing of the old one
+			// survives Begin, and the new one is ready only at its End.
+			switch epoch := fieldU(r, 2); wire.CheckpointPhase(fieldU(r, 1)) {
+			case wire.CheckpointBegin:
+				s.epoch, s.ready = epoch, false
+				s.self, s.objects, s.dialog = Object{}, map[int32]*tracked{}, meaning.DecodedEvent{}
+				changed = true
+			case wire.CheckpointEnd:
+				s.ready, changed = epoch == s.epoch && fieldU(r, 3) == 1, true
 			}
 		case wire.Ping:
 			needPong, pong = true, fieldU(r, 1)
 		case wire.Control:
-			if fieldU(r, 1) == uint64(wire.ControlGranted) {
-				s.control = fieldU(r, 2)
+			// A grant names the next attempt number; a reconnected session
+			// continues the participant's numbering from there.
+			switch wire.ControlOp(fieldU(r, 1)) {
+			case wire.ControlGranted:
+				s.control, s.seq = fieldU(r, 2), max(fieldU(r, 3), 1)-1
+			case wire.ControlLost:
+				s.control = 0
 			}
+			changed = true
 		case wire.Result:
 			if e, ok := s.result(r); ok {
 				logs = append(logs, e)
 			}
 		case wire.Fact:
 			ev, err := meaning.EventValue(r)
-			if err != nil {
+			if err != nil || ev.Context.Epoch != s.epoch {
 				continue
 			}
 			if e, ok := s.absorb(ev); ok {
@@ -258,7 +291,10 @@ func (s *Session) absorb(ev meaning.DecodedEvent) (Entry, bool) {
 		// are news.
 		logged := s.ready || e.Mine
 		if o != nil {
-			o.Role, o.X, o.Y, o.ToX, o.ToY = e.Role, e.X, e.Y, e.X, e.Y
+			o.Role, o.X, o.Y, o.ToX, o.ToY, o.Speed = e.Role, e.X, e.Y, e.X, e.Y, 0
+			if e.Speed != 0 {
+				o.Pace = e.Speed
+			}
 			if e.Name != "" {
 				o.Name = e.Name
 			}
@@ -276,8 +312,9 @@ func (s *Session) absorb(ev meaning.DecodedEvent) (Entry, bool) {
 	case meaning.Took:
 		delete(s.objects, e.Target)
 	case meaning.Moved:
+		// A move carries no speed of its own; the description gave it.
 		if o != nil {
-			o.X, o.Y, o.ToX, o.ToY, o.Speed = e.X, e.Y, e.ToX, e.ToY, e.Speed
+			o.X, o.Y, o.ToX, o.ToY, o.Speed = e.X, e.Y, e.ToX, e.ToY, cmp.Or(e.Speed, o.Pace)
 		}
 		return Entry{}, false
 	case meaning.Stopped, meaning.Corrected:
@@ -381,12 +418,45 @@ func (s *Session) View() View {
 	return *s.view()
 }
 
-// Do sends one action as the next numbered intent and logs it.
+// Do sends one action as the next numbered intent and logs it. Calls may
+// come from several goroutines; each takes its number, logs its intent and
+// writes it as one step, so intents leave in number order. It returns
+// ErrNotReady while the participant has no control or no ready picture, or
+// when the target is not seen. watch must not call Do.
 func (s *Session) Do(a Action) error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
 	s.mu.Lock()
-	if !s.ready || s.control == 0 {
+	rec, text, n, err := s.intent(a)
+	if err == nil {
+		// The number advances only with a frame sent: the gateway closes a
+		// session that skips one.
+		s.seq = n
+		s.pending[n] = a.Verb
+	}
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	// The intent is logged before it is written, so its result cannot be
+	// reported first.
+	s.emit(Update{Log: &Entry{Kind: "intent", N: n, Text: fmt.Sprintf("#%d %s", n, text)}})
+	if err := s.send(rec); err != nil {
+		// A stream that cannot take a frame is lost: the participant stops
+		// acting, and closing the stream ends the reader, which reports it.
+		s.mu.Lock()
+		s.ready, s.control = false, 0
+		delete(s.pending, n)
 		s.mu.Unlock()
-		return ErrNotReady
+		return errors.Join(err, s.stream.Close())
+	}
+	return nil
+}
+
+// intent builds the record for a; the caller holds mu.
+func (s *Session) intent(a Action) (wire.Record, string, uint64, error) {
+	if !s.ready || s.control == 0 {
+		return wire.Record{}, "", 0, ErrNotReady
 	}
 	cmd := meaning.Command{Kind: a.Verb}
 	ctx := meaning.CommandContext{Control: s.control, N: s.seq + 1}
@@ -398,8 +468,7 @@ func (s *Session) Do(a Action) error {
 	case meaning.Aim, meaning.Talk, meaning.Strike, meaning.Engage, meaning.Focus, meaning.Cast, meaning.Take:
 		t, ok := s.objects[a.Target]
 		if !ok {
-			s.mu.Unlock()
-			return ErrNotReady
+			return wire.Record{}, "", 0, ErrNotReady
 		}
 		cmd.Target = t.ref.ID
 		if a.Verb == meaning.Take {
@@ -413,8 +482,7 @@ func (s *Session) Do(a Action) error {
 		text = a.Verb + " " + t.Name
 	case meaning.Say:
 		if s.dialog.Context.Dialog == 0 {
-			s.mu.Unlock()
-			return ErrNotReady
+			return wire.Record{}, "", 0, ErrNotReady
 		}
 		ctx.Dialog, ctx.Option = s.dialog.Context.Dialog, a.Option
 		for _, o := range s.dialog.Context.Options {
@@ -424,19 +492,7 @@ func (s *Session) Do(a Action) error {
 		}
 	}
 	rec, err := meaning.CommandRecord(cmd, ctx)
-	if err != nil {
-		s.mu.Unlock()
-		return err
-	}
-	// The number advances only with a sent frame: the gateway closes a
-	// session that skips one.
-	s.seq = ctx.N
-	s.pending[ctx.N] = a.Verb
-	s.mu.Unlock()
-	// The intent is logged before it is written, so its result cannot be
-	// reported first.
-	s.emit(Update{Log: &Entry{Kind: "intent", N: ctx.N, Text: fmt.Sprintf("#%d %s", ctx.N, text)}})
-	return s.write(rec)
+	return rec, text, ctx.N, err
 }
 
 func fieldU(r wire.Record, n uint32) uint64 {
