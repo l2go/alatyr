@@ -22,7 +22,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Changed
 
-- `alatyr/1` clients can receive Refused after Sent when live, exclusive world evidence proves that the entire attempt had no effects, including a refused target selection that was the attempt's only write. The action class remains usable. A genuine Unknown still taints it for unbound evidence, while evidence keyed to a later attempt completes that attempt.
+- `alatyr/1` clients can receive Refused after Sent when live, exclusive world evidence proves that the entire attempt had no effects. The action class remains usable. A genuine Unknown still taints it for unbound evidence, while evidence keyed to a later attempt completes that attempt.
 
 ### Fixed
 

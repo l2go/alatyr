@@ -4,10 +4,8 @@
 package worldtest
 
 import (
-	"context"
 	"reflect"
 	"slices"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,9 +13,7 @@ import (
 	"github.com/l2go/alatyr/engine/go/bridge"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
-	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
-	"github.com/l2go/alatyr/engine/go/worldbridge"
 )
 
 func TestG11WorldItemRefusalPreservesTradeClass(t *testing.T) {
@@ -118,47 +114,6 @@ func TestUnknownAfterContactDoesNotBlockBoundEvidence(t *testing.T) {
 		r.expect(2, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 		if len(r.port.commands()) != 2 {
 			t.Fatal("second action did not test live world evidence")
-		}
-	})
-}
-
-// harmOnSelect runs harm once just before the first selection reaches the world.
-type harmOnSelect struct {
-	*worldbridge.Client
-	once sync.Once
-	harm func()
-}
-
-func (h *harmOnSelect) Write(ctx context.Context, c bridge.Command) (uint64, error) {
-	if c.Verb == verbAim {
-		h.once.Do(h.harm)
-	}
-	return h.Client.Write(ctx, c)
-}
-
-// TestRefusedSelectionHelperIsRefused reproduces the soak race: the participant
-// dies after the gateway checked the attempt and before the world selects the
-// target. The world refuses the selection, nothing else was written, so the
-// participant sees the world's refusal instead of an unconfirmed target.
-func TestRefusedSelectionHelperIsRefused(t *testing.T) {
-	runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
-		var w *world.World
-		decorate := func(p bridge.Port) bridge.Port {
-			c := p.(*worldbridge.Client)
-			return &harmOnSelect{Client: c, harm: func() {
-				if err := w.Harm(context.Background(), world.Ref{}, c.Owner(), 1e6); err != nil {
-					t.Error(err)
-				}
-			}}
-		}
-		r := newRigWithPort(t, cat, readyCharacter(), allSources(), nil, rigPolicy(), decorate)
-		w = r.w
-		target := r.actor(30001)
-		r.p.Send(r.intent(1, verbEngage, r.ref(target.ID, 10)))
-		r.sync()
-		r.expect(1, wire.StageRefused, wire.ReasonWorld, wire.DeliveryNone, 0)
-		if cmds := r.port.commands(); len(cmds) != 1 || cmds[0].Verb != verbAim {
-			t.Fatalf("writes after the refused selection: %+v", cmds)
 		}
 	})
 }

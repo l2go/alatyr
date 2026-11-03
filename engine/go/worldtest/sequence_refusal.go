@@ -18,7 +18,7 @@ import (
 func checkRefusalEvidence(result wire.Record, handoffs []backend.Handoff, trace []bridge.Update, writes []sequenceWrite, evidenceMS int64) error {
 	n := gatewaytest.U(result, 1)
 	fail := func() error { return fmt.Errorf("refused attempt %d has no exclusive live proof of no effects", n) }
-	if len(handoffs) != 1 || handoffs[0].Role != gateway.StepEffect && handoffs[0].Role != gateway.StepHelper || handoffs[0].RawN == 0 || gatewaytest.U(result, 7) != uint64(wire.DeliveryNone) {
+	if len(handoffs) != 1 || handoffs[0].Role != gateway.StepEffect || handoffs[0].RawN == 0 || gatewaytest.U(result, 7) != uint64(wire.DeliveryNone) {
 		return fail()
 	}
 	h := handoffs[0]
@@ -32,10 +32,6 @@ func checkRefusalEvidence(result wire.Record, handoffs []backend.Handoff, trace 
 		}
 	}
 	if w == nil || w.epoch == 0 || w.owner == (world.Ref{}) || !w.audited || w.failed {
-		return fail()
-	}
-	// Only a selection helper may be the single refused write.
-	if h.Role == gateway.StepHelper && committedVerb(w.command.Verb) != world.VerbSelect {
 		return fail()
 	}
 	// Correlate the actual commands committed during this port write. Rule

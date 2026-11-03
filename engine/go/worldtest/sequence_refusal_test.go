@@ -15,7 +15,7 @@ import (
 )
 
 func TestSequenceRefusalOracleRejectsMutations(t *testing.T) {
-	for _, name := range []string{"valid", "helper-selection", "preflight", "missing", "key", "raw-number", "epoch", "replay", "snapshot", "deadline", "before-contact", "partial", "effects", "reason", "busy", "timeout", "interrupted", "stale-control", "backend-error", "requested", "effective", "helper", "other-step", "repeated-write", "world-effects", "world-done", "world-owner", "world-intent", "write-error", "unaudited"} {
+	for _, name := range []string{"valid", "preflight", "missing", "key", "raw-number", "epoch", "replay", "snapshot", "deadline", "before-contact", "partial", "effects", "reason", "busy", "timeout", "interrupted", "stale-control", "backend-error", "requested", "effective", "helper", "other-step", "repeated-write", "world-effects", "world-done", "world-owner", "world-intent", "write-error", "unaudited"} {
 		t.Run(name, func(t *testing.T) {
 			at := time.Unix(1, 0)
 			r := oracleResult(wire.StageRefused)
@@ -32,17 +32,6 @@ func TestSequenceRefusalOracleRejectsMutations(t *testing.T) {
 			}
 			switch name {
 			case "valid":
-				return
-			case "helper-selection":
-				// A refused selection helper that was the only write proves no effect.
-				h[0].Role = gateway.StepHelper
-				receipt.Requested, receipt.Effective = verbAim, verbAim
-				trace[0].Batch.Receipts = []bridge.Receipt{receipt}
-				writes[0].command.Verb = verbAim
-				writes[0].commits[0].Intent.Verb = world.VerbSelect
-				if err := checkRawEvidence([]wire.Record{r}, oracleAttempts(), h, trace, writes, 5000); err != nil {
-					t.Fatal(err)
-				}
 				return
 			case "preflight":
 				writes[0].commits = nil

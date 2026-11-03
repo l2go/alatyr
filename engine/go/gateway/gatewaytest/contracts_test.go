@@ -304,12 +304,10 @@ func TestG02HelperFailures(t *testing.T) {
 				if len(log) != 1 || log[0].Command.Verb != 2 {
 					r.t.Fatal(log)
 				}
-				stage, reason, delivery := wire.StageUnknown, wire.ReasonTargetUnconfirmed, wire.DeliveryPartial
+				reason := wire.ReasonTargetUnconfirmed
 				switch kind {
 				case "refused":
-					// The helper was the only write and changed nothing.
 					r.reply(log[0], wire.StageRefused, wire.ReasonWorld, meaning.Event{})
-					stage, reason, delivery = wire.StageRefused, wire.ReasonWorld, wire.DeliveryNone
 				case "quiet":
 					r.reply(log[0], wire.StageUnknown, wire.ReasonTimeout, meaning.Event{})
 					r.advance(1500 * time.Millisecond)
@@ -322,7 +320,7 @@ func TestG02HelperFailures(t *testing.T) {
 					r.reply(log[0], wire.StageDone, wire.ReasonNone, meaning.Event{}, targetEffect(2))
 					r.advance(1500 * time.Millisecond)
 				}
-				r.expect(1, 11, 5, stage, reason, delivery, 0)
+				r.expect(1, 11, 5, wire.StageUnknown, reason, wire.DeliveryPartial, 0)
 				if len(r.log()) != 1 {
 					r.t.Fatal("effect escaped helper")
 				}

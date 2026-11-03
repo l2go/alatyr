@@ -14,7 +14,7 @@ import (
 )
 
 func TestRefusalNeedsExclusiveLiveNoEffectReceipt(t *testing.T) {
-	for _, name := range []string{"valid", "helper-sent", "multiple-writes", "write-error", "partial", "effects", "replay", "snapshot", "early", "deadline", "helper-role", "helper-then-write", "system-role"} {
+	for _, name := range []string{"valid", "helper-sent", "multiple-writes", "write-error", "partial", "effects", "replay", "snapshot", "early", "deadline", "helper-role", "system-role"} {
 		t.Run(name, func(t *testing.T) {
 			s, w, st, _ := setup(t)
 			step := capturedWalk(t, st)
@@ -44,13 +44,7 @@ func TestRefusalNeedsExclusiveLiveNoEffectReceipt(t *testing.T) {
 			case "deadline":
 				r.ObservedAt = s.cfg.Origin.Add(5 * time.Second)
 			case "helper-role":
-				// A refused selection helper that was the only write proves no effect.
 				binding.role = gateway.StepHelper
-				binding.plan.helperSent = true
-			case "helper-then-write":
-				binding.role = gateway.StepHelper
-				binding.plan.helperSent = true
-				binding.plan.writes++
 			case "system-role":
 				binding.role = gateway.StepSystem
 			}
@@ -60,7 +54,7 @@ func TestRefusalNeedsExclusiveLiveNoEffectReceipt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if name == "valid" || name == "helper-role" {
+			if name == "valid" {
 				if len(obs.Refusals) != 1 || len(obs.Failures) != 0 || obs.Refusals[0].N != 42 || obs.Refusals[0].Evidence.Reason != wire.ReasonWorld || len(w.pending) != 0 {
 					t.Fatalf("proof lost or binding retained: observation=%+v pending=%d", obs, len(w.pending))
 				}
