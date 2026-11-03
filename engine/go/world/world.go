@@ -143,6 +143,7 @@ type World struct {
 	idFirst, idLast int32
 	final           []Checkpoint
 	pace            func(time.Duration, int)
+	interest        int
 }
 type state struct {
 	players                                                         map[int32]*player
@@ -188,6 +189,7 @@ func New(cat *catalog.Catalog, store Store, options ...Option) *World {
 	w.items = itemlog.Discard
 	w.logger = slog.Default()
 	w.ground = NoGround{}
+	w.interest = defaultInterest
 	var seed [32]byte
 	// crypto/rand.Read fills the slice or terminates the process in modern Go.
 	_, _ = crand.Read(seed[:])

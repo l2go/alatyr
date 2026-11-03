@@ -29,7 +29,7 @@ func (w *World) playerOnAction(s *state, p, q *player) {
 		w.setTarget(s, p, q.id)
 		return
 	}
-	p.send(PositionObserved{ObjectID: q.id, Pos: q.pos, Heading: q.heading})
+	w.deliver(p, PositionObserved{ObjectID: q.id, Pos: q.pos, Heading: q.heading})
 	p.send(ActionIgnored{})
 }
 

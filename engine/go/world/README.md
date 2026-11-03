@@ -21,6 +21,9 @@ The loop owns characters, NPCs, items on the ground, intentions and timers.
 Gameplay includes player and NPC visibility, movement, follow, melee attacks,
 PDAM casts, skill reuse, posture, regeneration, death, corpse decay and NPC
 respawn. Commands during a swing or cast keep one next intention.
+`WithInterest` bounds how many objects one player is shown at once. The world
+chooses them by importance, then by distance, and an event about objects
+reaches a player only when the player sees every object it acts on.
 `Action` selects or acts on an object; `AttackRequest` attacks a known
 monster. Player-versus-player attacks are not supported. Player defense with
 missing fighter/mage metadata remains partial; `Self.PDefKnown` reports it,

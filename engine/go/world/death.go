@@ -186,10 +186,8 @@ func (w *World) respawn(s *state, sp catalog.Spawn, t catalog.NPCTemplate) {
 		if !near {
 			continue
 		}
-		if !p.known[n.id] {
-			p.known[n.id] = true
-			s.change(p.ref(), PropertyKnownObject, RefValue(Ref{}), RefValue(n.ref()))
-			p.send(NPCSeen{NPC: n.view(now)})
+		if !p.known[n.id] && w.admit(s, p, n.id, n.pos) {
+			w.deliver(p, NPCSeen{NPC: n.view(now)})
 		}
 		w.learnPlayer(s, n, p)
 	}

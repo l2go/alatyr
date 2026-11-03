@@ -92,7 +92,10 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, l
 		log = slog.Default()
 	}
 	characters := &characterStore{store: store, catalog: cat, hidden: make(map[int32]hidden)}
-	options = append([]world.Option{world.WithLogger(log), world.WithReservedIDs(ids), world.WithIDRange(first, last)}, options...)
+	mc := limits(len(admissions))
+	// The world shows each player at most the objects the gateway advertises
+	// it observes, less the participant itself.
+	options = append([]world.Option{world.WithLogger(log), world.WithReservedIDs(ids), world.WithIDRange(first, last), world.WithInterest(mc.Objects - 1)}, options...)
 	w := world.New(cat, characters, options...)
 	life, cancel := context.WithCancel(context.Background())
 	worldDone := make(chan error, 1)
@@ -101,7 +104,6 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, l
 	r := &runtime{cfg: cfg, store: store, characters: characters, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), log: log}
 	r.openingCancel = make(map[string]context.CancelFunc)
 	origin := time.Now()
-	mc := limits(len(admissions))
 	r.meaningConfig = hostBackendConfig(mc, origin)
 	codec, err := meaning.NewCodec(mc)
 	if err != nil {
