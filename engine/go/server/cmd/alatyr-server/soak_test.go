@@ -230,6 +230,25 @@ func TestSoak(t *testing.T) {
 	}
 	cohort := startSoakBots(t, cfg, tokens, seed, note, false)
 	samples := soakObserve(t, duration, cohort, note, &paceTick, &paceQueued, &paceSeen)
+	unexpected := func() int {
+		n := 0
+		for _, b := range cohort.bots {
+			n += int(b.unknown.Load())
+		}
+		return n
+	}
+	written := false
+	// A fatal step after observation, such as a restart that never becomes
+	// ready, must still leave the evidence of the run behind.
+	defer func() {
+		if !written {
+			failMu.Lock()
+			failCopy := append([]string(nil), failures...)
+			failMu.Unlock()
+			writeSoakArtifacts(t, dir, samples, failCopy, unexpected(), cohort.classText())
+			writeGoroutineProfile(dir)
+		}
+	}()
 	cohort.stop()
 	if err := cohort.classesHeld(duration >= 10*time.Minute); err != nil {
 		note("%v", err)
@@ -304,10 +323,7 @@ func TestSoak(t *testing.T) {
 	if err, ok := economyErr.Load().(string); ok && err != "" {
 		note("economy: %s", err)
 	}
-	unknown := 0
-	for _, b := range cohort.bots {
-		unknown += int(b.unknown.Load())
-	}
+	unknown := unexpected()
 	if unknown != 0 {
 		note("unexpected outcomes: %d", unknown)
 	}
@@ -315,6 +331,7 @@ func TestSoak(t *testing.T) {
 	failCopy := append([]string(nil), failures...)
 	failMu.Unlock()
 	writeSoakArtifacts(t, dir, samples, failCopy, unknown, cohort.classText())
+	written = true
 	t.Log("\n" + cohort.classText())
 	if len(failCopy) > 0 {
 		writeGoroutineProfile(dir)
