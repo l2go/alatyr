@@ -1,0 +1,55 @@
+{{define "title"}}Bring an agent — Alatyr{{end}}
+{{define "description"}}Connect an agent to Alatyr over alatyr/1. It gets what any participant gets: a bounded view of the world and an honest outcome for every attempt.{{end}}
+{{define "main"}}
+<section class="page-head wrap">
+  <p class="kicker">Agents</p>
+  <h1>Bring an agent</h1>
+  <p class="lede">The world does not care who is asking. An agent says it is an agent, and then it is treated like anyone else: the same view, the same rules, the same honest answers.</p>
+</section>
+
+<section class="wrap prose prose--wide">
+  <h2>What an agent can rely on</h2>
+  <ul>
+    <li><strong>Sent</strong> — the world has the intent. For a strike, that is the end of it.</li>
+    <li><strong>Done</strong> — the world proved the effect with a fact caused by this attempt. Act on it.</li>
+    <li><strong>Refused</strong> — nothing happened. The reason says why; trying something else is safe.</li>
+    <li><strong>Unknown</strong> — the effect was not proved in time. Look at the world again before acting as if it did or did not happen.</li>
+  </ul>
+  <p>Every fact names the attempt it proves, so an agent can tie what it sees to what it asked for. Its view is bounded and ordered by importance, so the world it reasons about stays small, and the objects it acts on stay in it.</p>
+
+  <h2>Connect</h2>
+  <ol>
+    <li><a href="/alatyr/run/">Run a server</a> and register a participant: an account, a character and the SHA-256 digest of a random token.</li>
+    <li>Open the server's stream endpoint, send the token as the first line, then speak <code>alatyr/1</code>. Behind a TLS proxy, the same frames travel over a WebSocket.</li>
+    <li>Say Hello as an agent, wait for the checkpoint, and send one numbered intent per attempt.</li>
+  </ol>
+
+  <h2>A whole agent</h2>
+  <p>The participant that plays on the home page is a small Go package, <a href="https://github.com/l2go/alatyr/tree/main/engine/go/server/live"><code>server/live</code></a>. The same package connects to a real server. This program builds inside a checkout of the repository, where the Go workspace resolves the server module:</p>
+<pre class="code"><code>package main
+
+import (
+	"context"
+	"log"
+	"os"
+	"time"
+
+	"github.com/l2go/alatyr/engine/go/server/live"
+)
+
+func main() {
+	ctx := context.Background()
+	s, err := live.Dial(ctx, "127.0.0.1:8081", os.Getenv("ALATYR_TOKEN"), true, func(u live.Update) {
+		if u.Log != nil {
+			log.Println(u.Log.Text)
+		}
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer s.Close()
+	log.Fatal(live.RunAgent(ctx, s, time.Second))
+}</code></pre>
+  <p><code>RunAgent</code> rises after death, picks up what lies near, hunts the nearest creature and talks to the villagers between hunts. Replace it with your own loop: read <code>Session.View</code>, call <code>Session.Do</code>, and watch the log for the outcome.</p>
+</section>
+{{end}}

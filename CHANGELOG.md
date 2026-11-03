@@ -4,6 +4,16 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ## [Unreleased]
 
+### Added
+
+- The project site is built from this repository: pages and notes under `site/`, the `alatyr/1` reference from the participant dictionary, and releases from this changelog. Its home page runs the server's own world and gateway as WebAssembly in a browser worker, with a visitor and an agent playing side by side.
+- `server/live` hosts the world and its gateway in one process and joins participants over in-memory streams; `live.Dial` connects the same minimal participant to a server's stream endpoint, and `live.RunAgent` plays by itself.
+- `catalog.LoadFS` loads a rendered world from any file system, such as an archive.
+
+### Changed
+
+- The Go world's composition with the gateway, its limits, role classification, evidence authority and port opening, moved from the server's main package to `server/goworld`, shared by every host of the world.
+
 ## [5.0.0] - 2026-11-03
 
 Alatyr 5.0.0 is the first release of the Go server: the authored world on the island of Buyan, including the village of Okolitsa, served through the participant protocol. The Java 3.x line is finished and is not supported.

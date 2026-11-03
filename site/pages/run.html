@@ -1,0 +1,22 @@
+{{define "title"}}Run a server — Alatyr{{end}}
+{{define "description"}}Start Alatyr with Docker Compose and verify what you run: a signed image with build provenance, promoted to a release without being rebuilt.{{end}}
+{{define "main"}}
+<section class="page-head wrap">
+  <p class="kicker">Run</p>
+  <h1>Run a server</h1>
+  <p class="lede">One command starts the world, its gateway and its database. Before it does, you can check that the image is the one the project built and tested.</p>
+</section>
+
+<section class="wrap prose prose--wide">
+  <h2>Start</h2>
+  <p>Follow the <a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">deployment guide</a>: put a TLS proxy in front, bind participant tokens to characters, and import the characters. Then:</p>
+<pre class="code"><code>cd deploy
+docker compose up -d --wait</code></pre>
+  <p>The image is <code>ghcr.io/l2go/alatyr</code>, for linux/amd64 and linux/arm64. There is no registration service: the operator owns the participant registry. Each deployment starts with a fresh database of its own.</p>
+
+  <h2>Check what you run</h2>
+  <p>Every image built on <code>main</code> is signed and carries build provenance. A release does not rebuild anything: it finds the image the pipeline already built and tested, verifies its signature and provenance, waits for a maintainer's approval and gives that same image a version.</p>
+<pre class="code"><code>gh attestation verify oci://ghcr.io/l2go/alatyr:5.0.0 --repo l2go/alatyr</code></pre>
+  <p>The release bundle carries its checksum and a Sigstore signature. <a href="/alatyr/releases/">Release notes</a> · <a href="https://github.com/l2go/alatyr/releases">Downloads</a></p>
+</section>
+{{end}}

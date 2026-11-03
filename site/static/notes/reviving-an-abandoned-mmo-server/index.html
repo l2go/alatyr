@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Reviving an abandoned MMO server: 2009 → 2026 — Alatyr</title>
+<meta name="description" content="An archived Lineage II server became one Java 25 process on PostgreSQL 18, shipped as a signed image. The revival changed one boundary at a time, kept a runnable server after every step, and made client sessions and recovery rehearsals part of the pipeline.">
+<meta name="theme-color" content="#05060c">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Reviving an abandoned MMO server: 2009 → 2026">
+<meta property="og:description" content="An archived Lineage II server became one Java 25 process on PostgreSQL 18, shipped as a signed image. The revival changed one boundary at a time, kept a runnable server after every step, and made client sessions and recovery rehearsals part of the pipeline.">
+<meta property="og:url" content="https://l2go.github.io/alatyr/notes/reviving-an-abandoned-mmo-server/">
+<meta property="og:image" content="https://l2go.github.io/alatyr/assets/img/covers/reviving.jpg">
+<meta property="article:published_time" content="2026-10-12">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/alatyr/assets/img/favicon.svg" type="image/svg+xml">
+<link rel="author" href="/alatyr/humans.txt">
+<link rel="preload" href="/alatyr/assets/fonts/cinzel.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/alatyr/assets/css/site.css">
+<script src="/alatyr/assets/js/site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="progress" aria-hidden="true"></div>
+<header class="bar">
+  <a class="bar__mark" href="/alatyr/">ALATYR</a>
+  <nav aria-label="Sections">
+    <a href="/alatyr/run/">Start</a>
+    <a class="opt" href="/alatyr/">Engineering</a>
+    <a href="/alatyr/notes/">Notes</a>
+    <a href="https://github.com/l2go/alatyr">GitHub</a>
+  </nav>
+</header>
+<main id="main">
+<article>
+<header class="article-head article-head--focus-52">
+  <picture><source srcset="/alatyr/assets/img/covers/reviving.webp" type="image/webp"><img src="/alatyr/assets/img/covers/reviving.jpg" alt="" width="1600" height="667"></picture>
+  <div class="wrap">
+    <div class="crumbs"><a href="/alatyr/notes/">Reviving L2JFree</a> · Part 1</div>
+    <h1>Reviving an abandoned MMO server: 2009 → 2026</h1>
+    <p class="dek">An archived Lineage II server became one Java 25 process on PostgreSQL 18, shipped as a signed image. The revival changed one boundary at a time, kept a runnable server after every step, and made client sessions and recovery rehearsals part of the pipeline.</p>
+    <div class="byline"><time datetime="2026-10-12">12 October 2026</time> · 8 min read</div>
+  </div>
+</header>
+<div class="prose">
+<p>The last upstream commit landed on 15 July 2015. Its message was "README.md edited online with Bitbucket". Behind it lay nearly nine years of history: 8,044 commits under 24 author names, starting in November 2006. Together they made an open-source server for Lineage II, an online role-playing game, written for its Western Gracia Final client of 2009. The upstream repositories are archived on GitHub now; one of them describes itself as the project "as it was when it was abandoned".</p>
+<p>I picked it up on 18 September 2026 and released 3.0.0 on 11 October. The work did not replace the server. It was a sequence of changes to its build, persistence, process boundary, and delivery, with a runnable server after each one. This series is about what happened between those dates and why: which decisions I made, what each one cost, and how each one is checked.</p>
+<h2>What I found</h2>
+<p>Most of the code still compiled. What stood in the way:</p>
+<ul>
+<li><strong>Two processes.</strong> A login server and a game server talked over their own socket protocol. A game server registered with a hex id file, a <code>game_server</code> table, and a <code>register_gameserver</code> tool.</li>
+<li><strong>MySQL everywhere.</strong> The datapack alone held 225 SQL files, with installers, update scripts, and a table optimizer. The login kept its accounts through Hibernate.</li>
+<li><strong>Collections that hid bugs.</strong> Javolution's <code>FastList</code> and <code>FastMap</code> let a loop remove from the collection it walked. On the JDK collections those loops throw, and some of them had been wrong for years.</li>
+<li><strong>Security of its time.</strong> The keys that the login handed to the world came from the fast game random generator, whose 48 bits of state can be recovered from a few outputs. The password check stopped at the length of the stored value, so an empty stored hash accepted any password.</li>
+<li><strong>An economy with holes.</strong> Item weight was summed in an <code>int</code>, so a big enough stack wrapped to a negative load. Trades and stores could move one side and fail the other.</li>
+</ul>
+<p>These were the constraints of this fork: an old deployment model, database-specific code, and correctness defects that needed regression checks before they could be fixed for good.</p>
+<h2>The rules I worked under</h2>
+<p>One maintainer and a public repository. That set three rules before any code changed.</p>
+<ol>
+<li><strong>GitHub Actions is the server's only build of record.</strong> The Java server is built, tested, and run there, never on a workstation, and a change is accepted on what the pipeline recorded. This removed "works on my machine" from the vocabulary and forced every recurring check to be automated from the first day.</li>
+<li><strong>Every change explains itself.</strong> Each pull request states the issue, the invariant it restores, what changes for a running server, how it was verified, and what it leaves out. The pull requests became the design log.</li>
+<li><strong>Test each claim where it can fail.</strong> Unit tests check local decisions. Integration tests on PostgreSQL 18 check the schema and persistence. Client sessions against the built image check what neither can: that the delivered system admits a player and keeps the data across a restart and a restore.</li>
+</ol>
+<h2>Before and after</h2>
+<p>The comparison is with the code as it stood at the fork, the last upstream commit of July 2015, not with the 2.x line: that line was the first phase of this work, a major release with breaking changes of its own.</p>
+<div class="table"><table><thead><tr><th></th><th>At the fork (2015)</th><th>3.1.1 (2026)</th></tr></thead>
+<tbody>
+<tr><td>Java</td><td>8</td><td>25</td></tr>
+<tr><td>Build</td><td>A POM per module, no root reactor, no CI</td><td>One Maven reactor; GitHub Actions is the only build</td></tr>
+<tr><td>Processes</td><td>Login and world, joined by a socket protocol and a game server registration</td><td>One JVM; login and world meet through a typed Java contract</td></tr>
+<tr><td>Network</td><td>MMOCore on Java NIO</td><td>Netty on epoll in the image; a native transport that is selected but unavailable stops the start</td></tr>
+<tr><td>Database</td><td>MySQL (Connector/J 5.1.36), 225 SQL files and installers, Hibernate in the login, c3p0</td><td>PostgreSQL 18, Flyway migrations at start, a schema and a role per module, JDBC with HikariCP</td></tr>
+<tr><td>SQL correctness</td><td>Found at run time</td><td>SQL strings in the compiled world classes prepared against the real schema in CI; statements built at run time are listed as exceptions</td></tr>
+<tr><td>Collections</td><td>Javolution 5.4.1, Trove 2.1.0</td><td>JDK collections; a test refuses the old libraries and the old loop patterns</td></tr>
+<tr><td>Logging</td><td>commons-logging with log4j</td><td>SLF4J with Logback</td></tr>
+<tr><td>Scripting</td><td>Jython 2.2.1</td><td>Jython 2.7.4; the pipeline fails if a script does not load</td></tr>
+<tr><td>Session keys</td><td>Game random generator</td><td><code>SecureRandom</code>; a build rule refuses the game generator</td></tr>
+<tr><td>Passwords</td><td>Unsalted SHA-1</td><td>PBKDF2-HMAC-SHA256, 600,000 iterations, constant-time comparison, upgrade at next login</td></tr>
+<tr><td>Tests</td><td>26 test classes on JUnit 3.8.2</td><td>JUnit 6, integration tests on PostgreSQL 18, and every merge plays the image: 24 client sessions, a restart, a restore, and an upgrade when the previous image can be pulled</td></tr>
+<tr><td>Delivery</td><td>Separate login and world distributions, <code>.bat</code> and <code>.sh</code> launchers, a database installer</td><td>One <code>linux/amd64</code> image, Docker Compose, signed, with an SBOM and provenance</td></tr>
+</tbody></table></div>
+<h2>The order of the work</h2>
+<p>Replacing the server would have meant validating a new implementation as well as a new delivery model. I kept the inherited implementation as the checkpoint instead: each step left a server that started and could be checked. The work came in two phases: modernize the existing shape first, then make a deliberate cutover to Platform 3.0.</p>
+<figure class="series-diagram">
+<div class="arch timeline-graphic">
+<svg viewBox="0 0 1100 320" role="img" aria-labelledby="timeline-title timeline-desc" xmlns="http://www.w3.org/2000/svg">
+<title id="timeline-title">The order of the work</title>
+<desc id="timeline-desc">The first commit in 2006, the 2009 client and the last upstream commit in 2015. Eleven years of silence precede the revival in 2026: modernize in place, then Platform 3.0. Milestones are evenly spaced, not a linear time scale.</desc>
+<path class="wire" d="M 35 145 H 235 M 335 145 H 1065"/>
+<path class="timeline-silence" d="M 235 145 H 335"/>
+<text class="t t--small" x="285" y="285" text-anchor="middle">11 years of silence</text>
+<text class="t t--title" x="510" y="310" text-anchor="middle">modernize in place</text>
+<text class="t t--title" x="945" y="310" text-anchor="middle">Platform 3.0</text>
+<circle class="timeline-dot" cx="35" cy="145" r="5"/>
+<path class="wire" d="M 35 145 V 75"/>
+<text class="t" x="35" y="65" text-anchor="start">
+<tspan x="35" dy="0">First commit</tspan>
+<tspan x="35" dy="22">2006-11-15</tspan></text>
+<circle class="timeline-dot" cx="138" cy="145" r="5"/>
+<path class="wire" d="M 138 145 V 195"/>
+<text class="t" x="138" y="215" text-anchor="middle">
+<tspan x="138" dy="0">Gracia Final</tspan>
+<tspan x="138" dy="22">2009</tspan></text>
+<circle class="timeline-dot" cx="241" cy="145" r="5"/>
+<path class="wire" d="M 241 145 V 75"/>
+<text class="t" x="241" y="65" text-anchor="middle">
+<tspan x="241" dy="0">Last upstream</tspan>
+<tspan x="241" dy="19">commit</tspan>
+<tspan x="241" dy="22">2015-07-15</tspan></text>
+<circle class="timeline-dot" cx="344" cy="145" r="5"/>
+<path class="wire" d="M 344 145 V 195"/>
+<text class="t" x="344" y="215" text-anchor="middle">
+<tspan x="344" dy="0">Revival</tspan>
+<tspan x="344" dy="22">2026-09-18</tspan></text>
+<circle class="timeline-dot" cx="447" cy="145" r="5"/>
+<path class="wire" d="M 447 145 V 75"/>
+<text class="t" x="447" y="65" text-anchor="middle">
+<tspan x="447" dy="0">1.4.0</tspan>
+<tspan x="447" dy="22">2026-09-25</tspan></text>
+<circle class="timeline-dot" cx="550" cy="145" r="5"/>
+<path class="wire" d="M 550 145 V 195"/>
+<text class="t" x="550" y="215" text-anchor="middle">
+<tspan x="550" dy="0">1.5</tspan>
+<tspan x="550" dy="22">2026-09-29</tspan></text>
+<circle class="timeline-dot" cx="653" cy="145" r="5"/>
+<path class="wire" d="M 653 145 V 75"/>
+<text class="t" x="653" y="65" text-anchor="middle">
+<tspan x="653" dy="0">2.0.0</tspan>
+<tspan x="653" dy="22">2026-09-30</tspan></text>
+<circle class="timeline-dot" cx="756" cy="145" r="5"/>
+<path class="wire" d="M 756 145 V 195"/>
+<text class="t" x="756" y="215" text-anchor="middle">
+<tspan x="756" dy="0">2.5.0</tspan>
+<tspan x="756" dy="22">2026-10-05</tspan></text>
+<circle class="timeline-dot" cx="859" cy="145" r="5"/>
+<path class="wire" d="M 859 145 V 75"/>
+<text class="t" x="859" y="65" text-anchor="middle">
+<tspan x="859" dy="0">Platform 3.0</tspan>
+<tspan x="859" dy="19">decisions</tspan>
+<tspan x="859" dy="22">2026-10-05</tspan></text>
+<circle class="timeline-dot" cx="962" cy="145" r="5"/>
+<path class="wire" d="M 962 145 V 195"/>
+<text class="t" x="962" y="215" text-anchor="middle">
+<tspan x="962" dy="0">3.0.0</tspan>
+<tspan x="962" dy="22">2026-10-11</tspan></text>
+<circle class="timeline-dot" cx="1065" cy="145" r="5"/>
+<path class="wire" d="M 1065 145 V 75"/>
+<text class="t" x="1065" y="65" text-anchor="end">
+<tspan x="1065" dy="0">3.1.0 and 3.1.1</tspan>
+<tspan x="1065" dy="22">2026-10-12</tspan></text>
+</svg>
+</div>
+<ol class="timeline-detail">
+<li><time datetime="2006-11-15">2006-11-15</time> — First commit</li>
+<li><time datetime="2009">2009</time> — Gracia Final</li>
+<li><time datetime="2015-07-15">2015-07-15</time> — Last upstream commit</li>
+<li class="timeline-gap">Eleven years of silence</li>
+<li><time datetime="2026-09-18">2026-09-18</time> — Revival</li>
+<li><time datetime="2026-09-25">2026-09-25</time> — 1.4.0</li>
+<li><time datetime="2026-09-29">2026-09-29</time> — 1.5</li>
+<li><time datetime="2026-09-30">2026-09-30</time> — 2.0.0</li>
+<li><time datetime="2026-10-05">2026-10-05</time> — 2.5.0</li>
+<li><time datetime="2026-10-05">2026-10-05</time> — Platform 3.0 decisions</li>
+<li><time datetime="2026-10-11">2026-10-11</time> — 3.0.0</li>
+<li><time datetime="2026-10-12">2026-10-12</time> — 3.1.0 and 3.1.1</li>
+</ol>
+<figcaption>Modernize in place: September–5 October 2026. Platform 3.0: decisions on 5 October, releases on 11–12 October. Dates are UTC; milestone spacing is schematic.</figcaption>
+</figure>
+
+<p><strong>First, modernize in place.</strong> For two and a half weeks the server kept its shape: two processes on MySQL. A root build and CI on every push came first. Then a correctness program filed every defect as a broken invariant, one issue and one pull request each, and shipped as 1.4.0 on 25 September. The login moved to JDBC and both servers to Java 25 in 1.5 on 29 September. HikariCP, SLF4J, and a release with checksums, an attestation, and an SBOM followed in 2.0.0 on 30 September, and the test suite came back into CI in 2.5.0 on 5 October. The 2.x line was played on its real target, Windows with MySQL 8.4.</p>
+<p><strong>Then decide what 3.0 is.</strong> On 5 October the decisions for Platform 3.0 were recorded and the 2.x line was retired. The in-place line had done its job: the code was on a modern JDK, under tests, and released by a pipeline.</p>
+<p>Keeping the modernized 2.x line was the other option. It would have kept MySQL and the separate login and world deployments. Platform 3.0 changed the database and the delivery together instead, and accepted a fresh world database and a single process. That was a choice of cutover, not a claim that the old shape could not be repaired.</p>
+<p><strong>A walking skeleton.</strong> A Linux image on a pinned base with a pinned JRE, a Compose stack that published ports 2106 and 7777, and a probe that sent the first packet of the login protocol. It did almost nothing, but it did it the same way every time.</p>
+<p><strong>The data, module by module.</strong> The login moved to PostgreSQL first: one schema, one Flyway migration, one role. The world followed with ten migrations, a <code>catalog</code> schema loaded from 57 CSV files with a SHA-256 revision, and a lock that keeps a second server off the same database.</p>
+<p><strong>One process.</strong> For one world on one host, the socket between login and world served no deployment the project needed. A small <code>contract</code> module with two interfaces replaced it, and architecture rules keep each module from importing the other's implementation.</p>
+<p><strong>The release.</strong> A workflow that promotes the image the pipeline already tested, after a human approves, with a signature on everything it publishes. Version 3.0.0 shipped six days after the decisions were recorded.</p>
+<h2>What it cost</h2>
+<p>Every one of these decisions had a price, and the series names it each time. The biggest ones:</p>
+<ul>
+<li><strong>No supported migration of 2.x world data.</strong> Platform 3.0 starts with a fresh world database. Old SHA-1 password hashes are still accepted and upgraded after a successful login; that is compatibility of the hash format, not a migration of the old database.</li>
+<li><strong>A smaller feature set.</strong> Factions, the community-board item auction, and the archive of deleted mail were removed rather than carried into the new schema, so the cutover changed what operators and players could use, not only the database engine.</li>
+<li><strong>One process shares one fate.</strong> Login and world now share a JVM's lifetime and memory. A crash takes both down; the article on boundaries explains why that trade was worth it.</li>
+<li><strong>One image platform in 3.1.1.</strong> The release covered <code>linux/amd64</code> only; <code>linux/arm64</code> arrived in 3.2.1.</li>
+</ul>
+<h2>What came out</h2>
+<p>Version 3.0.0 shipped on 11 October 2026. A day later, 3.1.0 closed a set of economy and login defects found by reading the code against its own invariants. 3.1.1 changed no game behavior; it made the release easier to verify. Each release is a signed image and a Compose bundle with a signature of its own.</p>
+<p>The result is a changed delivery and persistence model, not proof that every inherited defect is gone. The pipeline checks module dependencies, the SQL of the world classes, client sessions, and recovery rehearsals. The costs are on record too: a fresh world database, removed features, and one shared process lifetime.</p>
+<p>The rest of the series takes one decision at a time:</p>
+<ol>
+<li><a href="/alatyr/notes/one-process-hard-boundaries/"><strong>One process, hard boundaries</strong></a>: two modules in one JVM, with dependencies checked at build time and separate database roles.</li>
+<li><a href="/alatyr/notes/an-island-of-our-own/"><strong>An island of our own</strong></a>: how the server left an inherited world for one it wrote.</li>
+<li><a href="/alatyr/notes/one-save-one-transaction/"><strong>One save, one transaction</strong></a>: how one save became one transaction, and what a rollback has to put back.</li>
+<li><strong>Every merge is a release rehearsal</strong>: what the pipeline does to an image before it may be published.</li>
+<li><strong>Releases promote, never rebuild</strong>: why the release workflow has no build step.</li>
+<li><strong>Starting a Java 25 server</strong>: G1 against ZGC, with and without the AOT cache, measured in CI.</li>
+<li><strong>Old bugs, new invariants</strong>: the classes of defects a 2009 server carries, and the checks that keep them out.</li>
+</ol>
+<p>The code is at <a href="https://github.com/l2go/alatyr">github.com/l2go/alatyr</a>, under GPLv3.</p>
+<div class="aside"><strong>Update, 23 October 2026.</strong> The account above describes the revival through 3.1.1. Version 3.2.0 went a step past a revival: the server no longer ships the world it inherited, and it runs a small original one instead. That turn is part 3, <a href="/alatyr/notes/an-island-of-our-own/">An island of our own</a>. Version 3.2.1 added <code>linux/arm64</code> images alongside <code>linux/amd64</code>. The project is now named Alatyr and lives at <a href="https://github.com/l2go/alatyr">l2go/alatyr</a>; the image name remains <code>ghcr.io/l2go/l2jfree</code>.</div>
+</div>
+<nav class="series" aria-label="Series">
+<span></span>
+<a class="later" href="/alatyr/notes/one-process-hard-boundaries/"><small>Next</small><span>One process, hard boundaries</span></a>
+</nav>
+</article>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__top">
+      <span class="foot__mark" title="ALATYR = ROOTED = 77">ALATYR</span>
+      <nav aria-label="Project">
+        <a href="https://github.com/l2go/alatyr">Repository</a>
+        <a href="https://github.com/l2go/alatyr/releases">Releases</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/deploy/README.md">Deploy guide</a>
+        <a href="https://github.com/l2go/alatyr/blob/main/SECURITY.md">Security</a>
+      </nav>
+    </div>
+    <p>Lineage II and NCSOFT are trademarks or registered trademarks of NCSOFT Corporation. Alatyr, formerly L2JFree, is an independent, non-commercial open-source project, not affiliated with, endorsed, or sponsored by NCSOFT. The project modernizes an archived open-source server. Since 3.2 it ships no data inherited from the fork; its world, Okolitsa, is original content. It does not modify, patch, or distribute the game client.</p>
+    <p>The code is under the GNU GPLv3. Banner art generated with AI. Cinzel typeface under the SIL Open Font License.</p>
+  </div>
+</footer>
+</body>
+</html>

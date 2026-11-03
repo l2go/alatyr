@@ -1,0 +1,30 @@
+{{define "title"}}Releases — Alatyr{{end}}
+{{define "description"}}Release notes of Alatyr, generated from the project's changelog: the Go server in full, the Java years in brief.{{end}}
+{{define "main"}}
+<section class="page-head wrap">
+  <p class="kicker">Releases</p>
+  <h1>Releases</h1>
+  <p class="lede">Generated from the changelog when this site is built. Each release promotes an image the pipeline already built and tested.</p>
+</section>
+
+{{range .Releases}}{{if .Go}}
+<section class="wrap prose prose--wide release" aria-labelledby="v{{.Version}}">
+  <h2 id="v{{.Version}}">{{.Version}}{{if .Date}} <span class="release__date">{{.Date}}</span>{{end}}</h2>
+  {{range .Blocks}}
+    {{if .Heading}}<h3>{{.Heading}}</h3>{{end}}
+    {{if .Text}}<p>{{.Text}}</p>{{end}}
+    {{if .Items}}<ul>{{range .Items}}<li>{{.}}</li>{{end}}</ul>{{end}}
+  {{end}}
+  <p><a href="https://github.com/l2go/alatyr/releases/tag/v{{.Version}}">Release {{.Version}} on GitHub</a></p>
+</section>
+{{end}}{{end}}
+
+<section class="wrap" aria-labelledby="java-title">
+  <h2 id="java-title">The Java years</h2>
+  <ul class="release-list">
+  {{range .Releases}}{{if not .Go}}<li><a href="https://github.com/l2go/alatyr/releases/tag/v{{.Version}}">{{.Version}}</a>{{if .Date}} · {{.Date}}{{end}}</li>
+  {{end}}{{end}}
+  </ul>
+  <p><a href="/alatyr/java-years/">The Java years, kept as they were</a></p>
+</section>
+{{end}}

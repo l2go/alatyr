@@ -1,0 +1,213 @@
+{
+  "g1": {
+    "options": "-Xms1g -Xmx3g -XX:+UseG1GC",
+    "cold": {
+      "total": 18044,
+      "main": 694,
+      "login_prepared": 1128,
+      "world_started": 16219,
+      "login_opened": 3,
+      "rss": 1322
+    },
+    "fresh": {
+      "total": 17031,
+      "main": 703,
+      "login_prepared": 1018,
+      "world_started": 15308,
+      "login_opened": 2,
+      "rss": 1293
+    },
+    "restarts": [
+      {
+        "total": 17055,
+        "main": 723,
+        "login_prepared": 1145,
+        "world_started": 15184,
+        "login_opened": 3,
+        "rss": 1301
+      },
+      {
+        "total": 16554,
+        "main": 706,
+        "login_prepared": 1011,
+        "world_started": 14834,
+        "login_opened": 3,
+        "rss": 1297
+      },
+      {
+        "total": 16900,
+        "main": 703,
+        "login_prepared": 990,
+        "world_started": 15204,
+        "login_opened": 3,
+        "rss": 1275
+      }
+    ]
+  },
+  "g1-no-recording": {
+    "options": "-Xms1g -Xmx3g -XX:+UseG1GC",
+    "cold": {
+      "total": 17978,
+      "main": 449,
+      "login_prepared": 1099,
+      "world_started": 16428,
+      "login_opened": 2,
+      "rss": 1289
+    },
+    "fresh": {
+      "total": 16217,
+      "main": 450,
+      "login_prepared": 1021,
+      "world_started": 14743,
+      "login_opened": 3,
+      "rss": 1249
+    },
+    "restarts": [
+      {
+        "total": 15745,
+        "main": 446,
+        "login_prepared": 1140,
+        "world_started": 14156,
+        "login_opened": 3,
+        "rss": 1237
+      },
+      {
+        "total": 16987,
+        "main": 465,
+        "login_prepared": 1103,
+        "world_started": 15415,
+        "login_opened": 4,
+        "rss": 1216
+      },
+      {
+        "total": 16346,
+        "main": 461,
+        "login_prepared": 1034,
+        "world_started": 14848,
+        "login_opened": 3,
+        "rss": 1231
+      }
+    ]
+  },
+  "zgc": {
+    "options": "-Xms1g -Xmx3g -XX:+UseZGC",
+    "cold": {
+      "total": 21991,
+      "main": 1087,
+      "login_prepared": 1147,
+      "world_started": 19754,
+      "login_opened": 3,
+      "rss": 2364
+    },
+    "fresh": {
+      "total": 19792,
+      "main": 1099,
+      "login_prepared": 1224,
+      "world_started": 17466,
+      "login_opened": 3,
+      "rss": 2311
+    },
+    "restarts": [
+      {
+        "total": 20271,
+        "main": 1051,
+        "login_prepared": 878,
+        "world_started": 18339,
+        "login_opened": 3,
+        "rss": 2347
+      },
+      {
+        "total": 19248,
+        "main": 1063,
+        "login_prepared": 961,
+        "world_started": 17222,
+        "login_opened": 2,
+        "rss": 2282
+      },
+      {
+        "total": 19817,
+        "main": 1056,
+        "login_prepared": 1010,
+        "world_started": 17748,
+        "login_opened": 3,
+        "rss": 2342
+      }
+    ]
+  },
+  "g1-aot": {
+    "options": "-Xms1g -Xmx3g -XX:+UseG1GC -XX:AOTCache=/var/lib/l2jfree/aot/server.aot",
+    "cold": null,
+    "fresh": {
+      "total": 17887,
+      "main": 788,
+      "login_prepared": 1342,
+      "world_started": 15754,
+      "login_opened": 3,
+      "rss": 1302
+    },
+    "restarts": [
+      {
+        "total": 16845,
+        "main": 830,
+        "login_prepared": 947,
+        "world_started": 15065,
+        "login_opened": 3,
+        "rss": 1272
+      },
+      {
+        "total": 16411,
+        "main": 805,
+        "login_prepared": 1003,
+        "world_started": 14600,
+        "login_opened": 3,
+        "rss": 1298
+      },
+      {
+        "total": 17164,
+        "main": 755,
+        "login_prepared": 990,
+        "world_started": 15416,
+        "login_opened": 3,
+        "rss": 1284
+      }
+    ]
+  },
+  "zgc-aot": {
+    "options": "-Xms1g -Xmx3g -XX:+UseZGC -XX:AOTCache=/var/lib/l2jfree/aot/server.aot",
+    "cold": null,
+    "fresh": {
+      "total": 19152,
+      "main": 1128,
+      "login_prepared": 1036,
+      "world_started": 16984,
+      "login_opened": 4,
+      "rss": 2451
+    },
+    "restarts": [
+      {
+        "total": 19735,
+        "main": 1140,
+        "login_prepared": 1013,
+        "world_started": 17578,
+        "login_opened": 4,
+        "rss": 2352
+      },
+      {
+        "total": 19468,
+        "main": 1132,
+        "login_prepared": 1122,
+        "world_started": 17211,
+        "login_opened": 3,
+        "rss": 2497
+      },
+      {
+        "total": 19525,
+        "main": 1104,
+        "login_prepared": 882,
+        "world_started": 17536,
+        "login_opened": 3,
+        "rss": 2412
+      }
+    ]
+  }
+}

@@ -1,0 +1,118 @@
+{{define "title"}}Alatyr — a world that tells the truth{{end}}
+{{define "description"}}An authored online world on a Go server. People and agents enter it through one open protocol and get the same honest answer to every action: done, refused, or unknown. Its world runs on this page.{{end}}
+{{define "head"}}<script src="/alatyr/assets/js/live.js" defer></script>{{end}}
+{{define "main"}}
+<section class="hero" aria-labelledby="hero-title">
+  <img class="hero__art hero__photo" src="/alatyr/assets/img/island-hero.webp" alt="" width="1600" height="714">
+  <div class="hero__veil"></div>
+  <div class="wrap">
+    <div class="hero__text">
+      <p class="eyebrow">An authored world · A Go server · An open protocol</p>
+      <h1 id="hero-title">Alatyr</h1>
+      <div class="rule"></div>
+      <p class="lede">A world that tells the truth about every action. People and agents enter it through the same open protocol, and each gets the same honest answer: done, refused, or not known yet. Never a guess.</p>
+      <div class="actions">
+        <a class="btn" href="#live">Enter the world</a>
+        <a class="btn btn--ghost" href="/alatyr/protocol/">Read the protocol</a>
+      </div>
+    </div>
+  </div>
+  <span class="cue" aria-hidden="true"></span>
+</section>
+
+<section id="live" class="wrap live-section" aria-labelledby="live-title">
+  <p class="kicker reveal">Live, on this page</p>
+  <h2 id="live-title" class="reveal">Step into Okolitsa</h2>
+  <p class="intro reveal">This is not a recording. The server's own world and participant gateway are compiled to WebAssembly and run in a worker in your browser. You are the visitor. The wanderer is an agent. Both speak <code>alatyr/1</code> to the same world, and the world answers both the same way.</p>
+  <div class="live" data-live>
+    <div class="live__start">
+      <button class="btn" type="button" data-live-start>Start the world</button>
+      <p class="live__note">Loads the world and its server, about three megabytes. Nothing leaves your browser.</p>
+    </div>
+    <div class="live__stage" hidden>
+      <div class="live__scene">
+        <svg class="live__map" data-live-map viewBox="0 0 900 600" role="img" aria-label="The village of Okolitsa and its meadow, as the visitor sees it"></svg>
+        <div class="live__controls" data-live-controls>
+          <p class="live__target" data-live-target>Choose someone on the map, or click the ground to walk.</p>
+          <div class="live__buttons">
+            <button class="btn btn--small" type="button" data-verb="talk" disabled>Talk</button>
+            <button class="btn btn--small" type="button" data-verb="strike" disabled>Strike</button>
+            <button class="btn btn--small" type="button" data-verb="take" disabled>Pick up</button>
+            <button class="btn btn--small btn--ghost" type="button" data-verb="rise" hidden>Rise</button>
+          </div>
+          <div class="live__dialog" data-live-dialog hidden></div>
+          <label class="live__agent"><input type="checkbox" data-live-agent> Let the wanderer play</label>
+        </div>
+      </div>
+      <div class="live__logs">
+        <div class="live__tabs" role="tablist">
+          <button type="button" role="tab" aria-selected="true" data-log-tab="visitor">You</button>
+          <button type="button" role="tab" aria-selected="false" data-log-tab="agent">The wanderer</button>
+        </div>
+        <ol class="live__log" data-log="visitor" aria-live="polite"></ol>
+        <ol class="live__log" data-log="agent" hidden></ol>
+        <p class="live__legend"><span class="tag tag--intent">intent</span> what was asked · <span class="tag tag--done">Done</span> proved by the world · <span class="tag tag--refused">Refused</span> nothing happened · <span class="tag tag--unknown">Unknown</span> not proved in time · <span class="tag tag--cause">#n</span> the attempt a fact proves</p>
+      </div>
+    </div>
+    <p class="live__error" data-live-error hidden></p>
+  </div>
+</section>
+
+<section id="principles" class="wrap" aria-labelledby="principles-title">
+  <p class="kicker reveal">What the world promises</p>
+  <h2 id="principles-title" class="reveal">Four guarantees</h2>
+  <div class="cards">
+    <article class="card reveal">
+      <h3>One authority</h3>
+      <p>The world is the only source of truth. Every change it makes carries its cause: the intent that asked for it, or the rule that fired. Nothing outside the world can claim that something happened.</p>
+      <p class="card__proof"><a href="https://github.com/l2go/alatyr/blob/main/engine/go/world/README.md">How the world commits changes</a></p>
+    </article>
+    <article class="card reveal">
+      <h3>Honest outcomes</h3>
+      <p>A participant hears Done only when the world proves it, Refused only when the attempt had no effect, and Unknown when the truth is not known in time. An answer is never assumed from silence.</p>
+      <p class="card__proof"><a href="/alatyr/protocol/">The life of one attempt</a></p>
+    </article>
+    <article class="card reveal">
+      <h3>People and agents, on equal terms</h3>
+      <p>One open protocol serves both, with the same bounds. Each participant sees a bounded part of the world, chosen by what matters to it first: what it acts on, what acts on it, then what is near.</p>
+      <p class="card__proof"><a href="/alatyr/agents/">Bring an agent</a></p>
+    </article>
+    <article class="card reveal">
+      <h3>Reproducible</h3>
+      <p>The same commands give the same world, byte for byte. That makes the world something to test, debug and study, not only to play: a failure found once can be replayed until it is understood.</p>
+      <p class="card__proof"><a href="https://github.com/l2go/alatyr/blob/main/engine/go/worldtest/README.md">The replay harness</a></p>
+    </article>
+  </div>
+</section>
+
+<section id="roads" class="wrap" aria-labelledby="roads-title">
+  <p class="kicker reveal">Where to go from here</p>
+  <h2 id="roads-title" class="reveal">Four roads</h2>
+  <div class="roads">
+    <a class="road reveal" href="/alatyr/agents/"><strong>Build an agent</strong><span>Connect to the world over <code>alatyr/1</code> and act with honest outcomes.</span></a>
+    <a class="road reveal" href="/alatyr/world/"><strong>Explore the island</strong><span>Buyan, the village of Okolitsa, its people and its meadow.</span></a>
+    <a class="road reveal" href="/alatyr/run/"><strong>Run a server</strong><span>Start it with one command and verify what you run.</span></a>
+    <a class="road reveal" href="/alatyr/notes/"><strong>Read the notes</strong><span>How it was built, and what broke on the way.</span></a>
+  </div>
+</section>
+
+<section id="next" class="wrap" aria-labelledby="next-title">
+  <p class="kicker reveal">Where it is going</p>
+  <h2 id="next-title" class="reveal">Fewer layers, measured limits</h2>
+  <div class="prose prose--wide reveal">
+    <p>The next version is planned to let the world speak to the protocol directly: an outcome will come from the world's own record of what it did, not be inferred from what followed. Bounds that are initial values today will be measured. The protocol will keep growing as an open line of its own, for any authoritative world.</p>
+  </div>
+</section>
+
+<section id="chronicle" class="wrap" aria-labelledby="chronicle-title">
+  <p class="kicker reveal">Chronicle</p>
+  <h2 id="chronicle-title" class="reveal">Twenty years, two lives</h2>
+  <ol class="chronicle">
+    <li class="dim reveal"><time>2006</time><div><h3>The L2J community server</h3><p>An open-source game server begins; the repository's history starts here.</p></div></li>
+    <li class="dim reveal"><time>2015</time><div><h3>Silence</h3><p>Its fork, L2JFree, falls silent and is archived.</p></div></li>
+    <li class="reveal"><time>2026</time><div><h3>The revival</h3><p>The server is revived, then given a world of its own.</p></div></li>
+    <li class="lit reveal"><time>5.0</time><div><h3>The Go server</h3><p>An authored world and an open protocol. <a href="/alatyr/releases/">Release notes</a></p></div></li>
+  </ol>
+  <p class="reveal"><a href="/alatyr/java-years/">The Java years, kept as they were</a></p>
+</section>
+{{end}}

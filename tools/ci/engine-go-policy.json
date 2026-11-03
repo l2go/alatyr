@@ -250,6 +250,13 @@
       ]
     },
     {
+      "source": "server/cmd/alatyr-site",
+      "imports": [
+        "server/cmd/alatyr-site",
+        "gateway/meaning"
+      ]
+    },
+    {
       "source": "server/cmd/alatyr-live",
       "imports": [
         "server/cmd/alatyr-live",

@@ -1,0 +1,16 @@
+{{define "body"}}
+<p>The first hour-long run of the production server failed in an odd way. For about seventy minutes the bots played normally. Then every action of every bot ended as an error, and their characters stood still.</p>
+
+<h2>A promise kept by memory</h2>
+<p>Between the gateway and the world sits a port that carries commands. Each command has a key, and the port promises something important: a command is executed at most once, even if a connection breaks and the gateway asks again. A participant who swings a sword must not swing it twice because a packet was resent.</p>
+<p>The port kept that promise in the most direct way: it remembered every key it had ever admitted and refused any key it had seen. To keep the memory bounded, it held at most 4096 keys. When the set was full, it refused every new key as a capacity error. At the pace of the run, a session reached its 4096th command after about seventy minutes. Its 4097th command, and every command after it, was refused.</p>
+<p>Nothing was wrong with the bound itself. A bound on memory is right. What was wrong was the shape of the promise: "never execute a key twice" kept by remembering every key grows with the age of the session, and any bound on that memory is a bound on how long a session may live.</p>
+
+<h2>A promise kept by order</h2>
+<p>The gateway was already issuing keys from one counter that only goes up. Nothing used that fact. The fix wrote it into the port's contract: keys increase. The port now keeps one number, the last key it admitted, and refuses any key at or below it.</p>
+<p>The guarantee is the same: a command is still executed at most once, across reconnects. But the state behind it is one number instead of a set, and the session can live as long as the counter does.</p>
+
+<h2>The test that would have caught it</h2>
+<p>The reproduction writes five thousand commands to one session and then checks that keys at or below the last one are refused. Before the fix it failed exactly where the run did, at command 4097. It is a short test. The defect hid behind a duration, not behind complexity: every suite that ran for minutes passed, and only a run that played long enough reached the wall.</p>
+<p>That is why the release waited for long runs, and why those runs found what they found.</p>
+{{end}}

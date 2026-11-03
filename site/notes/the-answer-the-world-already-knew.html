@@ -1,0 +1,16 @@
+{{define "body"}}
+<p>A long run reported an outcome that should not exist: a participant's engage ended as Unknown, delivered in part, although the world never received the strike.</p>
+
+<h2>Two writes for one attempt</h2>
+<p>An engage is "attack that creature". The gateway carried it out in two writes. First it wrote a target selection and waited, up to a second and a half, for the world to confirm it. Only then did it write the strike. The design came from an older backend, where selecting a target was a separate command that had to land before anything could be done to it.</p>
+<p>The world had long since stopped needing it: the Go world's strike, talk and cast take their target with them. The separate selection only opened a window. If the participant died in that window, or the target walked out of view, the attempt ended Unknown with partial delivery: the selection had gone out, the strike had not, and nothing could prove what that meant.</p>
+<p>The fix made every attempt reach the world as at most one command. Engage and cast now behave like strike and talk: one write, no wait, no "target unconfirmed". A refusal still has to be proved: Refused requires that the single write was not delivered as an effect, and live evidence that it had none.</p>
+
+<h2>Inferring what is known</h2>
+<p>The engage was a symptom of something larger. To say Done, the gateway watches the facts that follow an attempt and looks for evidence: a page spoken in answer to a talk, an item that moved into the pack after a pickup. Evidence must arrive inside a window and carry the attempt as its cause. Without it the honest answer is Unknown.</p>
+<p>For a backend that is a black box, that is exactly right: the only way to know what happened is to watch. But the Go world is not a black box. Every change it makes is recorded with its cause in the same step that makes the change. The gateway was reconstructing from the outside an answer the world already knew from the inside.</p>
+<p>The cost shows in the long runs: pickups whose walk took longer than the window ended Unknown, although the world knew perfectly well that the item had been picked up.</p>
+
+<h2>Where it goes</h2>
+<p>The next version is planned to move the source of an outcome to the world's own record: the result of an attempt comes from what the world committed for its intent, and from the steps that continue it. Evidence windows remain only where an outcome is truly asynchronous and the world does not know it yet. Unknown stays honest, and becomes rare.</p>
+{{end}}
