@@ -83,9 +83,9 @@ const (
 	VerbAction Verb = "action"
 	// VerbSelect changes only the selected target, never performing an action.
 	VerbSelect Verb = "select"
-	// VerbTalk requests dialogue with a known non-hostile NPC.
+	// VerbTalk requests dialogue with a known non-hostile NPC and selects it.
 	VerbTalk Verb = "talk"
-	// VerbAttack requests an attack intention.
+	// VerbAttack requests an attack intention and selects its target.
 	VerbAttack Verb = "attack"
 	// VerbPosture requests sitting or standing.
 	VerbPosture Verb = "posture"
@@ -109,7 +109,7 @@ const (
 	VerbSell Verb = "sell"
 	// VerbRestart returns a dead character to an authored normal restart point.
 	VerbRestart Verb = "restart"
-	// VerbCast requests use of a skill.
+	// VerbCast requests use of a skill and selects its target.
 	VerbCast Verb = "cast"
 	// VerbUseItem toggles authored equipment or consumes an authored item effect.
 	VerbUseItem Verb = "use-item"

@@ -147,6 +147,10 @@ func (w *World) execute(s *state, p *player, req Request) *Skill {
 			s.resolve(StageRefused, ReasonState)
 			return nil
 		}
+		// Talking to an NPC selects it, as attacking does.
+		if p.target != n.id {
+			w.setTarget(s, p, n.id)
+		}
 		p.lastFolk = n.id
 		if w.talk(s, p, n) {
 			s.finish(StageDone)
@@ -166,6 +170,10 @@ func (w *World) execute(s *state, p *player, req Request) *Skill {
 		if p.reuse[sk.ID].until.After(time.Now()) {
 			s.resolve(StageRefused, ReasonState)
 			return nil
+		}
+		// Casting at a target selects it, as attacking does.
+		if p.target != req.Target.ID {
+			w.setTarget(s, p, req.Target.ID)
 		}
 		w.setIntention(s, p, order{intent: intentCast, target: req.Target, cast: &castRequest{skill: sk, target: req.Target, ctrl: req.Ctrl, shift: req.Shift}})
 	case VerbBuy, VerbSell:
