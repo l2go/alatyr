@@ -29,6 +29,11 @@ func (n xmlNode) attr(name string) (string, bool) {
 
 // encoding/xml does not fetch the external document type or expand entities.
 func (c *Catalog) loadStatXML(fsys fs.FS, dir, kind string) error {
+	// fs.WalkDir follows a symlinked root, so the root is checked on its own;
+	// a file system without links reports a plain stat here.
+	if info, err := fs.Lstat(fsys, dir); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		return errors.New("symlink in stat XML")
+	}
 	return fs.WalkDir(fsys, dir, func(name string, d fs.DirEntry, err error) error {
 		if errors.Is(err, fs.ErrNotExist) && name == dir && kind == "etcitem" {
 			return nil
