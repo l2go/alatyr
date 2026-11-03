@@ -28,6 +28,7 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 ### Fixed
 
 - A participant's world session no longer refuses every command after its 4096th one; it now admits only increasing command keys and keeps no per-key state.
+- A canceled or timed-out database request no longer closes the server's only storage connection. Previously one slow login during a burst left the server without its database until restart, and every later save failed.
 - A guarded stop refused by the world after a controller disconnects is dropped instead of closing the participant's game.
 - NPC events reach only players who know that NPC, so a creature that noticed a player first can no longer detach the player's session with an event about an unseen object.
 - Deferred healing-item consumption retains its originating intent in the source audit, so separate uses are checked independently.
