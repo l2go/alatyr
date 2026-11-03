@@ -114,27 +114,33 @@ func (s *Store) write(ctx context.Context, f func(pgx.Tx) error) error {
 	return nil
 }
 
-// finishBudget bounds ending a transaction, and a canceled statement's wait for
-// the server, after the caller's context is done.
-const finishBudget = 5 * time.Second
+// finishBudget bounds BEGIN, ending a transaction, and a canceled statement's
+// wait for the server, each from the moment it starts. Tests shorten it.
+var finishBudget = 5 * time.Second
 
 // transaction runs f and always ends the transaction, even after ctx is done.
-// pgx ends it with the caller's context and closes the connection when that
-// fails, so a passed deadline would otherwise lose the leased connection for
-// good. A caller that gave up before COMMIT gets its error and nothing is kept.
+// pgx closes the connection when BEGIN fails, a canceled context included, and
+// when ending the transaction fails, so a passed deadline would otherwise lose
+// the leased connection for good. BEGIN, COMMIT and ROLLBACK therefore run on
+// their own budget. A caller that gave up before COMMIT gets its error and
+// nothing is kept.
 func (s *Store) transaction(ctx context.Context, opts pgx.TxOptions, f func(pgx.Tx) error) (err error) {
-	tx, err := s.conn.BeginTx(ctx, opts)
-	if err != nil {
+	var tx pgx.Tx
+	if err = finishing(ctx, func(c context.Context) (err error) {
+		tx, err = s.conn.BeginTx(c, opts)
+		return err
+	}); err != nil {
 		return err
 	}
-	finish, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishBudget)
-	defer cancel()
 	committed := false
 	defer func() {
 		if !committed {
-			err = errors.Join(err, tx.Rollback(finish))
+			err = errors.Join(err, finishing(ctx, tx.Rollback))
 		}
 	}()
+	if err = ctx.Err(); err != nil {
+		return err
+	}
 	if err = f(tx); err != nil {
 		return err
 	}
@@ -142,7 +148,15 @@ func (s *Store) transaction(ctx context.Context, opts pgx.TxOptions, f func(pgx.
 		return err
 	}
 	committed = true
-	return tx.Commit(finish)
+	return finishing(ctx, tx.Commit)
+}
+
+// finishing runs one statement the caller's cancellation must not cut short.
+// Its budget starts with the statement, not with the transaction.
+func finishing(ctx context.Context, statement func(context.Context) error) error {
+	c, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishBudget)
+	defer cancel()
+	return statement(c)
 }
 
 // Characters returns one consistent, detached account snapshot, including

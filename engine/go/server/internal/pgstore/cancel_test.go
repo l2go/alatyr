@@ -30,6 +30,11 @@ func TestCanceledRequestKeepsTheConnection(t *testing.T) {
 			_, err := s.Characters(ctx, "example") // blocks on the held lock until the deadline
 			return err
 		}},
+		{"before-begin", func(s *Store, ctx context.Context) error {
+			// The request ends between the lease and BEGIN.
+			<-ctx.Done()
+			return s.transaction(ctx, pgx.TxOptions{}, func(pgx.Tx) error { return nil })
+		}},
 		{"expired", func(s *Store, ctx context.Context) error {
 			return s.write(ctx, func(tx pgx.Tx) error {
 				<-ctx.Done() // the work outlives the caller without an in-flight query
@@ -71,5 +76,47 @@ func TestCanceledRequestKeepsTheConnection(t *testing.T) {
 				t.Fatalf("store unusable after a canceled %s: %v", tc.name, err)
 			}
 		})
+	}
+}
+
+// The finish budget starts when the transaction ends, not when it begins: a
+// request whose own deadline allows long work commits it.
+func TestLongTransactionKeepsItsFinishBudget(t *testing.T) {
+	budget := finishBudget
+	finishBudget = 200 * time.Millisecond
+	t.Cleanup(func() { finishBudget = budget })
+	s := openTest(t, database(t))
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	err := s.write(ctx, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, "SELECT pg_sleep(0.5)")
+		return err
+	})
+	if err != nil {
+		t.Fatalf("work longer than the finish budget failed within its request deadline: %v", err)
+	}
+	if err := s.Ping(t.Context()); err != nil {
+		t.Fatalf("connection lost after a long transaction: %v", err)
+	}
+}
+
+// Ping and UsedIDs pass the caller's context to the connection outside a
+// transaction. A request that ends after the lease must not close it there:
+// only BEGIN and ending a transaction do, and those run on their own budget.
+func TestCanceledStatementOutsideTransactionKeepsTheConnection(t *testing.T) {
+	s := openTest(t, database(t))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := s.conn.Ping(ctx); err == nil {
+		t.Fatal("a canceled ping succeeded")
+	}
+	if rows, err := s.conn.Query(ctx, "SELECT 1"); err == nil {
+		rows.Close()
+		if rows.Err() == nil {
+			t.Fatal("a canceled query succeeded")
+		}
+	}
+	if err := s.Ping(t.Context()); err != nil {
+		t.Fatalf("connection lost after canceled statements: %v", err)
 	}
 }
