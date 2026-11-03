@@ -6,6 +6,7 @@ package meaning
 import (
 	"fmt"
 	"math"
+	"math/bits"
 	"slices"
 
 	"github.com/l2go/alatyr/engine/go/gateway"
@@ -105,6 +106,8 @@ type State struct {
 	quests              map[int32]QuestState
 	retained            map[string]wire.Record
 	complete            map[string]bool
+	actorSizes          map[int32]actorBytes
+	scratch             []wire.Record
 	self                int32
 	coin                *int64
 	selected            Ref
@@ -132,7 +135,7 @@ func NewState(c Config, policy Policy) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &State{config: c, policy: policy, codec: codec, observed: obs, proposals: p, actors: map[int32]Event{}, motion: map[int32]Event{}, dead: map[int32]bool{}, vitals: map[int32]*Stats{}, known: map[int32]Skill{}, inventory: map[int32]Good{}, quests: map[int32]QuestState{}, retained: map[string]wire.Record{}, complete: map[string]bool{}}, nil
+	return &State{config: c, policy: policy, codec: codec, observed: obs, proposals: p, actors: map[int32]Event{}, motion: map[int32]Event{}, dead: map[int32]bool{}, vitals: map[int32]*Stats{}, known: map[int32]Skill{}, inventory: map[int32]Good{}, quests: map[int32]QuestState{}, retained: map[string]wire.Record{}, complete: map[string]bool{}, actorSizes: map[int32]actorBytes{}}, nil
 }
 
 // Observed returns a value copy of the latest observation for id, if present.
@@ -383,7 +386,9 @@ func (s *State) Apply(update gateway.Update, now int64) (gateway.Observation, er
 	if len(s.retained) > s.config.Windows+2 { // Proposal handles, not semantic rows, determine eviction.
 		s.pruneProposals(now)
 	}
-	if _, err = s.Snapshot(now); err != nil {
+	delete(s.actorSizes, e.ID)
+	delete(s.actorSizes, e.Target)
+	if err = s.checkProjection(now); err != nil {
 		return gateway.Observation{}, err
 	}
 	return gateway.Observation{Facts: []wire.Record{r}}, nil
@@ -422,94 +427,30 @@ func (s *State) pruneProposals(now int64) {
 func (s *State) Snapshot(now int64) (gateway.Snapshot, error) {
 	s.pruneProposals(now)
 	out := make([]wire.Record, 0, len(s.actors)*2+8)
-	appendEvent := func(e Event) error {
-		r, err := EventRecord(e, s.context(e))
-		if err != nil {
-			return err
-		}
-		out = append(out, r)
-		return nil
-	}
 	ids := make([]int32, 0, len(s.actors))
 	for id := range s.actors {
 		ids = append(ids, id)
 	}
 	slices.Sort(ids)
+	var err error
 	for _, id := range ids {
-		e := s.actors[id]
-		e.Kind = Appeared
-		e.Stats = s.vitals[id]
-		if err := appendEvent(e); err != nil {
-			return gateway.Snapshot{}, err
-		}
-		if v, ok := s.motion[id]; ok {
-			if err := appendEvent(v); err != nil {
-				return gateway.Snapshot{}, err
-			}
-		}
-		if s.dead[id] {
-			if err := appendEvent(Event{Kind: Died, ID: id, MS: now}); err != nil {
-				return gateway.Snapshot{}, err
-			}
-		}
-	}
-	if v := s.vitals[s.self]; v != nil {
-		if err := appendEvent(Event{Kind: Vitals, ID: s.self, Stats: v, Appearance: s.actors[s.self].Appearance, MS: now}); err != nil {
+		if out, err = s.actorRecords(out, id, now); err != nil {
 			return gateway.Snapshot{}, err
 		}
 	}
-	inv := Event{Kind: Carried, Coin: s.coin, MS: now}
-	if s.complete["inventory"] {
-		inv.Goods = []Good{}
-	}
-	for _, v := range s.inventory {
-		inv.Goods = append(inv.Goods, v)
-	}
-	slices.SortFunc(inv.Goods, func(a, b Good) int { return cmp32(a.Object, b.Object) })
-	if err := appendEvent(inv); err != nil {
+	if out, err = s.ownRecords(out, now); err != nil {
 		return gateway.Snapshot{}, err
-	}
-	known := Event{Kind: Known, Complete: s.complete["skills"], MS: now}
-	if known.Complete {
-		known.Skills = []Skill{}
-	}
-	for _, v := range s.known {
-		known.Skills = append(known.Skills, v)
-	}
-	slices.SortFunc(known.Skills, func(a, b Skill) int { return cmp32(a.ID, b.ID) })
-	if err := appendEvent(known); err != nil {
-		return gateway.Snapshot{}, err
-	}
-	quests := Event{Kind: Quests, Complete: s.complete["quests"], MS: now}
-	if quests.Complete {
-		quests.Quests = []QuestState{}
-	}
-	for _, v := range s.quests {
-		quests.Quests = append(quests.Quests, v)
-	}
-	slices.SortFunc(quests.Quests, func(a, b QuestState) int { return cmp32(a.ID, b.ID) })
-	if err := appendEvent(quests); err != nil {
-		return gateway.Snapshot{}, err
-	}
-	keys := make([]string, 0, len(s.retained))
-	for key := range s.retained {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
-	for _, key := range keys {
-		r := s.retained[key]
-		out = append(out, r)
 	}
 	used := 0
 	for _, r := range out {
-		b, err := s.codec.Encode([]wire.Record{r})
+		n, err := s.recordBytes(r)
 		if err != nil {
 			return gateway.Snapshot{}, err
 		}
-		if len(b) > int(s.config.Advertised[25])-used || len(b) > int(s.config.Advertised[29])-used {
+		if n > int(s.config.Advertised[25])-used || n > int(s.config.Advertised[29])-used {
 			return gateway.Snapshot{}, ErrLimit
 		}
-		used += len(b)
+		used += n
 	}
 	s.projectionBytes = used
 	var incomplete []string
@@ -528,6 +469,175 @@ func (s *State) Snapshot(now int64) (gateway.Snapshot, error) {
 	}
 	return gateway.Snapshot{Facts: out, Ready: len(incomplete) == 0, Domains: incomplete}, nil
 }
+
+// actorRecords appends one visible actor's snapshot facts: its description,
+// then its motion and its death when present.
+func (s *State) actorRecords(out []wire.Record, id int32, now int64) ([]wire.Record, error) {
+	e := s.actors[id]
+	e.Kind = Appeared
+	e.Stats = s.vitals[id]
+	facts := [3]Event{e}
+	n := 1
+	if v, ok := s.motion[id]; ok {
+		facts[n] = v
+		n++
+	}
+	if s.dead[id] {
+		facts[n] = Event{Kind: Died, ID: id, MS: now}
+		n++
+	}
+	for _, f := range facts[:n] {
+		r, err := EventRecord(f, s.context(f))
+		if err != nil {
+			return out, err
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// ownRecords appends the facts about the participant itself, then the
+// retained windows in key order.
+func (s *State) ownRecords(out []wire.Record, now int64) ([]wire.Record, error) {
+	appendEvent := func(e Event) error {
+		r, err := EventRecord(e, s.context(e))
+		if err != nil {
+			return err
+		}
+		out = append(out, r)
+		return nil
+	}
+	if v := s.vitals[s.self]; v != nil {
+		if err := appendEvent(Event{Kind: Vitals, ID: s.self, Stats: v, Appearance: s.actors[s.self].Appearance, MS: now}); err != nil {
+			return out, err
+		}
+	}
+	inv := Event{Kind: Carried, Coin: s.coin, MS: now}
+	if s.complete["inventory"] {
+		inv.Goods = []Good{}
+	}
+	for _, v := range s.inventory {
+		inv.Goods = append(inv.Goods, v)
+	}
+	slices.SortFunc(inv.Goods, func(a, b Good) int { return cmp32(a.Object, b.Object) })
+	if err := appendEvent(inv); err != nil {
+		return out, err
+	}
+	known := Event{Kind: Known, Complete: s.complete["skills"], MS: now}
+	if known.Complete {
+		known.Skills = []Skill{}
+	}
+	for _, v := range s.known {
+		known.Skills = append(known.Skills, v)
+	}
+	slices.SortFunc(known.Skills, func(a, b Skill) int { return cmp32(a.ID, b.ID) })
+	if err := appendEvent(known); err != nil {
+		return out, err
+	}
+	quests := Event{Kind: Quests, Complete: s.complete["quests"], MS: now}
+	if quests.Complete {
+		quests.Quests = []QuestState{}
+	}
+	for _, v := range s.quests {
+		quests.Quests = append(quests.Quests, v)
+	}
+	slices.SortFunc(quests.Quests, func(a, b QuestState) int { return cmp32(a.ID, b.ID) })
+	if err := appendEvent(quests); err != nil {
+		return out, err
+	}
+	keys := make([]string, 0, len(s.retained))
+	for key := range s.retained {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
+		r := s.retained[key]
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// recordBytes is the size of r encoded alone, as the snapshot bound counts it.
+func (s *State) recordBytes(r wire.Record) (int, error) {
+	b, err := s.codec.Encode([]wire.Record{r})
+	return len(b), err
+}
+
+// actorKey is what an actor's snapshot facts depend on beyond its own
+// entries; Apply retires an actor's cached size whenever it changes those.
+type actorKey struct {
+	ref, target, motionRef, motionTarget Ref
+	width                                int // encoded width of the death time
+}
+
+type actorBytes struct {
+	key   actorKey
+	bytes int
+}
+
+// checkProjection fails exactly when Snapshot at now would exceed its byte
+// bound or reject a fact. It encodes again only the actors whose facts can
+// have changed and reuses the measured size of every other actor, so one
+// update does not cost a full snapshot of everything visible.
+func (s *State) checkProjection(now int64) error {
+	s.pruneProposals(now)
+	used := 0
+	for id, e := range s.actors {
+		key := actorKey{ref: s.observed.Reference(e.ID), target: s.observed.Reference(e.Target)}
+		if v, ok := s.motion[id]; ok {
+			key.motionRef, key.motionTarget = s.observed.Reference(v.ID), s.observed.Reference(v.Target)
+		}
+		if s.dead[id] {
+			key.width = signedWidth(now)
+		}
+		cached, ok := s.actorSizes[id]
+		if !ok || cached.key != key {
+			records, err := s.actorRecords(s.scratch[:0], id, now)
+			s.scratch = records[:0]
+			if err != nil {
+				return err
+			}
+			cached = actorBytes{key: key}
+			for _, r := range records {
+				n, err := s.recordBytes(r)
+				if err != nil {
+					return err
+				}
+				cached.bytes += n
+			}
+			s.actorSizes[id] = cached
+		}
+		used += cached.bytes
+	}
+	for id := range s.actorSizes {
+		if _, ok := s.actors[id]; !ok {
+			delete(s.actorSizes, id)
+		}
+	}
+	own, err := s.ownRecords(s.scratch[:0], now)
+	s.scratch = own[:0]
+	if err != nil {
+		return err
+	}
+	for _, r := range own {
+		n, err := s.recordBytes(r)
+		if err != nil {
+			return err
+		}
+		used += n
+	}
+	s.projectionBytes = used
+	if used > int(s.config.Advertised[25]) || used > int(s.config.Advertised[29]) {
+		return ErrLimit
+	}
+	return nil
+}
+
+// signedWidth is the varint width of a zigzag-encoded signed value.
+func signedWidth(v int64) int {
+	return max(1, (bits.Len64(uint64(v<<1^v>>63))+6)/7)
+}
+
 func cmp32(a, b int32) int {
 	if a < b {
 		return -1
@@ -761,6 +871,7 @@ func (s *State) Invalidate() {
 	clear(s.inventory)
 	clear(s.quests)
 	clear(s.complete)
+	clear(s.actorSizes)
 	s.selected = Ref{}
 }
 
