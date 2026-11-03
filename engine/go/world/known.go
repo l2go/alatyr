@@ -273,8 +273,8 @@ func (w *World) reveal(s *state, p *player, id int32, pos Point, now time.Time) 
 	}
 	if a != nil {
 		w.describeState(s, a, p)
-		// The actor's held target, as a scene capture reports it.
-		if c := a.base(); c.target != 0 {
+		// The actor's held target, resolved as a scene capture resolves it.
+		if c := a.base(); s.ref(c.target) != (Ref{}) {
 			w.deliver(p, TargetChosen{ObjectID: c.id, TargetID: c.target, Pos: c.pos})
 		}
 	}
