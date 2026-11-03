@@ -17,9 +17,6 @@ func command(op meaning.Operation, key uint64, ttl *uint64) (bridge.Command, err
 	}
 	c := bridge.Command{Key: key, Verb: v.Code, QueueTTLMS: ttl}
 	m := op.Command
-	if op.Selection {
-		c.Verb = 2
-	}
 	switch c.Verb {
 	case 1:
 		c.Payload = []wire.Field{wire.At(11, true, m.X, m.Y, m.Z)}

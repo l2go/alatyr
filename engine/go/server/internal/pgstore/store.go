@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/l2go/alatyr/engine/go/world"
 )
 
@@ -35,6 +37,11 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 	}
 	cfg.RuntimeParams["search_path"] = "world,public"
 	cfg.RuntimeParams["application_name"] = "alatyr-go"
+	// A canceled request asks the server to cancel its statement; closing the
+	// socket would end the lease, and the store never reconnects.
+	cfg.BuildContextWatcherHandler = func(c *pgconn.PgConn) ctxwatch.Handler {
+		return &pgconn.CancelRequestContextWatcherHandler{Conn: c, DeadlineDelay: finishBudget}
+	}
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
 		return nil, errors.New("pgstore: connect failed")
@@ -101,10 +108,55 @@ func (s *Store) write(ctx context.Context, f func(pgx.Tx) error) error {
 		return err
 	}
 	defer s.release()
-	if err := pgx.BeginFunc(ctx, s.conn, f); err != nil {
+	if err := s.transaction(ctx, pgx.TxOptions{}, f); err != nil {
 		return fmt.Errorf("pgstore: transaction: %w", err)
 	}
 	return nil
+}
+
+// finishBudget bounds BEGIN, ending a transaction, and a canceled statement's
+// wait for the server, each from the moment it starts. Tests shorten it.
+var finishBudget = 5 * time.Second
+
+// transaction runs f and always ends the transaction, even after ctx is done.
+// pgx closes the connection when BEGIN fails, a canceled context included, and
+// when ending the transaction fails, so a passed deadline would otherwise lose
+// the leased connection for good. BEGIN, COMMIT and ROLLBACK therefore run on
+// their own budget. A caller that gave up before COMMIT gets its error and
+// nothing is kept.
+func (s *Store) transaction(ctx context.Context, opts pgx.TxOptions, f func(pgx.Tx) error) (err error) {
+	var tx pgx.Tx
+	if err = finishing(ctx, func(c context.Context) (err error) {
+		tx, err = s.conn.BeginTx(c, opts)
+		return err
+	}); err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			err = errors.Join(err, finishing(ctx, tx.Rollback))
+		}
+	}()
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	if err = f(tx); err != nil {
+		return err
+	}
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	committed = true
+	return finishing(ctx, tx.Commit)
+}
+
+// finishing runs one statement the caller's cancellation must not cut short.
+// Its budget starts with the statement, not with the transaction.
+func finishing(ctx context.Context, statement func(context.Context) error) error {
+	c, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishBudget)
+	defer cancel()
+	return statement(c)
 }
 
 // Characters returns one consistent, detached account snapshot, including
@@ -115,7 +167,7 @@ func (s *Store) Characters(ctx context.Context, account string) ([]world.Charact
 	}
 	defer s.release()
 	var chars []world.Character
-	err := pgx.BeginTxFunc(ctx, s.conn, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 		var err error
 		chars, err = readCharacters(ctx, tx, account)
 		return err
@@ -184,7 +236,7 @@ func (s *Store) Character(ctx context.Context, account, name string) (world.Char
 	}
 	defer s.release()
 	var found world.Character
-	err := pgx.BeginTxFunc(ctx, s.conn, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 		var id int32
 		if err := tx.QueryRow(ctx, "SELECT id FROM player WHERE account_name=$1 AND name=$2", account, name).Scan(&id); err != nil {
 			return err

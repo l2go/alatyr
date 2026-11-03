@@ -90,20 +90,16 @@ func (w *World) tickStance(s *state) {
 	s.afterRule(stancePeriod, RuleCombatStance, w.tickStance)
 }
 
+// broadcastToKnown delivers an event about a to every player whose interest
+// set holds a, and to a itself. An NPC's own perception of players is AI
+// state; it never chooses who hears about the NPC.
 func (w *World) broadcastToKnown(s *state, a actor, e Event) {
-	switch v := a.(type) {
-	case *player:
-		v.send(e)
-		for _, p := range s.players {
-			if p != v && p.known[v.id] {
-				p.send(e)
-			}
-		}
-	case *npc:
-		for id := range v.knownPlayers {
-			if p, ok := s.players[id]; ok {
-				p.send(e)
-			}
+	if p, ok := a.(*player); ok {
+		w.deliver(p, e)
+	}
+	for id := range s.watchers[a.base().id] {
+		if q, ok := s.players[id]; ok {
+			w.deliver(q, e)
 		}
 	}
 }
@@ -130,6 +126,7 @@ func (w *World) updateKnown(s *state, a actor) {
 	c.lastKnown = now
 	switch v := a.(type) {
 	case *player:
+		v.displaced = 0
 		w.playerForget(s, v)
 		w.playerLearn(s, v, now)
 	case *npc:
@@ -153,6 +150,11 @@ func (w *World) updateKnown(s *state, a actor) {
 	}
 }
 
+// playerForget drops what p no longer sees, and p from the players who see it
+// but are out of range. Visibility is not symmetric under the interest bound,
+// so the second part walks p's watchers, not p's own set. An NPC displaced
+// from p's set still perceives p; p's pass ends that perception by the NPC's
+// own forget distance, as the NPC's pass would.
 func (w *World) playerForget(s *state, p *player) {
 	limit := playerForgetDistance(len(p.known))
 	for _, id := range slices.Sorted(maps.Keys(p.known)) {
@@ -160,20 +162,34 @@ func (w *World) playerForget(s *state, p *player) {
 		if !ok || p.teleporting || distance3D(p.pos, pos) > limit {
 			w.playerForgetObject(s, p, id)
 		}
-		if q, ok := s.players[id]; ok && q.known[p.id] && distance3D(q.pos, p.pos) > playerForgetDistance(len(q.known)) {
+	}
+	for _, q := range s.watching(p.id) {
+		if distance3D(q.pos, p.pos) > playerForgetDistance(len(q.known)) {
 			w.playerForgetObject(s, q, p.id)
+		}
+	}
+	for _, n := range s.perceiving(p.id) {
+		if !p.known[n.id] && (p.teleporting || distance3D(n.pos, p.pos) > n.forgetDistance(p.id)) {
+			w.forgetPlayer(s, n, p.id)
 		}
 	}
 }
 
-func (w *World) playerForgetObject(s *state, p *player, id int32) {
+func (w *World) playerForgetObject(s *state, p *player, id int32) { w.hide(s, p, id, true) }
+
+// hide removes an object from p's interest set. An NPC forgets p as well only
+// when perceive is set: displacement from the set is not AI perception.
+func (w *World) hide(s *state, p *player, id int32, perceive bool) {
 	if p.known[id] {
 		s.change(p.ref(), PropertyKnownObject, RefValue(s.ref(id)), RefValue(Ref{}))
 	}
 	delete(p.known, id)
+	unlink(s.watchers, id, p.id)
 	if n, ok := s.npcs[id]; ok {
 		delete(n.base().listeners, p.id)
-		w.forgetPlayer(s, n, p.id)
+		if perceive {
+			w.forgetPlayer(s, n, p.id)
+		}
 	}
 	if p.target == id {
 		w.setTarget(s, p, 0)
@@ -182,9 +198,19 @@ func (w *World) playerForgetObject(s *state, p *player, id int32) {
 	w.notifyForget(s, p, id)
 }
 
+// playerLearn admits unknown objects within the watch radius, most important
+// first, until the interest set refuses one. Every later candidate is less
+// important, so the set would refuse it as well.
 func (w *World) playerLearn(s *state, p *player, now time.Time) {
 	if p.teleporting {
 		return
+	}
+	watch := playerWatch(len(p.known))
+	var cs []candidate
+	consider := func(id int32, pos Point) {
+		if !p.known[id] && distance3D(p.pos, pos) <= watch {
+			cs = append(cs, candidate{id: id, pos: pos, rank: w.rank(s, p, id, pos)})
+		}
 	}
 	for _, nk := range neighbourhood(regionOf(p.pos)) {
 		nr, ok := s.regions[nk]
@@ -193,9 +219,9 @@ func (w *World) playerLearn(s *state, p *player, now time.Time) {
 		}
 		for _, id := range nr.objects {
 			if q, ok := s.players[id]; ok {
-				if q != p {
+				if q != p && !q.teleporting {
 					w.playerKnow(s, q, p)
-					w.playerKnow(s, p, q)
+					consider(q.id, q.pos)
 				}
 				continue
 			}
@@ -204,33 +230,62 @@ func (w *World) playerLearn(s *state, p *player, now time.Time) {
 				continue
 			}
 			w.learnPlayer(s, n, p)
-			if distance3D(n.pos, p.pos) <= playerWatch(len(p.known)) && !p.known[id] {
-				p.known[id] = true
-				s.change(p.ref(), PropertyKnownObject, RefValue(Ref{}), RefValue(n.ref()))
-				p.send(NPCSeen{NPC: n.view(now)})
-				w.describeState(s, n, p)
-			}
+			consider(n.id, n.pos)
 		}
 	}
 	for _, id := range slices.Sorted(maps.Keys(s.ground)) {
-		g := s.ground[id]
-		if !p.known[g.id] && distance3D(p.pos, g.pos) <= playerWatch(len(p.known)) {
-			t, _ := w.cat.Item(g.templateID)
-			p.known[g.id] = true
-			s.change(p.ref(), PropertyKnownObject, RefValue(Ref{}), RefValue(g.ref()))
-			p.send(ItemDropped{ObjectID: g.id, TemplateID: g.templateID, Count: g.count, Pos: g.pos, Stackable: t.Stackable()})
+		consider(id, s.ground[id].pos)
+	}
+	sortCandidates(cs)
+	for _, c := range cs {
+		// The watch radius still narrows as the set fills.
+		if distance3D(p.pos, c.pos) > playerWatch(len(p.known)) {
+			continue
+		}
+		if !w.reveal(s, p, c.id, c.pos, now) {
+			return
 		}
 	}
+}
+
+// reveal admits one object into p's interest set and sends its appearance.
+func (w *World) reveal(s *state, p *player, id int32, pos Point, now time.Time) bool {
+	if p.known[id] {
+		return true
+	}
+	if !w.admit(s, p, id, pos) {
+		return false
+	}
+	var a actor
+	switch {
+	case s.players[id] != nil:
+		q := s.players[id]
+		w.deliver(p, PlayerSeen{Player: w.selfOf(q)})
+		a = q
+	case s.npcs[id] != nil:
+		n := s.npcs[id]
+		w.deliver(p, NPCSeen{NPC: n.view(now)})
+		a = n
+	case s.ground[id] != nil:
+		g := s.ground[id]
+		t, _ := w.cat.Item(g.templateID)
+		w.deliver(p, ItemDropped{ObjectID: g.id, TemplateID: g.templateID, Count: g.count, Pos: g.pos, Stackable: t.Stackable()})
+	}
+	if a != nil {
+		w.describeState(s, a, p)
+		// The actor's held target, resolved as a scene capture resolves it.
+		if c := a.base(); s.ref(c.target) != (Ref{}) {
+			w.deliver(p, TargetChosen{ObjectID: c.id, TargetID: c.target, Pos: c.pos})
+		}
+	}
+	return true
 }
 
 func (w *World) playerKnow(s *state, p, q *player) {
 	if p.teleporting || q.teleporting || p.known[q.id] || distance3D(p.pos, q.pos) > playerWatch(len(p.known)) {
 		return
 	}
-	p.known[q.id] = true
-	s.change(p.ref(), PropertyKnownObject, RefValue(Ref{}), RefValue(q.ref()))
-	p.send(PlayerSeen{Player: w.selfOf(q)})
-	w.describeState(s, q, p)
+	w.reveal(s, p, q.id, q.pos, time.Now())
 }
 
 func (w *World) describeState(s *state, a actor, p *player) {
@@ -240,7 +295,7 @@ func (w *World) describeState(s *state, a actor, p *player) {
 	}
 	if c.ai.pawnOffset != 0 && c.ai.follow != 0 {
 		if pos, _, _, ok := s.objectAt(c.ai.follow); ok {
-			p.send(Following{ObjectID: c.id, TargetID: c.ai.follow, Distance: c.ai.pawnOffset, From: c.pos, To: pos})
+			w.deliver(p, Following{ObjectID: c.id, TargetID: c.ai.follow, Distance: c.ai.pawnOffset, From: c.pos, To: pos})
 			return
 		}
 	}
@@ -248,7 +303,7 @@ func (w *World) describeState(s *state, a actor, p *player) {
 	if c.move != nil {
 		dest = c.move.dest
 	}
-	p.send(Moving{ObjectID: c.id, From: c.pos, To: dest})
+	w.deliver(p, Moving{ObjectID: c.id, From: c.pos, To: dest})
 }
 
 func playerForgetDistance(known int) float64 {
@@ -300,6 +355,7 @@ func (w *World) place(s *state, p *player) {
 			}
 		}
 	})
+	p.displaced = 0
 	w.playerLearn(s, p, time.Now())
 	p.lastKnown = time.Now()
 }
@@ -403,7 +459,7 @@ func (w *World) statusInfo(s *state, a actor) {
 	}
 	for id := range a.base().listeners {
 		if p, ok := s.players[id]; ok && p != a {
-			p.send(v)
+			w.deliver(p, v)
 		}
 	}
 }

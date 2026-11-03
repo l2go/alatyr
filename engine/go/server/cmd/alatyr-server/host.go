@@ -55,6 +55,7 @@ type runtime struct {
 	mu            sync.Mutex
 	ports         map[string]opened
 	failed        map[world.Ref]bool
+	recovered     []error // first port close errors whose departure a later Leave persisted
 	closing       bool
 	ready         atomic.Bool
 	log           *slog.Logger
@@ -91,7 +92,10 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, l
 		log = slog.Default()
 	}
 	characters := &characterStore{store: store, catalog: cat, hidden: make(map[int32]hidden)}
-	options = append([]world.Option{world.WithLogger(log), world.WithReservedIDs(ids), world.WithIDRange(first, last)}, options...)
+	mc := limits(len(admissions))
+	// The world shows each player at most the objects the gateway advertises
+	// it observes, less the participant itself.
+	options = append([]world.Option{world.WithLogger(log), world.WithReservedIDs(ids), world.WithIDRange(first, last), world.WithInterest(mc.Objects - 1)}, options...)
 	w := world.New(cat, characters, options...)
 	life, cancel := context.WithCancel(context.Background())
 	worldDone := make(chan error, 1)
@@ -100,7 +104,6 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, l
 	r := &runtime{cfg: cfg, store: store, characters: characters, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), log: log}
 	r.openingCancel = make(map[string]context.CancelFunc)
 	origin := time.Now()
-	mc := limits(len(admissions))
 	r.meaningConfig = hostBackendConfig(mc, origin)
 	codec, err := meaning.NewCodec(mc)
 	if err != nil {
@@ -159,9 +162,7 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, l
 		}
 		pendingMu.Unlock()
 		// Closing Gateway cancels active factories and joins HTTP upgrades and transports.
-		if err := r.gateway.Close(); err != nil {
-			errs = append(errs, err)
-		}
+		gatewayErr := r.gateway.Close()
 		owners.Wait()
 		r.opening.Wait()
 		r.mu.Lock()
@@ -171,18 +172,35 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, l
 			failed[owner] = true
 		}
 		r.mu.Unlock()
+		closeErrs := make(map[world.Ref]error)
 		for _, o := range ports {
 			if err := o.session.Close(); err != nil {
 				failed[o.port.Owner()] = true
+				closeErrs[o.port.Owner()] = err
 			}
 		}
 		drain, cancelDrain := context.WithTimeout(context.Background(), time.Duration(cfg.ShutdownSeconds)*time.Second)
 		defer cancelDrain()
 		for owner := range failed {
-			if err := w.Leave(drain, owner); err != nil && !errors.Is(err, world.ErrStopped) {
+			err := w.Leave(drain, owner)
+			if err != nil && !errors.Is(err, world.ErrStopped) {
 				errs = append(errs, err)
+			} else if err == nil && closeErrs[owner] != nil {
+				r.noteRecovered(closeErrs[owner])
 			}
 		}
+		// Gateway reports the first port close error, typically a departure save
+		// that missed its close budget. Once a retry persisted that departure the
+		// shutdown is clean; any departure still unsaved has its own error above.
+		r.mu.Lock()
+		for _, recovered := range r.recovered {
+			if errors.Is(gatewayErr, recovered) {
+				gatewayErr = nil
+				break
+			}
+		}
+		r.mu.Unlock()
+		errs = append(errs, gatewayErr)
 		cancel()
 		return errors.Join(errs...)
 	}
@@ -322,13 +340,14 @@ func (r *runtime) openPort(ctx context.Context, id string, decorate func(bridge.
 	delete(r.ports, id)
 	r.mu.Unlock()
 	if exists {
-		if err := previous.session.Close(); err != nil {
+		if closeErr := previous.session.Close(); closeErr != nil {
 			if err := r.world.Leave(ctx, previous.port.Owner()); err != nil {
 				r.mu.Lock()
 				r.ports[id] = previous
 				r.mu.Unlock()
 				return nil, nil, err
 			}
+			r.noteRecovered(closeErr)
 		}
 	}
 	// Resolve both names with PostgreSQL citext semantics, then pass the stored
@@ -393,6 +412,20 @@ func (r *runtime) openPort(ctx context.Context, id string, decorate func(bridge.
 	r.ports[id] = opened{p, s}
 	r.mu.Unlock()
 	return w, state, nil
+}
+
+// maxRecovered bounds the remembered recoveries. Gateway keeps only its first
+// close error, so only the earliest failures can match it at shutdown; when
+// none matches, the shutdown conservatively reports that error.
+const maxRecovered = 4096
+
+// noteRecovered records a port close error whose departure a retry has persisted.
+func (r *runtime) noteRecovered(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.recovered) < maxRecovered {
+		r.recovered = append(r.recovered, err)
+	}
 }
 
 func (r *runtime) authenticate(token string) string {

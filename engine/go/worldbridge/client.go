@@ -166,7 +166,7 @@ func Open(ctx context.Context, cfg Config, id bridge.Identity) (*Client, bridge.
 	}
 	lifetime, cancel := context.WithCancel(context.Background())
 	c := &Client{cfg: cfg, owner: entry.Self.Entity, updates: make(chan bridge.Update, 1), requests: make(chan operation), stop: make(chan struct{}), done: make(chan struct{}), cancel: cancel}
-	s := &session{client: c, tr: tr, scene: scene, sub: sub, origin: scene.Begin.Time, epoch: 1, nextFact: next, nextAttempt: 1, sourceSeq: scene.End.Seq, keys: make(map[uint64]bool)}
+	s := &session{client: c, tr: tr, scene: scene, sub: sub, origin: scene.Begin.Time, epoch: 1, nextFact: next, nextAttempt: 1, sourceSeq: scene.End.Seq}
 	go s.run(lifetime)
 	return c, snap, nil
 }
@@ -216,8 +216,8 @@ func (c *Client) submit(ctx context.Context, call func(context.Context, *session
 	}
 }
 
-// Write registers Key and an attempt before execution. Keys remain unique
-// across Resume. This session admits at most 4096 keys and retains the last 64
+// Write registers Key and an attempt before execution. Each Key must exceed
+// every key admitted before, across Resume. The session retains the last 64
 // receipts. Errors after admission do not prove that no mutation occurred.
 // QueueTTLMS and the caller deadline bound the original attempt, not recovery.
 func (c *Client) Write(ctx context.Context, command bridge.Command) (uint64, error) {

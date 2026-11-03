@@ -28,6 +28,7 @@ type player struct {
 	outbox                     []Event
 	slow                       bool
 	known                      map[int32]bool
+	displaced                  int
 	cp                         float64
 	sitting                    bool
 	lastSitStand               time.Time

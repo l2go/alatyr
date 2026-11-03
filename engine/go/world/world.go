@@ -143,6 +143,7 @@ type World struct {
 	idFirst, idLast int32
 	final           []Checkpoint
 	pace            func(time.Duration, int)
+	interest        int
 }
 type state struct {
 	players                                                         map[int32]*player
@@ -156,21 +157,25 @@ type state struct {
 	regions                                                         map[regionKey]*region
 	thinkers, animators, followers, broadcastQueue, revalidateQueue []int32
 	stance                                                          map[int32]time.Time
-	stanceOrder, regenOrder                                         []int32
-	decay                                                           []decayEntry
-	rng                                                             *rand.Rand
-	ids                                                             *ids
-	reserved                                                        map[int32]bool
-	started                                                         time.Time
-	generation                                                      uint64
-	err                                                             error
-	commandSeq, commitSeq                                           uint64
-	affordanceSeq                                                   uint64
-	eventSeq                                                        uint64
-	batch                                                           *commitBatch
-	observe                                                         func(Commit)
-	parties                                                         map[uint64]*party
-	partySeq, lifeSeq                                               uint64
+	// watchers maps an object to the players whose interest set holds it;
+	// perceivers maps a player to the NPCs that perceive it. Both mirror
+	// player.known and npc.knownPlayers and change only with them.
+	watchers, perceivers    map[int32]map[int32]bool
+	stanceOrder, regenOrder []int32
+	decay                   []decayEntry
+	rng                     *rand.Rand
+	ids                     *ids
+	reserved                map[int32]bool
+	started                 time.Time
+	generation              uint64
+	err                     error
+	commandSeq, commitSeq   uint64
+	affordanceSeq           uint64
+	eventSeq                uint64
+	batch                   *commitBatch
+	observe                 func(Commit)
+	parties                 map[uint64]*party
+	partySeq, lifeSeq       uint64
 }
 
 type pendingSave struct {
@@ -188,6 +193,7 @@ func New(cat *catalog.Catalog, store Store, options ...Option) *World {
 	w.items = itemlog.Discard
 	w.logger = slog.Default()
 	w.ground = NoGround{}
+	w.interest = defaultInterest
 	var seed [32]byte
 	// crypto/rand.Read fills the slice or terminates the process in modern Go.
 	_, _ = crand.Read(seed[:])
@@ -196,6 +202,8 @@ func New(cat *catalog.Catalog, store Store, options ...Option) *World {
 	w.s.ground = map[int32]*groundItem{}
 	w.s.regions = map[regionKey]*region{}
 	w.s.stance = map[int32]time.Time{}
+	w.s.watchers = map[int32]map[int32]bool{}
+	w.s.perceivers = map[int32]map[int32]bool{}
 	w.s.reserved = map[int32]bool{}
 	for _, option := range options {
 		option(w)

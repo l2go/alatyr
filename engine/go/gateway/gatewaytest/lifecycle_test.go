@@ -204,30 +204,6 @@ func TestG10RejectFalseWitnesses(t *testing.T) {
 	}
 }
 
-func TestG02ControlTransferBeforeEffect(t *testing.T) {
-	both(t, func(r *rig) {
-		r.p.Send(r.intent(1, 11, r.ref(2)))
-		r.sync()
-		log := r.log()
-		if len(log) != 1 {
-			r.t.Fatal(log)
-		}
-		other := gatewaytest.Join(r.t, r.g, r.c, "one", wire.ModeAct, false)
-		r.peers = append(r.peers, other)
-		r.sync() // Join's end frame must also finish the actor's checkpoint drain.
-		other.Send(wire.Record{Type: wire.Control, Fields: []wire.Field{wire.U(1, true, uint64(wire.ControlTake))}})
-		other.Until(func() bool { return other.Control != 0 })
-		r.sync()
-		r.p.Result(1, wire.StageUnknown)
-		r.reply(log[0], wire.StageDone, wire.ReasonNone, meaning.Event{Kind: meaning.Targeted, ID: 1, Target: 2}, targetEffect(2))
-		r.expect(1, 11, 5, wire.StageUnknown, wire.ReasonInterrupted, wire.DeliveryPartial, 0)
-		if len(r.log()) != 1 {
-			r.t.Fatal("stale control wrote effect")
-		}
-		other.Close()
-	})
-}
-
 func TestG07TerminalSentIsImmutable(t *testing.T) {
 	both(t, func(r *rig) {
 		r.p.Send(r.intent(1, 1, wire.At(11, true, 1, 2, 3)))

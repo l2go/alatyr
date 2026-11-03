@@ -21,15 +21,24 @@ import (
 )
 
 func TestHostShutdownWithActiveWebSocket(t *testing.T) {
-	testHostShutdown(t, false)
+	testHostShutdown(t, 0)
+}
+
+// A departure save that misses its close budget is retried; once the retry
+// persists it, the shutdown is clean and the process exits 0.
+func TestHostShutdownAfterRetriedDepartureIsClean(t *testing.T) {
+	testHostShutdown(t, 1)
 }
 
 func TestHostShutdownSavesWithinComposeGrace(t *testing.T) {
-	testHostShutdown(t, true)
+	testHostShutdown(t, 2)
 }
 
-func testHostShutdown(t *testing.T, slow bool) {
+// testHostShutdown fails the first failures saves: none, the port's bounded
+// departure, or the departure and its retry.
+func testHostShutdown(t *testing.T, failures int32) {
 	t.Helper()
+	slow := failures == 2
 	cat, err := catalog.Load("../../../../../world")
 	if err != nil {
 		t.Fatal(err)
@@ -50,8 +59,12 @@ func testHostShutdown(t *testing.T, slow bool) {
 		t.Fatal(err)
 	}
 	var delayed *shutdownStore
-	if slow {
-		delayed = &shutdownStore{Store: store, finalDelay: 14 * time.Second}
+	switch failures {
+	case 1:
+		delayed = &shutdownStore{Store: store, failures: 1}
+		store = delayed
+	case 2:
+		delayed = &shutdownStore{Store: store, failures: 2, finalDelay: 14 * time.Second}
 		store = delayed
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -131,6 +144,9 @@ func testHostShutdown(t *testing.T, slow bool) {
 		} else if err != nil {
 			t.Fatalf("normal shutdown returned %v, want nil (process exit 0)", err)
 		}
+		if failures == 1 && delayed.calls.Load() != 2 {
+			t.Fatalf("save calls = %d, want close and retry", delayed.calls.Load())
+		}
 	case <-deadline.C:
 		t.Fatal("shutdown did not join")
 	}
@@ -140,18 +156,19 @@ func testHostShutdown(t *testing.T, slow bool) {
 	}
 }
 
-// Fail the port's bounded departure and consume the whole retry budget. Only
-// final persistence succeeds, after using nearly its full independent budget.
+// Fail the first saves by consuming their whole budget: the port's bounded
+// departure, then optionally its retry. A later save succeeds after finalDelay.
 // These are deadline waits, not sleeps used to synchronize goroutines.
 type shutdownStore struct {
 	Store
 	calls      atomic.Int32
 	saved      atomic.Bool
+	failures   int32
 	finalDelay time.Duration
 }
 
 func (s *shutdownStore) PutCharacter(ctx context.Context, c world.Character) error {
-	if s.calls.Add(1) <= 2 {
+	if s.calls.Add(1) <= s.failures {
 		<-ctx.Done()
 		return ctx.Err()
 	}

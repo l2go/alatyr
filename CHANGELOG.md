@@ -22,10 +22,19 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Changed
 
+- Engage and cast reach the Go world as one command that selects the target itself; cast and talk now select their target as attack already did, so a cast still continues into an attack. The gateway no longer writes a separate target selection first, so a death or lost target during that selection can no longer leave the attempt Unknown, and engage and cast no longer wait for selection confirmation.
 - `alatyr/1` clients can receive Refused after Sent when live, exclusive world evidence proves that the entire attempt had no effects. The action class remains usable. A genuine Unknown still taints it for unbound evidence, while evidence keyed to a later attempt completes that attempt.
 
 ### Fixed
 
+- A participant's world session no longer refuses every command after its 4096th one; it now admits only increasing command keys and keeps no per-key state.
+- A canceled or timed-out database request no longer closes the server's only storage connection. Previously one slow login during a burst left the server without its database until restart, and every later save failed.
+- A guarded stop refused by the world after a controller disconnects is dropped instead of closing the participant's game.
+- A participant update no longer re-encodes the participant's whole snapshot to check its byte bound; only changed actors are measured again. In a crowded scene that work grew with every visible object, kept the CPU saturated and made a burst of logins miss the database budget.
+- A shutdown whose departure saves missed their close budget but were persisted by the host's retry now exits cleanly instead of reporting the recovered save failure.
+- NPC events reach only players who know that NPC, so a creature that noticed a player first can no longer detach the player's session with an event about an unseen object.
+- A crowd no longer closes participants. The world shows each player at most the objects the gateway advertises it observes, 127 besides the participant itself: first what the player acts on or what acts on it (target, current action, dialogue partner, party, anyone targeting, attacking or hating it), then the nearest, with a hysteresis step and at most eight replacements per visibility pass. Previously the world showed everything in range and the gateway closed a participant at its 129th observed object; with 64 participants in one place that happened within a minute.
+- Events about objects reach a player only when the player sees their subject and every object they act on; target lists and the dropper of an item are cut to what the player sees. NPC events now reach every player who sees the NPC, not only the players the NPC has noticed, so distant observers no longer miss its movements.
 - Deferred healing-item consumption retains its originating intent in the source audit, so separate uses are checked independently.
 - Recovery accepts a visible dialogue page after its final learning action was consumed, while retaining original-lifetime checks for actionable proposals.
 - Visibility changes and participant checkpoint traversal follow stable object and admission order so identical command sequences can be replayed exactly.

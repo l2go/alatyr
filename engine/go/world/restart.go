@@ -24,6 +24,10 @@ func (w *World) decayPlayer(s *state, p *player) {
 	for _, id := range slices.Sorted(maps.Keys(p.known)) {
 		w.playerForgetObject(s, p, id)
 	}
+	// NPCs displaced from p's set still perceive p.
+	for _, n := range s.perceiving(p.id) {
+		w.forgetPlayer(s, n, p.id)
+	}
 	w.setTarget(s, p, 0)
 	w.stopFollow(s, p)
 	s.change(p.ref(), PropertyCombat, boolValue(p.ai.autoAttacking), IntValue(0))

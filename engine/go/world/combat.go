@@ -81,9 +81,9 @@ func (w *World) onHit(s *state, a, t actor, damage int, crit, miss bool) {
 func (w *World) sendDamageMessage(s *state, a, t actor, damage int, crit, miss bool) {
 	e := DamageNotice{AttackerID: a.base().id, TargetID: t.base().id, Damage: float64(damage), Critical: crit, Miss: miss}
 	if p, ok := a.(*player); ok {
-		p.send(e)
+		w.deliver(p, e)
 	} else if p, ok := t.(*player); ok {
-		p.send(e)
+		w.deliver(p, e)
 	}
 }
 func (w *World) reduceHP(s *state, t actor, value float64, attacker actor) {

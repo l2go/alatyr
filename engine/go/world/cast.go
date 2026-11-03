@@ -142,7 +142,7 @@ func (w *World) onMagicLaunched(s *state, p *player, env castEnv) {
 		targets = append(targets, id)
 	}
 	env.targets = targets
-	p.send(SkillLaunched{CasterID: p.id, SkillID: env.skill.ID, Level: env.skill.Level, Targets: append([]int32(nil), targets...)})
+	w.deliver(p, SkillLaunched{CasterID: p.id, SkillID: env.skill.ID, Level: env.skill.Level, Targets: targets})
 	w.setMP(s, p, max(p.mp-float64(env.skill.MPConsume), 0))
 	for _, id := range targets {
 		t, ok := s.actor(id)

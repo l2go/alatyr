@@ -152,7 +152,7 @@ func TestNeutralStrategyUsesOneEffectAndOwnsMetadata(t *testing.T) {
 		t.Fatal("pickup is not one effect", steps, err)
 	}
 	op, err := OperationValue(steps[0])
-	if err != nil || op.Selection || op.Command.Kind != Take {
+	if err != nil || op.Command.Kind != Take {
 		t.Fatal(op, err)
 	}
 	for _, kind := range []string{Aim, Focus} {
@@ -160,13 +160,15 @@ func TestNeutralStrategyUsesOneEffectAndOwnsMetadata(t *testing.T) {
 			t.Fatal("local action wrote a backend step", steps, err)
 		}
 	}
-	steps, err = PlanSteps(Plan{Command: Command{Kind: Cast}, Effect: Effect{ConfirmSelection: true}})
-	if err != nil || len(steps) != 2 || !steps[0].Await || steps[1].Await {
-		t.Fatal(steps, err)
-	}
-	op, err = OperationValue(steps[0])
-	if err != nil || !op.Selection {
-		t.Fatal(op, err)
+	// The world selects the target within the effect: no helper precedes it.
+	for _, kind := range []string{Cast, Strike, Talk} {
+		steps, err = PlanSteps(Plan{Command: Command{Kind: kind, Target: 9}})
+		if err != nil || len(steps) != 1 || steps[0].Await {
+			t.Fatal(kind, steps, err)
+		}
+		if op, err = OperationValue(steps[0]); err != nil || op.Command.Kind != kind {
+			t.Fatal(op, err)
+		}
 	}
 	custom := []gateway.Step{{Value: "adapter-owned", Interferes: []string{"learn"}}}
 	s := newState(t, testConfig(), Policy{Steps: func(Plan) ([]gateway.Step, error) { return custom, nil }})
@@ -254,7 +256,7 @@ func TestEveryNonproposalVerbAndKnownSkillWithoutPractice(t *testing.T) {
 				} else {
 					want.Kind = Strike
 				}
-				if !plan.Effect.ConfirmSelection || plan.Effect.Requested != 11 {
+				if plan.Effect.Requested != 11 {
 					t.Fatal(plan)
 				}
 			}

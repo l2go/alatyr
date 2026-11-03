@@ -78,6 +78,17 @@ func TestGuardStopWithoutPacer(t *testing.T) {
 	}
 }
 
+// The soak closed whole games with WorldClosed when the stop met a transient
+// backend refusal, such as capacity, right after a controller disconnected.
+func TestFailedStopKeepsGame(t *testing.T) {
+	r, w, state := stopBudgetRig(t)
+	r.game.pacer = nil
+	r.game.service(context.Background())
+	if !w.called || r.game.closed || r.game.stop || state.calls != 1 || len(w.writes) != 0 {
+		t.Fatal("a failed guarded stop must be dropped without closing the game")
+	}
+}
+
 func TestUnreadyStopDoesNotDelayAttemptRefusal(t *testing.T) {
 	for _, local := range []bool{false, true} {
 		name := "remote"

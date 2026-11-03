@@ -9,19 +9,18 @@ import (
 	"time"
 )
 
-// Forgetting an NPC's target can broadcast Stop to remaining observers. The
-// target must be forgotten in a stable order even though each removal names
-// just one player; this loop is not an independent per-recipient fan-out.
-func TestNPCForgetOrderAffectsRemainingObserver(t *testing.T) {
+// Forgetting an NPC's target broadcasts Stop. Every player who still observes
+// the NPC sees it, whatever order the NPC forgets players in: the NPC's own
+// perception does not choose who hears about the NPC.
+func TestNPCForgetOrderKeepsStopForObserver(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		order    []int32
-		update   bool
-		wantStop bool
+		name   string
+		order  []int32
+		update bool
 	}{
-		{"target-first", []int32{1, 2}, false, true},
-		{"target-last", []int32{2, 1}, false, false},
-		{"visibility-update", nil, true, true},
+		{"target-first", []int32{1, 2}, false},
+		{"target-last", []int32{2, 1}, false},
+		{"visibility-update", nil, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -56,8 +55,8 @@ func TestNPCForgetOrderAffectsRemainingObserver(t *testing.T) {
 						gotStop = true
 					}
 				}
-				if gotStop != tc.wantStop {
-					t.Fatalf("remaining observer received Stop: got %v, want %v", gotStop, tc.wantStop)
+				if !gotStop {
+					t.Fatal("remaining observer did not see the NPC stop")
 				}
 			})
 		})

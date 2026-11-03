@@ -170,12 +170,14 @@ func (w *World) learnPlayer(s *state, n *npc, p *player) {
 		return
 	}
 	n.knownPlayers[p.id] = true
+	link(s.perceivers, p.id, n.id)
 	if n.mob() && n.ai.intention == intentIdle {
 		w.setIntention(s, n, order{intent: intentActive})
 	}
 }
 func (w *World) forgetPlayer(s *state, n *npc, id int32) {
 	delete(n.knownPlayers, id)
+	unlink(s.perceivers, id, n.id)
 	delete(n.listeners, id)
 	if n.mob() {
 		w.notifyForget(s, n, id)

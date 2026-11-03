@@ -15,7 +15,6 @@ import (
 	"strings"
 	"testing"
 	"testing/synctest"
-	"time"
 
 	"github.com/l2go/alatyr/engine/go/bridge"
 	"github.com/l2go/alatyr/engine/go/gateway/backend"
@@ -193,54 +192,36 @@ func (r *rig) expect(n, requested, effective uint64, stage wire.Stage, reason wi
 }
 
 func TestG01Dialogue(t *testing.T) {
-	for _, confirmed := range []bool{false, true} {
-		t.Run(map[bool]string{false: "helper", true: "confirmed"}[confirmed], func(t *testing.T) {
-			both(t, func(r *rig) {
-				if confirmed {
-					r.emit(meaning.Event{Kind: meaning.Targeted, ID: 1, Target: 2})
-				}
-				r.p.Send(r.intent(1, 11, r.ref(2)))
-				r.sync()
-				if !confirmed {
-					log := r.log()
-					if len(log) != 1 || log[0].Command.Verb != 2 {
-						r.t.Fatalf("helper %+v", log)
-					}
-					r.reply(log[0], wire.StageDone, wire.ReasonNone, meaning.Event{Kind: meaning.Targeted, ID: 1, Target: 2}, targetEffect(2))
-				}
-				r.p.Result(1, wire.StageSent)
-				log := r.log()
-				want := 1
-				if !confirmed {
-					want = 2
-				}
-				if len(log) != want || log[len(log)-1].Command.Verb != 5 {
-					r.t.Fatalf("effect %+v", log)
-				}
-				r.reply(log[len(log)-1], wire.StageDone, wire.ReasonNone, meaning.Event{Kind: meaning.Spoke, ID: 2, Text: "Reply", Complete: true, Lines: []meaning.Line{{Label: "Next", Say: "test-next"}}})
-				r.expect(1, 11, 5, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
-				// The original live speech must precede its terminal Result.
-				factIdx, resultIdx := -1, -1
-				for i, rec := range r.p.Records {
-					if rec.Type == wire.Fact && gatewaytest.U(rec, 32) == 1 {
-						factIdx = i
-					}
-					if rec.Type == wire.Result && gatewaytest.U(rec, 2) == uint64(wire.StageDone) {
-						resultIdx = i
-					}
-				}
-				if factIdx < 0 || factIdx >= resultIdx {
-					r.t.Fatal("facts must precede result")
-				}
-				for _, rec := range r.p.Records {
-					b, _ := r.pCodec().Encode([]wire.Record{rec})
-					if bytes.Contains(b, []byte("test-next")) {
-						r.t.Fatal("saved action escaped")
-					}
-				}
-			})
-		})
-	}
+	both(t, func(r *rig) {
+		// The world selects the speaker within the talk: one write, no helper.
+		r.p.Send(r.intent(1, 11, r.ref(2)))
+		r.p.Result(1, wire.StageSent)
+		log := r.log()
+		if len(log) != 1 || log[0].Command.Verb != 5 {
+			r.t.Fatalf("effect %+v", log)
+		}
+		r.reply(log[0], wire.StageDone, wire.ReasonNone, meaning.Event{Kind: meaning.Spoke, ID: 2, Text: "Reply", Complete: true, Lines: []meaning.Line{{Label: "Next", Say: "test-next"}}})
+		r.expect(1, 11, 5, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
+		// The original live speech must precede its terminal Result.
+		factIdx, resultIdx := -1, -1
+		for i, rec := range r.p.Records {
+			if rec.Type == wire.Fact && gatewaytest.U(rec, 32) == 1 {
+				factIdx = i
+			}
+			if rec.Type == wire.Result && gatewaytest.U(rec, 2) == uint64(wire.StageDone) {
+				resultIdx = i
+			}
+		}
+		if factIdx < 0 || factIdx >= resultIdx {
+			r.t.Fatal("facts must precede result")
+		}
+		for _, rec := range r.p.Records {
+			b, _ := r.pCodec().Encode([]wire.Record{rec})
+			if bytes.Contains(b, []byte("test-next")) {
+				r.t.Fatal("saved action escaped")
+			}
+		}
+	})
 }
 
 func (r *rig) pCodec() *meaning.Codec {
@@ -294,37 +275,32 @@ func TestG07LateRefusal(t *testing.T) {
 	})
 }
 
-func TestG02HelperFailures(t *testing.T) {
-	for _, kind := range []string{"refused", "quiet", "error", "target-only", "receipt-only"} {
+// Engage writes its effect at once: there is no selection to confirm first.
+// A world refusal of that sole write is a refusal of the whole attempt; a lost
+// or ambiguous receipt keeps the ordinary uncertainty of a delivered effect.
+func TestG02EngageIsOneWrite(t *testing.T) {
+	for _, kind := range []string{"refused", "error"} {
 		t.Run(kind, func(t *testing.T) {
-			both(t, func(r *rig) {
+			runBoth(t, func(r *rig) {
 				r.p.Send(r.intent(1, 11, r.ref(2)))
-				r.sync()
+				r.p.Result(1, wire.StageSent)
 				log := r.log()
-				if len(log) != 1 || log[0].Command.Verb != 2 {
+				if len(log) != 1 || log[0].Command.Verb != 5 {
 					r.t.Fatal(log)
 				}
-				reason := wire.ReasonTargetUnconfirmed
+				stage, reason, delivery := wire.StageRefused, wire.ReasonWorld, wire.DeliveryNone
 				switch kind {
 				case "refused":
 					r.reply(log[0], wire.StageRefused, wire.ReasonWorld, meaning.Event{})
-				case "quiet":
-					r.reply(log[0], wire.StageUnknown, wire.ReasonTimeout, meaning.Event{})
-					r.advance(1500 * time.Millisecond)
 				case "error":
 					r.reply(log[0], wire.StageUnknown, wire.ReasonBackendError, meaning.Event{})
-					reason = wire.ReasonBackendError
-				case "target-only":
-					r.reply(log[0], wire.StageUnknown, wire.ReasonTimeout, meaning.Event{Kind: meaning.Targeted, ID: 1, Target: 2})
-				case "receipt-only":
-					r.reply(log[0], wire.StageDone, wire.ReasonNone, meaning.Event{}, targetEffect(2))
-					r.advance(1500 * time.Millisecond)
+					stage, reason, delivery = wire.StageUnknown, wire.ReasonBackendError, wire.DeliveryBackend
 				}
-				r.expect(1, 11, 5, wire.StageUnknown, reason, wire.DeliveryPartial, 0)
+				r.expect(1, 11, 5, stage, reason, delivery, 0)
 				if len(r.log()) != 1 {
-					r.t.Fatal("effect escaped helper")
+					r.t.Fatal("engage wrote more than its effect")
 				}
-			})
+			}, false)
 		})
 	}
 }

@@ -46,7 +46,7 @@ func (w *World) npcOnAction(s *state, p *player, n *npc) {
 	if p.target != n.id {
 		w.setTarget(s, p, n.id)
 		if n.mob() {
-			p.send(w.vitals(n))
+			w.deliver(p, w.vitals(n))
 		}
 		return
 	}
@@ -71,7 +71,7 @@ func (w *World) setTarget(s *state, p *player, object int32) {
 			return
 		}
 		if t.base().id != p.id {
-			p.send(PositionObserved{ObjectID: object, Pos: t.base().pos, Heading: t.base().heading})
+			w.deliver(p, PositionObserved{ObjectID: object, Pos: t.base().pos, Heading: t.base().heading})
 		}
 		if math.Abs(float64(t.base().pos.Z)-float64(p.pos.Z)) > 500 {
 			return

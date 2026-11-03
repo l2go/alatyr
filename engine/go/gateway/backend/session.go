@@ -43,7 +43,7 @@ type Handoff struct {
 	N uint64
 	// Index is the captured step index.
 	Index int
-	// Role distinguishes helper, effect, and system writes.
+	// Role distinguishes effect and system writes.
 	Role gateway.StepRole
 	// Key is the session-owned command key.
 	Key uint64
@@ -289,7 +289,7 @@ func (w *World) Write(ctx context.Context, step gateway.Step) error {
 	if !ok || op.plan == nil || op.plan.owner != w.state {
 		return meaning.ErrValue
 	}
-	if step.N != op.plan.n || step.Index != op.index || (step.Role == gateway.StepHelper) != op.value.Selection || step.Role > gateway.StepEffect || (step.N == 0) != (step.Role == gateway.StepSystem) {
+	if step.N != op.plan.n || step.Index != op.index || step.Role == gateway.StepHelper || step.Role > gateway.StepEffect || (step.N == 0) != (step.Role == gateway.StepSystem) {
 		return meaning.ErrValue
 	}
 	now := w.session.cfg.Now().Sub(w.session.cfg.Origin).Milliseconds()
@@ -315,9 +315,6 @@ func (w *World) Write(ctx context.Context, step gateway.Step) error {
 	}
 	w.pending[key] = pending{plan: op.plan, role: step.Role, verb: c.Verb, contact: step.ContactMS, deadline: deadline}
 	op.plan.contact, op.plan.deadline = step.ContactMS, step.DeadlineMS
-	if step.Role == gateway.StepHelper {
-		op.plan.helperSent = true
-	}
 	if step.Role == gateway.StepEffect && c.Verb == 9 {
 		w.returnPlan = op.plan
 	}

@@ -442,9 +442,7 @@ func TestWorldPortCounterAndKeyBounds(t *testing.T) {
 					case "attempt":
 						s.nextAttempt = 0
 					case "keys":
-						for i := uint64(1); i <= maxSessionKeys; i++ {
-							s.keys[i] = true
-						}
+						s.lastKey = math.MaxUint64
 					case "facts":
 						s.nextFact = math.MaxUint64
 					case "epoch":
@@ -464,6 +462,43 @@ func TestWorldPortCounterAndKeyBounds(t *testing.T) {
 			})
 		})
 	}
+}
+
+// A long session writes far more commands than any fixed key table could hold.
+// The soak found every Write refused for capacity after the 4096th key.
+func TestWorldPortAdmitsLongSessions(t *testing.T) {
+	cat := authoredCatalog(t)
+	synctest.Test(t, func(t *testing.T) {
+		cfg, _ := startPortWorld(t, cat, memstore.New())
+		c, _ := openPort(t, cfg)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			for u := range c.Updates() {
+				if u.Kind != bridge.LiveBatch {
+					return
+				}
+			}
+		}()
+		const writes = 5000
+		for key := uint64(1); key <= writes; key++ {
+			if _, err := c.Write(t.Context(), portWalk(2*key)); err != nil {
+				t.Fatalf("Write %d: %v", key, err)
+			}
+		}
+		for _, key := range []uint64{2 * writes, 2*writes - 1, 1} {
+			if _, err := c.Write(t.Context(), portWalk(key)); err == nil {
+				t.Fatalf("key %d at or below the last admitted key was admitted", key)
+			}
+		}
+		if _, err := c.Write(t.Context(), portWalk(2*writes+1)); err != nil {
+			t.Fatalf("next key: %v", err)
+		}
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+		<-done
+	})
 }
 
 func TestWorldPortResumeBudgetAndDeparture(t *testing.T) {

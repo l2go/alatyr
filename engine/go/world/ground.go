@@ -82,12 +82,8 @@ func (w *World) itemName(id int32) string { t, _ := w.cat.Item(id); return t.Nam
 func (w *World) showGround(s *state, g *groundItem, dropper int32) {
 	t, _ := w.cat.Item(g.templateID)
 	for _, p := range s.players {
-		if !p.teleporting && distance3D(p.pos, g.pos) <= playerWatch(len(p.known)) {
-			if !p.known[g.id] {
-				s.change(p.ref(), PropertyKnownObject, RefValue(Ref{}), RefValue(g.ref()))
-			}
-			p.known[g.id] = true
-			p.send(ItemDropped{ObjectID: g.id, TemplateID: g.templateID, Pos: g.pos, Count: g.count, Stackable: t.Stackable(), DropperID: dropper})
+		if !p.teleporting && distance3D(p.pos, g.pos) <= playerWatch(len(p.known)) && w.admit(s, p, g.id, g.pos) {
+			w.deliver(p, ItemDropped{ObjectID: g.id, TemplateID: g.templateID, Pos: g.pos, Count: g.count, Stackable: t.Stackable(), DropperID: dropper})
 		}
 	}
 }
@@ -248,6 +244,7 @@ func (w *World) eraseGround(s *state, g *groundItem) {
 		if p.known[g.id] {
 			s.change(p.ref(), PropertyKnownObject, RefValue(g.ref()), RefValue(Ref{}))
 			delete(p.known, g.id)
+			unlink(s.watchers, g.id, p.id)
 			p.send(ObjectGone{ObjectID: g.id})
 			w.notifyForget(s, p, g.id)
 		}

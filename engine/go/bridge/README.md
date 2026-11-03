@@ -33,8 +33,8 @@ fixtures through the protocol module directory; they do not download a separate 
 
 The client returns raw facts and receipts. Participant outcome policy and gateway
 traces remain separate integration work. All returned views transfer read-only
-ownership to the caller. Do not modify them. Command keys must remain unique for
-the lifetime of a client, including across recovery.
+ownership to the caller. Do not modify them. Each command key must exceed every key
+written before on the client, including across recovery.
 
 This package belongs to the shared [Go server module](../README.md). Protocol
 remains a separate module; package dependency directions are enforced by the

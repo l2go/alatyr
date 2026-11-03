@@ -8,9 +8,9 @@ protocol codec; it does not duplicate record framing or primitive decoding.
 Construct State with explicit `Config` bounds and trusted `Policy`. Role strings
 are opaque labels. A nil classifier grants no target capability, even for a
 collectible label. The default strategy performs no backend write for local aim
-and focus, confirms any target helper, and supplies one effect write. Backend
-strategies may supply their own captured steps through `Policy.Steps`; they must
-check concrete step values and return errors, not panic.
+and focus and supplies one effect write; the world selects the target within it.
+Backend strategies may supply their own captured steps through `Policy.Steps`;
+they must check concrete step values and return errors, not panic.
 
 `Input` comes only from a trusted backend adapter. `Event.MS` keeps the original
 fact time; `ReceivedAt` is gateway-relative backend receipt time. Proposal expiry

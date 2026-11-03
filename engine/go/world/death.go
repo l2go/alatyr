@@ -147,6 +147,7 @@ func (w *World) decay(s *state, n *npc) {
 			w.setTarget(s, p, 0)
 		}
 		delete(p.known, n.id)
+		unlink(s.watchers, n.id, p.id)
 		s.change(p.ref(), PropertyKnownObject, RefValue(n.ref()), RefValue(Ref{}))
 		p.send(ObjectGone{ObjectID: n.id})
 		w.notifyForget(s, p, n.id)
@@ -159,6 +160,10 @@ func (w *World) decay(s *state, n *npc) {
 		}
 	}
 	s.group([]Effect{ExistenceChanged{Entity: n.ref(), Before: true}})
+	for id := range n.knownPlayers {
+		unlink(s.perceivers, id, n.id)
+	}
+	delete(s.watchers, n.id)
 	delete(s.npcs, n.id)
 	delay := max(time.Duration(n.spawn.RespawnDelay)*time.Second, minRespawn)
 	sp, t := n.spawn, n.tmpl
@@ -186,10 +191,8 @@ func (w *World) respawn(s *state, sp catalog.Spawn, t catalog.NPCTemplate) {
 		if !near {
 			continue
 		}
-		if !p.known[n.id] {
-			p.known[n.id] = true
-			s.change(p.ref(), PropertyKnownObject, RefValue(Ref{}), RefValue(n.ref()))
-			p.send(NPCSeen{NPC: n.view(now)})
+		if !p.known[n.id] && w.admit(s, p, n.id, n.pos) {
+			w.deliver(p, NPCSeen{NPC: n.view(now)})
 		}
 		w.learnPlayer(s, n, p)
 	}

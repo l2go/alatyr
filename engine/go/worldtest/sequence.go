@@ -886,7 +886,7 @@ func checkSaved(want, got world.Character) error {
 type sequenceRetention struct{ games, opening, connections, actions, bindings int }
 
 // backendBindingLimit is the bound enforced by backend.World.Write, including
-// helpers and system writes, independently of the participant pending budget.
+// system writes, independently of the participant pending budget.
 // See gateway/backend/README.md, retained raw bindings.
 const backendBindingLimit = 8
 

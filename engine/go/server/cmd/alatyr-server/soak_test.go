@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -230,6 +231,25 @@ func TestSoak(t *testing.T) {
 	}
 	cohort := startSoakBots(t, cfg, tokens, seed, note, false)
 	samples := soakObserve(t, duration, cohort, note, &paceTick, &paceQueued, &paceSeen)
+	unexpected := func() int {
+		n := 0
+		for _, b := range cohort.bots {
+			n += int(b.unknown.Load())
+		}
+		return n
+	}
+	written := false
+	// A fatal step after observation, such as a restart that never becomes
+	// ready, must still leave the evidence of the run behind.
+	defer func() {
+		if !written {
+			failMu.Lock()
+			failCopy := append([]string(nil), failures...)
+			failMu.Unlock()
+			writeSoakArtifacts(t, dir, samples, failCopy, unexpected(), cohort.classText())
+			writeGoroutineProfile(dir)
+		}
+	}()
 	cohort.stop()
 	if err := cohort.classesHeld(duration >= 10*time.Minute); err != nil {
 		note("%v", err)
@@ -304,10 +324,7 @@ func TestSoak(t *testing.T) {
 	if err, ok := economyErr.Load().(string); ok && err != "" {
 		note("economy: %s", err)
 	}
-	unknown := 0
-	for _, b := range cohort.bots {
-		unknown += int(b.unknown.Load())
-	}
+	unknown := unexpected()
 	if unknown != 0 {
 		note("unexpected outcomes: %d", unknown)
 	}
@@ -315,6 +332,7 @@ func TestSoak(t *testing.T) {
 	failCopy := append([]string(nil), failures...)
 	failMu.Unlock()
 	writeSoakArtifacts(t, dir, samples, failCopy, unknown, cohort.classText())
+	written = true
 	t.Log("\n" + cohort.classText())
 	if len(failCopy) > 0 {
 		writeGoroutineProfile(dir)
@@ -775,6 +793,11 @@ func (c *soakCohort) classText() string {
 	for _, k := range keys {
 		fmt.Fprintf(&out, "outcome verb=%d stage=%d reason=%d count=%d\n", k.verb, k.stage, k.reason, outcomes[k])
 	}
+	admissions := 0
+	for _, b := range c.bots {
+		admissions += int(b.admissions.Load())
+	}
+	fmt.Fprintf(&out, "admission retries %d\n", admissions)
 	return out.String()
 }
 
@@ -824,6 +847,7 @@ type soakBot struct {
 	passive     atomic.Bool
 	unknown     atomic.Int64
 	finished    atomic.Int64
+	admissions  atomic.Int64 // openings the host closed before ready
 	wg          sync.WaitGroup
 	mu          sync.Mutex
 	control     uint64
@@ -833,6 +857,7 @@ type soakBot struct {
 	vitals      bool
 	coin        int64
 	coinOK      bool
+	restored    soakView // the first ready view, before regeneration moves vitals
 	dead        bool
 	live        map[int32]liveObj
 	dialog      meaning.DecodedEvent
@@ -879,15 +904,25 @@ type soakView struct {
 	ok     bool
 }
 
+// view returns the first ready view of the session, which a restart compares
+// with the saved row; vitals regenerate while other participants still open.
 func (b *soakBot) view() (soakView, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if !b.restored.ok {
+		v := b.liveView()
+		return v, v.ok
+	}
+	return b.restored, true
+}
+
+// liveView requires b.mu.
+func (b *soakBot) liveView() soakView {
 	items := map[int32]int64{}
 	for id, n := range b.goods {
 		items[id] = n
 	}
-	v := soakView{x: b.selfX, y: b.selfY, hp: b.hp, mp: b.mp, coin: b.coin, items: items, ok: b.ready.Load() && b.vitals && b.coinOK}
-	return v, v.ok
+	return soakView{x: b.selfX, y: b.selfY, hp: b.hp, mp: b.mp, coin: b.coin, items: items, ok: b.ready.Load() && b.vitals && b.coinOK}
 }
 
 func (b *soakBot) loop() {
@@ -924,6 +959,7 @@ func (b *soakBot) loop() {
 		// The client sees EOF and has not reached CheckpointEnd yet. ErrFull
 		// stays on the server. After CheckpointEnd the same EOF is a drop.
 		if errors.Is(err, errAdmission) {
+			b.admissions.Add(1)
 			failures++
 			if failures > 100 {
 				b.note("%s session: %v after %d retries", b.id, err, failures)
@@ -943,10 +979,22 @@ func (b *soakBot) loop() {
 
 var errAdmission = errors.New("admission closed before ready")
 
+// openingError classifies an error before ready. The host refuses an opening
+// by closing it, or by resetting it with the Hello still unread, which a
+// write in flight sees as a broken pipe and a connect still in progress as a
+// reset.
+func openingError(err error) error {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) {
+		return errAdmission
+	}
+	return fmt.Errorf("before ready: %w", err)
+}
+
 func (b *soakBot) session(codec *meaning.Codec, next func() uint64, reconnect *time.Timer) error {
 	conn, err := net.DialTimeout("tcp", b.addr, 2*time.Second)
 	if err != nil {
-		return err
+		// A reset can reach the bot while it still connects.
+		return openingError(err)
 	}
 	stream := &gateway.Stream{Conn: conn, Limit: 8192}
 	sessionDone := make(chan struct{})
@@ -956,21 +1004,14 @@ func (b *soakBot) session(codec *meaning.Codec, next func() uint64, reconnect *t
 		conn.Close()
 		<-readerDone
 	}()
-	if _, err := conn.Write([]byte(b.token + "\n")); err != nil {
-		return err
-	}
-	b.open.Store(true)
-	defer b.open.Store(false)
-	hello := wire.Record{Type: wire.Hello, Fields: []wire.Field{wire.U(1, true, 1), wire.U(2, true, 1), wire.Data(3, true, meaning.Meaning), wire.U(4, true, uint64(wire.ParticipantPerson)), wire.U(5, true, uint64(wire.ModeAct))}}
-	if err := writeFrame(codec, stream, hello); err != nil {
-		return err
-	}
 	b.mu.Lock()
 	b.pending = map[uint64]string{}
 	b.live = map[int32]liveObj{}
 	b.control = 0
 	b.ready.Store(false)
 	b.mu.Unlock()
+	// The reader starts before the first write: a write the host refuses
+	// returns early, and the deferred wait above needs a reader to end.
 	frames := make(chan []wire.Record, 32)
 	readErr := make(chan error, 1)
 	go func() {
@@ -991,6 +1032,15 @@ func (b *soakBot) session(codec *meaning.Codec, next func() uint64, reconnect *t
 			}
 		}
 	}()
+	if _, err := conn.Write([]byte(b.token + "\n")); err != nil {
+		return openingError(err)
+	}
+	b.open.Store(true)
+	defer b.open.Store(false)
+	hello := wire.Record{Type: wire.Hello, Fields: []wire.Field{wire.U(1, true, 1), wire.U(2, true, 1), wire.Data(3, true, meaning.Meaning), wire.U(4, true, uint64(wire.ParticipantPerson)), wire.U(5, true, uint64(wire.ModeAct))}}
+	if err := writeFrame(codec, stream, hello); err != nil {
+		return openingError(err)
+	}
 	act := time.NewTicker(400 * time.Millisecond)
 	defer act.Stop()
 	for {
@@ -1021,8 +1071,10 @@ func (b *soakBot) session(codec *meaning.Codec, next func() uint64, reconnect *t
 					drained = true
 				}
 			}
-			if !b.ready.Load() && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
-				return errAdmission
+			// A refused opening is EOF, or a reset when the host closes with
+			// the unread Hello still buffered.
+			if !b.ready.Load() {
+				return openingError(err)
 			}
 			return fmt.Errorf("after ready: %w", err)
 		case rs := <-frames:
@@ -1066,6 +1118,9 @@ func (b *soakBot) consume(rs []wire.Record) error {
 		case wire.Checkpoint:
 			if fieldU(r, 1) == uint64(wire.CheckpointEnd) && fieldU(r, 3) == 1 {
 				b.ready.Store(true)
+				if !b.restored.ok {
+					b.restored = b.liveView()
+				}
 			}
 		case wire.Ping:
 			b.needPong = true
@@ -1397,6 +1452,30 @@ func fieldU(r wire.Record, n uint32) uint64 {
 }
 
 func TestBotRetriesEOFBeforeReady(t *testing.T) {
+	testBotRetriesBeforeReady(t, refuseEOF, 1)
+}
+
+// A host that refuses an opening with the Hello unread resets the connection.
+func TestBotRetriesResetBeforeReady(t *testing.T) {
+	testBotRetriesBeforeReady(t, refuseReset, 1)
+}
+
+// A reset at once can fail the bot's first writes, before its reader starts.
+// The bot hung there waiting for a reader that never ran.
+func TestBotRetriesResetBeforeWrite(t *testing.T) {
+	testBotRetriesBeforeReady(t, refuseAtAccept, 20)
+}
+
+type refusal int
+
+const (
+	refuseEOF refusal = iota
+	refuseReset
+	refuseAtAccept
+)
+
+func testBotRetriesBeforeReady(t *testing.T, how refusal, refusals int) {
+	t.Helper()
 	codec, err := meaning.NewCodec(limits(1))
 	if err != nil {
 		t.Fatal(err)
@@ -1408,11 +1487,16 @@ func TestBotRetriesEOFBeforeReady(t *testing.T) {
 	defer ln.Close()
 	serverErr := make(chan error, 1)
 	go func() {
-		for n := 0; n < 2; n++ {
+		for n := 0; n <= refusals; n++ {
 			conn, err := ln.Accept()
 			if err != nil {
 				serverErr <- err
 				return
+			}
+			if n < refusals && how == refuseAtAccept {
+				conn.(*net.TCPConn).SetLinger(0)
+				conn.Close()
+				continue
 			}
 			stream := &gateway.Stream{Conn: conn, Limit: 8192}
 			conn.SetDeadline(time.Now().Add(2 * time.Second))
@@ -1421,12 +1505,18 @@ func TestBotRetriesEOFBeforeReady(t *testing.T) {
 				serverErr <- err
 				return
 			}
+			if n < refusals && how == refuseReset {
+				// Close with the Hello unread and no lingering, which sends RST.
+				conn.(*net.TCPConn).SetLinger(0)
+				conn.Close()
+				continue
+			}
 			if _, err := readFrame(codec, stream, time.Now().Add(2*time.Second)); err != nil {
 				conn.Close()
 				serverErr <- err
 				return
 			}
-			if n == 0 {
+			if n < refusals {
 				conn.Close()
 				continue
 			}
@@ -1450,7 +1540,13 @@ func TestBotRetriesEOFBeforeReady(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	b.stop()
-	b.wg.Wait()
+	stopped := make(chan struct{})
+	go func() { b.wg.Wait(); close(stopped) }()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("bot did not stop: its session waits for a reader")
+	}
 	if !b.ready.Load() {
 		mu.Lock()
 		got := append([]string(nil), notes...)
