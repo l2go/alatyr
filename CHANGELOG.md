@@ -4,51 +4,43 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-11-03
+
+Alatyr 5.0.0 is the first release of the Go server: the authored world on the island of Buyan, including the village of Okolitsa, served through the participant protocol. The Java 3.x line is finished and is not supported.
+
+**Upgrade**
+
+- Create a new database. Earlier databases are not migrated; the server refuses them before migration.
+- The image name is `ghcr.io/l2go/alatyr`.
+- The participant protocol is `alatyr/1`. Module `engine/go/protocol` is v0.1.1, Apache-2.0.
+- This release includes no public game client.
+
+**Known limitations**
+
+- A server admits at most 64 registered participants and shows each participant at most 127 objects besides itself. Both bounds are initial values, not yet measured.
+- When the server's CPU is overloaded, a participant's world session can fall behind and the participant is disconnected with `WorldClosed`. A reconnect saves the character and enters it again.
+
 ### Added
 
-- A manual `soak` workflow runs the production host against PostgreSQL with participant bots and reports heap, RSS, goroutines, sessions, scheduled world timers and timer-drain time.
+- Alatyr ships the authored Go world and participant gateway as `ghcr.io/l2go/alatyr`, for linux/amd64 and linux/arm64. Compose supplies PostgreSQL 18, file-based credentials, a static participant registry and operator character import. Native image checks cover readiness, authenticated entry, live shutdown persistence, restart and backup restore. Startup rejects configurations whose shutdown phases exceed the 60-second deployment stop grace.
+- The Go world settles per-life hunting contributions and party rewards, supports equipment and healing items, and keeps experience at x1 regardless of stored vitality.
+- The world chooses what each participant sees: at most the objects the gateway advertises, first what the participant acts on or what acts on it (its target, current or queued action, dialogue partner, party, anyone targeting, attacking or hating it), then the nearest, with a hysteresis step and at most eight replacements per visibility pass. An event about objects reaches a participant only when it sees the event's subject and every object the event acts on.
+- Participants can toggle authored equipment and consume healing items through `use-item`. Live intent-attributed inventory changes prove completion; equipment slots and physical attack/defense are visible in participant facts.
+- The host grants audited exclusive evidence authority for dialogue, pickup, trade, learning and return, so confirmed participant actions finish as Done, including a talk or pickup completed after a walk to the target. Cast finishes at Sent.
+- A dialogue choice can complete when its selected NPC opens an intent-attributed shop, sale, or learning window. Delivery receipts and unrelated windows cannot prove completion.
 - `alatyr/1` player facts and snapshots report people, sex and the known fighter/mystic visual branch. Missing class-kind metadata remains explicitly unknown; numeric class IDs and NPC player appearance are not exposed.
 - `alatyr/1` NPC appearance facts may carry the template's visual form, an opaque world label. An unset form is absent. Players, drops and empty or illegal tokens do not receive one.
-
+- PostgreSQL persistence saves learned skills and the SP balance in one transaction. A canceled or timed-out request keeps the server's single storage connection. Detached final checkpoints preserve participants when the world stops itself.
 - A deterministic participant-command reliability harness checks the real Go world and production host composition, with replayed transcripts, lifecycle and economy invariants, mutation checks, and native sequence fuzzing.
-
-- A dialogue choice can complete when its selected NPC opens an intent-attributed shop, sale, or learning window. Delivery receipts and unrelated windows cannot prove completion.
-
-- Participants can toggle authored equipment and consume healing items through `use-item`. Live intent-attributed inventory changes prove completion; equipment slots and physical attack/defense are visible in participant facts.
-
-- The Go world settles per-life hunting contributions and party rewards, supports equipment and healing items, and keeps experience at x1 regardless of stored vitality.
-- Alatyr ships the authored Go world and participant gateway as `ghcr.io/l2go/alatyr`, for linux/amd64 and linux/arm64. Compose supplies PostgreSQL 18, file-based credentials, a static participant registry and operator character import. Native image checks cover readiness, authenticated entry, live shutdown persistence, restart and backup restore.
-- PostgreSQL persistence saves learned skills and the SP balance in one transaction. Detached final checkpoints preserve participants when the world stops itself.
-
-### Changed
-
-- Engage and cast reach the Go world as one command that selects the target itself; cast and talk now select their target as attack already did, so a cast still continues into an attack. The gateway no longer writes a separate target selection first, so a death or lost target during that selection can no longer leave the attempt Unknown, and engage and cast no longer wait for selection confirmation.
-- `alatyr/1` clients can receive Refused after Sent when live, exclusive world evidence proves that the entire attempt had no effects. The action class remains usable. A genuine Unknown still taints it for unbound evidence, while evidence keyed to a later attempt completes that attempt.
-
-### Fixed
-
-- A participant's world session no longer refuses every command after its 4096th one; it now admits only increasing command keys and keeps no per-key state.
-- A canceled or timed-out database request no longer closes the server's only storage connection. Previously one slow login during a burst left the server without its database until restart, and every later save failed.
-- A guarded stop refused by the world after a controller disconnects is dropped instead of closing the participant's game.
-- A participant update no longer re-encodes the participant's whole snapshot to check its byte bound; only changed actors are measured again. In a crowded scene that work grew with every visible object, kept the CPU saturated and made a burst of logins miss the database budget.
-- A shutdown whose departure saves missed their close budget but were persisted by the host's retry now exits cleanly instead of reporting the recovered save failure.
-- NPC events reach only players who know that NPC, so a creature that noticed a player first can no longer detach the player's session with an event about an unseen object.
-- A crowd no longer closes participants. The world shows each player at most the objects the gateway advertises it observes, 127 besides the participant itself: first what the player acts on or what acts on it (target, current action, dialogue partner, party, anyone targeting, attacking or hating it), then the nearest, with a hysteresis step and at most eight replacements per visibility pass. Previously the world showed everything in range and the gateway closed a participant at its 129th observed object; with 64 participants in one place that happened within a minute.
-- Events about objects reach a player only when the player sees their subject and every object they act on; target lists and the dropper of an item are cut to what the player sees. NPC events now reach every player who sees the NPC, not only the players the NPC has noticed, so distant observers no longer miss its movements.
-- Deferred healing-item consumption retains its originating intent in the source audit, so separate uses are checked independently.
-- Recovery accepts a visible dialogue page after its final learning action was consumed, while retaining original-lifetime checks for actionable proposals.
-- Visibility changes and participant checkpoint traversal follow stable object and admission order so identical command sequences can be replayed exactly.
-
-- Rapid local selection followed by an action requiring target confirmation no longer crashes the participant gateway when selection interrupts that queued action.
-
-- The Go host grants audited exclusive evidence authority for dialogue, pickup, trade, learning and return, so confirmed participant actions can finish as Done, including a talk or pickup completed after a walk to the target. Cast finishes at Sent.
-- Normal shutdown closes HTTP listeners through their owner and tolerates already-closed listeners while preserving other shutdown and save errors. Startup rejects configurations whose combined shutdown phases and join reserves exceed the 60-second deployment stop grace.
+- A manual `soak` workflow runs the production host against PostgreSQL with participant bots for up to 330 minutes and reports heap, RSS, goroutines, sessions, scheduled world timers and timer-drain time.
 
 ### Changed
 
 - Deployments begin with a fresh dedicated database managed by goose. Foreign database objects are refused before migration; previous player databases are not imported.
 - Release promotion, signatures, provenance, vulnerability scans and image retention use the new image name. Releases promote the tested digest without rebuilding.
 - Gateway, bridge, world and worldbridge share one AGPL Go module; the nested server application alone requires database modules. The Apache-2.0 protocol module and its pin remain independent. Go-world contracts exercise the participant gateway with the shared deterministic driver.
+- Engage and cast reach the Go world as one command that selects its target. They no longer wait for a separate selection, so they no longer report `TargetUnconfirmed`; the reason remains in the protocol.
+- `alatyr/1` clients can receive Refused after Sent when live, exclusive world evidence proves that the entire attempt had no effects. The action class remains usable. A genuine Unknown still taints it for unbound evidence, while evidence keyed to a later attempt completes that attempt.
 
 ### Removed
 
@@ -188,7 +180,8 @@ Final 2.x release: Java 25 bytecode, HikariCP, Jython 2.7.5b1, Logback configura
 the bundled datapack, CI unit tests, and dependency upgrades. See the
 [release](https://github.com/l2go/alatyr/releases/tag/v2.5.0).
 
-[Unreleased]: https://github.com/l2go/alatyr/compare/v3.2.1...HEAD
+[Unreleased]: https://github.com/l2go/alatyr/compare/v5.0.0...HEAD
+[5.0.0]: https://github.com/l2go/alatyr/compare/v3.2.1...v5.0.0
 [3.2.1]: https://github.com/l2go/alatyr/compare/v3.2.0...v3.2.1
 [3.2.0]: https://github.com/l2go/alatyr/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/l2go/alatyr/compare/v3.1.0...v3.1.1

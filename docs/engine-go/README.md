@@ -54,8 +54,8 @@ Its implementation and tests use only the module's own packages and the Go
 standard library. World-specific behavior belongs outside this core.
 
 The `go` CI job checks module boundaries, licenses, public content, formatting,
-dependencies, unit and race tests, and vulnerabilities. Codec fuzzing is active:
-all eight targets must exist and execute successfully. All three module roots
+dependencies, unit and race tests, and vulnerabilities. Fuzzing is active:
+all nine targets must exist and execute successfully. All three module roots
 (`engine/go`, `engine/go/protocol` and `engine/go/server`) receive vet and race tests in the workspace
 and with `GOWORK=off`, plus Staticcheck and vulnerability checks with tests.
 The workspace also contains the independent `tools/world` module. A separate
