@@ -236,6 +236,27 @@
       ]
     },
     {
+      "source": "server/live",
+      "imports": [
+        "server/live",
+        "server/goworld",
+        "world/**",
+        "worldbridge/**",
+        "gateway",
+        "gateway/meaning",
+        "gateway/backend",
+        "bridge/**",
+        "protocol/**"
+      ]
+    },
+    {
+      "source": "server/cmd/alatyr-live",
+      "imports": [
+        "server/cmd/alatyr-live",
+        "server/live"
+      ]
+    },
+    {
       "source": "server/goworld",
       "imports": [
         "server/goworld",
