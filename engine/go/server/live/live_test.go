@@ -7,14 +7,18 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"io"
 	"io/fs"
+	"net"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/l2go/alatyr/engine/go/gateway"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
+	"github.com/l2go/alatyr/engine/go/server/goworld"
 )
 
 type recorder struct {
@@ -177,4 +181,35 @@ func TestWorldStartsFromArchive(t *testing.T) {
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Dial reaches a gateway over TCP the way a server's stream endpoint takes
+// participants: a bearer token line, then alatyr/1 frames.
+func TestDialReachesAGatewayOverTCP(t *testing.T) {
+	w := startWorld(t)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	const token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		line := make([]byte, len(token)+1)
+		if _, err := io.ReadFull(c, line); err != nil || string(line) != token+"\n" {
+			c.Close()
+			return
+		}
+		_ = w.gateway.Bind(context.Background(), Visitor, &gateway.Stream{Conn: c, Limit: goworld.Limits(2).Wire.FrameBytes})
+	}()
+	var r recorder
+	s, err := Dial(t.Context(), ln.Addr().String(), token, true, r.watch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	r.wait(t, "a ready view", func(r *recorder) bool { return r.view.Ready && len(r.view.Objects) > 0 })
 }

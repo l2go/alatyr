@@ -254,6 +254,9 @@ func (s *Session) absorb(ev meaning.DecodedEvent) (Entry, bool) {
 	o := s.object(e)
 	switch e.Kind {
 	case meaning.Appeared, meaning.Dropped:
+		// The checkpoint describes the world as found; only later arrivals
+		// are news.
+		logged := s.ready || e.Mine
 		if o != nil {
 			o.Role, o.X, o.Y, o.ToX, o.ToY = e.Role, e.X, e.Y, e.X, e.Y
 			if e.Name != "" {
@@ -262,6 +265,9 @@ func (s *Session) absorb(ev meaning.DecodedEvent) (Entry, bool) {
 			if !e.Mine {
 				s.objects[e.ID].ref = ev.Context.Ref
 			}
+		}
+		if !logged {
+			return Entry{}, false
 		}
 	case meaning.Gone:
 		name := s.name(e.ID)
