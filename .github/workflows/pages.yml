@@ -2,15 +2,17 @@ name: pages
 
 # Builds the project site from this repository: pages and notes from site/, the
 # alatyr/1 reference from the participant dictionary, releases from the
-# changelog, and the live world as WebAssembly. Pull requests build it; main
-# deploys it to GitHub Pages.
+# changelog checked against the tags, and the live world as WebAssembly. Pull
+# requests build it; every push to main and every published release deploy it
+# to GitHub Pages.
 
 on:
   push:
     branches: [main]
-    paths: ["site/**", "engine/go/**", "world/**", "CHANGELOG.md", ".github/workflows/pages.yml"]
   pull_request:
     paths: ["site/**", "engine/go/**", "world/**", "CHANGELOG.md", ".github/workflows/pages.yml"]
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -30,7 +32,9 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          fetch-depth: 1
+          # The release list is checked against the tags.
+          fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -44,19 +48,21 @@ jobs:
           set -euo pipefail
           test "$(go env GOVERSION)" = go1.27.3
           out="$RUNNER_TEMP/site"
-          go run ./cmd/alatyr-site -root ../../.. -out "$out"
+          git tag --list 'v*' > "$RUNNER_TEMP/tags.txt"
+          go run ./cmd/alatyr-site -root ../../.. -out "$out" -tags "$RUNNER_TEMP/tags.txt"
           GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o "$out/live/alatyr-live.wasm" ./cmd/alatyr-live
           cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" "$out/live/"
           test -s "$out/index.html" && test -s "$out/live/world.zip"
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'release' || github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         with:
           path: ${{ runner.temp }}/site
 
   deploy:
     name: deploy
-    if: github.event_name != 'pull_request'
+    # Only main and published releases reach Pages, never another branch.
+    if: github.event_name == 'release' || github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 10

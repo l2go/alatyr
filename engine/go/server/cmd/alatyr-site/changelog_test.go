@@ -66,3 +66,22 @@ func TestInlineDoesNotTrustMarkup(t *testing.T) {
 		t.Fatalf("%s", got)
 	}
 }
+
+// A tag list decides which releases link to their GitHub release; without
+// one every release counts as tagged.
+func TestReleasesAreCheckedAgainstTags(t *testing.T) {
+	rs := []Release{{Version: "5.1.0"}, {Version: "5.0.0"}}
+	list := t.TempDir() + "/tags.txt"
+	if err := os.WriteFile(list, []byte("v5.0.0\nv3.2.1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := markTagged(rs, list); err != nil {
+		t.Fatal(err)
+	}
+	if rs[0].Tagged || !rs[1].Tagged {
+		t.Fatalf("%+v", rs)
+	}
+	if err := markTagged(rs, ""); err != nil || !rs[0].Tagged {
+		t.Fatalf("without a list: %+v, %v", rs, err)
+	}
+}

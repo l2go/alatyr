@@ -16,7 +16,9 @@ type Release struct {
 	Version string
 	Date    string
 	// Go marks the releases of the Go server, rendered in full.
-	Go     bool
+	Go bool
+	// Tagged says the release's tag exists, so its GitHub release can be linked.
+	Tagged bool
 	Blocks []Block
 }
 

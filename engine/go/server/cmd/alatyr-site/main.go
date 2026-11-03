@@ -47,14 +47,15 @@ type Data struct {
 func main() {
 	root := flag.String("root", ".", "repository root")
 	out := flag.String("out", "_site", "output directory")
+	tags := flag.String("tags", "", "file listing the repository's tags, one per line; without it every release counts as tagged")
 	flag.Parse()
-	if err := build(*root, *out); err != nil {
+	if err := build(*root, *out, *tags); err != nil {
 		fmt.Fprintln(os.Stderr, "alatyr-site:", err)
 		os.Exit(1)
 	}
 }
 
-func build(root, out string) error {
+func build(root, out, tags string) error {
 	site := filepath.Join(root, "site")
 	if err := os.RemoveAll(out); err != nil {
 		return err
@@ -77,7 +78,12 @@ func build(root, out string) error {
 	if data.Releases, err = parseChangelog(string(changelog)); err != nil {
 		return err
 	}
+	if err := markTagged(data.Releases, tags); err != nil {
+		return err
+	}
 	layout := filepath.Join(site, "layout.html")
+	// Partials every page may use.
+	partials := []string{filepath.Join(site, "live.html")}
 	var routes []string
 	pages, err := filepath.Glob(filepath.Join(site, "pages", "*.html"))
 	if err != nil {
@@ -91,7 +97,7 @@ func build(root, out string) error {
 		}
 		d := data
 		d.Path = base + route
-		if err := render(out, route, d, layout, page); err != nil {
+		if err := render(out, route, d, append([]string{layout}, append(partials, page)...)...); err != nil {
 			return err
 		}
 		routes = append(routes, route)
@@ -107,7 +113,7 @@ func build(root, out string) error {
 		}
 		d := data
 		d.Path, d.Note = base+route, n
-		if err := render(out, route, d, layout, filepath.Join(site, "note.html"), filepath.Join(site, "notes", n.Slug+".html")); err != nil {
+		if err := render(out, route, d, append([]string{layout}, append(partials, filepath.Join(site, "note.html"), filepath.Join(site, "notes", n.Slug+".html"))...)...); err != nil {
 			return err
 		}
 	}
@@ -194,4 +200,27 @@ func suffix(route string) string {
 		return "/"
 	}
 	return ""
+}
+
+// markTagged records which releases have their tag. Without a tag list every
+// release counts as tagged, as in a local preview.
+func markTagged(releases []Release, list string) error {
+	if list == "" {
+		for i := range releases {
+			releases[i].Tagged = true
+		}
+		return nil
+	}
+	raw, err := os.ReadFile(list)
+	if err != nil {
+		return err
+	}
+	tagged := map[string]bool{}
+	for _, t := range strings.Fields(string(raw)) {
+		tagged[t] = true
+	}
+	for i := range releases {
+		releases[i].Tagged = tagged["v"+releases[i].Version]
+	}
+	return nil
 }

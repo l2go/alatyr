@@ -15,14 +15,14 @@
     {{if .Text}}<p>{{.Text}}</p>{{end}}
     {{if .Items}}<ul>{{range .Items}}<li>{{.}}</li>{{end}}</ul>{{end}}
   {{end}}
-  <p><a href="https://github.com/l2go/alatyr/releases/tag/v{{.Version}}">Release {{.Version}} on GitHub</a></p>
+  {{if .Tagged}}<p><a href="https://github.com/l2go/alatyr/releases/tag/v{{.Version}}">Release {{.Version}} on GitHub</a></p>{{else}}<p>Not yet published.</p>{{end}}
 </section>
 {{end}}{{end}}
 
 <section class="wrap" aria-labelledby="java-title">
   <h2 id="java-title">The Java years</h2>
   <ul class="release-list">
-  {{range .Releases}}{{if not .Go}}<li><a href="https://github.com/l2go/alatyr/releases/tag/v{{.Version}}">{{.Version}}</a>{{if .Date}} · {{.Date}}{{end}}</li>
+  {{range .Releases}}{{if not .Go}}<li>{{if .Tagged}}<a href="https://github.com/l2go/alatyr/releases/tag/v{{.Version}}">{{.Version}}</a>{{else}}{{.Version}}{{end}}{{if .Date}} · {{.Date}}{{end}}</li>
   {{end}}{{end}}
   </ul>
   <p><a href="/alatyr/java-years/">The Java years, kept as they were</a></p>
