@@ -1,16 +1,19 @@
 {{define "title"}}Notes — Alatyr{{end}}
 {{define "description"}}Engineering notes on building an honest world: the defects found on the way to the Go server and what replaced them, and the notes of the Java years, kept as published.{{end}}
 {{define "main"}}
-<section class="page-head wrap">
-  <p class="kicker">Notes</p>
-  <h1>Building an honest world</h1>
-  <p class="lede">What broke on the way to the Go server, why, and what replaced it. Each note starts from a real failure.</p>
-</section>
+<header class="article-head article-head--page article-head--whole">
+  <picture><img src="/alatyr/assets/img/go/notes.webp" alt="Two craftspeople examine a cracked hinge on a workshop bench." width="1600" height="900"></picture>
+  <div class="wrap">
+    <div class="crumbs">Notes</div>
+    <h1>Building an honest world</h1>
+    <p class="dek">What broke on the way to the Go server, why, and what replaced it. Each note starts from a real failure.</p>
+  </div>
+</header>
 
 <section class="wrap notes" aria-label="Notes of the Go server">
   {{range .Notes}}{{if not .Archive}}
   <a class="note reveal" href="/alatyr/notes/{{.Slug}}/">
-    <picture class="note__img"><source srcset="/alatyr/assets/img/covers/{{.Cover}}.webp" type="image/webp"><img src="/alatyr/assets/img/covers/{{.Cover}}.jpg" alt="" width="800" height="333" loading="lazy"></picture>
+    <picture class="note__img"><img src="/alatyr/assets/img/covers/{{.Cover}}.webp" alt="" width="800" height="333" loading="lazy"></picture>
     <div class="note__body"><h3>{{.Title}}</h3><p>{{.Summary}}</p><p class="note__meta"><time datetime="{{.Date}}">{{.Date}}</time></p></div>
   </a>
   {{end}}{{end}}
@@ -22,7 +25,7 @@
   <div class="notes notes--archive">
   {{range .Notes}}{{if .Archive}}
     <a class="note reveal" href="/alatyr/notes/{{.Slug}}/">
-      <picture class="note__img"><source srcset="/alatyr/assets/img/covers/{{.Cover}}.webp" type="image/webp"><img src="/alatyr/assets/img/covers/{{.Cover}}.jpg" alt="" width="800" height="333" loading="lazy"></picture>
+      <picture class="note__img"><img src="/alatyr/assets/img/covers/{{.Cover}}.webp" alt="" width="800" height="333" loading="lazy"></picture>
       <div class="note__body"><h3>{{.Title}}</h3><p>{{.Summary}}</p><p class="note__meta"><time datetime="{{.Date}}">{{.Date}}</time></p></div>
     </a>
   {{end}}{{end}}

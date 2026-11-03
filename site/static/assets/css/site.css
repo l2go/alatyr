@@ -457,7 +457,15 @@ code { font-family: var(--mono); font-size: .9em; }
 
 [hidden] { display: none !important; }
 
-.hero__photo { object-fit: cover; object-position: 70% 50%; }
+.hero__art img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 60% 50%; }
+.article-head--page { min-height: min(64vh, 620px); }
+.live-section { isolation: isolate; }
+.live-section::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, var(--night) 0%, rgba(5, 6, 12, .62) 28%, rgba(5, 6, 12, .78) 72%, var(--night) 100%), url("../img/go/live.webp") center / cover no-repeat; }
+.outcomes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; max-width: 44rem; margin: 0 0 2.5rem; }
+.outcomes figure { margin: 0; text-align: center; }
+.outcomes img { display: block; width: min(100%, 160px); height: auto; margin: 0 auto .8rem; border: 1px solid rgba(242, 196, 107, .3); }
+.outcomes figcaption { color: var(--parchment-2); font: 400 .9rem/1.45 var(--sans); }
+.outcomes figcaption strong { display: block; font: 600 1.05rem/1.3 var(--display); color: var(--gold-hi); letter-spacing: .04em; }
 .page-head { padding: clamp(8rem, 14vw, 10rem) 0 1.5rem; }
 .page-head h1 { margin: 0 0 1.2rem; font: 600 clamp(2.4rem, 5.6vw, 4rem)/1.06 var(--display); letter-spacing: .04em; color: var(--gold-hi); }
 .page-head .lede { max-width: 46rem; text-shadow: none; }
@@ -542,4 +550,27 @@ code { font-family: var(--mono); font-size: .9em; }
   .map__obj circle { r: 11px; }
   .map__obj--self circle { r: 16px; }
   .map__obj--drop circle { r: 8px; }
+}
+/* On a phone the vertical painting stands whole above the text, never under it. */
+@media (max-width: 760px) {
+  .hero { min-height: 0; display: block; }
+  .hero__art { position: relative; inset: auto; z-index: 0; display: block; height: auto; }
+  .hero__art img { height: auto; aspect-ratio: 4 / 5; object-position: 50% 0; }
+  .hero__art::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 28%; background: linear-gradient(180deg, rgba(5, 6, 12, 0), var(--night)); }
+  .hero__veil, .hero .cue { display: none; }
+  .hero__text { padding: .5rem 0 3.5rem; }
+}
+.note__img { display: block; }
+.cards--two { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 640px) { .cards--two { grid-template-columns: 1fr; } }
+.note__body .note__meta { margin-top: 1rem; }
+/* On a phone, Go-era headers keep the whole painting above the text: a crop
+   would cut figures out of scenes that show two people on equal terms. */
+@media (max-width: 760px) {
+  .article-head--whole { min-height: 0; display: block; }
+  .article-head--whole picture { position: relative; inset: auto; display: block; z-index: 0; }
+  .article-head--whole picture img { position: static; height: auto; }
+  .article-head--whole::after { display: none; }
+  .article-head--whole .wrap { padding: 1.4rem 0 1rem; }
+  .article-head--whole .dek, .article-head--whole h1 { text-shadow: none; }
 }

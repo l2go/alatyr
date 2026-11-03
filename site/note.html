@@ -2,8 +2,8 @@
 {{define "description"}}{{.Note.Summary}}{{end}}
 {{define "main"}}
 <article>
-<header class="article-head">
-  <picture><source srcset="/alatyr/assets/img/covers/{{.Note.Cover}}.webp" type="image/webp"><img src="/alatyr/assets/img/covers/{{.Note.Cover}}.jpg" alt="" width="1600" height="667"></picture>
+<header class="article-head article-head--whole">
+  <picture><img src="/alatyr/assets/img/covers/{{.Note.Cover}}.webp" alt="" width="1600" height="667"></picture>
   <div class="wrap">
     <div class="crumbs"><a href="/alatyr/notes/">Notes</a> · Building an honest world</div>
     <h1>{{.Note.Title}}</h1>

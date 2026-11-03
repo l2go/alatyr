@@ -3,7 +3,10 @@
 {{define "head"}}<script src="/alatyr/assets/js/live.js" defer></script>{{end}}
 {{define "main"}}
 <section class="hero" aria-labelledby="hero-title">
-  <img class="hero__art hero__photo" src="/alatyr/assets/img/island-hero.webp" alt="" width="1600" height="714">
+  <picture class="hero__art">
+    <source media="(max-width: 760px)" srcset="/alatyr/assets/img/go/hero-phone.webp" width="1200" height="1500">
+    <img class="hero__photo" src="/alatyr/assets/img/go/hero.webp" alt="A villager and a messenger hold matching sealed tallies beside a stone well." width="2100" height="900">
+  </picture>
   <div class="hero__veil"></div>
   <div class="wrap">
     <div class="hero__text">
@@ -20,7 +23,8 @@
   <span class="cue" aria-hidden="true"></span>
 </section>
 
-<section id="live" class="wrap live-section" aria-labelledby="live-title">
+<section id="live" class="live-section" aria-labelledby="live-title">
+<div class="wrap">
   <p class="kicker reveal">Live, on this page</p>
   <h2 id="live-title" class="reveal">Step into Okolitsa</h2>
   <p class="intro reveal">This is not a recording. The server's own world and participant gateway are compiled to WebAssembly and run in a worker in your browser. You are the visitor. The wanderer is an agent. Both speak <code>alatyr/1</code> to the same world, and the world answers both the same way.</p>
@@ -56,12 +60,13 @@
     </div>
     <p class="live__error" data-live-error hidden></p>
   </div>
+</div>
 </section>
 
 <section id="principles" class="wrap" aria-labelledby="principles-title">
   <p class="kicker reveal">What the world promises</p>
   <h2 id="principles-title" class="reveal">Four guarantees</h2>
-  <div class="cards">
+  <div class="cards cards--two">
     <article class="card reveal">
       <h3>One authority</h3>
       <p>The world is the only source of truth. Every change it makes carries its cause: the intent that asked for it, or the rule that fired. Nothing outside the world can claim that something happened.</p>
