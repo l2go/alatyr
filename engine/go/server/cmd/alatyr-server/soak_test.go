@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -792,6 +793,11 @@ func (c *soakCohort) classText() string {
 	for _, k := range keys {
 		fmt.Fprintf(&out, "outcome verb=%d stage=%d reason=%d count=%d\n", k.verb, k.stage, k.reason, outcomes[k])
 	}
+	admissions := 0
+	for _, b := range c.bots {
+		admissions += int(b.admissions.Load())
+	}
+	fmt.Fprintf(&out, "admission retries %d\n", admissions)
 	return out.String()
 }
 
@@ -841,6 +847,7 @@ type soakBot struct {
 	passive     atomic.Bool
 	unknown     atomic.Int64
 	finished    atomic.Int64
+	admissions  atomic.Int64 // openings the host closed before ready
 	wg          sync.WaitGroup
 	mu          sync.Mutex
 	control     uint64
@@ -850,6 +857,7 @@ type soakBot struct {
 	vitals      bool
 	coin        int64
 	coinOK      bool
+	restored    soakView // the first ready view, before regeneration moves vitals
 	dead        bool
 	live        map[int32]liveObj
 	dialog      meaning.DecodedEvent
@@ -896,15 +904,25 @@ type soakView struct {
 	ok     bool
 }
 
+// view returns the first ready view of the session, which a restart compares
+// with the saved row; vitals regenerate while other participants still open.
 func (b *soakBot) view() (soakView, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if !b.restored.ok {
+		v := b.liveView()
+		return v, v.ok
+	}
+	return b.restored, true
+}
+
+// liveView requires b.mu.
+func (b *soakBot) liveView() soakView {
 	items := map[int32]int64{}
 	for id, n := range b.goods {
 		items[id] = n
 	}
-	v := soakView{x: b.selfX, y: b.selfY, hp: b.hp, mp: b.mp, coin: b.coin, items: items, ok: b.ready.Load() && b.vitals && b.coinOK}
-	return v, v.ok
+	return soakView{x: b.selfX, y: b.selfY, hp: b.hp, mp: b.mp, coin: b.coin, items: items, ok: b.ready.Load() && b.vitals && b.coinOK}
 }
 
 func (b *soakBot) loop() {
@@ -941,6 +959,7 @@ func (b *soakBot) loop() {
 		// The client sees EOF and has not reached CheckpointEnd yet. ErrFull
 		// stays on the server. After CheckpointEnd the same EOF is a drop.
 		if errors.Is(err, errAdmission) {
+			b.admissions.Add(1)
 			failures++
 			if failures > 100 {
 				b.note("%s session: %v after %d retries", b.id, err, failures)
@@ -1038,8 +1057,13 @@ func (b *soakBot) session(codec *meaning.Codec, next func() uint64, reconnect *t
 					drained = true
 				}
 			}
-			if !b.ready.Load() && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
-				return errAdmission
+			// A refused opening is EOF, or a reset when the host closes with
+			// the unread Hello still buffered.
+			if !b.ready.Load() {
+				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET) {
+					return errAdmission
+				}
+				return fmt.Errorf("before ready: %w", err)
 			}
 			return fmt.Errorf("after ready: %w", err)
 		case rs := <-frames:
@@ -1083,6 +1107,9 @@ func (b *soakBot) consume(rs []wire.Record) error {
 		case wire.Checkpoint:
 			if fieldU(r, 1) == uint64(wire.CheckpointEnd) && fieldU(r, 3) == 1 {
 				b.ready.Store(true)
+				if !b.restored.ok {
+					b.restored = b.liveView()
+				}
 			}
 		case wire.Ping:
 			b.needPong = true
@@ -1414,6 +1441,16 @@ func fieldU(r wire.Record, n uint32) uint64 {
 }
 
 func TestBotRetriesEOFBeforeReady(t *testing.T) {
+	testBotRetriesBeforeReady(t, false)
+}
+
+// A host that refuses an opening with the Hello unread resets the connection.
+func TestBotRetriesResetBeforeReady(t *testing.T) {
+	testBotRetriesBeforeReady(t, true)
+}
+
+func testBotRetriesBeforeReady(t *testing.T, reset bool) {
+	t.Helper()
 	codec, err := meaning.NewCodec(limits(1))
 	if err != nil {
 		t.Fatal(err)
@@ -1437,6 +1474,12 @@ func TestBotRetriesEOFBeforeReady(t *testing.T) {
 				conn.Close()
 				serverErr <- err
 				return
+			}
+			if n == 0 && reset {
+				// Close with the Hello unread and no lingering, which sends RST.
+				conn.(*net.TCPConn).SetLinger(0)
+				conn.Close()
+				continue
 			}
 			if _, err := readFrame(codec, stream, time.Now().Add(2*time.Second)); err != nil {
 				conn.Close()
