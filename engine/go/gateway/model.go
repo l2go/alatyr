@@ -225,8 +225,22 @@ type State interface {
 	Stop() *Step
 }
 
+// WriteRefusal is a source-authored synchronous refusal of the whole attempt.
+// It proves no effects, including any earlier steps, and must not also be
+// published as an asynchronous outcome. Other write errors remain ambiguous.
+type WriteRefusal struct {
+	// Reason explains why the source refused the attempt.
+	Reason wire.Reason
+	// ObservedMS is the original source commitment time in gateway milliseconds.
+	ObservedMS int64
+}
+
+// Error describes the refusal without exposing source data.
+func (*WriteRefusal) Error() string { return "gateway: world refused write" }
+
 // World events are backpressured. No reader may call Write. Implementations
-// respect ctx deadlines and report possible contact on ambiguous write errors.
+// respect ctx deadlines and report known refusals with WriteRefusal; other
+// write errors report possible contact without proof of no effects.
 // Close must be idempotent and return promptly after unblocking Updates and Write.
 type World interface {
 	Updates() <-chan Update

@@ -13,7 +13,8 @@ import (
 )
 
 // Write executes one already captured participant effect. Exact commitments
-// flow through the same mailbox as continuations. The gateway owns numbering;
+// flow through the same mailbox as continuations, except synchronous refusals
+// returned as gateway.WriteRefusal. The gateway owns numbering;
 // no raw command keys, receipts, epochs or Resume protocol are needed.
 func (s *Session) Write(ctx context.Context, step gateway.Step) error {
 	op, ok := step.Value.(operation)
@@ -71,6 +72,13 @@ func (s *Session) Write(ctx context.Context, step gateway.Step) error {
 	commit, err := s.cfg.World.Execute(ctx, req)
 	if s.cfg.Handoff != nil {
 		s.cfg.Handoff(Handoff{N: step.N, Intent: commit.Intent.ID})
+	}
+	if req.Observer != nil && commit.Outcome.Stage == world.StageRefused {
+		// A failed reservation cannot publish its refusal to the mailbox. Return
+		// synchronous refusals directly and retire any successful reservation,
+		// including its queued refusal, so neither pending nor replay is needed.
+		s.mailbox.Forget(commit.Intent.ID)
+		return &gateway.WriteRefusal{Reason: refusal(commit.Outcome.Reason), ObservedMS: max(step.ContactMS, s.tr.gatewayMS(commit.Time))}
 	}
 	if op.plan != nil && commit.Intent.ID.N != 0 {
 		op.plan.contact = step.ContactMS

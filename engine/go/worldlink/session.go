@@ -257,6 +257,10 @@ func (s *Session) operation(ctx context.Context) (context.Context, func(), error
 	return request, func() { s.errMu.Lock(); s.activeCancel = nil; s.errMu.Unlock(); cancel() }, nil
 }
 
+// capture takes a current scene, optionally fencing the observer's queued state.
+// A fenced capture during teleport also executes VerbAppear with that fence
+// to complete the handshake, then captures the resulting scene; it is not a
+// pure read of the world.
 func (s *Session) capture(fence bool) (world.Scene, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.cfg.Meaning.Advertised[20])*time.Millisecond)
 	defer cancel()

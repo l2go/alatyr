@@ -619,7 +619,6 @@ func (s *game) endScope(reason wire.CloseReason) {
 		s.finish(c, reason)
 	}
 	s.worldOnce.Do(func() {
-
 		s.gate.closeError(s.world.Close())
 	})
 }

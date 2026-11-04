@@ -5,6 +5,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"net"
 	"slices"
 	"time"
@@ -293,8 +294,15 @@ func (s *game) service(ctx context.Context) {
 		remaining := max(int64(0), entry.Queued+queueMS-s.gate.now())
 		ttl := uint64(min(remaining, int64(5000)))
 		step.QueueTTLMS = &ttl
-		if err := s.write(ctx, step); err != nil {
-			o, err := s.attempts.Fail(n, wire.ReasonBackendError)
+		if writeErr := s.write(ctx, step); writeErr != nil {
+			var refusal *WriteRefusal
+			var o proto.Outcome
+			var err error
+			if errors.As(writeErr, &refusal) && refusal != nil {
+				o, err = resolve(s.attempts, s.gate.cfg.Attempts.EvidenceMS, Resolution{N: n, Stage: wire.StageRefused, Reason: refusal.Reason, ObservedMS: refusal.ObservedMS}, s.gate.now())
+			} else {
+				o, err = s.attempts.Fail(n, wire.ReasonBackendError)
+			}
 			if err != nil {
 				s.fail(wire.CloseInternal)
 				return
