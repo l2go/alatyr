@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/l2go/alatyr/engine/go/gateway"
@@ -155,6 +156,83 @@ func TestAgentPlaysAlongsideTheVisitor(t *testing.T) {
 			}
 		}
 		return false
+	})
+}
+
+func TestAgentTalkSurvivesDelayedObserverReply(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := startWorld(t)
+		vs, err := w.Join(t.Context(), Visitor, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := vs.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+		synctest.Wait()
+		if !vs.View().Ready {
+			t.Fatal("visitor checkpoint did not complete")
+		}
+		// Use a 400-unit approach covered by the original completion window.
+		character := w.chars[Agent]
+		character.X, character.Y = -71057, 257883-400
+		w.chars[Agent] = character
+		// The world captures Observe before the opening caller resumes. Force
+		// that gap, and a fractional-millisecond capture, without a real sleep.
+		time.Sleep(1500 * time.Microsecond)
+		calls := 0
+		w.config.Now = func() time.Time {
+			calls++
+			if calls == 2 {
+				time.Sleep(3 * time.Millisecond)
+			}
+			return time.Now()
+		}
+		var agent recorder
+		as, err := w.Join(t.Context(), Agent, agent.watch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := as.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() { done <- RunAgent(ctx, as, 100*time.Millisecond) }()
+		t.Cleanup(func() { cancel(); <-done })
+		for range 60 {
+			time.Sleep(100 * time.Millisecond)
+			synctest.Wait()
+			if err := as.Err(); err != nil {
+				t.Fatalf("observer reply delay closed the agent: %v", err)
+			}
+			agent.mu.Lock()
+			results, doneTalk := 0, false
+			var uncertain *Entry
+			for _, e := range agent.logs {
+				if e.Kind != "result" {
+					continue
+				}
+				results++
+				if e.Stage == "Unknown" {
+					entry := e
+					uncertain = &entry
+				}
+				doneTalk = doneTalk || e.N == 1 && e.Stage == "Done"
+			}
+			agent.mu.Unlock()
+			if uncertain != nil {
+				t.Fatalf("uncertain agent outcome: %+v", *uncertain)
+			}
+			if doneTalk && results >= 4 {
+				return
+			}
+		}
+		t.Fatal("delayed talk did not complete within its original window")
 	})
 }
 

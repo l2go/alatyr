@@ -21,7 +21,8 @@ var errSource = errors.New("worldlink: incomplete source")
 type translator struct {
 	cat                  *catalog.Catalog
 	origin               world.Time
-	offset               int64
+	clockOrigin          time.Time
+	gatewayOrigin        time.Time
 	textBytes, listItems int
 }
 
@@ -34,6 +35,12 @@ func display(v float64) (int64, error) {
 func validRef(r world.Ref) bool { return r.ID > 0 && r.Gen != 0 }
 func (t translator) ms(at world.Time) int64 {
 	return int64((at - t.origin) / world.Time(time.Millisecond))
+}
+
+// gatewayMS preserves the source instant, including sub-millisecond phase.
+// A caller's resume time is later than its capture and cannot anchor this clock.
+func (t translator) gatewayMS(at world.Time) int64 {
+	return t.clockOrigin.Add(time.Duration(at)).Sub(t.gatewayOrigin).Milliseconds()
 }
 func at(e meaning.Event, p world.Point) meaning.Event { e.X, e.Y, e.Z = p.X, p.Y, p.Z; return e }
 func toward(e meaning.Event, p world.Point) meaning.Event {
@@ -232,7 +239,7 @@ func (t translator) dialogue(d world.Dialogue) ([]meaning.Input, error) {
 			return nil, errSource
 		}
 		seen[a.ID] = true
-		b := t.offset + t.ms(a.Issued)
+		b := t.gatewayMS(a.Issued)
 		if born == nil || b < *born {
 			born = meaning.Number(b)
 		}
@@ -307,7 +314,7 @@ func (t translator) trade(d world.Dialogue, list int32, sell bool) (meaning.Inpu
 			return meaning.Input{}, errSource
 		}
 		seen[a.ID] = true
-		b := t.offset + t.ms(a.Issued)
+		b := t.gatewayMS(a.Issued)
 		if token == 0 || b < born {
 			born = b
 		}
@@ -429,7 +436,7 @@ func (t translator) view(s world.Scene) (meaning.View, error) {
 	out.Events = append(out.Events, dialog...)
 	for i := range out.Events {
 		out.Events[i].Event.MS = t.ms(s.End.Time)
-		out.Events[i].ReceivedAt = t.offset + t.ms(s.End.Time)
+		out.Events[i].ReceivedAt = t.gatewayMS(s.End.Time)
 	}
 	return out, nil
 }

@@ -173,7 +173,7 @@ func Open(ctx context.Context, cfg Config, id Identity) (*Session, gateway.State
 		return fail(err)
 	}
 	s := &Session{cfg: cfg, owner: entry.Self.Entity, class: c.ClassID, mailbox: box, stop: make(chan struct{}), pending: map[world.IntentID]*plan{}}
-	s.tr = translator{cat: cfg.Catalog, origin: scene.End.Time, offset: cfg.Now().Sub(cfg.Origin).Milliseconds(), textBytes: cfg.Meaning.Wire.StringBytes, listItems: cfg.Meaning.Wire.ListItems}
+	s.tr = translator{cat: cfg.Catalog, origin: scene.End.Time, clockOrigin: cfg.World.ClockOrigin(), gatewayOrigin: cfg.Origin, textBytes: cfg.Meaning.Wire.StringBytes, listItems: cfg.Meaning.Wire.ListItems}
 	s.state = &state{session: s, cursor: cursor}
 	view, err := s.tr.view(scene)
 	if err != nil || !view.Ready {
@@ -213,7 +213,7 @@ func (s *Session) Receive() (gateway.Update, bool) {
 		u.Relocate = true
 	}
 	if p.Event != nil {
-		ms := s.tr.offset + s.tr.ms(p.Event.Time())
+		ms := s.tr.gatewayMS(p.Event.Time())
 		u.ReceivedMS = &ms
 	}
 	return u, true
@@ -325,7 +325,7 @@ func (s *state) Apply(u gateway.Update, now int64) (gateway.Observation, error) 
 		if !ok {
 			return gateway.Observation{}, nil
 		}
-		resolution := gateway.Resolution{N: binding.n, ObservedMS: max(binding.contact, s.session.tr.offset+s.session.tr.ms(p.Commit.Time))}
+		resolution := gateway.Resolution{N: binding.n, ObservedMS: max(binding.contact, s.session.tr.gatewayMS(p.Commit.Time))}
 		switch p.Commit.Outcome.Stage {
 		case world.StageDone:
 			resolution.Stage = wire.StageDone

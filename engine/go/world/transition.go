@@ -520,9 +520,9 @@ func (s *state) complete() {
 		return
 	}
 	outcome := Outcome{Intent: s.batch.cause.Intent, Stage: StageDone}
-	if s.batch.intent.ID.N != 0 {
+	if s.batch.intent.ID.N != 0 || s.batch.outcome.Intent != (IntentID{}) {
 		s.batch.continuations = append(s.batch.continuations, outcome)
-	} else if s.batch.outcome.Intent == (IntentID{}) {
+	} else {
 		s.batch.outcome = outcome
 	}
 }

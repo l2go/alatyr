@@ -172,7 +172,7 @@ func (t translator) events(e world.Event, class int32, self world.Ref) ([]meanin
 	}
 	for i := range out {
 		out[i].Event.MS = t.ms(e.Time())
-		out[i].ReceivedAt = t.offset + t.ms(e.Time())
+		out[i].ReceivedAt = t.gatewayMS(e.Time())
 	}
 	return out, incarnation, nil
 }

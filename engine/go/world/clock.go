@@ -17,6 +17,11 @@ func (w *World) GameTime() int32 {
 	return int32((gameStartMinute + 1 + elapsed) % (24 * 60))
 }
 
+// ClockOrigin returns the immutable local clock origin of the world's Time
+// values. An in-process host can translate them to its clock without estimating
+// an offset from request latency. The zero World returns a zero time.
+func (w *World) ClockOrigin() time.Time { return w.started }
+
 // GameClock announces a game-clock hour boundary and its time multiplier.
 type GameClock struct {
 	stamp
