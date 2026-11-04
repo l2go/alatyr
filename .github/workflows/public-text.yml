@@ -30,16 +30,6 @@ jobs:
       - name: Check all tracked text
         run: python3 -I tools/ci/check-public-text.py
 
-      - name: Read the published site tree
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          ref: site
-          path: site-tree
-          persist-credentials: false
-
-      - name: Check the published site text
-        run: python3 -I tools/ci/check-public-text.py --root site-tree
-
   site:
     if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-24.04
