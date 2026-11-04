@@ -13,15 +13,13 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/l2go/alatyr/engine/go/bridge"
 	"github.com/l2go/alatyr/engine/go/gateway"
-	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/gatewaytest"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
-	"github.com/l2go/alatyr/engine/go/worldbridge"
+	"github.com/l2go/alatyr/engine/go/worldlink"
 )
 
 func spawnPoint(cat *catalog.Catalog, npc int32) (world.Point, bool) {
@@ -35,7 +33,7 @@ func spawnPoint(cat *catalog.Catalog, npc int32) (world.Point, bool) {
 
 func npcViews(t *testing.T, r *rig, template int32) []world.NPCView {
 	t.Helper()
-	raw := r.port.Port.(*worldbridge.Client)
+	raw := r.port.Port
 	scene, err := r.w.Capture(t.Context(), raw.Owner())
 	if err != nil {
 		t.Fatal(err)
@@ -118,15 +116,11 @@ func observeAt(t *testing.T, r *rig, cat *catalog.Catalog, point world.Point, id
 	visitor.Skills = nil
 	visitor.X, visitor.Y, visitor.Z = point.X, point.Y, point.Z
 	origin := time.Now()
-	raw, snap, err := worldbridge.Open(t.Context(), worldbridge.Config{World: r.w, Catalog: cat, Load: func(context.Context, bridge.Identity) (world.Character, error) { return visitor, nil }}, bridge.Identity{Account: visitor.Account, Character: visitor.Name})
+	session, state, err := worldlink.Open(t.Context(), worldlink.Config{World: r.w, Catalog: cat, Meaning: r.c, Origin: origin, Load: func(context.Context, worldlink.Identity) (world.Character, error) { return visitor, nil }}, worldlink.Identity{Account: visitor.Account, Character: visitor.Name})
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, scope, state, err := backend.New(raw, snap, backend.Config{Meaning: r.c, Origin: origin})
-	if err != nil {
-		t.Fatal(err)
-	}
-	g := gatewaytest.New(t, r.c, func(context.Context, string) (gateway.World, gateway.State, error) { return scope, state, nil }, origin)
+	g := gatewaytest.New(t, r.c, func(context.Context, string) (gateway.World, gateway.State, error) { return session, state, nil }, origin)
 	peer := gatewaytest.Join(t, g, r.c, "one", wire.ModeObserve, false)
 	defer func() {
 		if err := g.Close(); err != nil {
@@ -142,24 +136,7 @@ func observeAt(t *testing.T, r *rig, cat *catalog.Catalog, point world.Point, id
 	return append([]wire.Record(nil), peer.Records...)
 }
 
-func resumeOwner(t *testing.T, r *rig) []wire.Record {
-	t.Helper()
-	owner := r.port.Port.(*worldbridge.Client).Owner()
-	if _, _, err := r.w.Subscribe(t.Context(), owner); err != nil {
-		t.Fatal(err)
-	}
-	r.sync()
-	fresh, freshState, err := r.session.Resume(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.mu.Lock()
-	r.scope, r.state = fresh, freshState
-	r.mu.Unlock()
-	r.p = gatewaytest.Join(t, r.g, r.c, "one", wire.ModeAct, true)
-	r.sync()
-	return r.p.Records
-}
+func resumeOwner(t *testing.T, r *rig) []wire.Record { t.Helper(); r.reconnect(); return r.p.Records }
 
 func visitForm(t *testing.T, r *rig, cat *catalog.Catalog, char world.Character, template int32, want string, guest int32) {
 	t.Helper()
@@ -198,7 +175,7 @@ func TestNPCFormsMatchAuthoredTemplates(t *testing.T) {
 			}
 			visitForm(t, r, cat, char, want.id, want.form, int32(20+i))
 		}
-		raw := r.port.Port.(*worldbridge.Client)
+		raw := r.port.Port
 		scene, err := r.w.Capture(t.Context(), raw.Owner())
 		if err != nil {
 			t.Fatal(err)

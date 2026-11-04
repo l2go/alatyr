@@ -525,7 +525,7 @@ func checkModule(root string, m modulePolicy) error {
 	}
 	components := []string{""}
 	if m.Package == "" {
-		components = append(components, "gateway", "bridge", "world", "worldbridge")
+		components = append(components, "gateway", "world", "worldlink")
 	}
 	for _, component := range components {
 		componentDir := filepath.Join(dir, component)

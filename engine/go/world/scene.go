@@ -46,11 +46,14 @@ type Coverage struct {
 // completion of the current relocation. Seq is the last event publication,
 // independent of Sequence. Capture does not allocate new intents or events.
 type Marker struct {
-	Sequence uint64
-	Seq      uint64
-	Time     Time
-	Fence    Fence
-	Ready    bool
+	// Discontinuous marks a direct checkpoint that retired a visibility gap.
+	// It is observer metadata, not a world transition or an intent outcome.
+	Discontinuous bool
+	Sequence      uint64
+	Seq           uint64
+	Time          Time
+	Fence         Fence
+	Ready         bool
 }
 
 // Observation is one currently known object with its captured incarnation.
@@ -138,7 +141,13 @@ func (w *World) Subscribe(ctx context.Context, owner Ref) (Scene, Subscription, 
 			return
 		}
 		w.flush(s)
-		p.stream.close(CloseReplaced)
+		if p.stream != nil {
+			p.stream.close(CloseReplaced)
+		}
+		if p.mailbox != nil {
+			p.mailbox.close()
+			p.mailbox = nil
+		}
 		p.stream = newEventStream()
 		p.slow = false
 		scene = w.capture(s, p)

@@ -12,7 +12,15 @@ Notable changes, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) for
 
 ### Changed
 
-- The Go world's composition with the gateway, its limits, role classification, evidence authority and port opening, moved from the server's main package to `server/goworld`, shared by every host of the world.
+- The gateway receives typed observations directly from the Go world. One bounded participant mailbox coalesces state and replaces lost event history with a checkpoint; falling behind no longer disconnects a character with `WorldClosed`.
+- Results use the exact world commitment, including delayed completion. Learning no longer waits out an evidence window; dialogue, pickup, trade, item use and return can complete despite a previously uncertain action in the same class. Genuine asynchronous uncertainty still expires as Unknown, and terminal Sent remains unchanged. See [the compatibility note](docs/engine-go/direct-gateway.md).
+- Network reconnection retains the same world incarnation and gateway attempt ledger. It sends a checkpoint and retained outcomes without repeating commands.
+
+- The Go world's composition with the gateway, its limits, role classification and session opening, moved from the server's main package to `server/goworld`, shared by every host of the world.
+
+### Removed
+
+- The raw-port bridge, its network client, the world bridge adapter and the gateway backend package. The participant wire format remains `alatyr/1`.
 
 ## [5.0.0] - 2026-11-03
 

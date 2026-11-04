@@ -33,7 +33,7 @@ func (w *World) startGameClock(s *state) {
 		if minute%60 == 0 {
 			s.group(nil, Fact{Property: PropertyGameClock, Before: IntValue(int64((minute + 23*60) % (24 * 60))), After: IntValue(int64(minute))})
 			for _, p := range s.players {
-				p.send(GameClock{Minute: minute, Multiplier: timeMulti})
+				p.send(s, GameClock{Minute: minute, Multiplier: timeMulti})
 			}
 		}
 		s.afterRule(time.Until(w.started.Add(time.Duration(k)*gameMinute)), RuleGameClock, run)

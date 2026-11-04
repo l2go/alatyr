@@ -321,7 +321,14 @@ func (w *World) setRunning(s *state, a actor, running bool) {
 		return
 	}
 	s.setBool(c.ref(), PropertyGait, &c.running, running)
-	w.broadcastToKnown(s, a, GaitChanged{ObjectID: c.id, Running: running})
+	var description Event
+	switch v := a.(type) {
+	case *player:
+		description = PlayerSeen{Player: w.selfOf(v)}
+	case *npc:
+		description = NPCSeen{NPC: v.view(time.Now())}
+	}
+	w.broadcastToKnown(s, a, GaitChanged{ObjectID: c.id, Running: running, Actor: description})
 	w.markBroadcast(s, a, broadcastFullInfo)
 }
 

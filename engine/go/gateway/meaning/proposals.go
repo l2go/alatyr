@@ -50,10 +50,15 @@ func (p *Proposals) expire(now int64) {
 // Capture copies a bounded proposal at its original backend receive time.
 // sourceComplete must describe audited completeness, not participant-supplied data.
 func (p *Proposals) Capture(ev Event, npc Ref, sourceComplete bool, now int64) (FactContext, error) {
+	return p.capture(ev, npc, sourceComplete, now, now)
+}
+
+// capture separates original authority birth from the current expiry sweep.
+func (p *Proposals) capture(ev Event, npc Ref, sourceComplete bool, born, now int64) (FactContext, error) {
 	if ev.Kind != Spoke && ev.Kind != Shop && ev.Kind != Offer && ev.Kind != Practice {
 		return FactContext{}, wire.ErrFrame
 	}
-	if now < 0 || len(ev.Lines) > p.config.Wire.ListItems || len(ev.Goods) > p.config.Wire.ListItems {
+	if born < 0 || born > now || len(ev.Lines) > p.config.Wire.ListItems || len(ev.Goods) > p.config.Wire.ListItems {
 		return FactContext{}, ErrLimit
 	}
 	count := uint64(1)
@@ -63,7 +68,7 @@ func (p *Proposals) Capture(ev Event, npc Ref, sourceComplete bool, now int64) (
 	if count > math.MaxUint64-p.next {
 		return FactContext{}, ErrLimit
 	}
-	w := proposalWindow{id: p.next + 1, kind: ev.Kind, list: ev.List, npc: npc, created: now, complete: sourceComplete}
+	w := proposalWindow{id: p.next + 1, kind: ev.Kind, list: ev.List, npc: npc, created: born, complete: sourceComplete}
 	ctx := FactContext{Seq: 1, Epoch: 1, Ref: npc, Origin: wire.ProvenanceAuthored}
 	used := len(ev.Text)
 	for _, s := range []string{ev.Text, ev.Name} {

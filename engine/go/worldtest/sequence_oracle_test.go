@@ -4,113 +4,13 @@
 package worldtest
 
 import (
-	"math"
-	"slices"
-	"testing"
-	"time"
-
-	"github.com/l2go/alatyr/engine/go/bridge"
-	"github.com/l2go/alatyr/engine/go/gateway"
-	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/world"
+	"github.com/l2go/alatyr/engine/go/worldlink"
+	"math"
+	"testing"
 )
 
-func oracleResult(stage wire.Stage) wire.Record {
-	return wire.Record{Type: wire.Result, Fields: []wire.Field{wire.U(1, true, 1), wire.U(2, true, uint64(stage)), wire.U(3, true, 0), wire.U(5, true, verbTalk), wire.U(6, true, verbTalk), wire.U(7, true, uint64(wire.DeliveryBackend))}}
-}
-func oracleFact() wire.Record {
-	return wire.Record{Type: wire.Fact, Fields: []wire.Field{wire.U(1, true, kindSpoke), wire.U(2, true, 1), wire.S(3, true, 1), wire.U(4, true, 1), wire.Obj(10, true, []wire.Field{wire.S(1, true, 2), wire.U(2, true, 1)}), wire.U(32, true, 1)}}
-}
-func oracleAttempts() map[uint64]*sequenceAttempt {
-	return map[uint64]*sequenceAttempt{1: {record: wire.Record{Type: wire.Intent, Fields: []wire.Field{wire.Obj(10, true, []wire.Field{wire.S(1, true, 2), wire.U(2, true, 1)})}}, epoch: 1}}
-}
-
-func TestSequenceOutcomeOracleRejectsMutations(t *testing.T) {
-	valid := []wire.Record{oracleFact(), oracleResult(wire.StageDone)}
-	for _, tc := range []struct {
-		name   string
-		mutate func([]wire.Record) []wire.Record
-	}{
-		{"missing-terminal", func(rs []wire.Record) []wire.Record { return rs[:1] }},
-		{"duplicate-terminal", func(rs []wire.Record) []wire.Record { return append(rs, rs[1]) }},
-		{"reopened-terminal", func(rs []wire.Record) []wire.Record { return append(rs, oracleResult(wire.StageSent)) }},
-		{"Done-without-fact", func(rs []wire.Record) []wire.Record { return rs[1:] }},
-		{"wrong-epoch", func(rs []wire.Record) []wire.Record {
-			rs[0].Fields[3] = wire.U(4, true, 2)
-			return rs
-		}},
-		{"snapshot-cause", func(rs []wire.Record) []wire.Record {
-			return append([]wire.Record{{Type: wire.Checkpoint, Fields: []wire.Field{wire.U(1, true, uint64(wire.CheckpointBegin)), wire.U(2, true, 1)}}}, rs...)
-		}},
-		{"late-cause", func(rs []wire.Record) []wire.Record { rs[0].Fields[2] = wire.S(3, true, 10001); return rs }},
-		{"unknown-reason", func(rs []wire.Record) []wire.Record {
-			rs[1].Fields[1] = wire.U(2, true, uint64(wire.StageRefused))
-			rs[1].Fields[2] = wire.U(3, true, 99)
-			return rs[1:]
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if err := checkTranscript(valid, oracleAttempts(), true, 5000); err != nil {
-				t.Fatal(err)
-			}
-			rs := slices.Clone(valid)
-			for i := range rs {
-				rs[i].Fields = slices.Clone(rs[i].Fields)
-			}
-			if err := checkTranscript(tc.mutate(rs), oracleAttempts(), true, 5000); err == nil {
-				t.Fatal("mutated outcome escaped oracle")
-			}
-		})
-	}
-}
-
-func TestSequenceRawOracleRejectsMutations(t *testing.T) {
-	at := time.Unix(1, 0)
-	for _, name := range []string{"receipt-only", "snapshot", "at-deadline", "wrong-receipt", "wrong-raw-epoch", "wrong-generation", "refused-write"} {
-		t.Run(name, func(t *testing.T) {
-			records := []wire.Record{oracleFact(), oracleResult(wire.StageDone)}
-			h := []backend.Handoff{{N: 1, Role: gateway.StepEffect, Key: 7, RawN: 8}}
-			trace := []bridge.Update{{Kind: bridge.LiveBatch, Batch: bridge.Batch{Records: []wire.Record{{Type: wire.Fact, Fields: []wire.Field{wire.U(1, true, kindSpoke), wire.S(3, true, 1), wire.U(4, true, 1), wire.S(64, true, 2)}}}, ReceivedAt: []time.Time{at.Add(time.Millisecond)}, Receipts: []bridge.Receipt{{Key: 7, N: 8, GatewayEpoch: 1, Stage: wire.StageDone, ObservedAt: at}}}}}
-			writes := []sequenceWrite{{command: bridge.Command{Key: 7}, at: at}}
-			if err := checkRawEvidence(records, oracleAttempts(), h, trace, writes, 5000); err != nil {
-				t.Fatal(err)
-			}
-			switch name {
-			case "receipt-only":
-				trace[0].Batch.Records = nil
-			case "snapshot":
-				trace[0].Batch.Snapshot = true
-			case "at-deadline":
-				trace[0].Batch.ReceivedAt[0] = at.Add(5 * time.Second)
-			case "wrong-receipt":
-				trace[0].Batch.Receipts[0].Key = 99
-			case "wrong-raw-epoch":
-				trace[0].Batch.Receipts[0].GatewayEpoch = 2
-			case "wrong-generation":
-				records[0].Fields[4] = wire.Obj(10, true, []wire.Field{wire.S(1, true, 2), wire.U(2, true, 2)})
-			case "refused-write":
-				records = []wire.Record{oracleResult(wire.StageRefused)}
-			}
-			if err := checkRawEvidence(records, oracleAttempts(), h, trace, writes, 5000); err == nil {
-				t.Fatal("mutated raw evidence escaped oracle")
-			}
-		})
-	}
-}
-
-func TestSequenceDrainOracleRejectsMutations(t *testing.T) {
-	// A smaller configured action limit proves that this is not a hardcoded eight.
-	limits := retentionLimits{games: 2, actions: 3, bindings: backendBindingLimit}
-	if err := checkRetained(sequenceRetention{games: limits.games, actions: limits.actions, bindings: limits.bindings}, limits); err != nil {
-		t.Fatal(err)
-	}
-	for _, r := range []sequenceRetention{{games: limits.games + 1}, {opening: 1}, {connections: 1}, {actions: limits.actions + 1}, {bindings: limits.bindings + 1}} {
-		if err := checkRetained(r, limits); err == nil {
-			t.Fatalf("retained state escaped oracle: %+v", r)
-		}
-	}
-}
 func TestSequenceWorldOracleRejectsMutations(t *testing.T) {
 	valid := world.Character{CurHP: 10, MaxHP: 20, CurMP: 2, MaxMP: 3, Items: []world.Item{{ObjectID: 1, Count: 1}}}
 	if err := checkCharacter(valid); err != nil {
@@ -160,24 +60,34 @@ func TestSequenceWorldOracleRejectsMutations(t *testing.T) {
 	}
 }
 
-func TestSequenceLearningProofUsesOriginalLiveCandidate(t *testing.T) {
-	at := time.Unix(1, 0)
-	records := []wire.Record{oracleFact(), oracleResult(wire.StageDone)}
-	records[0].Fields[0] = wire.U(1, true, kindKnown)
-	records[0].Fields[2] = wire.S(3, true, 5000)
-	records[1].Fields[3] = wire.U(5, true, verbLearn)
-	records[1].Fields[4] = wire.U(6, true, verbLearn)
-	h := []backend.Handoff{{N: 1, Role: gateway.StepEffect, Key: 7, RawN: 8}}
-	trace := []bridge.Update{{Kind: bridge.LiveBatch, Batch: bridge.Batch{Records: []wire.Record{{Type: wire.Fact, Fields: []wire.Field{wire.U(1, true, kindKnown), wire.S(3, true, 1), wire.U(4, true, 1), wire.S(64, true, 2)}}}, ReceivedAt: []time.Time{at.Add(time.Millisecond)}, Receipts: []bridge.Receipt{{Key: 7, N: 8, GatewayEpoch: 1, Stage: wire.StageDone, ObservedAt: at}}}}}
-	writes := []sequenceWrite{{command: bridge.Command{Key: 7}, at: at}}
-	if err := checkRawEvidence(records, oracleAttempts(), h, trace, writes, 5000); err != nil {
-		t.Fatal(err)
-	}
-	trace[0].Batch.ReceivedAt[0] = at.Add(5 * time.Second)
-	if err := checkRawEvidence(records, oracleAttempts(), h, trace, writes, 5000); err == nil {
-		t.Fatal("late learning candidate escaped oracle")
-	}
-	if err := checkRetained(sequenceRetention{games: 2}, retentionLimits{games: 1, actions: 3, bindings: backendBindingLimit}); err == nil {
-		t.Fatal("host game budget escaped oracle")
+func TestSourceOutcomeOracleRejectsMutations(t *testing.T) {
+	result := wire.Record{Type: wire.Result, Fields: []wire.Field{wire.U(1, true, 7)}}
+	intent := world.IntentID{Owner: world.Ref{ID: 1, Gen: 2}, N: 3}
+	handoffs := []worldlink.Handoff{{N: 7, Intent: intent}}
+	for _, name := range []string{"missing", "wrong-attempt", "wrong-incarnation", "unknown", "refused", "fact-only"} {
+		t.Run(name, func(t *testing.T) {
+			commit := world.Commit{Outcome: world.Outcome{Intent: intent, Stage: world.StageDone}}
+			if err := checkCommittedResult(result, handoffs, []world.Commit{commit}); err != nil {
+				t.Fatal(err)
+			}
+			switch name {
+			case "missing":
+				commit.Outcome.Intent = world.IntentID{}
+			case "wrong-attempt":
+				commit.Outcome.Intent.N++
+			case "wrong-incarnation":
+				commit.Outcome.Intent.Owner.Gen++
+			case "unknown":
+				commit.Outcome.Stage = world.StageUnknown
+			case "refused":
+				commit.Outcome.Stage = world.StageRefused
+			case "fact-only":
+				commit.Outcome = world.Outcome{}
+				commit.Groups = []world.EffectGroup{{Cause: world.Cause{Intent: intent}}}
+			}
+			if err := checkCommittedResult(result, handoffs, []world.Commit{commit}); err == nil {
+				t.Fatal("unproven Done escaped source oracle")
+			}
+		})
 	}
 }

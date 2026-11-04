@@ -4,13 +4,11 @@
 package worldtest
 
 import (
-	"testing"
-	"time"
-
-	"github.com/l2go/alatyr/engine/go/bridge"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
+	"testing"
+	"time"
 )
 
 func TestParticipantUseItem(t *testing.T) {
@@ -130,49 +128,12 @@ func TestParticipantUseItem(t *testing.T) {
 	})
 }
 
-func TestParticipantItemEvidenceRequired(t *testing.T) {
-	for _, loss := range []string{"source", "attribution", "fact"} {
-		t.Run(loss, func(t *testing.T) {
-			runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
-				source := allSources()
-				if loss == "source" {
-					source.ItemUse = false
-				}
-				filter := func(u bridge.Update) bridge.Update {
-					for i, rec := range u.Batch.Records {
-						if rec.Type != wire.Fact {
-							continue
-						}
-						kind, _ := wire.Find(rec.Fields, 1)
-						if kind.U != 15 {
-							continue
-						}
-						if loss == "fact" {
-							for j, f := range rec.Fields {
-								if f.Number == 24 {
-									rec.Fields[j] = wire.Items(24, true, []wire.Value{})
-								}
-							}
-						}
-						if loss == "attribution" {
-							for j, f := range rec.Fields {
-								if f.Number == 75 {
-									rec.Fields[j] = wire.U(75, true, 99999)
-								}
-							}
-						}
-						u.Batch.Records[i] = rec
-					}
-					return u
-				}
-				r := newRig(t, cat, readyCharacter(), source, filter)
-				r.p.Send(r.intent(1, 14, wire.S(21, true, 11)))
-				r.p.Result(1, wire.StageSent)
-				r.advance(5 * time.Second)
-				r.expect(1, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0)
-			})
-		})
-	}
+func TestParticipantItemCommitSurvivesObservationLoss(t *testing.T) {
+	runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
+		r := newRig(t, cat, readyCharacter(), meaning.Source{}, lose(map[uint64]bool{15: true}, false))
+		r.p.Send(r.intent(1, 14, wire.S(21, true, 11)))
+		r.expect(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 0)
+	})
 }
 
 func TestParticipantConsumesLastItemAndRejectsStaleRow(t *testing.T) {

@@ -120,7 +120,7 @@ func (w *World) showTrade(s *state, p *player, n *npc, list int32) bool {
 		p.affordances = append(p.affordances, a)
 		s.change(p.ref(), PropertyAffordance, UintValue(0), UintValue(a.ID))
 	}
-	p.send(TradeList{ChoiceIntent: s.cause().Intent, Dialogue: w.dialogueOf(p), List: list, Sell: list == 0})
+	p.send(s, TradeList{ChoiceIntent: s.cause().Intent, Dialogue: w.dialogueOf(p), List: list, Sell: list == 0})
 	return true
 }
 
@@ -301,7 +301,7 @@ func (w *World) trade(s *state, p *player, req Request) {
 	// An issued merchant list remains valid until replacement or expiry.
 	// Request replay belongs to the command/session layer, not the offer.
 	s.finish(StageDone)
-	p.send(InventoryChanged{TradeIntent: s.cause().Intent, Changes: changes, Load: w.load(p)})
+	p.send(s, InventoryChanged{TradeIntent: s.cause().Intent, Changes: changes, Load: w.load(p)})
 	for _, change := range changes {
 		op := itemlog.Change
 		if change.Kind == "added" {

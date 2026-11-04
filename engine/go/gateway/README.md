@@ -26,34 +26,26 @@ errors. The runtime closes the participant with an internal reason and does not
 log the value or error text.
 Numeric status and journal APIs cannot retain identity strings or frame content.
 
-The package is a library, not a running server. The root runtime imports only the
-protocol module and the standard library. [meaning](meaning/README.md) supplies
-the fixed `alatyr/1` dictionary and bounded State. [backend](backend/README.md)
-adapts an opened `bridge.Port` and its ready snapshot to that runtime;
-[fixture](fixture) supplies a scripted raw port, and
-[gatewaytest](gatewaytest/README.md) drives the actual participant boundary.
-Gateway and bridge share the [server module](../README.md), which pins only
-protocol without replacements. Package dependency rules are enforced by the
-boundary checker. The [server application](../server/README.md) supplies the running host.
+The root runtime imports the protocol module and standard library. It never
+imports the world. [meaning](meaning/README.md) supplies the fixed `alatyr/1`
+dictionary, protocol reference generations and saved proposal authority.
+The [direct adapter](../worldlink/README.md) is the sole production composition
+that knows both the world and dictionary. [fixture](fixture) supplies typed test
+inputs; [gatewaytest](gatewaytest/README.md) drives participant transports.
 
-The adapter binds participant attempt, step index, effect/system role,
-command key, and raw attempt before accepting a receipt. Raw Done is not a
-participant outcome. Facts retain receive order and precede their results;
-asynchronous refusal also works without a Fact. The original contact, deadline,
-and shrinking queue budget are not renewed by delayed processing or recovery.
-After contact, Refused requires a trusted live proof that the entire attempt
-had no effects. `Observation.Refusals` carries that proof separately from ordinary
-failures. A valid proof releases the class slot with DeliveryNone and the world's
-reason; it never clears a class tainted by a genuine Unknown. Partial delivery,
-an error or missing evidence retains uncertainty.
-Relocation fences invalidate old references. A live revival is held until raw
-readiness and participant checkpoint drain, then released once; a timeout cannot
-reopen a terminal attempt.
+`Receiver` lets an in-process world expose its existing bounded mailbox without
+another channel queue or pump. Its state observations are typed values.
+`Observation.Resolutions` carries exact source-authored commitments separately
+from optional inferred witnesses and failures. A terminal result is immutable.
+After contact, a precise refusal certifies absence of effects. A missing or
+inconclusive asynchronous result retains uncertainty.
 
-Detach ends a participant scope without closing its retained raw session. Its
-owner must explicitly Resume within the original retention budget or Close it.
-Recovery creates a fresh participant scope while retaining raw keys and reference
-counters. Cached receipts never create a new outcome or replay a command.
+A source overflow requests resynchronization rather than scope closure. A fresh
+world checkpoint fences the queue and replaces every attached connection's
+projection. The gateway continues to own attempt numbers and retained outcomes.
+Disconnecting a participant does not depart its character; reconnecting receives
+that same incarnation and the retained attempt ledger. Transport write deadlines
+bound participants that are not reading.
 
 From this directory, run standalone package checks with:
 
@@ -63,7 +55,7 @@ GOWORK=off go test -race -count=1 -timeout=2m ./...
 ```
 
 CI also checks formatting, vulnerabilities, dependency boundaries, and bounded
-native fuzzing of raw event translation, the dictionary, and transport framing. Core conformance vectors remain
+native fuzzing of authored text translation, the dictionary, and transport framing. Core conformance vectors remain
 owned by the protocol module; the gateway does not implement another record codec.
 
 See [Go components](../../../docs/engine-go/README.md).

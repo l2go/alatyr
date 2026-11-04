@@ -92,7 +92,7 @@ func TestHostExclusiveSources(t *testing.T) {
 					return wire.Field{}
 				}
 				actor := func(template int32) world.Ref {
-					scene, err := w.Capture(t.Context(), r.ports["one"].port.Owner())
+					scene, err := w.Capture(t.Context(), r.ports["one"].session.Owner())
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -156,15 +156,6 @@ func TestHostExclusiveSources(t *testing.T) {
 					p.Send(intent(3, 13, wire.S(14, true, int64(practice.Event.List)), wire.U(15, true, practice.Context.Offers[index])))
 					p.Result(3, wire.StageSent)
 					sync()
-					time.Sleep(4990 * time.Millisecond)
-					sync()
-					for _, rec := range p.Records {
-						if rec.Type == wire.Result && gatewaytest.U(rec, 1) == 3 && gatewaytest.U(rec, 2) != uint64(wire.StageSent) {
-							t.Fatal("learning completed before evidence window")
-						}
-					}
-					time.Sleep(10 * time.Millisecond)
-					sync()
 					expect(3)
 					saved, err := store.Character(t.Context(), c.Account, c.Name)
 					if err != nil {
@@ -180,7 +171,7 @@ func TestHostExclusiveSources(t *testing.T) {
 						t.Fatalf("return epoch/ready=%d/%t", p.Epoch, p.Ready)
 					}
 				case "pickup":
-					owner := r.ports["one"].port.Owner()
+					owner := r.ports["one"].session.Owner()
 					if err := w.Harm(t.Context(), owner, actor(18003), 1000000); err != nil {
 						t.Fatal(err)
 					}

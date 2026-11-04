@@ -53,7 +53,7 @@ func fixture(t *testing.T) (string, policy) {
 		t.Fatal(err)
 	}
 	files := []string{"go.work", "tools/world/go.mod", "tools/world/LICENSE", "docs/engine-go/README.md", "engine/go/go.mod", "engine/go/LICENSE", "engine/go/README.md", "engine/go/server/go.mod", "engine/go/server/go.sum", "engine/go/server/LICENSE", "engine/go/server/README.md", "engine/go/protocol/go.mod", "engine/go/protocol/README.md", "engine/go/protocol/LICENSE"}
-	for _, name := range []string{"protocol", "bridge", "world", "worldbridge", "gateway", "gateway/meaning", "gateway/backend", "gateway/fixture", "gateway/gatewaytest"} {
+	for _, name := range []string{"protocol", "world", "worldlink", "gateway", "gateway/meaning", "gateway/fixture", "gateway/gatewaytest"} {
 		license := "AGPL-3.0-or-later"
 		if name == "protocol" {
 			license = "Apache-2.0"
@@ -71,7 +71,7 @@ func fixture(t *testing.T) (string, policy) {
 		}
 		writeFixture(t, root, "engine/go/"+component+"/doc.go", source("AGPL-3.0-or-later", body))
 	}
-	for _, component := range []string{"gateway", "bridge", "world", "worldbridge"} {
+	for _, component := range []string{"gateway", "world", "worldlink"} {
 		for _, name := range []string{"README.md", "LICENSE"} {
 			files = append(files, "engine/go/"+component+"/"+name)
 		}
@@ -137,13 +137,13 @@ func TestStructuralBoundaries(t *testing.T) {
 			rule := "I-1"
 			switch mutation {
 			case "vendor":
-				writeFixture(t, root, "engine/go/bridge/vendor/example/doc.go", "package example\n")
+				writeFixture(t, root, "engine/go/worldlink/vendor/example/doc.go", "package example\n")
 			case "parent-license":
 				writeFixture(t, root, "engine/go/LICENSE", "not the license\n")
 			case "package-header":
 				writeFixture(t, root, "engine/go/world/doc.go", "package world\n")
 			case "old-module":
-				writeFixture(t, root, "engine/go/bridge/go.mod", "module "+modulePrefix+"bridge\ngo "+goVersion+"\n")
+				writeFixture(t, root, "engine/go/worldlink/go.mod", "module "+modulePrefix+"worldlink\ngo "+goVersion+"\n")
 			case "missing-use":
 				writeFixture(t, root, "go.work", "go "+goVersion+"\ntoolchain "+toolchainVersion+"\nuse ./tools/world\n")
 			case "module-path":
@@ -156,7 +156,7 @@ func TestStructuralBoundaries(t *testing.T) {
 			case "license":
 				writeFixture(t, root, "engine/go/protocol/LICENSE", "not the license\n")
 			case "header":
-				writeFixture(t, root, "engine/go/bridge/doc.go", "package bridge\n")
+				writeFixture(t, root, "engine/go/worldlink/doc.go", "package worldlink\n")
 			}
 			expectRule(t, checkTree(root, p), rule)
 		})
@@ -202,7 +202,7 @@ func TestWorkspaceToolchainIsSeparateFromModuleMinimum(t *testing.T) {
 func TestProtocolImportsAcrossBuildConstraints(t *testing.T) {
 	tests := []struct{ file, body string }{
 		{"bad.go", "package protocol\nimport _ \"" + modulePrefix + "gateway\"\n"},
-		{"bad_test.go", "package protocol_test\nimport _ \"" + modulePrefix + "bridge\"\n"},
+		{"bad_test.go", "package protocol_test\nimport _ \"" + modulePrefix + "worldlink\"\n"},
 		{"tagged.go", "//go:build never_enabled\n\npackage protocol\nimport _ \"example.org/foreign\"\n"},
 		{"bad_plan9.go", "package protocol\nimport _ \"github.com/l2go/alatyr/tools/world\"\n"},
 		{"escaped.go", "package protocol\nimport _ \"example.org/for\\x65ign\"\n"},
@@ -412,14 +412,13 @@ func TestPackageDependencyMatrix(t *testing.T) {
 	}{
 		{"protocol", []string{"protocol"}, nil},
 		{"world", []string{"world"}, nil},
-		{"bridge", []string{"bridge", "protocol"}, nil},
 		{"gateway", []string{"gateway", "protocol"}, nil},
 		{"gateway/meaning", []string{"gateway", "gateway/meaning", "protocol"}, nil},
-		{"gateway/backend", []string{"gateway", "gateway/meaning", "gateway/backend", "bridge", "protocol"}, []string{"gateway/fixture", "gateway/gatewaytest"}},
-		{"gateway/fixture", []string{"gateway/fixture", "bridge", "protocol"}, nil},
-		{"gateway/gatewaytest", []string{"gateway", "gateway/meaning", "gateway/backend", "gateway/fixture", "gateway/gatewaytest", "bridge", "protocol"}, nil},
-		{"worldbridge", []string{"worldbridge", "world", "bridge", "protocol"}, nil},
+		{"gateway/fixture", []string{"gateway/fixture", "gateway", "gateway/meaning", "protocol"}, []string{"gateway/gatewaytest"}},
+		{"gateway/gatewaytest", []string{"gateway", "gateway/meaning", "gateway/fixture", "gateway/gatewaytest", "protocol"}, nil},
+		{"worldlink", []string{"worldlink", "world", "gateway", "gateway/meaning", "protocol"}, []string{"gateway/gatewaytest"}},
 	}
+
 	root, p := fixture(t)
 	for _, row := range rows {
 		for _, target := range rows {
@@ -464,9 +463,9 @@ func TestPackageSelectorsAndUnknownDirectories(t *testing.T) {
 		{"protocol/wire", "protocol/proto", true},
 		{"world/catalog", "world/memstore", true},
 		{"world/catalog", "world/storage", false},
-		{"bridge/profile", "bridge/internal/transport", true},
-		{"worldbridge/adapter", "world/catalog", true},
-		{"gateway/backend", "bridge/profile", true},
+		{"bridge/profile", "protocol/wire", false},
+		{"worldlink/adapter", "world/catalog", true},
+		{"gateway/meaning", "world/catalog", false},
 		{"gateway/gatewaytest", "gateway/backend/x", false},
 		{"gateway/backend/x", "protocol/wire", false},
 		{"gateway/unknown", "gateway", false},
@@ -493,7 +492,7 @@ func TestPackageSelectorsAndUnknownDirectories(t *testing.T) {
 func TestPackageImportsAcrossBuildConstraints(t *testing.T) {
 	for _, tc := range []struct{ file, target string }{
 		{"tagged.go", "example.org/foreign"},
-		{"probe_plan9.go", modulePrefix + "bridge"},
+		{"probe_plan9.go", modulePrefix + "worldlink"},
 		{"probe_test.go", modulePrefix + "gateway/gatewaytest"},
 		{"escaped.go", "example.org/for\\x65ign"},
 		{"invalid.go", modulePrefix + "world/../bridge"},
@@ -528,7 +527,7 @@ func TestServerModuleDirectives(t *testing.T) {
 			expectRule(t, checkModule(root, p.Modules[1]), "I-3")
 		})
 	}
-	for _, requirement := range []string{"", modulePrefix + "protocol v0.0.0-20261023084051-3b52c8d267a0", modulePrefix + "protocol " + protocolVersion + " // indirect", modulePrefix + "bridge v0.0.0-20261023154142-3ca081d3eba3"} {
+	for _, requirement := range []string{"", modulePrefix + "protocol v0.0.0-20261023084051-3b52c8d267a0", modulePrefix + "protocol " + protocolVersion + " // indirect", modulePrefix + "worldlink v0.0.0-20261023154142-3ca081d3eba3"} {
 		t.Run(requirement, func(t *testing.T) {
 			root, p := fixture(t)
 			directive := ""
@@ -544,7 +543,7 @@ func TestServerModuleDirectives(t *testing.T) {
 func TestPackageProviders(t *testing.T) {
 	p := syntheticPolicy(t)
 	dir := t.TempDir()
-	for _, path := range []string{"protocol/wire", "bridge/profile", "world/catalog", "gateway/backend", "worldbridge"} {
+	for _, path := range []string{"protocol/wire", "world/catalog", "gateway/meaning", "worldlink"} {
 		t.Run(path, func(t *testing.T) {
 			module := serverModule
 			suffix := path
@@ -573,7 +572,7 @@ func TestPackageProviders(t *testing.T) {
 				}
 			}
 			check(true)
-			pkg.Module.Path = modulePrefix + "bridge"
+			pkg.Module.Path = modulePrefix + "worldlink"
 			check(false)
 			pkg.Module.Path = module
 			pkg.Module.Replace = json.RawMessage(`{"Path":"example.org/substitute"}`)
@@ -595,19 +594,19 @@ func TestResolvedGraphDependencyDirections(t *testing.T) {
 	p := syntheticPolicy(t)
 	dir := t.TempDir()
 	for _, test := range []bool{false, true} {
-		for _, to := range []string{"bridge", "world", "worldbridge", "gateway/fixture", "gateway/gatewaytest", "gateway/backend/x"} {
+		for _, to := range []string{"world", "worldlink", "gateway", "gateway/meaning", "protocol/wire", "gateway/gatewaytest", "gateway/fixture"} {
 			t.Run(fmt.Sprintf("%s_test=%t", to, test), func(t *testing.T) {
-				from := modulePrefix + "gateway/backend"
+				from := modulePrefix + "worldlink"
 				if test {
-					from += " [" + modulePrefix + "gateway/backend.test]"
+					from += " [" + modulePrefix + "worldlink.test]"
 				}
-				value := map[string]any{"ImportPath": from, "Dir": filepath.Join(dir, "gateway/backend"), "Module": map[string]any{"Path": serverModule, "Dir": dir, "Main": true}, "Imports": []string{modulePrefix + to}}
+				value := map[string]any{"ImportPath": from, "Dir": filepath.Join(dir, "worldlink"), "Module": map[string]any{"Path": serverModule, "Dir": dir, "Main": true}, "Imports": []string{modulePrefix + to}}
 				b, err := json.Marshal(value)
 				if err != nil {
 					t.Fatal(err)
 				}
 				err = checkDependencyJSON(b, p)
-				want := to == "bridge" || test && (to == "gateway/fixture" || to == "gateway/gatewaytest")
+				want := to == "world" || to == "worldlink" || to == "gateway" || to == "gateway/meaning" || to == "protocol/wire" || test && to == "gateway/gatewaytest"
 				if want && err != nil {
 					t.Fatal(err)
 				}
@@ -1012,7 +1011,7 @@ func TestWorldTestCompositionBoundary(t *testing.T) {
 			}
 		})
 	}
-	for _, to := range []string{"worldtest", "world/catalog", "worldbridge", "gateway", "gateway/backend", "gateway/gatewaytest", "bridge", "protocol/wire"} {
+	for _, to := range []string{"worldtest", "world/catalog", "worldlink", "gateway", "gateway/gatewaytest", "protocol/wire"} {
 		if !allowedEdge(p, "worldtest", to, true) {
 			t.Fatalf("composition cannot import %s", to)
 		}
@@ -1071,7 +1070,7 @@ func TestHostParticipantDriverIsTestOnly(t *testing.T) {
 		test bool
 	}{
 		{host, false}, {"server/internal/pgstore", false}, {"server/internal/pgstore", true},
-		{"server/internal/migrate", true}, {"world", true}, {"worldbridge", true},
+		{"server/internal/migrate", true}, {"world", true}, {"worldlink", false},
 	} {
 		t.Run(fmt.Sprintf("%s/test=%t", tc.from, tc.test), func(t *testing.T) {
 			if allowedEdge(p, tc.from, driver, tc.test) {

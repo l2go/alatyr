@@ -67,8 +67,8 @@ func (w *World) addExpAndSP(s *state, p *player, exp int64, sp int32) {
 		ResourceTransferred{Resource: Resource{Kind: ResourceXP}, From: ResourceLocation{Place: PlaceReward}, To: ResourceLocation{Entity: p.ref(), Place: PlaceCharacter}, Amount: IntegerAmount(exp), ToBalance: Balance{Before: IntegerAmount(oldXP), After: IntegerAmount(p.char.Exp)}},
 		ResourceTransferred{Resource: Resource{Kind: ResourceSP}, From: ResourceLocation{Place: PlaceReward}, To: ResourceLocation{Entity: p.ref(), Place: PlaceCharacter}, Amount: IntegerAmount(int64(sp)), ToBalance: Balance{Before: IntegerAmount(int64(oldSP)), After: IntegerAmount(int64(p.char.SP))}},
 	})
-	p.send(Rewarded{ObjectID: p.id, XP: exp, SP: sp})
-	p.send(SelfChanged{})
+	p.send(s, Rewarded{ObjectID: p.id, XP: exp, SP: sp})
+	p.send(s, SelfChanged{})
 }
 func (w *World) addExp(s *state, p *player, value int64) {
 	p.char.Exp += value
@@ -95,7 +95,7 @@ func (w *World) addLevel(s *state, p *player, level int32) {
 		w.setCP(s, p, float64(p.stats.MaxCP()))
 	}
 	w.markBroadcast(s, p, broadcastFullInfo)
-	p.send(LevelChanged{ObjectID: p.id, Before: before, After: level})
+	p.send(s, LevelChanged{ObjectID: p.id, Before: before, After: level})
 }
 
 func (w *World) startDying(s *state, a actor) {
@@ -149,7 +149,7 @@ func (w *World) decay(s *state, n *npc) {
 		delete(p.known, n.id)
 		unlink(s.watchers, n.id, p.id)
 		s.change(p.ref(), PropertyKnownObject, RefValue(n.ref()), RefValue(Ref{}))
-		p.send(ObjectGone{ObjectID: n.id})
+		p.send(s, ObjectGone{ObjectID: n.id})
 		w.notifyForget(s, p, n.id)
 	}
 	r := s.region(n.region)

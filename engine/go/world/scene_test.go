@@ -150,7 +150,7 @@ func TestSubscriptionCloseReasonsAndRecovery(t *testing.T) {
 				case CloseOverflow:
 					if err := w.do(ctx, func(s *state) {
 						for range eventBacklog + 1 {
-							s.players[1].send(ActionIgnored{})
+							s.players[1].send(s, ActionIgnored{})
 						}
 					}); err != nil {
 						t.Fatal(err)

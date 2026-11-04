@@ -15,12 +15,11 @@ import (
 
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
-	"github.com/l2go/alatyr/engine/go/worldbridge"
 )
 
 func merchantOffer(t *testing.T, r *rig, sell bool, item int32) world.Request {
 	t.Helper()
-	owner := r.port.Port.(*worldbridge.Client).Owner()
+	owner := r.port.Port.Owner()
 	target := r.actor(30002)
 	c, err := r.w.Execute(t.Context(), world.Request{Owner: owner, Verb: world.VerbTalk, Target: target})
 	if err != nil || c.Outcome.Stage != world.StageDone {
@@ -55,7 +54,7 @@ func merchantOffer(t *testing.T, r *rig, sell bool, item int32) world.Request {
 }
 func inventory(t *testing.T, r *rig) []world.Carried {
 	t.Helper()
-	s, err := r.w.Capture(t.Context(), r.port.Port.(*worldbridge.Client).Owner())
+	s, err := r.w.Capture(t.Context(), r.port.Port.Owner())
 	if err != nil {
 		t.Fatal(err)
 	}

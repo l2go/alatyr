@@ -5,33 +5,24 @@ neutral event and command values, bounded observation lifetimes, saved proposals
 and an actor-owned `State`. `Codec` supplies the dictionary registry to the pinned
 protocol codec; it does not duplicate record framing or primitive decoding.
 
-Construct State with explicit `Config` bounds and trusted `Policy`. Role strings
-are opaque labels. A nil classifier grants no target capability, even for a
-collectible label. The default strategy performs no backend write for local aim
-and focus and supplies one effect write; the world selects the target within it.
-Backend strategies may supply their own captured steps through `Policy.Steps`;
-they must check concrete step values and return errors, not panic.
+Production uses `Cursor`, which retains reference generations and saved proposal
+authority. The world supplies a fresh typed `View` for each checkpoint and
+planning call. No scene is retained by the cursor. `Environment` grants authority
+only to source incarnations whose references have already been published.
+An observation gap retires those references without resetting their counter.
 
-`Input` comes only from a trusted backend adapter. `Event.MS` keeps the original
-fact time; `ReceivedAt` is gateway-relative backend receipt time. Proposal expiry
-uses that receipt or a conservative original `ProposalBorn`, so delayed
-processing and recovery snapshots cannot renew a handle. `Incomplete` revokes
-domain completeness rather than turning missing lists into known-empty lists.
-Refs and proposal handles are never reused within their owner's lifetime.
-Unknown lists remain nil; known-empty lists stay empty; a nil stat remains
-distinct from a known zero. Snapshots and proofs own their returned records.
+`Input` comes from trusted composition. `Event.MS` keeps source time;
+`ReceivedAt` is gateway-relative observation time. A proposal token identifies
+the original world-issued offer. `ProposalBorn` preserves its original lifetime
+through checkpoints, so snapshots cannot renew authority. Role strings are
+opaque labels; a nil classifier grants no target capability.
 
-`Source` is an audited producer assertion, not participant configuration. Its
-zero value grants no causal authority. Positive dialogue, pickup, learning, and
-return evidence also requires an attributable handoff supplied by the trusted
-adapter. Speech and pickup require matching effect completion or the attempt's
-own `Input.Spoken` or `Input.Taken` attribution, which also covers a talk or
-pickup the world finished after walking to the target; learning requires
-matching effect completion;
-return accepts `Returned` only for the handed-off rise attempt because raw rise
-does not report Done. Return proof retains an actual live revival, not a
-fabricated snapshot outcome. Raw receipt matching and readiness fences belong
-to [backend](../backend/README.md); the runtime orders participant records.
+`State` remains the bounded typed fixture implementation for dictionary and
+runtime contracts. Its custom strategies and inferred witness rules let tests
+exercise the generic runtime independently. The direct production adapter uses
+exact source outcomes and one effect write. It does not infer a world result
+from a snapshot or an unrelated event. Unknown lists, known-empty lists and
+unknown numeric values remain distinct. Fact records own their returned data.
 
 All 11 gateway State methods remain. Start, Confirmed, Witness, and CandidateValid
 return errors for foreign, nil, or wrong-owner action values; Witness also rejects
@@ -62,32 +53,19 @@ It shares the `trade` attempt class with buy/sell to serialize inventory actions
 Goods field 7 is change metadata; field 8, when present, is the essential
 equipment slot (-1 means unequipped). Stats fields 8 and 9 are physical attack and known defense.
 
-Done requires `Source.ItemUse`, a matching `Input.Used` attempt attribution, and
-a live inventory fact with the same object/template and a decreased quantity or
-changed known slot. Delivery receipts, snapshots, unrelated changes, and a
-missing attribution grant no success. Healing at full health can still consume
-the item; Done proves consumption, not an HP increase. A world refusal after
-handoff is Refused/DeliveryNone only when the adapter proves that the entire
-attempt had no effects. The action class remains usable. Missing evidence,
-partial delivery and ordinary failures remain Unknown and permanently taint
-the class; a later proven refusal cannot remove that taint. A later attempt
-still finishes on evidence keyed to it: every Match from this state is
-`WitnessBound`, while full-window learning remains an unbound candidate. Local stale/dead
-requests remain Refused. The meaning identifier remains `alatyr/1`.
+Production Done and Refused come from the captured world's exact commitment.
+For a healing item, Done proves consumption, not an HP increase. A refused
+commitment certifies that the entire attempt had no effects. Terminal Sent for
+walk, strike and cast is unchanged. An unresolved asynchronous operation keeps
+its original deadline and may finish Unknown. See the
+[participant compatibility note](../../../../docs/engine-go/direct-gateway.md).
 
-`Buy` and `Sell` are Done with `Source.Trade`, a matching `Input.Traded`
-attempt attribution, and a live inventory fact naming the bought template or the
-sold object. Without that source they remain Unknown after their window.
-`Cast` does not wait for a witness: the world publishes no fact naming a
-finished cast, so, like `Strike`, its final outcome is Sent.
-
-For `Say`, an attributed live `Shop`, `Offer`, or `Practice` window is also a
-witness. `Input.Chosen` must identify the same attempt and the NPC observation
-lifetime must match the captured dialogue choice, with `Source.Dialogue`.
-This path does not require a speech receipt: a window is its own separate
-witness. `Talk` still requires speech. A checkpoint, late window, wrong key,
-foreign NPC, or bare receipt cannot complete a choice. Raw attribution remains
-inside the trusted adapter; participant facts contain only the causal attempt.
+The fixture `State` also supports `Source` and attributed `Input` values for
+independent tests of inferred evidence. Its item-use witness needs a decreased
+quantity or changed equipment slot; trade needs a matching template or object;
+a dialogue choice needs a matching live window and NPC lifetime. Those fixture
+rules cannot substitute a snapshot or unrelated refresh for completion. The
+direct world adapter does not grant evidence authority or use these rules.
 
 ## Player appearance
 
@@ -101,7 +79,7 @@ The real Go-world producer includes appearance in self descriptions and visible
 player appearances, both live and in snapshots. Full self Vitals reports also
 carry it; partial health reports may omit it. A missing report preserves known
 appearance within an observation lifetime. Gone and scope invalidation discard
-it; Resume restores it from the world's snapshot. An explicit refresh is an
+it; a checkpoint restores it from the world's snapshot. An explicit refresh is an
 honest appearance fact, not a capability or causal witness. NPC descriptions
 cannot carry player appearance.
 
@@ -124,7 +102,7 @@ The field is valid only on `Appeared` for a role other than `player` or `drop`.
 Players keep appearance field 35. Drops, movement, vitals and other facts omit
 form; placing it there is an invalid frame. A later `Appeared` is a complete
 description, so an omitted form clears a previously stored label. `Gone` ends
-the observation. Resume restores the form from the world's snapshot of the
+the observation. A checkpoint restores the form from the world's snapshot of the
 current description. The producer copies `client_class` and does not derive a
 label from the display name, role, client id or template id. The name
 `alatyr/1` and historical contract fixtures are unchanged.

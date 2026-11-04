@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
 	"slices"
 	"sync"
 	"time"
@@ -45,6 +46,7 @@ type game struct {
 	input         chan input
 	conns         map[uint64]*connection
 	nextConn, seq uint64
+	captures      uint64 // Actor-owned source checkpoints; fences in-flight broadcasts.
 	actions       map[uint64]*execution
 	rate          bucket
 	closed        bool
@@ -72,6 +74,7 @@ type input struct {
 	conn       *connection
 	records    []wire.Record
 	err        error
+	write      bool
 	checkpoint uint64
 	abort      bool
 }
@@ -267,6 +270,9 @@ func (g *Gateway) bind(ctx context.Context, identity string, t Transport, provis
 			}
 		}()
 		world, state, err := g.cfg.Factory(openCtx, identity)
+		if source, ok := world.(Receiver); ok && source.Capacity() < 1 {
+			err = errors.Join(err, wire.ErrConfig)
+		}
 		if err == nil {
 			err = openCtx.Err()
 		}
@@ -473,7 +479,7 @@ func (c *connection) writeLoop() {
 		c.active = 0
 		c.mu.Unlock()
 		if err != nil {
-			c.post(input{conn: c, err: err})
+			c.post(input{conn: c, err: err, write: true})
 			c.close()
 			return
 		}
@@ -503,7 +509,9 @@ func (s *game) send(c *connection, r wire.Record) {
 		if !c.acceptsInput() {
 			return
 		}
-		if c.transfer && !c.restarted {
+		if _, direct := s.world.(Receiver); direct {
+			s.checkpoint(c, nil, false)
+		} else if c.transfer && !c.restarted {
 			c.restarted = true
 			s.checkpoint(c, nil, c.awaitComplete)
 		} else {
@@ -512,12 +520,16 @@ func (s *game) send(c *connection, r wire.Record) {
 	}
 }
 func (s *game) broadcast(r wire.Record) {
+	captured := s.captures
 	for _, c := range s.connections() {
 		if s.closed {
 			return
 		}
 		if c.hello {
 			s.send(c, r)
+			if s.captures != captured {
+				return
+			}
 		}
 	}
 }
@@ -578,9 +590,9 @@ func (s *game) finish(c *connection, reason wire.CloseReason) {
 	c.wake()
 }
 func (s *game) fail(reason wire.CloseReason) {
-	s.endScope(reason, false)
+	s.endScope(reason)
 }
-func (s *game) endScope(reason wire.CloseReason, detached bool) {
+func (s *game) endScope(reason wire.CloseReason) {
 	if s.closed {
 		return
 	}
@@ -607,15 +619,7 @@ func (s *game) endScope(reason wire.CloseReason, detached bool) {
 		s.finish(c, reason)
 	}
 	s.worldOnce.Do(func() {
-		if detached {
-			world, ok := s.world.(Detacher)
-			if !ok {
-				s.gate.closeError(s.world.Close())
-				return
-			}
-			s.gate.closeError(world.Detach())
-			return
-		}
+
 		s.gate.closeError(s.world.Close())
 	})
 }
@@ -655,7 +659,9 @@ func (s *game) run(ctx context.Context) {
 			return
 		case in := <-s.input:
 			s.process(in)
-		case update, ok := <-s.world.Updates():
+		case <-s.notifications():
+			s.receiveWorld()
+		case update, ok := <-s.updates():
 			if !ok {
 				return
 			}
@@ -663,7 +669,9 @@ func (s *game) run(ctx context.Context) {
 				return
 			}
 		case <-ticks:
-			s.expire()
+			if s.drainWorld() {
+				s.expire()
+			}
 		}
 		if s.closed {
 			return
@@ -691,6 +699,25 @@ func (s *game) checkpointAt(c *connection, welcome *wire.Record, hold bool, now 
 	}
 	if err != nil {
 		s.fail(wire.CloseInternal)
+		return false
+	}
+	if snapshot.Shared {
+		if s.captures == math.MaxUint64 {
+			s.fail(wire.CloseInternal)
+			return false
+		}
+		s.captures++
+		for _, other := range s.connections() {
+			if other != c && other.hello && other.acceptsInput() {
+				s.checkpointSnapshot(other, nil, false, now, snapshot)
+			}
+		}
+	}
+	return s.checkpointSnapshot(c, welcome, hold, now, snapshot)
+}
+
+func (s *game) checkpointSnapshot(c *connection, welcome *wire.Record, hold bool, now int64, snapshot Snapshot) bool {
+	if s.closed || !c.acceptsInput() {
 		return false
 	}
 	facts, ready, domains := snapshot.Facts, snapshot.Ready, snapshot.Domains
@@ -901,7 +928,9 @@ func (s *game) intent(c *connection, r wire.Record) {
 	if s.closed || !c.acceptsInput() {
 		return
 	}
-	s.expire()
+	if s.drainWorld() {
+		s.expire()
+	}
 	if s.closed || !c.acceptsInput() {
 		return
 	}
@@ -1041,6 +1070,10 @@ func (s *game) process(in input) {
 			reason = wire.CloseUnsupported
 		} else if errors.Is(in.err, wire.ErrFrame) || errors.Is(in.err, ErrFrame) {
 			reason = wire.CloseFrameError
+		}
+		var timeout net.Error
+		if in.write && errors.As(in.err, &timeout) && timeout.Timeout() {
+			reason = wire.CloseSlowConsumer
 		}
 		var unsupported *wire.UnsupportedRecord
 		if errors.As(in.err, &unsupported) && unsupported.Type == wire.Bye {

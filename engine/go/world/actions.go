@@ -30,7 +30,7 @@ func (w *World) playerOnAction(s *state, p, q *player) {
 		return
 	}
 	w.deliver(p, PositionObserved{ObjectID: q.id, Pos: q.pos, Heading: q.heading})
-	p.send(ActionIgnored{})
+	p.send(s, ActionIgnored{})
 }
 
 func (w *World) sitDown(s *state, p *player) {

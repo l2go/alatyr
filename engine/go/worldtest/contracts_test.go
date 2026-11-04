@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/l2go/alatyr/engine/go/bridge"
+	"github.com/l2go/alatyr/engine/go/gateway"
 	"github.com/l2go/alatyr/engine/go/gateway/gatewaytest"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
-	"github.com/l2go/alatyr/engine/go/worldbridge"
+	"github.com/l2go/alatyr/engine/go/worldlink"
 )
 
 func TestG01AuthoredDialogue(t *testing.T) {
@@ -57,41 +57,59 @@ func TestG01AuthoredDialogue(t *testing.T) {
 
 // lose removes selected live observations or receipt evidence from the real
 // port. It does not forge a world result or run a scripted endpoint.
-func lose(kinds map[uint64]bool, receipts bool) func(bridge.Update) bridge.Update {
-	return func(u bridge.Update) bridge.Update {
-		if u.Kind != bridge.LiveBatch {
+func lose(kinds map[uint64]bool, outcomes bool) func(gateway.Update) gateway.Update {
+	return func(u gateway.Update) gateway.Update {
+		p, ok := u.Value.(worldlink.Publication)
+		if !ok {
 			return u
 		}
-		records := []wire.Record{}
-		times := []time.Time{}
-		for i, rec := range u.Batch.Records {
-			if rec.Type == wire.Fact && kinds[gatewaytest.U(rec, 1)] || receipts && rec.Type == wire.Result {
-				continue
-			}
-			records = append(records, rec)
-			times = append(times, u.Batch.ReceivedAt[i])
+		if outcomes {
+			p.Commit = world.Commit{}
 		}
-		u.Batch.Records, u.Batch.ReceivedAt = records, times
-		if receipts {
-			u.Batch.Receipts = nil
+		if kinds[eventKind(p.Event)] {
+			p.Event = nil
 		}
+		u.Value = p
 		return u
 	}
+}
+func eventKind(e world.Event) uint64 {
+	switch e.(type) {
+	case world.DialoguePage:
+		return 11
+	case world.TradeList:
+		return 12
+	case world.LearnList:
+		return 22
+	case world.InventoryChanged:
+		return 15
+	case world.ItemPicked:
+		return 9
+	case world.SkillsShown:
+		return 23
+	case world.Revived:
+		return 7
+	}
+	return 0
 }
 
 // harmAround kills the participant once, just before or just after its first
 // engage write reaches the world. It forges no result.
 type harmAround struct {
-	*worldbridge.Client
+	gateway.World
 	w     *world.World
+	owner world.Ref
 	after bool
 	once  sync.Once
 }
 
-func (h *harmAround) Write(ctx context.Context, c bridge.Command) (uint64, error) {
+func (h *harmAround) Notify() <-chan struct{}         { return h.World.(gateway.Receiver).Notify() }
+func (h *harmAround) Capacity() int                   { return h.World.(gateway.Receiver).Capacity() }
+func (h *harmAround) Receive() (gateway.Update, bool) { return h.World.(gateway.Receiver).Receive() }
+func (h *harmAround) Write(ctx context.Context, step gateway.Step) error {
 	harm := func() {
 		h.once.Do(func() {
-			if err := h.w.Harm(context.Background(), world.Ref{}, h.Owner(), 1e6); err != nil {
+			if err := h.w.Harm(context.Background(), world.Ref{}, h.owner, 1e6); err != nil {
 				panic(err)
 			}
 		})
@@ -99,11 +117,11 @@ func (h *harmAround) Write(ctx context.Context, c bridge.Command) (uint64, error
 	if !h.after {
 		harm()
 	}
-	n, err := h.Client.Write(ctx, c)
+	err := h.World.Write(ctx, step)
 	if h.after {
 		harm()
 	}
-	return n, err
+	return err
 }
 
 // Engage on a creature is one strike: the world selects the target within it.
@@ -120,11 +138,12 @@ func TestG02EngageIsOneWorldCommand(t *testing.T) {
 				policy := meaning.Policy{Classify: func(o meaning.Observed) meaning.Capabilities {
 					return meaning.Capabilities{Strike: o.Role == "creature"}
 				}}
-				r := newRigWithPort(t, cat, char, allSources(), nil, policy, func(p bridge.Port) bridge.Port {
-					h = &harmAround{Client: p.(*worldbridge.Client), after: after}
+				r := newRigWithPort(t, cat, char, allSources(), nil, policy, func(p gateway.World) gateway.World {
+					h = &harmAround{World: p, after: after}
 					return h
 				})
 				h.w = r.w
+				h.owner = r.port.Port.Owner()
 				target := r.actor(18003)
 				r.p.Send(r.intent(1, 11, r.ref(target.ID, 10)))
 				// Strike is complete once handed off (G07): a strike refused for the
@@ -191,7 +210,7 @@ func TestG04MerchantBuySellAreWitnessed(t *testing.T) {
 				r.p.Send(r.intent(3, verb, wire.S(14, true, int64(d.Event.List)), wire.U(15, true, d.Context.Offers[index]), wire.S(16, true, 1), wire.S(17, true, row.Price)))
 				r.p.Result(3, wire.StageSent)
 				r.sync()
-				raw := r.port.Port.(*worldbridge.Client)
+				raw := r.port.Port
 				scene, err := r.w.Capture(t.Context(), raw.Owner())
 				if err != nil {
 					t.Fatal(err)
@@ -258,7 +277,7 @@ func TestDeferredTalkIsWitnessed(t *testing.T) {
 	})
 }
 
-func TestG05AuthoredLearningFullWindow(t *testing.T) {
+func TestG05AuthoredLearningFromCommit(t *testing.T) {
 	runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
 		r := newRig(t, cat, readyCharacter(), allSources(), nil)
 		target := r.actor(30001)
@@ -282,13 +301,7 @@ func TestG05AuthoredLearningFullWindow(t *testing.T) {
 		}
 		r.p.Send(r.intent(3, 13, wire.S(14, true, int64(d.Event.List)), wire.U(15, true, d.Context.Offers[index])))
 		r.p.Result(3, wire.StageSent)
-		r.advance(4990 * time.Millisecond)
-		for _, rec := range r.p.Records {
-			if rec.Type == wire.Result && gatewaytest.U(rec, 1) == 3 && gatewaytest.U(rec, 2) != uint64(wire.StageSent) {
-				t.Fatalf("learning ended before evidence window: %+v", rec)
-			}
-		}
-		r.advance(10 * time.Millisecond)
+
 		r.expect(3, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 		r.expect(2, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 	})
@@ -307,7 +320,7 @@ func TestG06AuthoredReturnAndDrain(t *testing.T) {
 		if cmds := r.port.commands(); len(cmds) != 1 || cmds[0].Verb != 9 {
 			t.Fatalf("return sent a service acknowledgement: %+v", cmds)
 		}
-		scene, err := r.w.Capture(t.Context(), r.port.Port.(*worldbridge.Client).Owner())
+		scene, err := r.w.Capture(t.Context(), r.port.Port.Owner())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -370,71 +383,37 @@ func TestG08WorldCloseByContact(t *testing.T) {
 	}
 }
 
-func TestG09ExplicitResumeKeepsWorldAndKeys(t *testing.T) {
+func TestG09ReconnectKeepsIncarnationAndAttempts(t *testing.T) {
 	runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
 		r := newRig(t, cat, readyCharacter(), allSources(), nil)
 		target := r.actor(30001)
-		oldRef := r.ref(target.ID, 10)
-		oldSession := r.p.Session
-		r.p.Send(r.intent(1, 5, oldRef))
+		owner := r.port.Port.Owner()
+		session := r.p.Session
+		intent := r.intent(1, 5, r.ref(target.ID, 10))
+		r.p.Send(intent)
 		r.expect(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
-		owner := r.port.Port.(*worldbridge.Client).Owner()
-		if _, _, err := r.w.Subscribe(t.Context(), owner); err != nil {
-			t.Fatal(err)
-		} // Replace the observation stream, not the incarnation.
-		r.sync()
-		scope, state, err := r.session.Resume(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
-		r.mu.Lock()
-		r.scope, r.state = scope, state
-		r.mu.Unlock()
-		r.p = gatewaytest.Join(t, r.g, r.c, "one", wire.ModeAct, true)
-		r.sync()
-		if r.p.Session == oldSession {
-			t.Fatal("resume reused participant scope")
-		}
-		for _, rec := range r.p.Records {
-			if rec.Type == wire.Result || rec.Type == wire.Fact && gatewaytest.U(rec, 32) != 0 {
-				t.Fatal("recovery invented old outcome or cause")
-			}
+		r.reconnect()
+		if r.p.Session != session || r.port.Port.Owner() != owner {
+			t.Fatal("reconnect replaced the session or incarnation")
 		}
 		before := len(r.port.commands())
-		fresh := r.ref(target.ID, 10)
-		oldGen, _ := wire.Find(oldRef.Value.Fields, 2)
-		newGen, _ := wire.Find(fresh.Value.Fields, 2)
-		if newGen.U <= oldGen.U {
-			t.Fatal("resume reset observation generations")
-		}
-		r.p.Send(r.intent(1, 5, oldRef))
-		r.expect(1, wire.StageRefused, wire.ReasonStaleTarget, wire.DeliveryNone, 0)
+		r.p.Send(intent)
+		r.p.Result(1, wire.StageDone)
+		r.sync()
 		if len(r.port.commands()) != before {
-			t.Fatal("retired reference reached the world")
+			t.Fatal("reconnect reexecuted the attempt")
 		}
 		r.p.Send(r.intent(2, 1, wire.At(11, true, -71047, 257883, -3104)))
 		r.p.Result(2, wire.StageSent)
-		cmds := r.port.commands()
-		if len(cmds) != before+1 || cmds[len(cmds)-1].Key <= cmds[before-1].Key {
-			t.Fatal("resume replayed a command or reset key")
-		}
-		if r.port.Port.(*worldbridge.Client).Owner() != owner {
-			t.Fatal("resume replaced world incarnation")
-		}
 	})
 }
 
-func TestG10UnattributedSpeechCannotComplete(t *testing.T) {
+func TestG10WorldCommitDoesNotRequireProducerExclusivity(t *testing.T) {
 	runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
-		source := allSources()
-		source.Dialogue = false
-		r := newRig(t, cat, readyCharacter(), source, nil)
+		r := newRig(t, cat, readyCharacter(), meaning.Source{}, nil)
 		target := r.actor(30001)
 		r.p.Send(r.intent(1, 5, r.ref(target.ID, 10)))
-		r.p.Result(1, wire.StageSent)
-		r.p.Fact(11)
-		r.advance(5 * time.Second)
-		r.expect(1, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0)
+		r.expect(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 	})
 }
 
@@ -444,7 +423,7 @@ func TestG03AuthoredDropPickupAndDuplicate(t *testing.T) {
 		char.X, char.Y = -70357, 256863
 		r := newRig(t, cat, char, allSources(), nil)
 		target := r.actor(18003)
-		owner := r.port.Port.(*worldbridge.Client).Owner()
+		owner := r.port.Port.Owner()
 		if _, err := r.w.Execute(t.Context(), world.Request{Owner: owner, Verb: world.VerbAttack, Target: target}); err != nil {
 			t.Fatal(err)
 		}

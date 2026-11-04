@@ -34,6 +34,7 @@ func (w *World) talk(s *state, p *player, n *npc) bool {
 		html, ok := w.cat.HTML(page)
 		if ok {
 			w.sendPage(s, p, n, page, strings.ReplaceAll(html, "%objectId%", strconv.Itoa(int(n.id))))
+			s.complete()
 			return true
 		}
 	}
@@ -70,7 +71,7 @@ func (w *World) Bypass(ctx context.Context, id int32, cmd string) error {
 }
 func (w *World) showSkillList(s *state, p *player, n *npc) {
 	if !w.cat.CanTeach(n.tmpl.ID, p.char.ClassID) {
-		p.send(ActionIgnored{})
+		p.send(s, ActionIgnored{})
 		return
 	}
 	s.change(p.ref(), PropertyLearning, boolValue(p.learning), IntValue(1))
@@ -84,8 +85,8 @@ func (w *World) showSkillList(s *state, p *player, n *npc) {
 	}
 	w.issueLessons(s, p, n, skills)
 	if !p.slow {
-		p.send(LearnList{ChoiceIntent: s.cause().Intent, Dialogue: w.dialogueOf(p)})
-		p.send(AffordancesChanged{Affordances: cloneAffordances(p.affordances)})
+		p.send(s, LearnList{ChoiceIntent: s.cause().Intent, Dialogue: w.dialogueOf(p)})
+		p.send(s, AffordancesChanged{Affordances: cloneAffordances(p.affordances)})
 	}
 }
 
@@ -177,7 +178,9 @@ func (w *World) learnFrom(s *state, p *player, n *npc, skillID, level int32) (*S
 	})
 	s.finish(StageDone)
 	p.learningWrite = true
-	p.send(SelfChanged{})
+	skills, complete := w.knownSkills(s, p, time.Now())
+	p.send(s, SkillsShown{Known: skills, Complete: complete})
+	p.send(s, SelfChanged{})
 	w.showSkillList(s, p, n)
 	return &k, nil
 }
@@ -241,8 +244,8 @@ func (w *World) sendPage(s *state, p *player, n *npc, page, html string) {
 	s.group([]Effect{SpeechCompleted{Speaker: n.ref(), Listener: p.ref(), Text: html}})
 	w.issueChoices(s, p, n)
 	if !p.slow {
-		p.send(DialoguePage{SpeechIntent: s.cause().Intent, Dialogue: w.dialogueOf(p)})
-		p.send(AffordancesChanged{Affordances: cloneAffordances(p.affordances)})
+		p.send(s, DialoguePage{SpeechIntent: s.cause().Intent, Dialogue: w.dialogueOf(p)})
+		p.send(s, AffordancesChanged{Affordances: cloneAffordances(p.affordances)})
 	}
 }
 
@@ -288,7 +291,7 @@ func (p *player) validBypass(cmd string) bool {
 func (w *World) onIntentionInteract(s *state, p *player, object int32) {
 	c := p.base()
 	if c.ai.intention == intentRest {
-		p.send(ActionIgnored{})
+		p.send(s, ActionIgnored{})
 		return
 	}
 	w.clientStopAutoAttack(s, p)
@@ -302,17 +305,17 @@ func (w *World) onIntentionInteract(s *state, p *player, object int32) {
 func (w *World) thinkInteract(s *state, p *player) {
 	c := p.base()
 	if c.casting {
-		p.send(ActionIgnored{})
+		p.send(s, ActionIgnored{})
 		return
 	}
 	n, ok := s.npcs[c.ai.target]
 	if !ok {
 		w.setIntention(s, p, order{intent: intentActive})
-		p.send(ActionIgnored{})
+		p.send(s, ActionIgnored{})
 		return
 	}
 	if w.maybeMoveToPawn(s, p, n.id, 36) {
-		p.send(ActionIgnored{})
+		p.send(s, ActionIgnored{})
 		return
 	}
 	p.lastFolk = n.id

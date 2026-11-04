@@ -8,12 +8,11 @@ server application with `GOWORK=off`.
 |---|---|---|
 | [server](../../engine/go/server/README.md) | Checkout-built participant application, pgx storage, goose migrations and bounded shutdown; the Go world composition it shares with the in-browser host, and the site generator | [AGPL-3.0-or-later](../../engine/go/server/LICENSE) |
 | [protocol](../../engine/go/protocol/README.md) | Active transport and session core; a client SDK is planned separately | [Apache-2.0](../../engine/go/protocol/LICENSE) |
-| [gateway](../../engine/go/gateway/README.md) | Bounded participant runtime, `alatyr/1` dictionary, raw-port adapter, and shared contract driver | [AGPL-3.0-or-later](../../engine/go/gateway/LICENSE) |
-| [bridge](../../engine/go/bridge/README.md) | Raw-port contract, bounded client, profile validation, recovery and raw receipts | [AGPL-3.0-or-later](../../engine/go/bridge/LICENSE) |
+| [gateway](../../engine/go/gateway/README.md) | Bounded participant runtime, `alatyr/1` dictionary, direct world interface, and shared contract driver | [AGPL-3.0-or-later](../../engine/go/gateway/LICENSE) |
 | [world](../../engine/go/world/README.md) | Ready-character entry, movement, persistence and authored stat content | [AGPL-3.0-or-later](../../engine/go/world/LICENSE) |
-| [worldbridge](../../engine/go/worldbridge/README.md) | Go-world raw port with source-owned facts, receipts, bounded recovery and departure | [AGPL-3.0-or-later](../../engine/go/worldbridge/LICENSE) |
+| [worldlink](../../engine/go/worldlink/README.md) | Typed direct world adapter, exact outcomes and checkpoint resynchronization | [AGPL-3.0-or-later](../../engine/go/worldlink/LICENSE) |
 
-The server packages gateway, bridge, world, and worldbridge share the
+The server packages gateway, world, and worldlink share the
 [AGPL module](../../engine/go/README.md) `github.com/l2go/alatyr/engine/go`.
 Protocol remains a separate Apache-2.0 module. The nested `server` application
 module imports the parent from the same checkout with its sole `replace` on `../`.
@@ -28,16 +27,14 @@ The dependency checker denies package imports unless the matrix allows them:
 |---|---|
 | `protocol/**` | protocol |
 | `world/**` | world |
-| `bridge/**` | bridge, protocol |
 | `gateway` | gateway root, protocol |
 | `gateway/meaning` | gateway root, meaning, protocol |
-| `gateway/backend` | gateway root, meaning, backend, bridge, protocol; tests also fixture and gatewaytest |
-| `gateway/fixture` | fixture, bridge, protocol |
-| `gateway/gatewaytest` | gateway packages, bridge, protocol |
-| `worldbridge/**` | worldbridge, world, bridge, protocol |
+| `gateway/fixture` | fixture, gateway, meaning, protocol; tests also gatewaytest |
+| `gateway/gatewaytest` | gateway packages, protocol |
+| `worldlink/**` | worldlink, world, gateway, meaning, protocol; tests also gatewaytest |
 | `server/internal/pgstore` | world, pgstore; pinned pgx, pgxpool and pgconn |
 | `server/internal/migrate` | migrate; goose root PostgreSQL Provider API and pgx/stdlib |
-| `server/cmd/alatyr-server` | pgstore, migrate, world, worldbridge, bridge, gateway, meaning, backend, protocol |
+| `server/cmd/alatyr-server` | pgstore, migrate, world, worldlink, gateway, meaning, protocol |
 | application tests | the same matrix plus the internal PostgreSQL test fixture; host tests alone may also import `gateway/gatewaytest` |
 | `server/internal/pgtest` | test-only isolated database fixture using pinned pgx |
 
@@ -63,12 +60,13 @@ The workspace also contains the independent `tools/world` module. A separate
 refusal of foreign databases, and participant state after a process restart.
 Database tests skip in ordinary Go checks when no test DSN is configured.
 
-The raw-port contract remains shared by worldbridge, gateway/backend and their
-controlled-peer tests. The image jobs verify both native platforms with the Go
-participant interface, stop the live server, and restore its saved database.
-No separate runtime is needed behind the world port.
+The gateway receives typed world values through the direct adapter. The world
+owns visibility and its single coalescing mailbox. Overflow produces a fresh
+checkpoint while exact outcomes remain retained. Reconnection keeps the same
+world incarnation and gateway attempt numbers.
 
-[Authored-world gateway contracts](../../engine/go/worldtest/README.md) run
-G01–G10 on the real Go world through worldbridge and the shared participant
-driver in the existing `go` job. The test-only composition package cannot be
-imported by the runtime components.
+The world integration suite exercises the G-series contracts, economy, reference
+lifetimes, relocation, return and network reconnects. Deterministic byte programs
+are replayed and compared as complete ordered participant transcripts. A frozen
+baseline separately preserves the previous checkpoint, movement and dialogue
+bytes. The protocol module's historical conformance vectors remain unchanged.

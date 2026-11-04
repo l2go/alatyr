@@ -257,7 +257,7 @@ func (w *World) deliver(p *player, e Event) {
 			return
 		}
 	}
-	p.send(e)
+	p.send(w.s, e)
 }
 
 // subject returns the object an event without other references is about.

@@ -24,12 +24,12 @@ import (
 	"time"
 
 	"github.com/l2go/alatyr/engine/go/gateway"
-	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
+	"github.com/l2go/alatyr/engine/go/worldlink"
 )
 
 // TestImageParticipant runs only against the isolated, already-built image
@@ -295,7 +295,7 @@ func TestImageSocketUsesParticipantProtocol(t *testing.T) {
 	}
 	mc := goworld.Limits(1)
 	origin := time.Now()
-	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: mc, Origin: origin}}
+	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: worldlink.Config{Meaning: mc, Origin: origin}}
 	policy := goworld.GatewayPolicy(mc)
 	policy.Origin = origin
 	policy.Factory = r.open

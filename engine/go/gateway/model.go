@@ -101,6 +101,8 @@ type Update struct {
 	Value    any
 	Relocate bool
 	Service  []Step
+	// Resync replaces every connection checkpoint without ending attempts.
+	Resync bool
 	// ReceivedMS is the original live receive time in session-relative milliseconds.
 	// Nil retains the legacy actor-time convention for direct local adapters.
 	ReceivedMS *int64
@@ -116,11 +118,23 @@ type Observation struct {
 	// Refusals carries proofs of no effects after contact. Only a trusted
 	// backend can supply this proof; unproven refusals belong in Failures.
 	Refusals []Refusal
-	// WorldClosed ends the scope and closes its world. It excludes Detached.
+	// Resolutions are exact source-authored outcomes, independent of witnesses.
+	Resolutions []Resolution
+	// WorldClosed ends the scope and closes its world.
 	WorldClosed bool
-	// Detached ends the scope but retains the raw session for explicit recovery.
-	// Worlds supplying it must implement Detacher and stop their scope pump.
-	Detached bool
+}
+
+// Resolution fixes a participant attempt from a trusted world commitment.
+// ObservedMS is its original commit time in the gateway clock.
+type Resolution struct {
+	// N identifies the contacted participant attempt.
+	N uint64
+	// Stage is Done, Refused or Unknown; terminal outcomes remain immutable.
+	Stage wire.Stage
+	// Reason is absent for Done and required for other stages.
+	Reason wire.Reason
+	// ObservedMS is the original world commitment time in gateway milliseconds.
+	ObservedMS int64
 }
 
 // Failure is a typed asynchronous outcome for an existing participant attempt.
@@ -143,18 +157,14 @@ type Refusal struct {
 	Evidence proto.RefusalEvidence
 }
 
-// Detacher separates scope termination from closing the retained raw session.
-// Detach stops and joins the scope pump without executing or repeating commands.
-type Detacher interface {
-	Detach() error
-}
-
 // Snapshot is a bounded current projection, not a history of outcomes.
 // Domains names incomplete domains when Ready is false.
 type Snapshot struct {
 	Facts   []wire.Record
 	Ready   bool
 	Domains []string
+	// Shared captures an authoritative world fence and replaces all connections.
+	Shared bool
 }
 
 // Witness describes evidence supplied by the trusted State implementation.
@@ -222,6 +232,16 @@ type World interface {
 	Updates() <-chan Update
 	Write(context.Context, Step) error
 	Close() error
+}
+
+// Receiver supplies a directly owned mailbox instead of an Updates channel.
+// Notify is level-triggered; Receive never blocks. False means no update is
+// available, not EOF. Closure is an explicit WorldClosed observation.
+type Receiver interface {
+	Notify() <-chan struct{}
+	Receive() (Update, bool)
+	// Capacity bounds a finite source drain before the gateway checks deadlines.
+	Capacity() int
 }
 
 // Pacer is optional. A World that implements it may hold a step before contact.

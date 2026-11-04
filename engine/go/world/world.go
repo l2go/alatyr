@@ -226,14 +226,25 @@ func New(cat *catalog.Catalog, store Store, options ...Option) *World {
 }
 func (w *World) flush(s *state) {
 	for _, p := range s.players {
-		for _, e := range p.outbox {
-			if _, ok := e.(SelfChanged); ok {
-				e = SelfChanged{Self: w.selfOf(p)}
-			}
-			p.deliver(s, e)
-		}
-		p.outbox = nil
+		w.flushPlayer(s, p)
 	}
+}
+
+func (w *World) flushPlayer(s *state, p *player) {
+	for _, n := range p.outbox {
+		if n.commit != nil {
+			if p.mailbox != nil {
+				p.mailbox.outcome(*n.commit)
+			}
+			continue
+		}
+		e := n.event
+		if _, ok := e.(SelfChanged); ok {
+			e = SelfChanged{Self: w.selfOf(p)}
+		}
+		p.deliver(s, e, n.intent)
+	}
+	p.outbox = nil
 }
 
 // Checkpoint is one final incarnation and its detached character snapshot.

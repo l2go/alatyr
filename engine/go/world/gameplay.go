@@ -14,7 +14,7 @@ import (
 func (w *World) Action(ctx context.Context, id, object int32) error {
 	return w.act(ctx, id, VerbAction, func(s *state, p *player) {
 		if p.dead || p.teleporting || !p.known[object] {
-			p.send(ActionIgnored{})
+			p.send(s, ActionIgnored{})
 			return
 		}
 		if n, ok := s.npcs[object]; ok {
@@ -34,7 +34,7 @@ func (w *World) AttackRequest(ctx context.Context, id, object int32) error {
 	return w.act(ctx, id, VerbAttack, func(s *state, p *player) {
 		n, ok := s.npcs[object]
 		if !ok || !n.mob() || n.dead || p.dead || p.teleporting || !p.known[object] || p.lastTarget == object && time.Since(p.lastTargetAt) < retargetBlocking {
-			p.send(ActionIgnored{})
+			p.send(s, ActionIgnored{})
 			return
 		}
 		w.setTarget(s, p, object)
@@ -88,7 +88,7 @@ func (w *World) setTarget(s *state, p *player, object int32) {
 		if n, ok := t.(*npc); ok && n.mob() {
 			diff = p.level() - n.level()
 		}
-		p.send(TargetDetails{TargetID: object, LevelDifference: diff})
+		p.send(s, TargetDetails{TargetID: object, LevelDifference: diff})
 	} else if old != 0 {
 		w.broadcastToKnown(s, p, TargetCleared{ObjectID: p.id, Pos: p.pos})
 	}
@@ -177,16 +177,17 @@ func (w *World) teleport(s *state, p *player, to Point, revive bool) error {
 	w.decayPlayer(s, p)
 	s.setBool(p.ref(), PropertyTeleporting, &p.teleporting, true)
 	p.pendingRevive = revive
+	p.relocationCause = s.cause()
 	old := p.pos
 	p.pos = to
 	s.change(p.ref(), PropertyPosition, PointValue(old), PointValue(to))
 	p.region = regionOf(to)
-	p.send(Teleported{ObjectID: p.id, Pos: to, Heading: p.heading, Entity: p.ref(), Fence: p.fence})
+	p.send(s, Teleported{ObjectID: p.id, Pos: to, Heading: p.heading, Entity: p.ref(), Fence: p.fence})
 	return nil
 }
 
 // Logout refuses an active combat stance and leaves only owner.
 // Leave is the unconditional, retryable path for disconnection.
 func (w *World) Logout(ctx context.Context, owner Ref) error {
-	return w.leave(ctx, owner, true)
+	return w.leave(ctx, owner, true, nil)
 }

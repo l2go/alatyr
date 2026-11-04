@@ -32,6 +32,8 @@ type Source struct {
 
 // Input is an owned backend update supplied only by trusted composition.
 type Input struct {
+	// Token identifies the source-issued proposal without renewing its lifetime.
+	Token uint64
 	// Event is the backend fact; MS keeps its original time, independent of receipt.
 	Event Event
 	// Complete identifies explicitly completed projection domains.

@@ -52,6 +52,7 @@ func TestRepeatedDescriptionRepublishesCurrentMotion(t *testing.T) {
 		}
 		watch := gatewaytest.Join(t, r.g, r.c, "one", wire.ModeObserve, false)
 		captured := false
+		var checkpointPosition meaning.Event
 		for _, rec := range watch.Records {
 			if rec.Type != wire.Fact {
 				continue
@@ -60,9 +61,12 @@ func TestRepeatedDescriptionRepublishesCurrentMotion(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if d.Event.ID == 1 && d.Event.Kind == meaning.Appeared {
+				checkpointPosition = d.Event
+			}
 			if d.Event.ID == 1 && d.Event.Kind == meaning.Moved {
 				captured = true
-				if d.Event.X != at.X || d.Event.Y != at.Y || d.Event.Z != at.Z {
+				if d.Event.X != checkpointPosition.X || d.Event.Y != checkpointPosition.Y || d.Event.Z != checkpointPosition.Z {
 					t.Fatal("checkpoint restored old motion origin")
 				}
 			}

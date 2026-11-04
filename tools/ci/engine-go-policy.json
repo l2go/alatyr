@@ -135,13 +135,6 @@
       ]
     },
     {
-      "source": "bridge/**",
-      "imports": [
-        "bridge/**",
-        "protocol/**"
-      ]
-    },
-    {
       "source": "gateway",
       "imports": [
         "gateway",
@@ -157,41 +150,21 @@
       ]
     },
     {
-      "source": "gateway/backend",
-      "imports": [
-        "gateway",
-        "gateway/meaning",
-        "gateway/backend",
-        "bridge/**",
-        "protocol/**"
-      ],
-      "test_imports": [
-        "gateway/fixture",
-        "gateway/gatewaytest"
-      ]
-    },
-    {
       "source": "gateway/fixture",
       "imports": [
         "gateway/fixture",
-        "bridge/**",
+        "gateway",
+        "gateway/meaning",
         "protocol/**"
+      ],
+      "test_imports": [
+        "gateway/gatewaytest"
       ]
     },
     {
       "source": "gateway/gatewaytest",
       "imports": [
         "gateway/**",
-        "bridge/**",
-        "protocol/**"
-      ]
-    },
-    {
-      "source": "worldbridge/**",
-      "imports": [
-        "worldbridge/**",
-        "world/**",
-        "bridge/**",
         "protocol/**"
       ]
     },
@@ -241,12 +214,10 @@
         "server/live",
         "server/goworld",
         "world/**",
-        "worldbridge/**",
         "gateway",
         "gateway/meaning",
-        "gateway/backend",
-        "bridge/**",
-        "protocol/**"
+        "protocol/**",
+        "worldlink/**"
       ]
     },
     {
@@ -268,12 +239,10 @@
       "imports": [
         "server/goworld",
         "world/**",
-        "worldbridge/**",
         "gateway",
         "gateway/meaning",
-        "gateway/backend",
-        "bridge/**",
-        "protocol/**"
+        "protocol/**",
+        "worldlink/**"
       ]
     },
     {
@@ -284,12 +253,10 @@
         "server/internal/pgstore",
         "server/internal/migrate",
         "world/**",
-        "worldbridge/**",
         "gateway",
         "gateway/meaning",
-        "gateway/backend",
-        "bridge/**",
-        "protocol/**"
+        "protocol/**",
+        "worldlink/**"
       ],
       "test_imports": [
         "server/internal/pgtest",
@@ -302,10 +269,22 @@
       "imports": [
         "worldtest",
         "gateway/**",
-        "bridge/**",
         "protocol/**",
         "world/**",
-        "worldbridge/**"
+        "worldlink/**"
+      ]
+    },
+    {
+      "source": "worldlink/**",
+      "imports": [
+        "worldlink/**",
+        "world/**",
+        "gateway",
+        "gateway/meaning",
+        "protocol/**"
+      ],
+      "test_imports": [
+        "gateway/gatewaytest"
       ]
     }
   ],

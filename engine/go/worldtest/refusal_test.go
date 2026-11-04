@@ -5,12 +5,11 @@ package worldtest
 
 import (
 	"reflect"
-	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/l2go/alatyr/engine/go/bridge"
+	"github.com/l2go/alatyr/engine/go/gateway"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
@@ -92,14 +91,9 @@ func TestUnknownAfterContactDoesNotBlockBoundEvidence(t *testing.T) {
 	runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
 		var lost atomic.Bool
 		lost.Store(true)
-		filter := func(u bridge.Update) bridge.Update {
-			if lost.Load() && u.Kind == bridge.LiveBatch {
-				records := make([]wire.Record, len(u.Batch.Records))
-				for i, r := range u.Batch.Records {
-					r.Fields = slices.DeleteFunc(slices.Clone(r.Fields), func(f wire.Field) bool { return f.Number == 75 })
-					records[i] = r
-				}
-				u.Batch.Records = records
+		filter := func(u gateway.Update) gateway.Update {
+			if lost.Load() {
+				return lose(map[uint64]bool{11: true}, true)(u)
 			}
 			return u
 		}
@@ -107,7 +101,7 @@ func TestUnknownAfterContactDoesNotBlockBoundEvidence(t *testing.T) {
 		r.p.Send(r.intent(1, verbUseItem, wire.S(21, true, 11)))
 		r.p.Result(1, wire.StageSent)
 		r.advance(5 * time.Second)
-		r.expect(1, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0)
+		r.expect(1, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 1)
 		lost.Store(false)
 		r.p.Send(r.intent(2, verbUseItem, wire.S(21, true, 11)))
 		r.p.Result(2, wire.StageSent)

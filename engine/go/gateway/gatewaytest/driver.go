@@ -31,7 +31,7 @@ func Config() meaning.Config {
 }
 
 // New constructs a real gateway with explicit synthetic host permissions.
-// Origin is shared with the backend and must precede the original raw Open.
+// Origin is shared with the source and must precede its opening.
 func New(t *testing.T, c meaning.Config, f gateway.Factory, origin time.Time) *gateway.Gateway {
 	t.Helper()
 	codec, err := meaning.NewCodec(c)
