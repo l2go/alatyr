@@ -4,13 +4,11 @@
 package worldtest
 
 import (
-	"testing"
-	"time"
-
-	"github.com/l2go/alatyr/engine/go/bridge"
 	"github.com/l2go/alatyr/engine/go/gateway/gatewaytest"
+	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
+	"testing"
 )
 
 func TestG01SayWindowWitness(t *testing.T) {
@@ -60,49 +58,13 @@ func TestG01SayWindowWitness(t *testing.T) {
 	}
 }
 
-func TestSayWindowRejectsUnattributedEvidence(t *testing.T) {
-	for _, loss := range []string{"wrong-npc", "wrong-choice-key", "snapshot", "late", "receipt-only"} {
-		t.Run(loss, func(t *testing.T) {
-			runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
-				var other int32
-				filter := func(u bridge.Update) bridge.Update {
-					for i, rec := range u.Batch.Records {
-						if rec.Type != wire.Fact || gatewaytest.U(rec, 1) != 22 {
-							continue
-						}
-						switch loss {
-						case "late":
-							time.Sleep(6 * time.Second)
-						case "snapshot":
-							u.Batch.Snapshot = true
-						}
-						for j, f := range rec.Fields {
-							if loss == "wrong-npc" && f.Number == 64 {
-								rec.Fields[j] = wire.S(64, true, int64(other))
-							}
-							if loss == "wrong-choice-key" && f.Number == 75 {
-								rec.Fields[j] = wire.U(75, true, 99999)
-							}
-						}
-						if loss == "receipt-only" {
-							u.Batch.Records = nil
-							u.Batch.ReceivedAt = nil
-							return u
-						}
-						u.Batch.Records[i] = rec
-					}
-					return u
-				}
-				r := newRig(t, cat, readyCharacter(), allSources(), filter)
-				other = r.actor(30002).ID
-				npc := r.actor(30001)
-				r.p.Send(r.intent(1, 5, r.ref(npc.ID, 10)))
-				r.expect(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
-				r.choose(2, 0)
-				r.p.Result(2, wire.StageSent)
-				r.advance(6 * time.Second)
-				r.expect(2, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0)
-			})
-		})
-	}
+func TestSayWindowCommitSurvivesObservationLoss(t *testing.T) {
+	runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
+		r := newRig(t, cat, readyCharacter(), meaning.Source{}, lose(map[uint64]bool{22: true}, false))
+		target := r.actor(30001)
+		r.p.Send(r.intent(1, 5, r.ref(target.ID, 10)))
+		r.expect(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
+		r.choose(2, 0)
+		r.expect(2, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 0)
+	})
 }

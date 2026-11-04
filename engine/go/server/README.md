@@ -53,7 +53,7 @@ The registry grants access only to existing characters; no participant-supplied
 account or character name is trusted. Import a trusted Character JSON snapshot
 with `-import-character character.json` before serving a new database. Provisioning
 never chooses starting equipment, position or progression metadata implicitly.
-Account and character bindings use PostgreSQL citext equality; the bridge receives
+Account and character bindings use PostgreSQL citext equality; the direct adapter receives
 the canonical stored spelling.
 
 HTTP exposes `/participant` (binary WebSocket), `/healthz` (process liveness)
@@ -86,7 +86,7 @@ projection, attempts and gateway. The sent diagnostic ring and file diagnostics
 are disabled (fields 9 and 31-34 are zero); projection and checkpoint budgets
 are each 262144 bytes. Wire and dictionary negotiation use their shared constants.
 
-Shutdown closes admission and listeners, joins participant ports, retries failed
+Shutdown closes admission and listeners, joins participant sessions, retries failed
 saves using the original Ref, and joins the world. Run freezes detached final
 checkpoints on every exit, including autonomous exhaustion. After all port I/O
 has finished, the host persists any remaining live or pending characters through

@@ -10,12 +10,11 @@ import (
 
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
-	"github.com/l2go/alatyr/engine/go/worldbridge"
 )
 
 func healingRequest(t *testing.T, r *rig) world.Request {
 	t.Helper()
-	owner := r.port.Port.(*worldbridge.Client).Owner()
+	owner := r.port.Port.Owner()
 	for _, row := range inventory(t, r) {
 		if row.Item.TemplateID == 1060 {
 			return world.Request{Owner: owner, Verb: world.VerbUseItem, Target: row.Entity}

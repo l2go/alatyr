@@ -5,6 +5,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"net"
 	"slices"
 	"time"
@@ -32,6 +33,11 @@ func (s *game) result(o wire.Record) bool {
 	if s.closed {
 		return false
 	}
+	s.traceResult(o)
+	return true
+}
+
+func (s *game) traceResult(o wire.Record) {
 	if f := s.gate.cfg.Diagnostic; f != nil {
 		summary := Summary{AtMS: s.gate.now(), Session: s.id, Epoch: s.attempts.Projection(), Record: wire.Result, N: uintField(o, 1), Stage: uintField(o, 2), Reason: uintField(o, 3), Requested: uintField(o, 5), Effective: uintField(o, 6)}
 		if entry, ok := s.attempts.Lookup(summary.N); ok {
@@ -39,7 +45,6 @@ func (s *game) result(o wire.Record) bool {
 		}
 		f(summary)
 	}
-	return true
 }
 func (s *game) service(ctx context.Context) {
 	if s.closed {
@@ -63,7 +68,10 @@ func (s *game) service(ctx context.Context) {
 	default:
 	}
 	select {
-	case update, ok := <-s.world.Updates():
+	case <-s.notifications():
+		s.receiveWorld()
+		return
+	case update, ok := <-s.updates():
 		if !ok {
 			s.fail(wire.CloseWorldClosed)
 			return
@@ -286,8 +294,15 @@ func (s *game) service(ctx context.Context) {
 		remaining := max(int64(0), entry.Queued+queueMS-s.gate.now())
 		ttl := uint64(min(remaining, int64(5000)))
 		step.QueueTTLMS = &ttl
-		if err := s.write(ctx, step); err != nil {
-			o, err := s.attempts.Fail(n, wire.ReasonBackendError)
+		if writeErr := s.write(ctx, step); writeErr != nil {
+			var refusal *WriteRefusal
+			var o proto.Outcome
+			var err error
+			if errors.As(writeErr, &refusal) && refusal != nil {
+				o, err = resolve(s.attempts, s.gate.cfg.Attempts.EvidenceMS, Resolution{N: n, Stage: wire.StageRefused, Reason: refusal.Reason, ObservedMS: refusal.ObservedMS}, s.gate.now())
+			} else {
+				o, err = s.attempts.Fail(n, wire.ReasonBackendError)
+			}
 			if err != nil {
 				s.fail(wire.CloseInternal)
 				return
@@ -336,7 +351,9 @@ func (s *game) observe(update Update) bool {
 		return false
 	}
 	now := s.gate.now()
-	s.expireAt(now)
+	if _, direct := s.world.(Receiver); !direct {
+		s.expireAt(now)
+	}
 	if s.closed {
 		return false
 	}
@@ -354,6 +371,13 @@ func (s *game) observe(update Update) bool {
 			return false
 		}
 		for _, o := range outcomes {
+			if _, direct := s.world.(Receiver); direct {
+				// The authoritative capture yields to the world loop. Publish
+				// these retained results in the replacing checkpoint, so a writer
+				// cannot race a duplicate result ahead of its Begin marker.
+				s.traceResult(o.Record())
+				continue
+			}
 			if !s.result(o.Record()) {
 				return false
 			}
@@ -370,22 +394,12 @@ func (s *game) observe(update Update) bool {
 		s.fail(wire.CloseInternal)
 		return false
 	}
-	if observation.WorldClosed && observation.Detached {
-		s.fail(wire.CloseInternal)
-		return false
-	}
-	if observation.Detached {
-		if _, ok := s.world.(Detacher); !ok {
-			s.fail(wire.CloseInternal)
-			return false
-		}
-	}
-	if observation.WorldClosed || observation.Detached {
-		s.endScope(wire.CloseWorldClosed, observation.Detached)
+	if observation.WorldClosed {
+		s.endScope(wire.CloseWorldClosed)
 		return false
 	}
 	var results []wire.Record
-	if len(observation.Failures)+len(observation.Refusals) > s.gate.cfg.Attempts.Pending {
+	if len(observation.Failures)+len(observation.Refusals)+len(observation.Resolutions) > s.gate.cfg.Attempts.Pending {
 		s.fail(wire.CloseInternal)
 		return false
 	}
@@ -423,6 +437,14 @@ func (s *game) observe(update Update) bool {
 		results = append(results, o.Record())
 		delete(s.actions, refusal.N)
 	}
+	if update.Resync {
+		for _, c := range s.connections() {
+			if c.hello && c.acceptsInput() {
+				s.checkpointAt(c, nil, false, now)
+				break
+			}
+		}
+	}
 	if update.Relocate {
 		for _, c := range s.connections() {
 			if s.closed {
@@ -431,6 +453,9 @@ func (s *game) observe(update Update) bool {
 			if c.hello {
 				if !s.checkpointAt(c, nil, true, now) && s.closed {
 					return false
+				}
+				if _, direct := s.world.(Receiver); direct {
+					break
 				}
 			}
 		}
@@ -491,10 +516,28 @@ func (s *game) observe(update Update) bool {
 			ex.bound = false
 		}
 	}
+	for _, resolution := range observation.Resolutions {
+		entry, ok := s.attempts.Lookup(resolution.N)
+		if !ok || entry.Terminal {
+			continue
+		}
+		o, err := resolve(s.attempts, s.gate.cfg.Attempts.EvidenceMS, resolution, now)
+		if err != nil {
+			s.fail(wire.CloseInternal)
+			return false
+		}
+		results = append(results, o.Record())
+		delete(s.actions, resolution.N)
+	}
 	if !update.Relocate && !holdLive {
+		captured := s.captures
 		for _, r := range observation.Facts {
 			if !s.fact(r) {
 				return false
+			}
+			// A checkpoint captured newer source state and retired this update.
+			if s.captures != captured {
+				break
 			}
 		}
 	}
@@ -508,6 +551,9 @@ func (s *game) observe(update Update) bool {
 			return false
 		}
 		if !c.acceptsInput() || !c.hello || c.ready {
+			continue
+		}
+		if _, direct := s.world.(Receiver); direct && c.transfer && c.capturedReady {
 			continue
 		}
 		snapshot, err := s.state.Snapshot(now)
@@ -635,6 +681,9 @@ func (s *game) expireAt(now int64) {
 		if (c.transfer || !c.ready) && now-c.incompleteAt >= s.gate.cfg.Checkpoint.Milliseconds() {
 			reason := wire.CloseSlowConsumer
 			if !c.ready {
+				if _, direct := s.world.(Receiver); direct && c.transfer && c.capturedReady {
+					continue
+				}
 				snapshot, err := s.state.Snapshot(now)
 				if !c.acceptsInput() {
 					continue

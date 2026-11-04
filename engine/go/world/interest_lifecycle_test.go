@@ -367,7 +367,7 @@ func TestLifecycleKeepsIndexesMirrored(t *testing.T) {
 		if err := w.do(ctx, func(s *state) {
 			p := s.players[1]
 			for range eventBacklog + 1 {
-				p.send(ActionIgnored{})
+				p.send(s, ActionIgnored{})
 			}
 		}); err != nil {
 			t.Fatal(err)

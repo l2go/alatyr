@@ -35,7 +35,7 @@ type eventStream struct {
 // eventBacklog bounds a stream's undelivered events. One loop turn can publish
 // an event for every object a teleport forgets and every object it reveals,
 // while the consumer waits for that same turn; that burst is not a slow
-// consumer. The bound matches the bridge's own live backlog of updates.
+// consumer. Direct gateway observers use a coalescing Mailbox instead of this channel.
 const eventBacklog = 1024
 
 func newEventStream() *eventStream {

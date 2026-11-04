@@ -17,7 +17,7 @@ func flushScene(active, observe bool) func() {
 	}
 	return func() {
 		for range 32 {
-			p.send(ActionIgnored{})
+			p.send(w.s, ActionIgnored{})
 		}
 		w.flush(w.s)
 		for len(p.stream.events) > 0 {

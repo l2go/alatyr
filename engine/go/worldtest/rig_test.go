@@ -15,97 +15,86 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/l2go/alatyr/engine/go/bridge"
 	"github.com/l2go/alatyr/engine/go/gateway"
-	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/gatewaytest"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
 	"github.com/l2go/alatyr/engine/go/world/memstore"
-	"github.com/l2go/alatyr/engine/go/worldbridge"
+	"github.com/l2go/alatyr/engine/go/worldlink"
 )
 
 type rig struct {
+	handoffs []worldlink.Handoff
 	t        *testing.T
 	c        meaning.Config
 	w        *world.World
 	store    *memstore.Store
 	port     *observedPort
-	session  *backend.Session
+	session  *worldlink.Session
 	g        *gateway.Gateway
 	p        *gatewaytest.Peer
 	mu       sync.Mutex
-	scope    *backend.World
+	scope    gateway.World
 	state    gateway.State
-	handoffs []backend.Handoff
 	hold     atomic.Bool
 	stop     func()
 }
-
+type command struct {
+	Verb, Key uint64
+	Payload   []wire.Field
+	Value     meaning.Command
+}
 type observedPort struct {
-	bridge.Port
-	updates    chan bridge.Update
-	stop, done chan struct{}
-	once       sync.Once
-	mu         sync.Mutex
-	writes     []bridge.Command
-	// filter is immutable and simulates observation loss, never a world mutation.
-	filter        func(bridge.Update) bridge.Update
+	gateway.World
+	Port          interface{ Owner() world.Ref }
+	source        gateway.Receiver
+	mu            sync.Mutex
+	writes        []command
+	filter        func(gateway.Update) gateway.Update
 	ignoreStopped atomic.Bool
 }
 
-func wrapPort(p bridge.Port, filter func(bridge.Update) bridge.Update) *observedPort {
-	o := &observedPort{Port: p, updates: make(chan bridge.Update), stop: make(chan struct{}), done: make(chan struct{}), filter: filter}
-	go func() {
-		defer close(o.done)
-		defer close(o.updates)
-		for {
-			select {
-			case <-o.stop:
-				return
-			case u, ok := <-p.Updates():
-				if !ok {
-					return
-				}
-				if o.filter != nil {
-					u = o.filter(u)
-				}
-				select {
-				case o.updates <- u:
-				case <-o.stop:
-					return
-				}
-			}
-		}
-	}()
-	return o
+func (o *observedPort) Notify() <-chan struct{} { return o.source.Notify() }
+func (o *observedPort) Capacity() int           { return o.source.Capacity() }
+func (o *observedPort) Receive() (gateway.Update, bool) {
+	u, ok := o.source.Receive()
+	if ok && o.filter != nil {
+		u = o.filter(u)
+	}
+	return u, ok
 }
-func (o *observedPort) Updates() <-chan bridge.Update { return o.updates }
-func (o *observedPort) Write(ctx context.Context, c bridge.Command) (uint64, error) {
+func (o *observedPort) Write(ctx context.Context, step gateway.Step) error {
+	c, err := worldlink.CommandValue(step)
+	if err != nil {
+		return err
+	}
+	verb, _ := meaning.VerbByCommand(c.Kind)
+	payload := []wire.Field{}
+	if c.Kind == meaning.Walk {
+		payload = append(payload, wire.At(11, true, c.X, c.Y, c.Z))
+	}
 	o.mu.Lock()
-	o.writes = append(o.writes, c)
+	o.writes = append(o.writes, command{Verb: verb.Code, Key: step.N, Value: c, Payload: payload})
 	o.mu.Unlock()
-	return o.Port.Write(ctx, c)
+	return o.World.Write(ctx, step)
 }
 func (o *observedPort) Close() error {
-	o.once.Do(func() { close(o.stop) })
-	err := o.Port.Close()
+	err := o.World.Close()
 	if o.ignoreStopped.Load() && errors.Is(err, world.ErrStopped) {
-		err = nil
+		return nil
 	}
-	<-o.done
 	return err
 }
-func (o *observedPort) commands() []bridge.Command {
+func (o *observedPort) commands() []command {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	return slices.Clone(o.writes)
 }
 
 type paced struct {
-	*backend.World
+	*observedPort
 	hold *atomic.Bool
 }
 
@@ -115,17 +104,16 @@ func readyCharacter() world.Character {
 	return world.Character{ObjectID: 1, Account: "example", Name: "Walker", ClassID: 0, Level: 2, SP: 100, CurHP: 100, CurMP: 50, CurCP: 10, X: -71057, Y: 257883, Z: -3104,
 		Items: []world.Item{{ObjectID: 10, TemplateID: 57, Count: 1000, Slot: -1}, {ObjectID: 11, TemplateID: 4, Count: 1, Slot: catalog.SlotRHand}, {ObjectID: 12, TemplateID: 1060, Count: 3, Slot: -1}}, Skills: []world.Skill{{ID: 3, Level: 1}}}
 }
-func newRig(t *testing.T, cat *catalog.Catalog, char world.Character, source meaning.Source, filter func(bridge.Update) bridge.Update, opts ...world.Option) *rig {
+func newRig(t *testing.T, cat *catalog.Catalog, char world.Character, source meaning.Source, filter func(gateway.Update) gateway.Update, opts ...world.Option) *rig {
 	policy := meaning.Policy{Classify: func(o meaning.Observed) meaning.Capabilities {
 		return meaning.Capabilities{Talk: o.Role == "tutor" || o.Role == "provisioner", Pickup: o.Role == meaning.RoleDrop}
 	}}
 	return newRigWithPolicy(t, cat, char, source, filter, policy, opts...)
 }
-
-func newRigWithPolicy(t *testing.T, cat *catalog.Catalog, char world.Character, source meaning.Source, filter func(bridge.Update) bridge.Update, policy meaning.Policy, opts ...world.Option) *rig {
+func newRigWithPolicy(t *testing.T, cat *catalog.Catalog, char world.Character, source meaning.Source, filter func(gateway.Update) gateway.Update, policy meaning.Policy, opts ...world.Option) *rig {
 	return newRigWithPort(t, cat, char, source, filter, policy, nil, opts...)
 }
-func newRigWithPort(t *testing.T, cat *catalog.Catalog, char world.Character, source meaning.Source, filter func(bridge.Update) bridge.Update, policy meaning.Policy, decorate func(bridge.Port) bridge.Port, opts ...world.Option) *rig {
+func newRigWithPort(t *testing.T, cat *catalog.Catalog, char world.Character, source meaning.Source, filter func(gateway.Update) gateway.Update, policy meaning.Policy, decorate func(gateway.World) gateway.World, opts ...world.Option) *rig {
 	t.Helper()
 	r := &rig{t: t, c: gatewaytest.Config(), store: memstore.New()}
 	if err := r.store.PutCharacter(t.Context(), char); err != nil {
@@ -135,7 +123,7 @@ func newRigWithPort(t *testing.T, cat *catalog.Catalog, char world.Character, so
 	for _, it := range char.Items {
 		ids = append(ids, it.ObjectID)
 	}
-	opts = append([]world.Option{world.WithReservedIDs(ids), world.WithRandomSource(rand.NewPCG(1, 2))}, opts...)
+	opts = append([]world.Option{world.WithReservedIDs(ids), world.WithRandomSource(rand.NewPCG(1, 2)), world.WithInterest(r.c.Objects - 1)}, opts...)
 	r.w = world.New(cat, r.store, opts...)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -151,33 +139,25 @@ func newRigWithPort(t *testing.T, cat *catalog.Catalog, char world.Character, so
 	})
 	t.Cleanup(r.stop)
 	origin := time.Now()
-	raw, snap, err := worldbridge.Open(t.Context(), worldbridge.Config{World: r.w, Catalog: cat, Load: func(context.Context, bridge.Identity) (world.Character, error) { return char.Clone(), nil }}, bridge.Identity{Account: char.Account, Character: char.Name})
+	var err error
+	r.session, r.state, err = worldlink.Open(t.Context(), worldlink.Config{World: r.w, Catalog: cat, Meaning: r.c, Policy: policy, Origin: origin, Handoff: func(h worldlink.Handoff) { r.mu.Lock(); r.handoffs = append(r.handoffs, h); r.mu.Unlock() }, Load: func(context.Context, worldlink.Identity) (world.Character, error) { return char.Clone(), nil }}, worldlink.Identity{Account: char.Account, Character: char.Name})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var port bridge.Port = raw
+	r.port = &observedPort{World: r.session, Port: r.session, source: r.session, filter: filter}
+	r.scope = paced{observedPort: r.port, hold: &r.hold}
 	if decorate != nil {
-		port = decorate(raw)
+		r.scope = decorate(r.scope)
 	}
-	r.port = wrapPort(port, filter)
 	t.Cleanup(func() {
 		if err := r.port.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	r.session, r.scope, r.state, err = backend.New(r.port, snap, backend.Config{Meaning: r.c, Policy: policy, Origin: origin, Source: func(meaning.Event) meaning.Source { return source }, Handoff: func(h backend.Handoff) { r.mu.Lock(); r.handoffs = append(r.handoffs, h); r.mu.Unlock() }})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := r.session.Close(); err != nil {
 			t.Error(err)
 		}
 	})
 	r.g = gatewaytest.New(t, r.c, func(context.Context, string) (gateway.World, gateway.State, error) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		return paced{World: r.scope, hold: &r.hold}, r.state, nil
+		return r.scope, r.state, nil
 	}, origin)
 	r.p = gatewaytest.Join(t, r.g, r.c, "one", wire.ModeAct, true)
 	r.sync()
@@ -227,7 +207,7 @@ func (r *rig) ref(id int32, field uint32) wire.Field {
 }
 func (r *rig) actor(template int32) world.Ref {
 	r.t.Helper()
-	raw := r.port.Port.(interface{ Owner() world.Ref }) // the client, or a test decorator embedding it
+	raw := r.port.Port
 	scene, err := r.w.Capture(r.t.Context(), raw.Owner())
 	if err != nil {
 		r.t.Fatal(err)
@@ -271,4 +251,22 @@ func (r *rig) choose(n uint64, index int) {
 		r.t.Fatalf("choice %d absent", index)
 	}
 	r.p.Send(r.intent(n, 6, wire.U(12, true, d.Context.Dialog), wire.U(13, true, d.Context.Options[index].ID)))
+}
+
+func (r *rig) reconnect() {
+	r.t.Helper()
+	r.p.Close()
+	r.sync()
+	r.p = gatewaytest.Join(r.t, r.g, r.c, "one", wire.ModeAct, true)
+	r.sync()
+}
+
+func participantCommands(commands []command) int {
+	n := 0
+	for _, c := range commands {
+		if c.Key != 0 {
+			n++
+		}
+	}
+	return n
 }

@@ -12,7 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/l2go/alatyr/engine/go/bridge"
+	"github.com/l2go/alatyr/engine/go/server/goworld"
+	"github.com/l2go/alatyr/engine/go/worldlink"
 )
 
 // Participant binds an unguessable bearer-token digest to one existing character.
@@ -29,7 +30,7 @@ type Config struct {
 }
 
 type admission struct {
-	identity bridge.Identity
+	identity worldlink.Identity
 	digest   [sha256.Size]byte
 }
 
@@ -53,7 +54,7 @@ func (c Config) validate() (map[string]admission, error) {
 	if c.HTTPAddress != "" && c.HTTPAddress == c.StreamAddress {
 		return nil, errors.New("host: duplicate listener address")
 	}
-	if c.HTTPAddress == "" && c.StreamAddress == "" || c.WorldName == "" || c.WorldPath == "" || c.ShutdownSeconds < 1 || c.ShutdownSeconds > 60 || c.DatabaseSeconds < 1 || c.DatabaseSeconds > 30 || len(c.Participants) < 1 || len(c.Participants) > 64 {
+	if c.HTTPAddress == "" && c.StreamAddress == "" || c.WorldName == "" || c.WorldPath == "" || c.ShutdownSeconds < 1 || c.ShutdownSeconds > 60 || c.DatabaseSeconds < 1 || c.DatabaseSeconds > 30 || len(c.Participants) < 1 || len(c.Participants) > goworld.ParticipantLimit {
 		return nil, errors.New("host: invalid configuration")
 	}
 	// ShutdownSeconds is spent independently by Gateway.Close, failed Leave
@@ -87,7 +88,7 @@ func (c Config) validate() (map[string]admission, error) {
 		if err != nil || len(raw) != 32 {
 			return nil, errors.New("host: invalid token digest")
 		}
-		a := admission{identity: bridge.Identity{Account: p.Account, Character: p.Character}, digest: [32]byte(raw)}
+		a := admission{identity: worldlink.Identity{Account: p.Account, Character: p.Character}, digest: [32]byte(raw)}
 		key := strings.ToLower(p.Character)
 		if _, ok := out[p.ID]; ok || chars[key] || tokens[a.digest] {
 			return nil, errors.New("host: duplicate participant binding")

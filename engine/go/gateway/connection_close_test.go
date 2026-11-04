@@ -7,12 +7,63 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 )
+
+func TestBlockedWriterClosesOnlyItsConnection(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r, live, _ := newFencedPeers(t)
+		a, b := net.Pipe()
+		t.Cleanup(func() {
+			if err := b.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+		r.conn.t = &Stream{Conn: a, Limit: r.game.gate.cfg.FrameBytes}
+		r.conn.writerDone = make(chan struct{})
+		startFencedRun(t, r.game)
+		go r.conn.writeLoop()
+		if !r.conn.enqueue(record(wire.Ping, wire.U(1, true, 1))) {
+			t.Fatal("enqueue")
+		}
+		synctest.Wait()
+		time.Sleep(r.game.gate.cfg.Write + time.Millisecond)
+		synctest.Wait()
+		select {
+		case <-r.conn.writerDone:
+		default:
+			t.Fatal("writer outlived its deadline")
+		}
+		if !r.conn.inputClosed || r.game.closed || peerClosed(live) {
+			t.Fatal("nonreader closed another connection or world scope")
+		}
+	})
+}
+
+func TestWriteDeadlineIsSlowConsumer(t *testing.T) {
+	r, live, _ := newFencedPeers(t)
+	var reason uint64
+	r.game.gate.cfg.Diagnostic = func(s Summary) {
+		if s.Record == wire.Bye && s.Connection == r.conn.id {
+			reason = s.Reason
+		}
+	}
+	r.game.process(input{conn: r.conn, err: &net.OpError{Op: "write", Net: "pipe", Err: timeoutError{}}, write: true})
+	if reason != uint64(wire.CloseSlowConsumer) || r.game.closed || peerClosed(live) {
+		t.Fatalf("deadline reason=%d world closed=%v live closed=%v", reason, r.game.closed, peerClosed(live))
+	}
+}
+
+type timeoutError struct{}
+
+func (timeoutError) Error() string   { return "test: write deadline" }
+func (timeoutError) Timeout() bool   { return true }
+func (timeoutError) Temporary() bool { return false }
 
 type fencedState struct {
 	*testState

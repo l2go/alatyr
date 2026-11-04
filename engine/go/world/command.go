@@ -5,10 +5,11 @@ package world
 
 import (
 	"context"
-	"github.com/l2go/alatyr/engine/go/world/catalog"
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/l2go/alatyr/engine/go/world/catalog"
 )
 
 // Reason identifies a refusal before execution. It is not an error string.
@@ -32,6 +33,9 @@ const (
 // Unused fields grant no authority.
 // Intent identity is assigned by the world, not supplied by the caller.
 type Request struct {
+	// Observer requests this direct observer to retain the assigned outcome.
+	// It must be the owner's current observer; nil requests no subscription.
+	Observer *Mailbox
 	Owner    Ref
 	Verb     Verb
 	Deadline Time
@@ -59,7 +63,7 @@ func (w *World) Execute(ctx context.Context, req Request) (Commit, error) {
 	var commit Commit
 	var learnt *Skill
 	err := w.submit(ctx, func(s *state) {
-		commit = s.commandUntil(req.Owner, req.Verb, req.Deadline, func() {
+		commit = s.commandObserved(req.Owner, req.Verb, req.Deadline, req.Observer, func() {
 			if req.AdmissionDeadline < 0 {
 				s.resolve(StageRefused, ReasonInvalid)
 				return

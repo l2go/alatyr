@@ -5,19 +5,16 @@ package worldtest
 
 import (
 	"context"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
-	"github.com/l2go/alatyr/engine/go/bridge"
+	"github.com/l2go/alatyr/engine/go/gateway"
 	"github.com/l2go/alatyr/engine/go/gateway/gatewaytest"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
-	"github.com/l2go/alatyr/engine/go/worldbridge"
 )
 
 type parityItem struct {
@@ -72,15 +69,12 @@ func (s parityState) skill(id int32) int32 {
 
 type parityRig struct {
 	*rig
-	index     int
-	char      world.Character
-	owner     world.Ref
-	raw       bridge.Port
-	detached  atomic.Bool
-	historyMu sync.Mutex
-	history   []wire.Record
-	aux       map[int32]world.Entry
-	closed    bool
+	index  int
+	char   world.Character
+	owner  world.Ref
+	raw    interface{ Owner() world.Ref }
+	aux    map[int32]world.Entry
+	closed bool
 }
 
 func newParityRig(t *testing.T, index int, cat *catalog.Catalog) *parityRig {
@@ -91,27 +85,11 @@ func newParityRig(t *testing.T, index int, cat *catalog.Catalog) *parityRig {
 	if name == "g10" {
 		source.Dialogue = false
 	}
-	var lost func(bridge.Update) bridge.Update
-	switch name {
-	case "g08-before", "g08-after":
-		lost = lose(map[uint64]bool{11: true}, true)
+	var filter func(gateway.Update) gateway.Update
+	if name == "g08-before" || name == "g08-after" {
+		filter = lose(map[uint64]bool{11: true}, true)
 	}
-	filter := func(u bridge.Update) bridge.Update {
-		if u.Kind == bridge.Detached {
-			r.detached.Store(true)
-		}
-		r.historyMu.Lock()
-		if len(r.history)+len(u.Batch.Records) > 16384 {
-			r.historyMu.Unlock()
-			return bridge.Update{Kind: bridge.Closed, FailureKind: bridge.Capacity}
-		}
-		r.history = append(r.history, u.Batch.Records...)
-		r.historyMu.Unlock()
-		if lost != nil {
-			return lost(u)
-		}
-		return u
-	}
+
 	var reserved []int32
 	for a := 1; a <= 3; a++ {
 		c := parityCharacter(index, a)
@@ -122,7 +100,7 @@ func newParityRig(t *testing.T, index int, cat *catalog.Catalog) *parityRig {
 	}
 	r.rig = newRigWithPolicy(t, cat, r.char, source, filter, parityPolicy(), world.WithReservedIDs(reserved))
 	r.raw = r.port.Port
-	r.owner = r.raw.(*worldbridge.Client).Owner()
+	r.owner = r.raw.Owner()
 	// Auxiliary reward members leave and save before the primary port closes.
 	t.Cleanup(func() {
 		for id := range r.aux {

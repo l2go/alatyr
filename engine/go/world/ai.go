@@ -376,7 +376,7 @@ func (w *World) notifyForget(s *state, a actor, object int32) {
 }
 func (w *World) actionIgnored(s *state, a actor) {
 	if p, ok := a.(*player); ok {
-		p.send(ActionIgnored{})
+		p.send(s, ActionIgnored{})
 	}
 }
 func (w *World) moveToPawn(s *state, a actor, pawn int32, offset int32) {
@@ -411,7 +411,7 @@ func (w *World) moveToPawn(s *state, a actor, pawn int32, offset int32) {
 	w.moveTo(s, a, ppos, walk)
 	if c.move == nil {
 		if p, ok := a.(*player); ok {
-			p.send(ActionIgnored{})
+			p.send(s, ActionIgnored{})
 		}
 		return
 	}
@@ -557,7 +557,7 @@ func (w *World) maybeMoveToPawn(s *state, a actor, target int32, offset int32) b
 			return true
 		}
 		if p, ok := a.(*player); ok && c.ai.intention == intentCast && c.ai.cast != nil && c.ai.cast.shift {
-			p.send(ActionIgnored{})
+			p.send(s, ActionIgnored{})
 			return true
 		}
 		if !c.running && !a.isPlayer() {

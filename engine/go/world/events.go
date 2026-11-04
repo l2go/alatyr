@@ -98,6 +98,8 @@ type GaitChanged struct {
 	stamp
 	ObjectID int32
 	Running  bool
+	// Actor is the source-owned description at this gait transition.
+	Actor Event
 }
 
 // PostureChanged announces sitting or standing.
@@ -221,6 +223,8 @@ type LevelChanged struct {
 
 // ItemDropped supplies a ground item observation, which may be late visibility.
 type ItemDropped struct {
+	// Entity is the published ground-item incarnation.
+	Entity Ref
 	stamp
 	ObjectID, TemplateID int32
 	Pos                  Point

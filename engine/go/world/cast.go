@@ -35,7 +35,7 @@ func (w *World) MagicSkillUse(ctx context.Context, id, skillID int32, ctrl, shif
 	return w.act(ctx, id, VerbCast, func(s *state, p *player) {
 		sk, ok := w.cat.Skill(skillID, p.skillLevel(skillID))
 		if !ok || !w.validCast(p, sk) {
-			p.send(ActionIgnored{})
+			p.send(s, ActionIgnored{})
 			return
 		}
 		if w.skillDisabled(s, p, skillID) {
@@ -50,7 +50,7 @@ func (w *World) validCast(p *player, sk catalog.Skill) bool {
 	return !sk.Passive && sk.Type == "PDAM" && sk.Target == "TARGET_ONE" && !p.teleporting && !p.dead && !p.sitting && !sk.Precondition && sk.Lethal1 == 0 && sk.Lethal2 == 0 && sk.NeededCharges == 0 && sk.ItemConsume == 0 && sk.SoulCount == 0
 }
 func (w *World) sendReuseMessage(p *player, sk catalog.Skill) {
-	p.send(SkillReuse{SkillID: sk.ID, RemainingMilliseconds: max(time.Until(p.reuse[sk.ID].until).Milliseconds(), 0)})
+	p.send(w.s, SkillReuse{SkillID: sk.ID, RemainingMilliseconds: max(time.Until(p.reuse[sk.ID].until).Milliseconds(), 0)})
 }
 func (w *World) skillTarget(s *state, p *player, sk catalog.Skill, target int32) (actor, bool) {
 	t, ok := s.actor(target)
@@ -69,7 +69,7 @@ func (w *World) doCast(s *state, p *player, req *castRequest, target int32) {
 	}
 	t, ok := w.skillTarget(s, p, sk, target)
 	if !ok || p.dead || p.teleporting || p.sitting || w.skillDisabled(s, p, sk.ID) || !weaponAllowed(sk, p.stats.Worn) || p.mp < float64(sk.MPConsume)+float64(sk.MPInitialConsume) || p.hp <= float64(sk.HPConsume) {
-		p.send(ActionIgnored{})
+		p.send(s, ActionIgnored{})
 		w.setIntention(s, p, order{intent: intentActive})
 		return
 	}
@@ -251,7 +251,7 @@ func (p *player) disableSkill(id int32, delay time.Duration) {
 func (w *World) onIntentionCast(s *state, p *player, req *castRequest) {
 	c := p.base()
 	if c.ai.intention == intentRest && req.skill.Magic {
-		p.send(ActionIgnored{})
+		p.send(s, ActionIgnored{})
 		return
 	}
 	if req.skill.HitTime > 50 {
@@ -275,11 +275,11 @@ func (w *World) thinkCast(s *state, p *player) {
 	req, target := c.ai.cast, c.ai.object
 	if _, ok := s.actor(target); !ok || req == nil {
 		w.setIntention(s, p, order{intent: intentActive})
-		p.send(ActionIgnored{})
+		p.send(s, ActionIgnored{})
 		return
 	}
 	if w.maybeMoveToPawn(s, p, target, req.skill.CastRange) {
-		p.send(ActionIgnored{})
+		p.send(s, ActionIgnored{})
 		return
 	}
 	if req.skill.HitTime > 50 {

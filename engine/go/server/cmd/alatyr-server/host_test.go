@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
 	"github.com/l2go/alatyr/engine/go/world/memstore"
+	"github.com/l2go/alatyr/engine/go/worldlink"
 )
 
 func configTest() Config {
@@ -172,7 +172,7 @@ func TestOpenAuthoredCharacterPreservesHiddenTemplates(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: goworld.Limits(1), Origin: time.Now()}}
+	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: worldlink.Config{Meaning: goworld.Limits(1), Origin: time.Now()}}
 	port, state, err := r.open(t.Context(), "one")
 	if err != nil {
 		t.Fatal(err)
@@ -227,12 +227,12 @@ func TestFailedDepartureRetriesOriginalRefBeforeReload(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: goworld.Limits(1), Origin: time.Now()}}
+	r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: worldlink.Config{Meaning: goworld.Limits(1), Origin: time.Now()}}
 	port, _, err := r.open(ctx, "one")
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := r.ports["one"].port.Owner()
+	old := r.ports["one"].session.Owner()
 	if err := w.Teleport(ctx, 1, world.Point{X: -71027, Y: c.Y, Z: c.Z}, false); err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func TestFailedDepartureRetriesOriginalRefBeforeReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	owner := r.ports["one"].port.Owner()
+	owner := r.ports["one"].session.Owner()
 	if owner == old {
 		t.Fatal("replacement reused incarnation")
 	}

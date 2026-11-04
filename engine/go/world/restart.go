@@ -49,8 +49,8 @@ func (w *World) decayPlayer(s *state, p *player) {
 func (w *World) Appear(ctx context.Context, id int32) error {
 	return w.act(ctx, id, VerbAppear, func(s *state, p *player) {
 		w.appear(s, p)
-		p.send(SelfChanged{})
-		p.send(ActionIgnored{})
+		p.send(s, SelfChanged{})
+		p.send(s, ActionIgnored{})
 	})
 }
 
@@ -62,9 +62,14 @@ func (w *World) appear(s *state, p *player) {
 	w.place(s, p)
 	w.revalidateZone(s, p)
 	if p.pendingRevive {
-		w.revive(s, p)
+		s.source(p.relocationCause, func() { w.revive(s, p) })
 	}
-	p.send(SelfChanged{})
+	p.send(s, SelfChanged{})
+	cause := p.relocationCause
+	p.relocationCause = Cause{}
+	if cause.Intent.N != 0 {
+		s.source(cause, func() { s.complete() })
+	}
 }
 
 func (w *World) revive(s *state, p *player) {

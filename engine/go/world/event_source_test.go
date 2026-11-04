@@ -199,14 +199,14 @@ func TestEventOverflowIsBoundedAndInactiveFlushDoesNotPublish(t *testing.T) {
 	p := &player{stream: newEventStream()}
 	w.s.players[1] = p
 	for range cap(p.stream.events) + 1 {
-		p.send(ActionIgnored{})
+		p.send(w.s, ActionIgnored{})
 	}
 	w.flush(w.s)
 	if len(p.stream.events) != eventBacklog || w.s.eventSeq != eventBacklog || <-p.stream.end != CloseOverflow || !p.slow {
 		t.Fatalf("overflow: buffered %d, seq %d, slow %v", len(p.stream.events), w.s.eventSeq, p.slow)
 	}
 	for range 100 {
-		p.send(ActionIgnored{})
+		p.send(w.s, ActionIgnored{})
 		w.flush(w.s)
 	}
 	if w.s.eventSeq != eventBacklog || len(p.outbox) != 0 {
@@ -236,7 +236,7 @@ func TestEventSequenceExhaustionReturnsWorldError(t *testing.T) {
 		drainEvents(entry.Events)
 		err := w.do(ctx, func(s *state) {
 			s.eventSeq = ^uint64(0)
-			s.players[1].send(ActionIgnored{})
+			s.players[1].send(s, ActionIgnored{})
 		})
 		if !errors.Is(err, ErrExhausted) || len(drainEvents(entry.Events)) != 0 {
 			t.Fatalf("exhaustion: got %v, want error without publication", err)

@@ -13,15 +13,13 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/l2go/alatyr/engine/go/bridge"
 	"github.com/l2go/alatyr/engine/go/gateway"
-	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/gatewaytest"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
-	"github.com/l2go/alatyr/engine/go/worldbridge"
+	"github.com/l2go/alatyr/engine/go/worldlink"
 )
 
 // The shipped world authors one fighter template. Add detached test templates
@@ -179,15 +177,11 @@ func TestWorldAppearanceVisibilityAndResume(t *testing.T) {
 		visitor.Skills = nil
 		visitor.Race = 4
 		origin := time.Now()
-		raw, snap, err := worldbridge.Open(t.Context(), worldbridge.Config{World: r.w, Catalog: cat, Load: func(context.Context, bridge.Identity) (world.Character, error) { return visitor, nil }}, bridge.Identity{Account: visitor.Account, Character: visitor.Name})
+		session, state, err := worldlink.Open(t.Context(), worldlink.Config{World: r.w, Catalog: cat, Meaning: r.c, Origin: origin, Load: func(context.Context, worldlink.Identity) (world.Character, error) { return visitor, nil }}, worldlink.Identity{Account: visitor.Account, Character: visitor.Name})
 		if err != nil {
 			t.Fatal(err)
 		}
-		session, scope, state, err := backend.New(raw, snap, backend.Config{Meaning: r.c, Origin: origin})
-		if err != nil {
-			t.Fatal(err)
-		}
-		g := gatewaytest.New(t, r.c, func(context.Context, string) (gateway.World, gateway.State, error) { return scope, state, nil }, origin)
+		g := gatewaytest.New(t, r.c, func(context.Context, string) (gateway.World, gateway.State, error) { return session, state, nil }, origin)
 		peer := gatewaytest.Join(t, g, r.c, "one", wire.ModeObserve, false)
 		t.Cleanup(func() {
 			if err := g.Close(); err != nil {
@@ -204,23 +198,11 @@ func TestWorldAppearanceVisibilityAndResume(t *testing.T) {
 		// receives the visitor through the live PlayerSeen notification.
 		assertPlayerAppearance(t, peer.Records, char.ObjectID, want, meaning.Appeared)
 		assertPlayerAppearance(t, r.p.Records, visitor.ObjectID, meaning.Appearance{Race: wire.RaceDwarf, Sex: wire.SexMale, Branch: wire.BranchFighter}, meaning.Appeared)
-		owner := r.port.Port.(*worldbridge.Client).Owner()
-		if _, _, err := r.w.Subscribe(t.Context(), owner); err != nil {
-			t.Fatal(err)
-		}
-		r.sync()
-		fresh, freshState, err := r.session.Resume(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
-		r.mu.Lock()
-		r.scope, r.state = fresh, freshState
-		r.mu.Unlock()
-		r.p = gatewaytest.Join(t, r.g, r.c, "one", wire.ModeAct, true)
-		r.sync()
+		owner := r.port.Port.Owner()
+		r.reconnect()
 		assertPlayerAppearance(t, r.p.Records, char.ObjectID, want, meaning.Appeared, meaning.Vitals)
 		assertPlayerAppearance(t, r.p.Records, visitor.ObjectID, meaning.Appearance{Race: wire.RaceDwarf, Sex: wire.SexMale, Branch: wire.BranchFighter}, meaning.Appeared)
-		if r.port.Port.(*worldbridge.Client).Owner() != owner {
+		if r.port.Port.Owner() != owner {
 			t.Fatal("Resume changed incarnation")
 		}
 	})

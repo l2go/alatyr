@@ -95,7 +95,7 @@ func (w *World) giveItem(s *state, p *player, n *npc, templateID int32, count in
 	if err := w.addItem(s, p, Item{ObjectID: id, TemplateID: templateID, Count: count, Slot: -1}, "Loot", n.tmpl.Name, false); err != nil {
 		// A reward that cannot fit the inventory is not granted. No resource
 		// transfer is recorded, and the allocated ID remains reserved.
-		p.send(ActionIgnored{})
+		p.send(s, ActionIgnored{})
 	}
 }
 func (w *World) load(p *player) int64 {
@@ -177,17 +177,17 @@ func (w *World) insertItem(s *state, p *player, it Item, process, ref string, ex
 	if !existed {
 		s.itemTransfer(p, p.itemRefs[p.char.Items[i].ObjectID], Resource{Kind: ResourceItem, TemplateID: it.TemplateID}, ResourceLocation{Place: PlaceReward}, it.Count, before, p.char.Items[i].Count)
 	}
-	p.send(InventoryChanged{Changes: []ItemChange{{Kind: change, Item: p.char.Items[i]}}, Load: w.load(p)})
+	p.send(s, InventoryChanged{Changes: []ItemChange{{Kind: change, Item: p.char.Items[i]}}, Load: w.load(p)})
 }
 func (w *World) doPickup(s *state, p *player, item int32) {
 	g, ok := s.ground[item]
 	if !ok || p.dead || p.teleporting || g.owner != 0 && g.owner != p.id && (g.ownerUntil.IsZero() || time.Now().Before(g.ownerUntil)) {
-		p.send(ActionIgnored{})
+		p.send(s, ActionIgnored{})
 		return
 	}
 	it := Item{ObjectID: g.id, TemplateID: g.templateID, Count: g.count, Slot: -1}
 	if !w.canAdd(p, it) {
-		p.send(ActionIgnored{})
+		p.send(s, ActionIgnored{})
 		return
 	}
 	w.broadcastToKnown(s, p, ItemPicked{PickupIntent: s.cause().Intent, PlayerID: p.id, ObjectID: g.id, Pos: g.pos})
@@ -219,14 +219,14 @@ func (w *World) doPickup(s *state, p *player, item int32) {
 		effects = append(effects, ExistenceChanged{Entity: g.ref(), Before: true})
 	}
 	s.group(effects)
-	s.finish(StageDone) // A later AI turn cannot rewrite the original Unknown commitment.
+	s.complete()
 }
 
 // Pickup starts an intention to collect a known ground item.
 func (w *World) Pickup(ctx context.Context, id, item int32) error {
 	return w.act(ctx, id, VerbPickup, func(s *state, p *player) {
 		if p.dead || p.teleporting || !p.known[item] {
-			p.send(ActionIgnored{})
+			p.send(s, ActionIgnored{})
 			return
 		}
 		w.setIntention(s, p, order{intent: intentPickUp, object: item})
@@ -245,7 +245,7 @@ func (w *World) eraseGround(s *state, g *groundItem) {
 			s.change(p.ref(), PropertyKnownObject, RefValue(g.ref()), RefValue(Ref{}))
 			delete(p.known, g.id)
 			unlink(s.watchers, g.id, p.id)
-			p.send(ObjectGone{ObjectID: g.id})
+			p.send(s, ObjectGone{ObjectID: g.id})
 			w.notifyForget(s, p, g.id)
 		}
 	}

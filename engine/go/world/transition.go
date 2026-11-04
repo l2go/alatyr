@@ -339,10 +339,11 @@ type Cost struct {
 }
 
 type commitBatch struct {
-	cause   Cause
-	intent  Intent
-	groups  []EffectGroup
-	outcome Outcome
+	cause         Cause
+	intent        Intent
+	groups        []EffectGroup
+	outcome       Outcome
+	continuations []Outcome
 }
 
 func (c *creature) ref() Ref   { return Ref{ID: c.id, Gen: c.generation} }
@@ -403,13 +404,52 @@ func (s *state) source(cause Cause, f func()) Commit {
 	if s.observe != nil {
 		s.observe(cloneCommit(c))
 	}
+	if p := s.players[c.Outcome.Intent.Owner.ID]; p != nil && p.ref() == c.Outcome.Intent.Owner && p.mailbox != nil {
+		p.commit(c)
+	}
+	for _, outcome := range b.continuations {
+		s.continuation(outcome)
+	}
 	return c
+}
+
+// commit puts the outcome after this transition's facts and before the next
+// transition. Separating an outcome tail would let a later relocation overtake
+// an already committed action and incorrectly turn it into Unknown.
+func (p *player) commit(c Commit) {
+	if c.Outcome.Intent.N == 0 || c.Outcome.Stage == StageUnknown {
+		return
+	}
+	detached := cloneCommit(c)
+	p.outbox = append(p.outbox, notification{commit: &detached})
+}
+
+func (s *state) continuation(outcome Outcome) {
+	if outcome.Intent.N == 0 {
+		return
+	}
+	if s.commitSeq == ^uint64(0) {
+		s.err = ErrExhausted
+		return
+	}
+	s.commitSeq++
+	c := Commit{Sequence: s.commitSeq, Time: s.now(), Outcome: outcome}
+	if s.observe != nil {
+		s.observe(cloneCommit(c))
+	}
+	if p := s.players[outcome.Intent.Owner.ID]; p != nil && p.ref() == outcome.Intent.Owner && p.mailbox != nil {
+		p.commit(c)
+	}
 }
 func (s *state) command(owner Ref, verb Verb, f func()) {
 	s.commandUntil(owner, verb, 0, f)
 }
 
 func (s *state) commandUntil(owner Ref, verb Verb, deadline Time, f func()) Commit {
+	return s.commandObserved(owner, verb, deadline, nil, f)
+}
+
+func (s *state) commandObserved(owner Ref, verb Verb, deadline Time, observer *Mailbox, f func()) Commit {
 	if s.commandSeq == ^uint64(0) {
 		s.err = ErrExhausted
 		return Commit{}
@@ -417,6 +457,15 @@ func (s *state) commandUntil(owner Ref, verb Verb, deadline Time, f func()) Comm
 	s.commandSeq++
 	return s.source(Cause{Intent: IntentID{Owner: owner, N: s.commandSeq}}, func() {
 		s.batch.intent = Intent{ID: s.cause().Intent, Verb: verb, Deadline: deadline}
+		// Reserve before either deadline can terminate admission. An expired
+		// command still has an exact outcome for its currently bound observer.
+		if observer != nil {
+			p, ok := s.players[owner.ID]
+			if ok && p.ref() == owner && (p.mailbox != observer || !observer.watch(s.cause().Intent)) {
+				s.resolve(StageRefused, ReasonState)
+				return
+			}
+		}
 		if deadline > 0 && s.now() >= deadline {
 			s.finish(StageExpired)
 		} else {
@@ -459,6 +508,25 @@ func (s *state) resolve(stage Stage, reason Reason) {
 	}
 	s.batch.outcome = Outcome{Intent: s.batch.intent.ID, Stage: stage, Reason: reason}
 }
+
+// complete records completion at the actual asynchronous transition. It never
+// changes the original Unknown commitment; a continuation is a new publication.
+func (s *state) complete() {
+	if s.batch == nil || s.batch.cause.Intent.N == 0 {
+		return
+	}
+	if s.batch.intent.ID == s.batch.cause.Intent {
+		s.finish(StageDone)
+		return
+	}
+	outcome := Outcome{Intent: s.batch.cause.Intent, Stage: StageDone}
+	if s.batch.intent.ID.N != 0 || s.batch.outcome.Intent != (IntentID{}) {
+		s.batch.continuations = append(s.batch.continuations, outcome)
+	} else {
+		s.batch.outcome = outcome
+	}
+}
+
 func cloneCommit(c Commit) Commit {
 	c.Groups = slices.Clone(c.Groups)
 	for i := range c.Groups {

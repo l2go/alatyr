@@ -17,14 +17,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/l2go/alatyr/engine/go/bridge"
 	"github.com/l2go/alatyr/engine/go/gateway"
-	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
-	"github.com/l2go/alatyr/engine/go/worldbridge"
+	"github.com/l2go/alatyr/engine/go/worldlink"
 )
 
 // Store is the durable host's port. Callers own its lifetime through Run.
@@ -38,8 +36,7 @@ type Store interface {
 }
 
 type opened struct {
-	port    *worldbridge.Client
-	session *backend.Session
+	session *worldlink.Session
 }
 
 type runtime struct {
@@ -51,7 +48,7 @@ type runtime struct {
 	world         *world.World
 	cat           *catalog.Catalog
 	admissions    map[string]admission
-	meaningConfig backend.Config
+	meaningConfig worldlink.Config
 	gateway       *gateway.Gateway
 	mu            sync.Mutex
 	ports         map[string]opened
@@ -176,8 +173,8 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, l
 		closeErrs := make(map[world.Ref]error)
 		for _, o := range ports {
 			if err := o.session.Close(); err != nil {
-				failed[o.port.Owner()] = true
-				closeErrs[o.port.Owner()] = err
+				failed[o.session.Owner()] = true
+				closeErrs[o.session.Owner()] = err
 			}
 		}
 		drain, cancelDrain := context.WithTimeout(context.Background(), time.Duration(cfg.ShutdownSeconds)*time.Second)
@@ -291,12 +288,11 @@ func serve(ctx context.Context, cfg Config, cat *catalog.Catalog, store Store, l
 }
 
 func (r *runtime) open(ctx context.Context, id string) (gateway.World, gateway.State, error) {
-	return r.openPort(ctx, id, nil)
+	return r.openPort(ctx, id)
 }
 
-// openPort allows a controlled observation schedule in integration tests. A nil
-// decorator uses the production port directly; it never changes Source policy.
-func (r *runtime) openPort(ctx context.Context, id string, decorate func(bridge.Port) bridge.Port) (gateway.World, gateway.State, error) {
+// openPort binds an authenticated participant to its direct world session.
+func (r *runtime) openPort(ctx context.Context, id string) (gateway.World, gateway.State, error) {
 	a, ok := r.admissions[id]
 	if !ok {
 		return nil, nil, gateway.ErrAuth
@@ -319,7 +315,7 @@ func (r *runtime) openPort(ctx context.Context, id string, decorate func(bridge.
 	r.mu.Unlock()
 	if exists {
 		if closeErr := previous.session.Close(); closeErr != nil {
-			if err := r.world.Leave(ctx, previous.port.Owner()); err != nil {
+			if err := r.world.Leave(ctx, previous.session.Owner()); err != nil {
 				r.mu.Lock()
 				r.ports[id] = previous
 				r.mu.Unlock()
@@ -329,7 +325,7 @@ func (r *runtime) openPort(ctx context.Context, id string, decorate func(bridge.
 		}
 	}
 	// Resolve both names with PostgreSQL citext semantics, then pass the stored
-	// canonical spelling to the byte-exact bridge identity fence.
+	// canonical spelling to the byte-exact character identity fence.
 	c, err := r.store.Character(ctx, a.identity.Account, a.identity.Character)
 	if err != nil {
 		return nil, nil, err
@@ -359,12 +355,12 @@ func (r *runtime) openPort(ctx context.Context, id string, decorate func(bridge.
 	if c.ClassID != c.BaseClass {
 		return nil, nil, errors.New("host: active subclasses are unsupported")
 	}
-	identity := bridge.Identity{Account: c.Account, Character: c.Name}
-	p, s, w, state, err := goworld.Open(ctx, r.world, r.cat, identity, func(context.Context, bridge.Identity) (world.Character, error) {
+	identity := worldlink.Identity{Account: c.Account, Character: c.Name}
+	p, state, err := goworld.Open(ctx, r.world, r.cat, identity, func(context.Context, worldlink.Identity) (world.Character, error) {
 		return r.characters.load(c), nil
-	}, r.meaningConfig, decorate)
+	}, r.meaningConfig)
 	if p == nil {
-		var opening *worldbridge.OpenError
+		var opening *worldlink.OpenError
 		if errors.As(err, &opening) {
 			r.mu.Lock()
 			r.failed[opening.Owner] = true
@@ -382,9 +378,9 @@ func (r *runtime) openPort(ctx context.Context, id string, decorate func(bridge.
 		return nil, nil, errors.Join(err, closeErr)
 	}
 	r.mu.Lock()
-	r.ports[id] = opened{p, s}
+	r.ports[id] = opened{session: p}
 	r.mu.Unlock()
-	return w, state, nil
+	return p, state, nil
 }
 
 // maxRecovered bounds the remembered recoveries. Gateway keeps only its first

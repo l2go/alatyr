@@ -4,31 +4,29 @@
 package worldtest
 
 import (
+	"github.com/l2go/alatyr/engine/go/worldlink"
 	"testing"
 	"time"
 
-	"github.com/l2go/alatyr/engine/go/bridge"
+	"github.com/l2go/alatyr/engine/go/gateway"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
-	"github.com/l2go/alatyr/engine/go/worldbridge"
 )
 
 func TestParityWaitsForAsynchronousEvidenceWithinOriginalWindow(t *testing.T) {
 	runWorld(t, func(t *testing.T, cat *catalog.Catalog) {
 		delayed := false
-		filter := func(u bridge.Update) bridge.Update {
-			for _, receipt := range u.Batch.Receipts {
-				if receipt.Requested == 5 && !delayed {
-					delayed = true
-					time.Sleep(1200 * time.Millisecond)
-					break
-				}
+		filter := func(u gateway.Update) gateway.Update {
+			if p, ok := u.Value.(worldlink.Publication); ok && p.Commit.Outcome.Intent.N != 0 && !delayed {
+				delayed = true
+				time.Sleep(1200 * time.Millisecond)
 			}
 			return u
 		}
+
 		base := newRigWithPolicy(t, cat, readyCharacter(), allSources(), filter, parityPolicy())
-		r := &parityRig{rig: base, char: readyCharacter(), owner: base.port.Port.(*worldbridge.Client).Owner()}
+		r := &parityRig{rig: base, char: readyCharacter(), owner: base.port.Port.Owner()}
 		target := r.actor(30001)
 		r.p.Send(r.intent(1, 11, r.ref(target.ID, 10)))
 		r.outcome(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)

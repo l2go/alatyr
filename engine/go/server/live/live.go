@@ -10,15 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/l2go/alatyr/engine/go/bridge"
 	"github.com/l2go/alatyr/engine/go/gateway"
-	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
 	"github.com/l2go/alatyr/engine/go/world/memstore"
-	"github.com/l2go/alatyr/engine/go/worldbridge"
+	"github.com/l2go/alatyr/engine/go/worldlink"
 )
 
 // Identities of the two participants a World admits.
@@ -32,7 +30,7 @@ type World struct {
 	world   *world.World
 	gateway *gateway.Gateway
 	cat     *catalog.Catalog
-	config  backend.Config
+	config  worldlink.Config
 	codec   *meaning.Codec
 	chars   map[string]world.Character
 	cancel  context.CancelFunc
@@ -46,8 +44,7 @@ type World struct {
 }
 
 type opened struct {
-	port    *worldbridge.Client
-	session *backend.Session
+	session *worldlink.Session
 }
 
 // Start loads the rendered world from fsys and starts it with its gateway.
@@ -102,10 +99,10 @@ func (h *World) open(ctx context.Context, id string) (gateway.World, gateway.Sta
 			return nil, nil, err
 		}
 	}
-	identity := bridge.Identity{Account: c.Account, Character: c.Name}
-	p, s, w, state, err := goworld.Open(ctx, h.world, h.cat, identity, func(context.Context, bridge.Identity) (world.Character, error) {
+	identity := worldlink.Identity{Account: c.Account, Character: c.Name}
+	p, state, err := goworld.Open(ctx, h.world, h.cat, identity, func(context.Context, worldlink.Identity) (world.Character, error) {
 		return c.Clone(), nil
-	}, h.config, nil)
+	}, h.config)
 	if err != nil {
 		if p != nil {
 			err = errors.Join(err, p.Close())
@@ -113,9 +110,9 @@ func (h *World) open(ctx context.Context, id string) (gateway.World, gateway.Sta
 		return nil, nil, err
 	}
 	h.mu.Lock()
-	h.ports[id] = opened{p, s}
+	h.ports[id] = opened{session: p}
 	h.mu.Unlock()
-	return w, state, nil
+	return p, state, nil
 }
 
 // Join connects a participant to its identity over an in-memory stream.

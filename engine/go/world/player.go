@@ -25,7 +25,8 @@ type player struct {
 	char                       Character
 	stats                      *stat.Player
 	stream                     *eventStream
-	outbox                     []Event
+	mailbox                    *Mailbox
+	outbox                     []notification
 	slow                       bool
 	known                      map[int32]bool
 	displaced                  int
@@ -37,6 +38,7 @@ type player struct {
 	memSkills                  []Skill
 	zone                       catalog.ZoneState
 	teleporting, pendingRevive bool
+	relocationCause            Cause
 	lastFolk                   int32
 	bypass, bypassPrefix       []string
 	dialogue                   string
@@ -59,15 +61,26 @@ type Event interface {
 	event()
 	Time() Time
 	Seq() uint64
+	Intent() IntentID
+}
+
+type notification struct {
+	event  Event
+	intent IntentID
+	commit *Commit
 }
 
 type stamp struct {
-	time Time
-	seq  uint64
+	intent IntentID
+	time   Time
+	seq    uint64
 }
 
 // Time returns monotonic world time at publication.
 func (s stamp) Time() Time { return s.time }
+
+// Intent returns the source intent, or zero for an ambient observation.
+func (s stamp) Intent() IntentID { return s.intent }
 
 // Seq returns the source-assigned publication sequence; zero is unpublished.
 func (s stamp) Seq() uint64 { return s.seq }
@@ -148,22 +161,31 @@ func (p *player) randomDamage() float64 {
 	}
 	return 0.1
 }
-func (p *player) send(e Event) {
+func (p *player) send(s *state, e Event) {
 	if !p.slow {
-		p.outbox = append(p.outbox, e)
+		if v, ok := e.(ItemDropped); ok && p.mailbox != nil {
+			v.Entity = s.ref(v.ObjectID)
+			e = v
+		}
+		p.outbox = append(p.outbox, notification{event: e, intent: s.cause().Intent})
 	}
 }
 func (p *player) close(reason CloseReason) {
 	if !p.slow {
 		p.slow = true
-		p.stream.close(reason)
+		if p.stream != nil {
+			p.stream.close(reason)
+		}
+		if p.mailbox != nil {
+			p.mailbox.close()
+		}
 	}
 }
-func (p *player) deliver(s *state, e Event) {
+func (p *player) deliver(s *state, e Event, intents ...IntentID) {
 	if p.slow || s.err != nil {
 		return
 	}
-	if len(p.stream.events) == cap(p.stream.events) {
+	if p.mailbox == nil && len(p.stream.events) == cap(p.stream.events) {
 		p.close(CloseOverflow)
 		return
 	}
@@ -172,9 +194,17 @@ func (p *player) deliver(s *state, e Event) {
 		return
 	}
 	s.eventSeq++
-	e = publishEvent(e, stamp{time: s.now(), seq: s.eventSeq})
+	intent := s.cause().Intent
+	if len(intents) > 0 {
+		intent = intents[0]
+	}
+	e = publishEvent(e, stamp{time: s.now(), seq: s.eventSeq, intent: intent})
 	if e == nil {
 		s.err = errUnsupportedEvent
+		return
+	}
+	if p.mailbox != nil {
+		p.mailbox.publish(e)
 		return
 	}
 	select {
@@ -287,7 +317,7 @@ func (w *World) Enter(ctx context.Context, c Character) (Entry, error) {
 		s.group([]Effect{ExistenceChanged{Entity: p.ref(), After: true}})
 		s.finish(StageDone)
 		for _, message := range w.announcements {
-			p.send(Announcement{Text: message})
+			p.send(s, Announcement{Text: message})
 		}
 		w.place(s, p)
 		w.revalidateZone(s, p)
@@ -446,9 +476,18 @@ func (e *RefusalError) Error() string { return "world: operation refused: " + st
 // A different live or pending incarnation returns a RefusalError with ReasonStale.
 // Repeating a successful departure is harmless while the identity remains absent.
 func (w *World) Leave(ctx context.Context, owner Ref) error {
-	return w.leave(ctx, owner, false)
+	return w.leave(ctx, owner, false, nil)
 }
-func (w *World) leave(ctx context.Context, owner Ref, voluntary bool) error {
+
+// LeaveObserver departs only while box owns this incarnation's observation.
+// Closing a superseded observer cannot remove or save its replacement.
+func (w *World) LeaveObserver(ctx context.Context, owner Ref, box *Mailbox) error {
+	if box == nil {
+		return ErrUninitialized
+	}
+	return w.leave(ctx, owner, false, box)
+}
+func (w *World) leave(ctx context.Context, owner Ref, voluntary bool, observer *Mailbox) error {
 	id := owner.ID
 	var c Character
 	var pending *pendingSave
@@ -463,6 +502,10 @@ func (w *World) leave(ctx context.Context, owner Ref, voluntary bool) error {
 				return
 			}
 			if p != nil {
+				if observer != nil && p.mailbox != observer {
+					s.finish(StageDone)
+					return
+				}
 				if voluntary && time.Now().Before(s.stance[id]) {
 					result = ErrCombat
 					s.finish(StageRefused)
@@ -488,10 +531,7 @@ func (w *World) leave(ctx context.Context, owner Ref, voluntary bool) error {
 				s.change(p.ref(), PropertyCombatUntil, TimeValue(s.at(s.stance[id])), TimeValue(0))
 				delete(s.stance, id)
 				c.LastAccess = time.Now().UnixMilli()
-				for _, e := range p.outbox {
-					p.deliver(s, e)
-				}
-				p.outbox = nil
+				w.flushPlayer(s, p)
 				p.deliver(s, LeftWorld{ObjectID: id})
 				p.close(CloseLeave)
 				s.group([]Effect{ExistenceChanged{Entity: p.ref(), Before: true}})

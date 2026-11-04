@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
+	"github.com/l2go/alatyr/engine/go/worldlink"
 )
 
 func TestRuntimeClassifiesActualHuntTargetsAndSavesPartyRewards(t *testing.T) {
@@ -42,7 +42,7 @@ func TestRuntimeClassifiesActualHuntTargetsAndSavesPartyRewards(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	r := &runtime{cfg: cfg, store: store, characters: characters, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: backend.Config{Meaning: goworld.Limits(1), Origin: time.Now(), Policy: meaning.Policy{Classify: goworld.Classify}}}
+	r := &runtime{cfg: cfg, store: store, characters: characters, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: worldlink.Config{Meaning: goworld.Limits(1), Origin: time.Now(), Policy: meaning.Policy{Classify: goworld.Classify}}}
 	port, state, err := r.open(t.Context(), "one")
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestRuntimeClassifiesActualHuntTargetsAndSavesPartyRewards(t *testing.T) {
 		}
 	}
 	if target.ID == 0 {
-		t.Fatal("actual worldbridge checkpoint has no creature")
+		t.Fatal("actual direct checkpoint has no creature")
 	}
 	for i, kind := range []string{meaning.Strike, meaning.Cast} {
 		rec, err := meaning.CommandRecord(meaning.Command{Kind: kind, Target: target.ID, Item: 3}, meaning.CommandContext{N: uint64(i + 1), Target: target, SkillLevel: 1})
@@ -79,7 +79,7 @@ func TestRuntimeClassifiesActualHuntTargetsAndSavesPartyRewards(t *testing.T) {
 			t.Fatalf("server policy refused actual %s: %v", kind, reason)
 		}
 	}
-	owner := r.ports["one"].port.Owner()
+	owner := r.ports["one"].session.Owner()
 	other := c.Clone()
 	other.ObjectID = 2
 	other.Account = "other"

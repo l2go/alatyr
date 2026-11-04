@@ -7,16 +7,15 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"testing/synctest"
 
-	"github.com/l2go/alatyr/engine/go/bridge"
-	"github.com/l2go/alatyr/engine/go/gateway/backend"
-	"github.com/l2go/alatyr/engine/go/gateway/meaning"
+	"github.com/l2go/alatyr/engine/go/gateway"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
-	"github.com/l2go/alatyr/engine/go/worldbridge"
+	"github.com/l2go/alatyr/engine/go/worldlink"
 )
 
 func sequenceCatalog(t testing.TB) *catalog.Catalog {
@@ -32,48 +31,20 @@ func sequenceRun(t *testing.T, cat *catalog.Catalog, data []byte) []byte {
 	t.Helper()
 	var transcript []byte
 	synctest.Test(t, func(t *testing.T) {
-		policy := meaning.Policy{Classify: func(o meaning.Observed) meaning.Capabilities {
-			switch o.Role {
-			case "tutor", "provisioner", "folk":
-				return meaning.Capabilities{Talk: true, Cast: true}
-			case "creature":
-				return meaning.Capabilities{Strike: true, Cast: true}
-			case meaning.RoleDrop:
-				return meaning.Capabilities{Pickup: true}
-			}
-			return meaning.Capabilities{}
-		}}
-		var scheduled *SequencePort
 		var mu sync.Mutex
 		var commits []world.Commit
-		r := newRigWithPort(t, cat, SequenceCharacter(data), allSources(), nil, policy, func(p bridge.Port) bridge.Port { scheduled = NewSequencePort(p); return scheduled }, world.WithCommits(func(c world.Commit) { mu.Lock(); commits = append(commits, c); mu.Unlock() }))
-		scopes := []*backend.World{r.scope}
-		transcript = ExerciseSequence(t, data, SequenceHost{
-			World: r.w, Gateway: r.g, Config: r.c, Peer: r.p,
-			Owner: scheduled.Port.(*worldbridge.Client).Owner,
-			Resume: func() error {
-				scope, state, err := r.session.Resume(t.Context())
-				if err != nil {
-					return err
-				}
-				r.mu.Lock()
-				r.scope, r.state = scope, state
-				r.mu.Unlock()
-				scopes = append(scopes, scope)
-				return nil
-			},
+		var scheduled *SequenceReceiver
+		r := newRigWithPort(t, cat, SequenceCharacter(data), allSources(), nil, parityPolicy(), func(w gateway.World) gateway.World { scheduled = NewSequenceReceiver(w); return scheduled }, world.WithCommits(func(c world.Commit) { mu.Lock(); commits = append(commits, c); mu.Unlock() }))
+
+		transcript = ExerciseSequence(t, data, SequenceHost{Flush: scheduled.Flush, World: r.w, Gateway: r.g, Config: r.c, Peer: r.p, Owner: r.port.Port.Owner,
 			Saved: func() world.Character {
 				chars, err := r.store.Characters(t.Context(), "example")
 				if err != nil || len(chars) != 1 {
-					t.Fatalf("saved characters: %v/%v", chars, err)
+					t.Fatal("saved character", err)
 				}
 				return chars[0]
 			},
-			Close: r.session.Close, Stop: r.stop, Port: scheduled, Handoffs: func() []backend.Handoff {
-				r.mu.Lock()
-				defer r.mu.Unlock()
-				return append([]backend.Handoff(nil), r.handoffs...)
-			}, Commits: func() []world.Commit { mu.Lock(); defer mu.Unlock(); return append([]world.Commit(nil), commits...) }, Scopes: func() []*backend.World { return scopes },
+			Close: r.session.Close, Stop: r.stop, Handoffs: func() []worldlink.Handoff { r.mu.Lock(); defer r.mu.Unlock(); return slices.Clone(r.handoffs) }, Commits: func() []world.Commit { mu.Lock(); defer mu.Unlock(); return slices.Clone(commits) },
 		})
 	})
 	return transcript

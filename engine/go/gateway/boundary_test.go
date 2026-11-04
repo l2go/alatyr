@@ -22,7 +22,6 @@ func TestDependencyBoundary(t *testing.T) {
 	const own = parent + "/gateway"
 	const protocol = "github.com/l2go/alatyr/engine/go/protocol"
 	const version = "v0.1.1"
-	const bridge = "github.com/l2go/alatyr/engine/go/bridge"
 	modCmd := exec.CommandContext(t.Context(), "go", "mod", "edit", "-json")
 	modJSON, err := modCmd.Output()
 	if err != nil {
@@ -121,7 +120,7 @@ func TestDependencyBoundary(t *testing.T) {
 		case parent:
 			path, _, _ := strings.Cut(p.ImportPath, " [")
 			path = strings.TrimSuffix(strings.TrimSuffix(path, ".test"), "_test")
-			if path != own && !strings.HasPrefix(path, own+"/") && path != bridge && !strings.HasPrefix(path, bridge+"/") {
+			if path != own && !strings.HasPrefix(path, own+"/") {
 				t.Errorf("package outside gateway boundary: %s", path)
 			}
 		case protocol:
@@ -148,7 +147,6 @@ func TestDependencyBoundary(t *testing.T) {
 // guard, so the standalone package tests keep enforcing the runtime split.
 func gatewayImportAllowed(dir, path string, test bool) bool {
 	const root = "github.com/l2go/alatyr/engine/go/gateway"
-	const bridge = "github.com/l2go/alatyr/engine/go/bridge"
 	const protocol = "github.com/l2go/alatyr/engine/go/protocol"
 	var allowed []string
 	switch dir {
@@ -156,15 +154,14 @@ func gatewayImportAllowed(dir, path string, test bool) bool {
 		allowed = []string{root}
 	case "meaning":
 		allowed = []string{root, root + "/meaning"}
-	case "backend":
-		allowed = []string{root, root + "/meaning", root + "/backend"}
-		if test {
-			allowed = append(allowed, root+"/fixture", root+"/gatewaytest")
-		}
+
 	case "fixture":
-		allowed = []string{root + "/fixture"}
+		allowed = []string{root, root + "/meaning", root + "/fixture"}
+		if test {
+			allowed = append(allowed, root+"/gatewaytest")
+		}
 	case "gatewaytest":
-		allowed = []string{root, root + "/meaning", root + "/backend", root + "/fixture", root + "/gatewaytest"}
+		allowed = []string{root, root + "/meaning", root + "/fixture", root + "/gatewaytest"}
 	default:
 		return false
 	}
@@ -176,5 +173,5 @@ func gatewayImportAllowed(dir, path string, test bool) bool {
 	if path == protocol || strings.HasPrefix(path, protocol+"/") {
 		return true
 	}
-	return (dir == "backend" || dir == "fixture" || dir == "gatewaytest") && (path == bridge || strings.HasPrefix(path, bridge+"/"))
+	return false
 }

@@ -12,7 +12,7 @@ import (
 func (w *World) fullInfo(s *state, a actor) {
 	switch v := a.(type) {
 	case *player:
-		v.send(SelfChanged{Self: w.selfOf(v)})
+		v.send(s, SelfChanged{Self: w.selfOf(v)})
 		w.describeState(s, v, v)
 		var seen *PlayerSeen
 		for _, q := range s.players {
@@ -20,7 +20,7 @@ func (w *World) fullInfo(s *state, a actor) {
 				if seen == nil {
 					seen = &PlayerSeen{Player: w.selfOf(v)}
 				}
-				q.send(*seen)
+				q.send(s, *seen)
 				w.describeState(s, v, q)
 			}
 		}
@@ -194,7 +194,7 @@ func (w *World) hide(s *state, p *player, id int32, perceive bool) {
 	if p.target == id {
 		w.setTarget(s, p, 0)
 	}
-	p.send(ObjectGone{ObjectID: id})
+	p.send(s, ObjectGone{ObjectID: id})
 	w.notifyForget(s, p, id)
 }
 
@@ -368,7 +368,7 @@ func (w *World) revalidateZone(s *state, a actor) {
 			s.group(nil,
 				Fact{Subject: p.ref(), Property: PropertyPeaceZone, Before: boolValue(old.Peace), After: boolValue(zone.Peace)},
 				Fact{Subject: p.ref(), Property: PropertyPvPZone, Before: boolValue(old.PvP), After: boolValue(zone.PvP)})
-			p.send(ZoneChanged{ObjectID: p.id, Zone: zone})
+			p.send(s, ZoneChanged{ObjectID: p.id, Zone: zone})
 		}
 	}
 }
@@ -437,7 +437,7 @@ func (w *World) tickBroadcast(s *state) {
 		if m&broadcastSkillList != 0 {
 			if p, ok := a.(*player); ok && !p.slow {
 				skills, complete := w.knownSkills(s, p, time.Now())
-				p.send(SkillsShown{Known: skills, Complete: complete})
+				p.send(s, SkillsShown{Known: skills, Complete: complete})
 			}
 		}
 	}
@@ -455,7 +455,7 @@ func (w *World) vitals(a actor) Vitals {
 func (w *World) statusInfo(s *state, a actor) {
 	v := w.vitals(a)
 	if p, ok := a.(*player); ok {
-		p.send(v)
+		p.send(s, v)
 	}
 	for id := range a.base().listeners {
 		if p, ok := s.players[id]; ok && p != a {

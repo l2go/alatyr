@@ -4,12 +4,10 @@
 package worldtest
 
 import (
-	"errors"
 	"reflect"
 	"strconv"
 	"time"
 
-	"github.com/l2go/alatyr/engine/go/gateway"
 	"github.com/l2go/alatyr/engine/go/gateway/gatewaytest"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
@@ -106,63 +104,29 @@ func parityResume(r *parityRig) parityResult {
 	out := parityResult{Checks: make(map[string]bool), Balances: make(map[string]int64)}
 	target := r.actor(30001)
 	old := r.ref(target.ID, 10)
-	r.p.Send(r.intent(1, 11, old))
+	original := r.intent(1, 11, old)
+	r.p.Send(original)
 	r.outcome(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1)
 	oldSession := r.p.Session
-	beforeState := r.current()
-	if _, _, err := r.w.Subscribe(r.t.Context(), r.owner); err != nil {
-		r.t.Fatal(err)
+	before := r.current()
+	r.reconnect()
+	if r.p.Session != oldSession || r.port.Port.Owner() != r.owner {
+		r.t.Fatal("reconnect replaced the incarnation or attempts")
 	}
-	r.wait(func() bool {
-		if !r.detached.Load() {
-			return false
-		}
-		_, err := r.g.Status(r.t.Context(), "one")
-		return errors.Is(err, gateway.ErrAuth)
-	})
-	if err := r.scope.Detach(); err != nil {
-		r.t.Fatal(err)
-	}
-	scope, state, err := r.session.Resume(r.t.Context())
-	if err != nil {
-		r.t.Fatal(err)
-	}
-	r.mu.Lock()
-	r.scope, r.state = scope, state
-	r.mu.Unlock()
-	r.p = gatewaytest.Join(r.t, r.g, r.c, "one", wire.ModeAct, true)
+	writes := len(r.port.commands())
+	r.p.Send(original)
+	r.p.Result(1, wire.StageDone)
 	r.sync()
-	if r.p.Session == oldSession {
-		r.t.Fatal("Resume reused participant session")
-	}
-	for _, f := range r.p.Records {
-		if f.Type == wire.Result || f.Type == wire.Fact && gatewaytest.U(f, 32) != 0 {
-			r.t.Fatal("checkpoint replay invented outcome/cause")
-		}
-	}
-	fresh := r.ref(target.ID, 10)
-	oldGeneration, _ := wire.Find(old.Value.Fields, 2)
-	newGeneration, _ := wire.Find(fresh.Value.Fields, 2)
-	if newGeneration.U <= oldGeneration.U {
-		r.t.Fatal("Resume reset observed generations")
-	}
-	commandsBefore := r.port.commands()
-	r.p.Send(r.intent(1, 5, old))
-	out.Outcomes = append(out.Outcomes, r.outcome(1, wire.StageRefused, wire.ReasonStaleTarget, wire.DeliveryNone, 0))
-	if len(r.port.commands()) != len(commandsBefore) {
-		r.t.Fatal("retired reference reached raw port")
+	if participantCommands(r.port.commands()) != participantCommands(r.port.commands()[:writes]) {
+		r.t.Fatal("reconnect reexecuted an attempt")
 	}
 	r.p.Send(r.intent(2, 1, wire.At(11, true, r.char.X+10, r.char.Y, r.char.Z)))
 	out.Outcomes = append(out.Outcomes, r.outcome(2, wire.StageSent, wire.ReasonNone, wire.DeliveryBackend, 0))
-	commands := r.port.commands()
-	if len(commands) != len(commandsBefore)+1 || commands[len(commands)-1].Key <= commandsBefore[len(commandsBefore)-1].Key {
-		r.t.Fatal("Resume reset raw key allocation")
-	}
 	after := r.current()
-	if after.XP != beforeState.XP || after.SP != beforeState.SP || after.count(57) != beforeState.count(57) {
-		r.t.Fatal("Resume mutated balances")
+	if before.XP != after.XP || before.SP != after.SP || before.count(57) != after.count(57) {
+		r.t.Fatal("reconnect mutated balances")
 	}
-	out.Checks["same-world-no-reexecution"], out.Checks["fresh-observation-generation"] = true, true
+	out.Checks["same-world-no-reexecution"] = true
 	return out
 }
 

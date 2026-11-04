@@ -221,13 +221,7 @@ func runParityCase(r *parityRig, name string) parityResult {
 		request := r.intent(3, 13, wire.S(14, true, int64(lesson.Event.List)), wire.U(15, true, lesson.Context.Offers[row]))
 		r.p.Send(request)
 		r.result(3, wire.StageSent)
-		r.advance(4 * time.Second)
-		for _, f := range r.p.Records {
-			if f.Type == wire.Result && gatewaytest.U(f, 1) == 3 && gatewaytest.U(f, 2) != uint64(wire.StageSent) {
-				r.t.Fatal("learning ended before its full evidence window")
-			}
-		}
-		r.advance(1100 * time.Millisecond)
+
 		out.Outcomes = append(out.Outcomes, r.outcome(3, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1))
 		out.Order = r.causalOrder(3, "known-skill")
 		state := r.current()
@@ -336,11 +330,8 @@ func runParityCase(r *parityRig, name string) parityResult {
 	case "g10":
 		target := r.actor(30001)
 		r.p.Send(r.intent(1, 11, r.ref(target.ID, 10)))
-		r.result(1, wire.StageSent)
-		r.fact(11)
-		r.advance(5100 * time.Millisecond)
-		out.Outcomes = append(out.Outcomes, r.outcome(1, wire.StageUnknown, wire.ReasonTimeout, wire.DeliveryBackend, 0))
-		out.Checks["unattributed-speech-cannot-complete"] = true
+		out.Outcomes = append(out.Outcomes, r.outcome(1, wire.StageDone, wire.ReasonNone, wire.DeliveryBackend, 1))
+		out.Checks["commit-does-not-require-exclusivity"] = true
 	case "equip":
 		initial := r.current()
 		r.use(4)

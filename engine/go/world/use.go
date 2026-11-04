@@ -43,7 +43,7 @@ func (w *World) useItem(s *state, p *player, req Request) {
 	}
 	life, fence := p.lifeVersion, p.fence
 	p.disableSkill(sk.ID, time.Duration(sk.ReuseDelay)*time.Millisecond)
-	p.send(SkillCast{CasterID: p.id, TargetID: p.id, SkillID: sk.ID, Level: sk.Level, HitTime: sk.HitTime, Reuse: sk.ReuseDelay, From: p.pos, TargetPos: p.pos})
+	p.send(s, SkillCast{CasterID: p.id, TargetID: p.id, SkillID: sk.ID, Level: sk.Level, HitTime: sk.HitTime, Reuse: sk.ReuseDelay, From: p.pos, TargetPos: p.pos})
 	intent := s.cause().Intent
 	apply := func(s *state) {
 		if s.players[p.id] != p || p.dead || p.teleporting || p.lifeVersion != life || p.fence != fence || req.Deadline != 0 && s.now() >= req.Deadline || p.itemRefs[it.ObjectID] != req.Target {
@@ -90,11 +90,12 @@ func (w *World) applyHealingItem(s *state, p *player, index int, ref Ref, sk cat
 	if nextHP != oldHP {
 		effects = append(effects, ResourceTransferred{Resource: Resource{Kind: ResourceHP}, From: ResourceLocation{Place: PlaceWorld}, To: ResourceLocation{Entity: p.ref(), Place: PlaceCharacter}, Amount: ContinuousAmount(nextHP - oldHP), FromBalance: Balance{Before: ContinuousAmount(0), After: ContinuousAmount(0)}, ToBalance: Balance{Before: ContinuousAmount(oldHP), After: ContinuousAmount(nextHP)}})
 	}
-	p.send(SkillLaunched{CasterID: p.id, SkillID: sk.ID, Level: sk.Level, Targets: []int32{p.id}})
+	p.send(s, SkillLaunched{CasterID: p.id, SkillID: sk.ID, Level: sk.Level, Targets: []int32{p.id}})
 	w.assignHP(s, p, nextHP)
 	s.group(effects)
-	p.send(InventoryChanged{UseIntent: intent, Changes: []ItemChange{{Kind: kind, Item: it}}, Load: w.load(p)})
+	p.send(s, InventoryChanged{UseIntent: intent, Changes: []ItemChange{{Kind: kind, Item: it}}, Load: w.load(p)})
 	w.logItem(op, "ItemUse", it.ObjectID, it.TemplateID, it.Count, p, sk.Name)
+	s.complete()
 }
 
 func equipmentSlot(t catalog.ItemTemplate) (int32, bool) {
@@ -158,6 +159,6 @@ func (w *World) toggleEquipment(s *state, p *player, index int, tmpl catalog.Ite
 	w.setMP(s, p, p.mp)
 	w.setCP(s, p, p.cp)
 	w.markBroadcast(s, p, broadcastFullInfo)
-	p.send(InventoryChanged{UseIntent: s.cause().Intent, Changes: changes, Load: w.load(p)})
+	p.send(s, InventoryChanged{UseIntent: s.cause().Intent, Changes: changes, Load: w.load(p)})
 	s.finish(StageDone)
 }

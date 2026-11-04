@@ -1,8 +1,8 @@
 # Go server packages
 
 `github.com/l2go/alatyr/engine/go` is the AGPL-3.0-or-later module for
-[gateway](gateway/README.md), [bridge](bridge/README.md),
-[world](world/README.md), and [worldbridge](worldbridge/README.md).
+[gateway](gateway/README.md), [world](world/README.md), and
+[worldlink](worldlink/README.md).
 Keeping the server packages in one module allows changes across these packages
 to be built and reviewed together without intermediate dependency releases.
 The module root has no Go package.
@@ -31,5 +31,5 @@ package dependency directions, module ownership, the protocol pin, licenses,
 and public content. See [Go components](../../docs/engine-go/README.md).
 
 The [AGPL-3.0-or-later license](LICENSE) covers this module's root files and
-all server packages, including worldbridge. The nested server application has its own AGPL license. The protocol module retains
+all server packages, including worldlink. The nested server application has its own AGPL license. The protocol module retains
 its [Apache-2.0 license](protocol/LICENSE).

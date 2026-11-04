@@ -8,20 +8,20 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
 
-	"github.com/l2go/alatyr/engine/go/bridge"
 	"github.com/l2go/alatyr/engine/go/gateway"
-	"github.com/l2go/alatyr/engine/go/gateway/backend"
 	"github.com/l2go/alatyr/engine/go/gateway/gatewaytest"
 	"github.com/l2go/alatyr/engine/go/gateway/meaning"
 	"github.com/l2go/alatyr/engine/go/protocol/wire"
 	"github.com/l2go/alatyr/engine/go/server/goworld"
 	"github.com/l2go/alatyr/engine/go/world"
 	"github.com/l2go/alatyr/engine/go/world/catalog"
+	"github.com/l2go/alatyr/engine/go/worldlink"
 	"github.com/l2go/alatyr/engine/go/worldtest"
 )
 
@@ -41,7 +41,7 @@ func hostSequence(t *testing.T, cat *catalog.Catalog, data []byte) []byte {
 		chars := &characterStore{store: store, catalog: cat, hidden: make(map[int32]hidden)}
 		var auditMu sync.Mutex
 		var commits []world.Commit
-		var handoffs []backend.Handoff
+		var handoffs []worldlink.Handoff
 		w := world.New(cat, chars, world.WithReservedIDs([]int32{1, 10, 11, 12}), world.WithIDRange(1<<28, 1<<29), world.WithRandomSource(rand.NewPCG(1, 2)), world.WithCommits(func(c world.Commit) { auditMu.Lock(); commits = append(commits, c); auditMu.Unlock() }))
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
@@ -55,26 +55,17 @@ func hostSequence(t *testing.T, cat *catalog.Catalog, data []byte) []byte {
 		t.Cleanup(stop)
 		mc, origin := goworld.Limits(1), time.Now()
 		r := &runtime{cfg: cfg, store: store, characters: chars, world: w, cat: cat, admissions: admissions, ports: make(map[string]opened), failed: make(map[world.Ref]bool), openingCancel: make(map[string]context.CancelFunc), meaningConfig: goworld.BackendConfig(mc, origin)}
-		r.meaningConfig.Handoff = func(h backend.Handoff) { auditMu.Lock(); handoffs = append(handoffs, h); auditMu.Unlock() }
-		var mu sync.Mutex
-		var scopes []*backend.World
-		var resumed gateway.World
-		var state gateway.State
-		var scheduled *worldtest.SequencePort
+		r.meaningConfig.Handoff = func(h worldlink.Handoff) { auditMu.Lock(); handoffs = append(handoffs, h); auditMu.Unlock() }
+		var scheduled *worldtest.SequenceReceiver
 		factory := func(ctx context.Context, id string) (gateway.World, gateway.State, error) {
-			mu.Lock()
-			defer mu.Unlock()
-			if resumed != nil {
-				scope, st := resumed, state
-				resumed, state = nil, nil
-				return scope, st, nil
+			w, state, err := r.open(ctx, id)
+			if err != nil {
+				return nil, nil, err
 			}
-			scope, st, err := r.openPort(ctx, id, func(p bridge.Port) bridge.Port { scheduled = worldtest.NewSequencePort(p); return scheduled })
-			if err == nil {
-				scopes = append(scopes, scope.(*backend.World))
-			}
-			return scope, st, err
+			scheduled = worldtest.NewSequenceReceiver(w)
+			return scheduled, state, nil
 		}
+
 		policy := goworld.GatewayPolicy(mc)
 		policy.Origin = origin
 		policy.Factory = factory
@@ -102,18 +93,7 @@ func hostSequence(t *testing.T, cat *catalog.Catalog, data []byte) []byte {
 		})
 		p := gatewaytest.Join(t, g, mc, "one", wire.ModeAct, true)
 		transcript = worldtest.ExerciseSequence(t, data, worldtest.SequenceHost{
-			World: w, Gateway: g, Config: mc, Peer: p, Owner: func() world.Ref { return current().port.Owner() },
-			Resume: func() error {
-				scope, st, err := current().session.Resume(t.Context())
-				if err != nil {
-					return err
-				}
-				mu.Lock()
-				resumed, state = scope, st
-				scopes = append(scopes, scope)
-				mu.Unlock()
-				return nil
-			},
+			Flush: scheduled.Flush, World: w, Gateway: g, Config: mc, Peer: p, Owner: func() world.Ref { return current().session.Owner() },
 			Saved: func() world.Character {
 				c, err := store.Character(t.Context(), "example", "Walker")
 				if err != nil {
@@ -121,15 +101,15 @@ func hostSequence(t *testing.T, cat *catalog.Catalog, data []byte) []byte {
 				}
 				return c
 			},
-			Close: closePorts, Stop: stop, Port: scheduled, Handoffs: func() []backend.Handoff {
+			Close: closePorts, Stop: stop, Handoffs: func() []worldlink.Handoff {
 				auditMu.Lock()
 				defer auditMu.Unlock()
-				return append([]backend.Handoff(nil), handoffs...)
+				return slices.Clone(handoffs)
 			}, Commits: func() []world.Commit {
 				auditMu.Lock()
 				defer auditMu.Unlock()
 				return append([]world.Commit(nil), commits...)
-			}, Scopes: func() []*backend.World { mu.Lock(); defer mu.Unlock(); return append([]*backend.World(nil), scopes...) },
+			},
 		})
 	})
 	return transcript
