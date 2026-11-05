@@ -294,16 +294,15 @@ func (w *World) describeState(s *state, a actor, p *player) {
 		return
 	}
 	if c.ai.pawnOffset != 0 && c.ai.follow != 0 {
-		if pos, _, _, ok := s.objectAt(c.ai.follow); ok {
-			w.deliver(p, Following{ObjectID: c.id, TargetID: c.ai.follow, Distance: c.ai.pawnOffset, From: c.pos, To: pos})
+		if pos, _, _, ok := s.objectAt(c.ai.follow); ok && pos != c.pos {
+			w.deliver(p, Following{ObjectID: c.id, TargetID: c.ai.follow, Distance: c.ai.pawnOffset, From: c.pos, To: pos, Speed: gaitSpeed(a)})
 			return
 		}
 	}
-	dest := c.pos
-	if c.move != nil {
-		dest = c.move.dest
+	if c.move == nil || c.move.dest == c.pos {
+		return
 	}
-	w.deliver(p, Moving{ObjectID: c.id, From: c.pos, To: dest})
+	w.deliver(p, Moving{ObjectID: c.id, From: c.pos, To: c.move.dest, Speed: gaitSpeed(a)})
 }
 
 func playerForgetDistance(known int) float64 {

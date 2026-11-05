@@ -354,7 +354,7 @@ func (t translator) view(s world.Scene) (meaning.View, error) {
 		spatial = append(spatial, meaning.Event{Kind: meaning.Died, ID: self.ID})
 	}
 	if s.Moving {
-		spatial = append(spatial, toward(at(meaning.Event{Kind: meaning.Moved, ID: self.ID}, world.Point{X: s.Self.Char.X, Y: s.Self.Char.Y, Z: s.Self.Char.Z}), s.Destination))
+		spatial = append(spatial, toward(at(meaning.Event{Kind: meaning.Moved, ID: self.ID, Speed: self.Speed}, world.Point{X: s.Self.Char.X, Y: s.Self.Char.Y, Z: s.Self.Char.Z}), s.Destination))
 	}
 	for _, o := range s.Objects {
 		if !validRef(o.Entity) {
@@ -387,7 +387,7 @@ func (t translator) view(s world.Scene) (meaning.View, error) {
 			spatial = append(spatial, meaning.Event{Kind: meaning.Died, ID: e.ID})
 		}
 		if o.Moving {
-			spatial = append(spatial, toward(meaning.Event{Kind: meaning.Moved, ID: e.ID}, o.Destination))
+			spatial = append(spatial, toward(meaning.Event{Kind: meaning.Moved, ID: e.ID, Speed: e.Speed}, o.Destination))
 		}
 	}
 	slices.SortFunc(actors, func(a, b meaning.Event) int {

@@ -17,6 +17,24 @@ type moveData struct {
 	xExact, yExact float64
 }
 
+// gaitSpeed is the speed an appearance reports for the actor's current gait.
+func gaitSpeed(a actor) int32 {
+	switch v := a.(type) {
+	case *player:
+		if v.running {
+			return v.stats.RunSpeed()
+		}
+		return v.stats.WalkSpeed()
+	case *npc:
+		if v.running {
+			return int32(v.tmpl.RunSpeed)
+		}
+		return int32(v.tmpl.WalkSpeed)
+	default:
+		return int32(a.moveSpeed())
+	}
+}
+
 func (w *World) moveTo(s *state, a actor, to Point, offset int32) {
 	c := a.base()
 	to = w.onGround(to)
