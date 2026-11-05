@@ -416,12 +416,12 @@ func (w *World) moveToPawn(s *state, a actor, pawn int32, offset int32) {
 		return
 	}
 	if creature {
-		if send {
-			w.broadcastToKnown(s, a, Following{ObjectID: c.id, TargetID: pawn, Distance: c.ai.pawnOffset, From: c.pos, To: ppos})
+		if send && ppos != c.pos {
+			w.broadcastToKnown(s, a, Following{ObjectID: c.id, TargetID: pawn, Distance: c.ai.pawnOffset, From: c.pos, To: ppos, Speed: gaitSpeed(a)})
 		}
 		return
 	}
-	w.broadcastToKnown(s, a, Moving{ObjectID: c.id, From: c.pos, To: c.move.dest})
+	w.announceMoving(s, a)
 }
 func (w *World) aiMoveTo(s *state, a actor, to Point) {
 	c := a.base()
@@ -429,11 +429,19 @@ func (w *World) aiMoveTo(s *state, a actor, to Point) {
 	c.ai.pawn = 0
 	c.ai.pawnOffset = 0
 	w.moveTo(s, a, to, 0)
-	dest := c.pos
-	if c.move != nil {
-		dest = c.move.dest
+	// Arrival inside moveTo already published Stopped. A zero-length Moving
+	// shares that mailbox key and would discard the arrival.
+	if c.move == nil {
+		return
 	}
-	w.broadcastToKnown(s, a, Moving{ObjectID: c.id, From: c.pos, To: dest})
+	w.announceMoving(s, a)
+}
+func (w *World) announceMoving(s *state, a actor) {
+	c := a.base()
+	if c.move == nil || c.move.dest == c.pos {
+		return
+	}
+	w.broadcastToKnown(s, a, Moving{ObjectID: c.id, From: c.pos, To: c.move.dest, Speed: gaitSpeed(a)})
 }
 func (w *World) clientStopMoving(s *state, a actor) {
 	c := a.base()

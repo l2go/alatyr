@@ -90,6 +90,8 @@ type Moving struct {
 	stamp
 	ObjectID int32
 	From, To Point
+	// Speed is the mover's current gait speed, the same value an appearance reports.
+	Speed int32
 }
 
 func (Moving) event() {}

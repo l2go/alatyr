@@ -39,9 +39,15 @@ func (t translator) events(e world.Event, class int32, self world.Ref) ([]meanin
 		}
 		incarnation = v.Self.Entity.Gen
 	case world.Moving:
-		appendEvent(toward(at(meaning.Event{Kind: meaning.Moved, ID: v.ObjectID}, v.From), v.To))
+		if v.Speed < 0 {
+			return nil, 0, errSource
+		}
+		appendEvent(toward(at(meaning.Event{Kind: meaning.Moved, ID: v.ObjectID, Speed: v.Speed}, v.From), v.To))
 	case world.Following:
-		appendEvent(toward(at(meaning.Event{Kind: meaning.Moved, ID: v.ObjectID}, v.From), v.To))
+		if v.Speed < 0 {
+			return nil, 0, errSource
+		}
+		appendEvent(toward(at(meaning.Event{Kind: meaning.Moved, ID: v.ObjectID, Speed: v.Speed}, v.From), v.To))
 	case world.Stopped:
 		appendEvent(at(meaning.Event{Kind: meaning.Stopped, ID: v.ObjectID}, v.Pos))
 	case world.PositionObserved:

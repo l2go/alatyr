@@ -128,6 +128,8 @@ type Following struct {
 	stamp
 	ObjectID, TargetID, Distance int32
 	From, To                     Point
+	// Speed is the follower's current gait speed, the same value an appearance reports.
+	Speed int32
 }
 
 // ZoneChanged supplies the world's rules at an actor's position.
